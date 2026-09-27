@@ -1,7 +1,7 @@
 $ mailctl test
 exit: 0
 --- stdout
-Sources:   environment, config file <TMP>/config/mailctl/config.toml
+Sources:   environment
 Host:      mail.example.com  (environment)
 User:      user@example.com  (environment)
 Password:  set  (MAILCTL_PASSWORD, environment)
@@ -15,10 +15,10 @@ ManageSieve: connected
       enotify     unavailable
       envelope    unavailable
       extlists    unavailable
-    * fileinto    available    enabled
-    * imap4flags  available    disabled (config file <TMP>/config/mailctl/config.toml)
-    * mailbox     available    enabled
-      regex       available    enabled
+    * fileinto    unavailable
+    * imap4flags  unavailable
+    * mailbox     unavailable
+      regex       unavailable
       spamtest    unavailable
       vacation    unavailable
 

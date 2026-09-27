@@ -49,18 +49,16 @@ writes nothing anywhere.
   `Password:` reads `set`, `set (via file)`, `set (via command)`,
   `set (via flag)`, or `unset` — it names the source, never the value.
   `unset` is fine — it means you will be prompted.
-* `ManageSieve: connected`, then `capability (as the server reports it):`
-  followed by every Sieve extension the server lists.
-* `extensions mailctl uses (it writes rules that need them):`, a table of
-  the extensions mailctl's own rules can need, with `yes` or
-  `not listed by server` beside each — also read from the server, not
-  assumed. Then `other extensions, for information (mailctl never uses):`,
-  the same for extensions mailctl only reports on.
-  **`fileinto` and `imap4flags` must say `yes`** — those are what an ordinary
-  rule needs. `mailbox` saying `yes` means Sieve can create the target folder
-  itself. An extension you turned off with `disabled_extensions` reads
-  `disabled by mailctl (...)`, naming where the setting came from; if you did
-  not mean to, that is where to look.
+* `ManageSieve: connected`, then `Sieve extensions`, one table in
+  alphabetical order: every extension the server lists plus every one
+  mailctl knows, each `available` or `unavailable` — read from the server,
+  not assumed. An available one also says `enabled`, or `disabled (...)`
+  naming where `disabled_extensions` came from; an unavailable one says
+  nothing more. A `*` marks the extensions mailctl's own rules can need.
+  **`fileinto` and `imap4flags` must say `available` and `enabled`** — those
+  are what an ordinary rule needs. `mailbox` saying `available enabled`
+  means Sieve can create the target folder itself. If one says `disabled`
+  and you did not mean it to, the source in brackets is where to look.
 * `active script:` followed by a name, or `(none)`. Write the name down; that
   is the script mailctl will edit.
 * `IMAP: connected`, then the delimiter, the folder count, `MOVE`, `UIDPLUS`,
@@ -86,7 +84,7 @@ it is worth knowing before step 6.
   then ask MXRoute support.
 * Authentication fails on either service. The username must be the **full
   email address**, not the part before the `@`.
-* `fileinto` says `not listed by server`. Do not continue; a rule that files
+* `fileinto` says `unavailable`. Do not continue; a rule that files
   mail is the whole point, and the server would reject the script.
 
 ## 2. `mailctl folders` — read-only

@@ -753,6 +753,12 @@ SCENARIOS = {
         {"config": 'disabled_extensions = ["imap4flags"]\n'},
     ),
     "test-disabled-unknown": (["test", "--disable-extension", "mailbx"], {}),
+    # A name only the server lists gets a row, folded to lower case once.
+    "test-server-only": (
+        ["test"],
+        {"caps": ["FileInto", "fileinto", "Body", "imap4flags"]},
+    ),
+    "test-no-extensions": (["test"], {"caps": []}),
     "add-disabled-mailbox": (
         [
             "add",

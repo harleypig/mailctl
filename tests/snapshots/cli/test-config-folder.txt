@@ -10,21 +10,17 @@ Sieve:     mail.example.com:4190 (tls=starttls)  (default)
 Folder:    Lists  (config file <TMP>/config/mailctl/config.toml)  -- read by apply, messages, view, from-message
 
 ManageSieve: connected
-  capability (as the server reports it): fileinto, imap4flags, mailbox, regex
-
-  extensions mailctl uses (it writes rules that need them):
-    fileinto     yes
-    imap4flags   yes
-    mailbox      yes
-
-  other extensions, for information (mailctl never uses):
-    copy         not listed by server
-    envelope     not listed by server
-    enotify      not listed by server
-    vacation     not listed by server
-    regex        yes
-    spamtest     not listed by server
-    extlists     not listed by server
+  Sieve extensions (* = mailctl's own rules can need it):
+      copy        unavailable
+      enotify     unavailable
+      envelope    unavailable
+      extlists    unavailable
+    * fileinto    available    enabled
+    * imap4flags  available    enabled
+    * mailbox     available    enabled
+      regex       available    enabled
+      spamtest    unavailable
+      vacation    unavailable
 
   active script: managesieve
   other scripts: (none)
