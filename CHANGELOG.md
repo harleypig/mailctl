@@ -4,6 +4,34 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **`mxfilter messages` lists the mail in a folder.** The newest first,
+  20 by default (`--limit N`), with the UID first on each line, then when it
+  arrived, its size, whether it is unread, flagged, replied to, deleted, or
+  has an attachment, the sender, and the subject. `--folder` picks the
+  folder; the criteria flags `add` and `apply` take (`--from`, `--subject`,
+  `--match`, `--compare`, …) filter it the same way, or `--search` takes a
+  raw IMAP search instead.
+
+* **`mxfilter view UID` reads one message.** Its identifying headers, the
+  plain-text body, and its attachments by name, type, and size.
+  `--headers-only` prints every header; `--raw` prints the full source. A
+  message with only HTML is shown as a rough text conversion, flagged as
+  one. Viewing never marks a message read and never saves an attachment.
+  Both commands, and the engine calls behind them, are available to any
+  front-end, not just the command line.
+
+* **Mail content cannot drive the terminal.** Control characters and escape
+  sequences in headers, bodies, and attachment names print as visible
+  `\xNN` escapes in `messages` and `view`, `--raw` included.
+
+BUG FIXES:
+
+* **`from-message` and `apply` escape control characters in the message
+  headers they show**, as `messages` and `view` do. They used to print them
+  raw, so a sender could put escape sequences on your terminal.
+
 NOTES:
 
 * **`config.toml.example` documents the config file.** The TOML

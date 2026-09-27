@@ -1,0 +1,24 @@
+$ mxfilter view 4
+exit: 0
+--- stdout
+Message uid 4 in 'INBOX' (591B; no flags):
+  Date:    Wed, 4 Feb 2026 09:00:00 +0000
+  From:    Boss <boss@example.com>
+  To:      user@example.com
+  Subject: Q3 report — draft
+
+Numbers attached.
+
+-- Boss
+
+Attachments (1):
+  q3.pdf  application/pdf  9B
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (4,))
+('logout',)
