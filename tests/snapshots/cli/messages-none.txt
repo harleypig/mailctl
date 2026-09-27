@@ -1,0 +1,14 @@
+$ mxfilter messages --from nobody@x.y
+exit: 0
+--- stdout
+No messages found in 'INBOX'.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'nobody@x.y']])
+('fetch', (5, 4, 3, 2, 1))
+('logout',)

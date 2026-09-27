@@ -1,0 +1,18 @@
+$ mxfilter messages --from noreply@github.com
+exit: 0
+--- stdout
+2 message(s) in 'INBOX', newest first:
+     UID  Received               Size  Mark  From                          Subject
+       2  2026-02-03 04:05:06    121B  N     Someone <noreply@github.com>  Issue closed
+       1  2026-02-03 04:05:06    118B        Someone <noreply@github.com>  PR opened
+Marks: N unread, F flagged, R replied, D deleted, @ attachment
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (5, 4, 3, 2, 1))
+('logout',)

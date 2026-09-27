@@ -4,7 +4,7 @@ exit: SystemExit(2)
 
 --- stderr
 usage: mxfilter [-h] [--version] [--verbose] [--debug]
-                {list,show,rules,backup,restore,folders,subscribe,unsubscribe,test,add,from-message,apply,remove-rule,move-rule}
+                {list,show,rules,backup,restore,folders,subscribe,unsubscribe,test,add,from-message,apply,messages,view,remove-rule,move-rule}
                 ...
 mxfilter: error: --no-subscribe only applies with --create-folder; to hide a folder that already exists, use 'mxfilter unsubscribe FOLDER'
 

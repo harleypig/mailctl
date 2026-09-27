@@ -33,6 +33,7 @@ import socket
 import ssl
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from email.errors import HeaderParseError
 from email.header import decode_header, make_header
 
 from imapclient import IMAPClient
@@ -49,6 +50,20 @@ from .criteria import Criteria
 # --max-messages (500) so the two stay independent: the cap is a policy on
 # how much to touch, this is transport and never the user's concern.
 BULK_CHUNK = 250
+
+# Every FETCH item here leaves \Seen alone. BODY[...] and RFC822 /
+# RFC822.TEXT set it (RFC 3501 6.4.5); the .PEEK forms and the metadata
+# items do not. Folders are also selected read-only (EXAMINE), which
+# forbids the change outright -- two independent guards, because reading a
+# message is not a reason to mark it read.
+SUMMARY_ITEMS = [
+    "BODY.PEEK[HEADER]",
+    "INTERNALDATE",
+    "RFC822.SIZE",
+    "FLAGS",
+    "BODYSTRUCTURE",
+]
+SOURCE_ITEMS = ["BODY.PEEK[]", "FLAGS"]
 
 __all__ = [
     "FolderCreation",
@@ -180,6 +195,9 @@ class MessageSummary:
     sender: str
     subject: str
     folder: str
+    size: int = 0
+    flags: tuple[str, ...] = ()
+    has_attachments: bool = False
 
 
 @dataclass(frozen=True)
@@ -301,7 +319,9 @@ def decode_header_value(raw: str) -> str:
     try:
         return str(make_header(decode_header(raw)))
 
-    except (UnicodeDecodeError, LookupError, ValueError):
+    # HeaderParseError is not a ValueError: a bad base64 encoded word
+    # raises it, and one such header must not abort a whole listing.
+    except (UnicodeDecodeError, LookupError, ValueError, HeaderParseError):
         return raw
 
 
@@ -328,6 +348,91 @@ def header_values(message) -> dict[str, list[str]]:
             values.append(raw)
 
     return collected
+
+
+# ----------------------------------------------------------------------------
+def flag_names(raw) -> tuple[str, ...]:
+    """Turn a FETCH FLAGS response into plain strings."""
+    return tuple(
+        flag.decode("ascii", "replace") if isinstance(flag, bytes) else flag
+        for flag in raw or ()
+    )
+
+
+# ----------------------------------------------------------------------------
+def structure_has_attachment(node) -> bool:
+    """Whether a parsed BODYSTRUCTURE holds a part that is not message text.
+
+    The same line ``engine.parse_message`` draws on the full source: a
+    text/plain or text/html part is text unless it is marked as an
+    attachment or carries a file name; any other leaf -- a PDF, an inline
+    image, an attached message -- is an attachment. Cheap because it reads
+    only the structure the server already sent with the summary.
+    """
+    if not isinstance(node, tuple) or not node:
+        return False
+
+    if isinstance(node[0], list):
+        return any(structure_has_attachment(part) for part in node[0])
+
+    kind = (
+        f"{_ascii(node[0])}/{_ascii(node[1])}".lower() if len(node) > 1 else ""
+    )
+
+    if kind not in ("text/plain", "text/html"):
+        return True
+
+    params = node[2] if len(node) > 2 and isinstance(node[2], tuple) else ()
+
+    if any(_ascii(item).lower() == "name" for item in params[::2]):
+        return True
+
+    # The disposition's position shifts with the part type, but it is the
+    # only extension field shaped (bytes, tuple-or-None).
+    for item in node[7:]:
+        if (
+            isinstance(item, tuple)
+            and len(item) == 2
+            and isinstance(item[0], bytes)
+            and (item[1] is None or isinstance(item[1], tuple))
+        ):
+            fields = item[1] or ()
+
+            return _ascii(item[0]).lower() == "attachment" or any(
+                _ascii(name).lower() == "filename" for name in fields[::2]
+            )
+
+    return False
+
+
+# ----------------------------------------------------------------------------
+def _ascii(value) -> str:
+    """Render a BODYSTRUCTURE atom, which IMAPClient hands over as bytes."""
+    if isinstance(value, bytes):
+        return value.decode("ascii", "replace")
+
+    return "" if value is None else str(value)
+
+
+# ----------------------------------------------------------------------------
+def summarize(uid: int, data: dict, message, folder: str) -> MessageSummary:
+    """Build a summary from one FETCH response and its parsed headers.
+
+    Items the FETCH did not ask for come back as defaults, so the
+    existing-mail pass and the message listing share this one reading.
+    """
+    internal = data.get(b"INTERNALDATE")
+
+    return MessageSummary(
+        uid=uid,
+        date=internal.strftime("%Y-%m-%d %H:%M:%S") if internal else "",
+        sender=decode_header_value(message.get("From", "")),
+        subject=decode_header_value(message.get("Subject", "")),
+        folder=folder,
+        size=data.get(b"RFC822.SIZE") or 0,
+        flags=flag_names(data.get(b"FLAGS")),
+        has_attachments=structure_has_attachment(data.get(b"BODYSTRUCTURE")),
+    )
 
 
 # ############################################################################
@@ -654,19 +759,9 @@ class ImapSession:
         match, so it is the only thing that makes ``--compare is`` and
         ``--compare matches`` mean the same here as they will in Sieve.
         """
-        client = self._require_client()
         self._select(folder, readonly=readonly)
 
-        key = criteria.imap_search_key()
-        self._log(f"searching {folder!r} with {key}")
-
-        try:
-            uids = client.search(key)
-
-        except IMAPClientError as exc:
-            raise MxFilterError(
-                f"IMAP search in {folder!r} failed -- {exc}"
-            ) from exc
+        uids = self._criteria_candidates(criteria, folder)
 
         if not uids:
             return []
@@ -674,6 +769,89 @@ class ImapSession:
         self._log(f"{len(uids)} candidate message(s); re-checking headers")
 
         return self._confirm(uids, criteria, folder)
+
+    # ------------------------------------------------------------------------
+    def _criteria_candidates(
+        self, criteria: Criteria, folder: str
+    ) -> list[int]:
+        """Run the criteria's IMAP SEARCH in the selected folder."""
+        client = self._require_client()
+
+        key = criteria.imap_search_key()
+        self._log(f"searching {folder!r} with {key}")
+
+        try:
+            return list(client.search(key))
+
+        except IMAPClientError as exc:
+            raise MxFilterError(
+                f"IMAP search in {folder!r} failed -- {exc}"
+            ) from exc
+
+    # ------------------------------------------------------------------------
+    def list_messages(
+        self,
+        folder: str,
+        criteria: Criteria | None = None,
+        expression: str | None = None,
+        limit: int | None = None,
+    ) -> tuple[list[MessageSummary], bool]:
+        """Return up to ``limit`` matching messages, newest (highest UID)
+        first, and whether candidates beyond the limit went unexamined.
+
+        ``criteria`` is re-checked against the fetched headers exactly as
+        ``search`` does; ``expression`` is a raw IMAP SEARCH taken as given;
+        with neither, every message is a candidate. Headers are fetched a
+        chunk at a time from the newest end, so a small limit on a large
+        folder reads only what it shows.
+        """
+        client = self._require_client()
+
+        if criteria is not None:
+            self._select(folder, readonly=True)
+            uids = self._criteria_candidates(criteria, folder)
+
+        else:
+            uids = self.raw_search(folder, expression or "ALL")
+
+        newest = sorted(uids, reverse=True)
+        step = min(BULK_CHUNK, limit or BULK_CHUNK)
+        matches: list[MessageSummary] = []
+        examined = 0
+
+        while examined < len(newest) and not (limit and len(matches) >= limit):
+            chunk = newest[examined : examined + step]
+
+            try:
+                fetched = client.fetch(chunk, SUMMARY_ITEMS)
+
+            except IMAPClientError as exc:
+                raise MxFilterError(f"IMAP fetch failed -- {exc}") from exc
+
+            for uid in chunk:
+                examined += 1
+                data = fetched.get(uid)
+
+                # A UID the search returned and the fetch did not was
+                # expunged in between; it is simply gone.
+                if not data:
+                    continue
+
+                message = email.message_from_bytes(
+                    data.get(b"BODY[HEADER]") or b""
+                )
+
+                if criteria is not None and not criteria.matches(
+                    header_values(message)
+                ):
+                    continue
+
+                matches.append(summarize(uid, data, message, folder))
+
+                if limit and len(matches) >= limit:
+                    break
+
+        return matches, examined < len(newest)
 
     # ------------------------------------------------------------------------
     def plan_actions(
@@ -800,21 +978,7 @@ class ImapSession:
             if not criteria.matches(headers):
                 continue
 
-            internal = data.get(b"INTERNALDATE")
-
-            matches.append(
-                MessageSummary(
-                    uid=uid,
-                    date=(
-                        internal.strftime("%Y-%m-%d %H:%M:%S")
-                        if internal
-                        else ""
-                    ),
-                    sender=decode_header_value(message.get("From", "")),
-                    subject=decode_header_value(message.get("Subject", "")),
-                    folder=folder,
-                )
-            )
+            matches.append(summarize(uid, data, message, folder))
 
         return matches
 
@@ -913,11 +1077,28 @@ class ImapSession:
     # ------------------------------------------------------------------------
     def fetch_message_headers(self, folder: str, uid: int):
         """Return one message's headers, for ``from-message``."""
+        data = self._fetch_one(folder, uid, ["BODY.PEEK[HEADER]"])
+
+        return email.message_from_bytes(data.get(b"BODY[HEADER]") or b"")
+
+    # ------------------------------------------------------------------------
+    def fetch_message_source(
+        self, folder: str, uid: int
+    ) -> tuple[bytes, tuple[str, ...]]:
+        """Return one message's full RFC 822 source and its flags, without
+        marking it read."""
+        data = self._fetch_one(folder, uid, SOURCE_ITEMS)
+
+        return data.get(b"BODY[]") or b"", flag_names(data.get(b"FLAGS"))
+
+    # ------------------------------------------------------------------------
+    def _fetch_one(self, folder: str, uid: int, items: list[str]) -> dict:
+        """FETCH ``items`` for one UID from ``folder``, selected read-only."""
         client = self._require_client()
         self._select(folder, readonly=True)
 
         try:
-            fetched = client.fetch([uid], ["BODY.PEEK[HEADER]"])
+            fetched = client.fetch([uid], items)
 
         except IMAPClientError as exc:
             raise MxFilterError(f"IMAP fetch failed -- {exc}") from exc
@@ -927,7 +1108,7 @@ class ImapSession:
         if not data:
             raise MxFilterError(f"no message with uid {uid} in {folder!r}")
 
-        return email.message_from_bytes(data.get(b"BODY[HEADER]") or b"")
+        return data
 
     # ------------------------------------------------------------------------
     def raw_search(self, folder: str, expression: str) -> list[int]:

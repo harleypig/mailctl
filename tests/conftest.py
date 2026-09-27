@@ -168,7 +168,16 @@ class FakeIMAPClient:
             ((), b".", b"INBOX.Lists"),
         ]
         self.messages: dict[int, bytes] = {}
+        self.flags: dict[int, tuple] = {}
+        self.structures: dict[int, object] = {}
         self.caps = {"MOVE", "UIDPLUS"}
+
+        # Every FETCH as (uids, items), and the \Seen a real server would
+        # have set in response -- kept apart from ``calls`` so the snapshot
+        # records stay as they are.
+        self.fetches: list[tuple[tuple, tuple]] = []
+        self.readonly = True
+        self.marked_seen: set[int] = set()
         self.failures: dict[str, Exception] = {}
 
         # A server that answers OK to SUBSCRIBE and does not act on it.
@@ -245,6 +254,7 @@ class FakeIMAPClient:
     def select_folder(self, folder: str, readonly: bool = True) -> None:
         self._maybe_fail("select_folder")
         self.calls.append(("select_folder", folder, readonly))
+        self.readonly = readonly
 
     # ------------------------------------------------------------------------
     def search(self, key):
@@ -257,17 +267,44 @@ class FakeIMAPClient:
     def fetch(self, uids, parts):
         self._maybe_fail("fetch")
         self.calls.append(("fetch", tuple(uids)))
+        self.fetches.append((tuple(uids), tuple(parts)))
+
+        # RFC 3501 6.4.5: these items set \Seen, unless the folder was
+        # opened read-only (EXAMINE). The .PEEK forms never do.
+        if not self.readonly and any(
+            part.upper().startswith("BODY[")
+            or part.upper() in ("RFC822", "RFC822.TEXT")
+            for part in parts
+        ):
+            self.marked_seen.update(
+                uid for uid in uids if uid in self.messages
+            )
 
         stamp = datetime.datetime(2026, 2, 3, 4, 5, 6)
+        response = {}
 
-        return {
-            uid: {
-                b"BODY[HEADER]": self.messages[uid],
-                b"INTERNALDATE": stamp,
-            }
-            for uid in uids
-            if uid in self.messages
-        }
+        for uid in uids:
+            if uid not in self.messages:
+                continue
+
+            source = self.messages[uid]
+            data = {b"BODY[HEADER]": source, b"INTERNALDATE": stamp}
+
+            if "BODY.PEEK[]" in parts:
+                data[b"BODY[]"] = source
+
+            if "RFC822.SIZE" in parts:
+                data[b"RFC822.SIZE"] = len(source)
+
+            if "FLAGS" in parts:
+                data[b"FLAGS"] = self.flags.get(uid, ())
+
+            if "BODYSTRUCTURE" in parts:
+                data[b"BODYSTRUCTURE"] = self.structures.get(uid)
+
+            response[uid] = data
+
+        return response
 
     # ------------------------------------------------------------------------
     def add_flags(self, uids, flags) -> None:

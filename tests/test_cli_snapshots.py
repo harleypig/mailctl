@@ -141,8 +141,9 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 
 # name -> (argv, options). Options: caps, active, script, reject, config
 # (the text of config.toml), file (the text of a file that "<FILE>" in
-# argv is replaced with the path of), and env (the text of a .env written,
-# mode 0600, into the directory the command runs in).
+# argv is replaced with the path of), env (the text of a .env written,
+# mode 0600, into the directory the command runs in), and mail / flags
+# (extra messages and their IMAP flags, by UID).
 
 # Host from the env file over the exported MXROUTE_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
@@ -182,7 +183,101 @@ if header :contains "from" "boss@example.com"
 \tstop;
 }
 """
+
+# A message worth reading: a plain part beside its HTML twin, and a PDF.
+REPORT = (
+    b"From: Boss <boss@example.com>\r\n"
+    b"To: user@example.com\r\n"
+    b"Subject: =?utf-8?q?Q3_report_=E2=80=94_draft?=\r\n"
+    b"Date: Wed, 4 Feb 2026 09:00:00 +0000\r\n"
+    b"MIME-Version: 1.0\r\n"
+    b'Content-Type: multipart/mixed; boundary="outer"\r\n'
+    b"\r\n"
+    b"--outer\r\n"
+    b'Content-Type: multipart/alternative; boundary="alt"\r\n'
+    b"\r\n"
+    b"--alt\r\n"
+    b"Content-Type: text/plain; charset=utf-8\r\n"
+    b"\r\n"
+    b"Numbers attached.\r\n"
+    b"\r\n"
+    b"-- Boss\r\n"
+    b"--alt\r\n"
+    b"Content-Type: text/html; charset=utf-8\r\n"
+    b"\r\n"
+    b"<p>Numbers attached.</p>\r\n"
+    b"--alt--\r\n"
+    b"--outer\r\n"
+    b"Content-Type: application/pdf\r\n"
+    b'Content-Disposition: attachment; filename="q3.pdf"\r\n'
+    b"Content-Transfer-Encoding: base64\r\n"
+    b"\r\n"
+    b"JVBERi0xLjQK\r\n"
+    b"--outer--\r\n"
+)
+
+NEWSLETTER = (
+    b"From: News <news@example.com>\r\n"
+    b"Subject: Weekly\r\n"
+    b"Content-Type: text/html; charset=utf-8\r\n"
+    b"\r\n"
+    b"<h1>This week</h1><p>One &amp; two.</p>\r\n"
+)
+
+MAIL = {"mail": {4: REPORT, 5: NEWSLETTER}, "flags": {1: (b"\\Seen",)}}
+
+# Message- and script-derived text carrying terminal escapes: an OSC title
+# change in a Subject that 'from-message --derive subject' copies into the
+# rule, and colour sequences in a stored script's rule name, test, and
+# folder, which 'show' and 'rules' print back.
+HOSTILE_SUBJECT = (
+    b"From: m@example.com\r\n"
+    b"Subject: =?utf-8?q?Inv=1B]0;pwn=07oice?=\r\n"
+    b"\r\n"
+    b"b\r\n"
+)
+
+HOSTILE_SCRIPT = """require ["fileinto"];
+# rule:[bad\x1b[31mname]
+if header :contains "subject" "x\x1b]0;pwn\x07y"
+{
+\tfileinto "INBOX.\x1b[32mZ";
+\tstop;
+}
+"""
+
+HOSTILE = {
+    "from-hostile": (
+        [
+            "from-message",
+            "--uid",
+            "9",
+            "--derive",
+            "subject",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
+        {"mail": {9: HOSTILE_SUBJECT}},
+    ),
+    "show-hostile": (["show"], {"script": HOSTILE_SCRIPT}),
+    "rules-hostile": (["rules"], {"script": HOSTILE_SCRIPT}),
+}
+
 SCENARIOS = {
+    **HOSTILE,
+    "messages": (["messages"], MAIL),
+    "messages-from": (["messages", *GITHUB], MAIL),
+    "messages-limit": (["messages", "--limit", "2"], MAIL),
+    "messages-search": (["messages", "--search", "UNSEEN"], MAIL),
+    "messages-both": (["messages", *GITHUB, "--search", "ALL"], MAIL),
+    "messages-none": (["messages", "--from", "nobody@x.y"], MAIL),
+    "messages-folder": (["messages", "--folder", "Lists"], MAIL),
+    "view": (["view", "4"], MAIL),
+    "view-html": (["view", "5"], MAIL),
+    "view-headers": (["view", "4", "--headers-only"], MAIL),
+    "view-raw": (["view", "5", "--raw"], MAIL),
+    "view-missing": (["view", "99"], MAIL),
     "list": (["list"], {}),
     "list-verbose": (["list", "--verbose"], {}),
     "show": (["show"], {}),
@@ -541,7 +636,9 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         3: message(
             "list@lists.example.com", "Digest", "dev.lists.example.com"
         ),
+        **options.get("mail", {}),
     }
+    imap.flags = options.get("flags", {})
 
     monkeypatch.setattr(sieve_module, "Client", lambda *a, **k: sieve)
     if "file" in options:
@@ -581,6 +678,10 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     def scrub(text: str) -> str:
         text = text.replace(str(tmp_path), "<TMP>")
 
+        # 'view --raw' keeps the source's CRLFs; shown as \r so the
+        # snapshot file itself holds plain LF line endings.
+        text = text.replace("\r", "\\r")
+
         return re.sub(r"\d{8}T\d{6}(\.\d+)?Z?", "<STAMP>", text)
 
     sections = [
@@ -619,6 +720,25 @@ def test_cli_output_matches_its_snapshot(
         f"no snapshot for {name!r}; run with MXFILTER_UPDATE_SNAPSHOTS=1"
     )
     assert actual == snapshot.read_text(encoding="utf-8")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", sorted(HOSTILE))
+def test_hostile_text_reaches_the_terminal_escaped(
+    name, fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """What a sender or a stored script wrote is data, never a command to
+    the terminal. The snapshot shows the escapes; this names the defect."""
+    argv, options = SCENARIOS[name]
+
+    actual = run_scenario(
+        argv, options, fake_imap, roundcube_script, monkeypatch, tmp_path
+    )
+
+    output = actual.split("--- sieve calls")[0]
+
+    assert "\x1b" not in output
+    assert "\x07" not in output
 
 
 # ----------------------------------------------------------------------------

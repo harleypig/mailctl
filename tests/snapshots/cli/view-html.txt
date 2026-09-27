@@ -1,0 +1,21 @@
+$ mxfilter view 5
+exit: 0
+--- stdout
+Message uid 5 in 'INBOX' (131B; no flags):
+  From:    News <news@example.com>
+  Subject: Weekly
+
+[No plain-text part; this is a rough conversion of the HTML. --raw shows the original.]
+
+This week
+
+One & two.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (5,))
+('logout',)

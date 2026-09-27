@@ -1,0 +1,21 @@
+$ mxfilter rules
+exit: 0
+--- stdout
+Script 'managesieve':
+
+1 rule(s), in evaluation order:
+
+  1. bad\x1b[31mname  [stop]
+       when:  Subject contains 'x\x1b]0;pwn\x07y'
+       then:  fileinto, stop
+
+No rule is shadowed by an earlier one.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

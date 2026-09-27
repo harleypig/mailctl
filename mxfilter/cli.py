@@ -12,6 +12,7 @@ validation -- change it. ``--dry-run`` stops after the "show it" step.
 """
 
 import argparse
+import re
 import sys
 import traceback
 
@@ -24,7 +25,12 @@ from .config import (
     load_config,
 )
 from .criteria import COMPARE_OPS, MATCH_MODES, Criteria
-from .engine import DEFAULT_MAX_MESSAGES, ActionSpec, RuleRequest
+from .engine import (
+    DEFAULT_LIST_LIMIT,
+    DEFAULT_MAX_MESSAGES,
+    ActionSpec,
+    RuleRequest,
+)
 from .imap import FolderCreation, decode_header_value
 from .rules import CERTAIN
 from .sieve import (
@@ -58,6 +64,23 @@ IDENTIFYING_HEADERS = ("Date", "From", "To", "Subject", "List-Id")
 # they picked the right message, and clipping the value being verified
 # defeats the purpose.
 HEADER_WIDTH = 100
+
+# The headers 'view' shows above a message body.
+VIEW_HEADERS = ("Date", "From", "To", "Cc", "Subject", "List-Id")
+
+# What a terminal may act on rather than draw: C0 controls other than tab
+# and newline, DEL, and the C1 range. ESC, which opens every ANSI and OSC
+# sequence, is among them, so escaping it leaves the rest of a sequence as
+# inert visible text. A carriage return passes only as half of a CRLF --
+# alone it rewinds the line so later text can overprint it.
+UNSAFE_CHARACTERS = re.compile(
+    r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]|\r(?!\n)"
+)
+
+# IMAP flag -> the mark the listing shows for it. Unread is the absence of
+# \Seen, so it is handled apart.
+FLAG_MARKS = (("\\flagged", "F"), ("\\answered", "R"), ("\\deleted", "D"))
+MARK_LEGEND = "N unread, F flagged, R replied, D deleted, @ attachment"
 
 
 # ############################################################################
@@ -118,13 +141,49 @@ def format_summary(message) -> str:
 
 # ----------------------------------------------------------------------------
 def clip(value: str, width: int) -> str:
-    """Collapse whitespace and truncate a display string to ``width``."""
-    value = " ".join(value.split())
+    """Make a display string safe, then truncate it to ``width``."""
+    value = safe_line(value)
 
     if len(value) <= width:
         return value
 
     return value[: width - 1] + "…"
+
+
+# ----------------------------------------------------------------------------
+def safe_text(value: str) -> str:
+    """Neutralize untrusted text -- mail content -- for a terminal.
+
+    Every control character is replaced by its visible ``\\xNN`` escape,
+    so a message cannot recolour, retitle, hyperlink, or overprint the
+    terminal it is shown in. Printable text, tabs, and newlines pass
+    as they are. Lone surrogates become U+FFFD, since no stream can
+    encode them.
+    """
+    value = engine.LONE_SURROGATES.sub("\ufffd", value)
+
+    return UNSAFE_CHARACTERS.sub(
+        lambda match: f"\\x{ord(match.group()):02x}", value
+    )
+
+
+# ----------------------------------------------------------------------------
+def safe_line(value: str) -> str:
+    """``safe_text`` for a one-line field: whitespace runs, newlines
+    included, collapse to one space so a header cannot forge a line."""
+    return safe_text(" ".join(value.split()))
+
+
+# ----------------------------------------------------------------------------
+def human_size(size: int) -> str:
+    """Render a byte count compactly: 812B, 4.2K, 1.3M."""
+    if size < 1024:
+        return f"{size}B"
+
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f}K"
+
+    return f"{size / (1024 * 1024):.1f}M"
 
 
 # ----------------------------------------------------------------------------
@@ -453,7 +512,9 @@ def print_script_diff(report: DisplayDiff) -> None:
         )
 
     print("\n--- sieve diff ---")
-    print(report.text if report.text.strip() else "(no change)")
+    # A rule built from a message carries that message's text, and a stored
+    # script can hold any bytes: both are untrusted by the time they print.
+    print(safe_text(report.text) if report.text.strip() else "(no change)")
     print("--- end diff ---")
 
 
@@ -650,12 +711,12 @@ def cmd_show(args) -> int:
 
     with connect(config, args) as sessions:
         script = engine.read_script(sessions, args.name)
-        source = script.source
+        source = safe_text(script.source)
 
-        print(f"# ---- {script.name} ----")
+        print(f"# ---- {safe_line(script.name)} ----")
         print(source, end="" if source.endswith("\n") else "\n")
 
-        names = script.rule_names()
+        names = [safe_line(name) for name in script.rule_names()]
 
         print(f"# ---- {len(names)} rule(s): {', '.join(names) or '(none)'}")
 
@@ -701,9 +762,11 @@ def print_rules(rules) -> None:
     for rule in rules:
         marker = "  [stop]" if rule.stops else ""
 
-        print(f"  {rule.index + 1}. {rule.name}{marker}")
+        actions = safe_line(", ".join(rule.actions))
+
+        print(f"  {rule.index + 1}. {safe_line(rule.name)}{marker}")
         print(f"       when:  {describe_rule_condition(rule)}")
-        print(f"       then:  {', '.join(rule.actions) or '(nothing)'}")
+        print(f"       then:  {actions or '(nothing)'}")
         print()
 
 
@@ -1320,6 +1383,125 @@ def cmd_from_message(args) -> int:
     return run_add(config, args, criteria)
 
 
+# ----------------------------------------------------------------------------
+def status_marks(message) -> str:
+    """The listing's one-letter marks for a message; see MARK_LEGEND."""
+    flags = {flag.lower() for flag in message.flags}
+
+    marks = "" if "\\seen" in flags else "N"
+    marks += "".join(mark for flag, mark in FLAG_MARKS if flag in flags)
+
+    return marks + ("@" if message.has_attachments else "")
+
+
+# ----------------------------------------------------------------------------
+def cmd_messages(args) -> int:
+    """List the newest messages in a folder, optionally filtered."""
+    config = configure(args)
+    criteria = criteria_from_args(args)
+
+    with connect(config, args, sieve=False, imap=True) as sessions:
+        listing = engine.list_messages(
+            sessions,
+            args.folder,
+            criteria=criteria,
+            search=args.search,
+            limit=args.limit,
+        )
+
+    if not listing.messages:
+        print(f"No messages found in {safe_line(listing.folder)!r}.")
+
+        return 0
+
+    print(
+        f"{len(listing.messages)} message(s) in "
+        f"{safe_line(listing.folder)!r}, newest first:"
+    )
+    print(
+        f"{'UID':>8}  {'Received':<19}  {'Size':>6}  {'Mark':<4}  "
+        f"{'From':<28}  Subject"
+    )
+
+    rows = [(message, status_marks(message)) for message in listing.messages]
+
+    for message, marks in rows:
+        print(
+            f"{message.uid:>8}  {message.date:<19}  "
+            f"{human_size(message.size):>6}  {marks:<4}  "
+            f"{clip(message.sender, 28):<28}  {clip(message.subject, 60)}"
+        )
+
+    if any(marks for _, marks in rows):
+        print(f"Marks: {MARK_LEGEND}")
+
+    if listing.more:
+        print(
+            f"Showing the {len(listing.messages)} newest; there may be "
+            f"more -- raise --limit to see them."
+        )
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def cmd_view(args) -> int:
+    """Show one message: headers, text body, and what is attached."""
+    config = configure(args)
+
+    with connect(config, args, sieve=False, imap=True) as sessions:
+        content = engine.read_message(sessions, args.folder, args.uid)
+
+    if args.raw:
+        source = safe_text(content.source.decode("utf-8", errors="replace"))
+
+        print(source, end="" if source.endswith("\n") else "\n")
+
+        return 0
+
+    if args.headers_only:
+        for name, value in content.headers:
+            print(f"{safe_line(name)}: {safe_line(value)}")
+
+        return 0
+
+    flags = " ".join(content.flags) or "no flags"
+
+    print(
+        f"Message uid {content.uid} in {safe_line(content.folder)!r} "
+        f"({human_size(content.size)}; {safe_line(flags)}):"
+    )
+
+    for header in VIEW_HEADERS:
+        value = content.header(header)
+
+        if value:
+            print(f"  {header + ':':<9}{safe_line(value)}")
+
+    print()
+
+    if content.body_from_html:
+        print(
+            "[No plain-text part; this is a rough conversion of the HTML. "
+            "--raw shows the original.]\n"
+        )
+
+    body = content.body.rstrip()
+
+    print(safe_text(body) if body else "(no text body)")
+
+    if content.attachments:
+        print(f"\nAttachments ({len(content.attachments)}):")
+
+        for item in content.attachments:
+            print(
+                f"  {safe_line(item.name) or '(unnamed)'}  "
+                f"{safe_line(item.content_type)}  {human_size(item.size)}"
+            )
+
+    return 0
+
+
 # ############################################################################
 # Argument parsing
 # ############################################################################
@@ -1729,6 +1911,50 @@ def build_parser() -> argparse.ArgumentParser:
     )
     apply_cmd.add_argument("--delimiter", help=argparse.SUPPRESS)
     apply_cmd.set_defaults(handler=cmd_apply, no_imap=False)
+
+    messages = subparsers.add_parser(
+        "messages",
+        parents=[common, connection, criteria],
+        help="list the newest messages in a folder",
+    )
+    messages.add_argument(
+        "--folder", default="INBOX", help="folder to list; default INBOX"
+    )
+    messages.add_argument(
+        "--search",
+        help="raw IMAP search expression instead of criteria flags, "
+        "e.g. 'UNSEEN' or 'SINCE 1-Sep-2026'",
+    )
+    messages.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_LIST_LIMIT,
+        help=f"show at most N messages; default {DEFAULT_LIST_LIMIT}",
+    )
+    messages.set_defaults(handler=cmd_messages)
+
+    view = subparsers.add_parser(
+        "view",
+        parents=[common, connection],
+        help="show one message, without marking it read",
+    )
+    view.add_argument("uid", type=int, help="the message UID ('messages')")
+    view.add_argument(
+        "--folder", default="INBOX", help="folder holding it; default INBOX"
+    )
+    shape = view.add_mutually_exclusive_group()
+    shape.add_argument(
+        "--headers-only",
+        dest="headers_only",
+        action="store_true",
+        help="print every header, and no body",
+    )
+    shape.add_argument(
+        "--raw",
+        action="store_true",
+        help="print the full RFC 822 source (control characters escaped)",
+    )
+    view.set_defaults(handler=cmd_view)
 
     remove = subparsers.add_parser(
         "remove-rule",

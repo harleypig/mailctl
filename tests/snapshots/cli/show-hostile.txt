@@ -1,0 +1,21 @@
+$ mxfilter show
+exit: 0
+--- stdout
+# ---- managesieve ----
+require ["fileinto"];
+# rule:[bad\x1b[31mname]
+if header :contains "subject" "x\x1b]0;pwn\x07y"
+{
+	fileinto "INBOX.\x1b[32mZ";
+	stop;
+}
+# ---- 1 rule(s): bad\x1b[31mname
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

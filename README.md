@@ -3,7 +3,8 @@
 Manage MXRoute email filters from the command line: build a Sieve rule from
 criteria flags, merge it into the account's **active** script without
 disturbing the rules already there, and apply the same criteria to mail that
-has already been delivered.
+has already been delivered. It also lists and reads the mail already in a
+folder, so you can find the message a rule should catch.
 
 ## Install
 
@@ -94,6 +95,17 @@ mxfilter test --env-file
 # What does this server call its folders, and which does webmail show?
 mxfilter folders
 
+# Find a message: the newest 20 in a folder, UID first. Takes the same
+# criteria flags as add and apply, or a raw IMAP search.
+mxfilter messages
+mxfilter messages --folder Lists/News --from newsletter@example.com
+mxfilter messages --search 'UNSEEN SINCE 1-Sep-2026' --limit 50
+
+# Read one by UID. It stays unread, and no attachment is saved.
+mxfilter view 4127
+mxfilter view 4127 --headers-only
+mxfilter view 4127 --raw
+
 # Show a folder in webmail, or hide one (it keeps its mail either way).
 mxfilter subscribe Lists/News
 mxfilter unsubscribe Lists/Noisy --dry-run
@@ -151,6 +163,23 @@ assumptions below get settled for your account.
   the derived criteria look equally plausible whichever message produced
   them, so the headers are the only thing that catches a mistyped digit
   before mail starts moving.
+* `messages` and `view` **never mark mail read**. The folder is opened
+  read-only, and the message is fetched in the form that leaves its read
+  flag alone, so either guard alone would be enough.
+* **Mail content is treated as hostile on the way to your terminal.** A
+  sender controls every header, the body, and the attachment names, and
+  escape sequences in them can recolour your terminal, retitle it, or plant
+  a link whose text lies about where it goes. So `messages` and `view` —
+  `--raw` included — print every control character as a visible `\xNN`
+  escape instead of sending it to the terminal, and headers are kept to one
+  line so a decoded line break cannot forge another header. Everything
+  printable, tabs and line breaks included, comes through as it is. The
+  headers `from-message` and `apply` show before they act get the same
+  treatment.
+* `view` shows the message's plain-text part. A message with only HTML is
+  shown as a rough text conversion, and says so above the body; `--raw`
+  shows the original. Attachments are listed by name, type, and size, and
+  never written anywhere.
 * The Sieve diff is shown with **both sides in mxfilter's own formatting**.
   A merge re-renders the whole script, so a diff against the server's raw
   copy would report every re-indented line as a change — on a hand-written
