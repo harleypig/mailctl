@@ -14,8 +14,9 @@ python3 -m venv .venv
 
 ## Configure
 
-Copy `.env.example` and fill it in, or write
-`$XDG_CONFIG_HOME/mxfilter/config.toml`:
+Copy `.env.example` to `.env` and fill it in, then either export it
+(`set -a; . ./.env; set +a`) or point mxfilter at it with `--env-file`. Or
+write `$XDG_CONFIG_HOME/mxfilter/config.toml`:
 
 ```toml
 host = "mail.example-server.mxrouteXX.com"
@@ -24,7 +25,25 @@ password_cmd = "pass show email/you@yourdomain.com"
 default_folder = "Lists"
 ```
 
-Resolution order is **CLI flag > environment > config file > default**.
+Resolution order is **CLI flag > env file > environment > config file >
+default**.
+
+`--env-file PATH` reads the `MXROUTE_*` lines of a dotenv-style file; given
+bare, `--env-file` means `.env` in the current directory. The file is read,
+not exported, and it outranks the environment because it was named for this
+run. The format is the plain one: `KEY=VALUE`, an optional leading
+`export`, blank lines and `#` comment lines skipped, and one pair of
+matching single or double quotes stripped. Nothing is interpolated, a `#`
+after a value is part of the value, and a value cannot span lines — quote a
+value whose leading or trailing spaces matter. Keys not starting `MXROUTE_`
+are ignored, so a `.env` shared with another tool is fine. A line mxfilter
+cannot read is reported by line number, never quoted. Because it takes an
+optional value, put `--env-file` after any positional argument, or write
+`--env-file=PATH`.
+
+`mxfilter test` says where each setting came from — a flag, the env file,
+the environment, the config file, or the default — and which of those
+sources it read.
 
 The password has more sources than the other settings, so it has its own
 ladder — the same shape, highest first:
@@ -32,12 +51,13 @@ ladder — the same shape, highest first:
 | # | Source |
 |---|--------|
 | 1 | `--password-file`, `--password-cmd`, or `--password` (mutually exclusive) |
-| 2 | `MXROUTE_PASSWORD_FILE` |
-| 3 | `MXROUTE_PASSWORD_CMD` |
-| 4 | `MXROUTE_PASSWORD` |
-| 5 | `password_file` in the config file |
-| 6 | `password_cmd` in the config file |
-| 7 | an interactive prompt |
+| 2 | `MXROUTE_PASSWORD_FILE`, then `_CMD`, then `MXROUTE_PASSWORD`, in the `--env-file` file |
+| 3 | `MXROUTE_PASSWORD_FILE` |
+| 4 | `MXROUTE_PASSWORD_CMD` |
+| 5 | `MXROUTE_PASSWORD` |
+| 6 | `password_file` in the config file |
+| 7 | `password_cmd` in the config file |
+| 8 | an interactive prompt |
 
 A flag typed for this run beats a variable that merely happens to be
 exported, and a literal value never beats an instruction about where to
@@ -53,6 +73,10 @@ part of a password. The path may start with `~` and may use `$VAR` or
 `${VAR}`, wherever it is given — `password_file = "~/.config/mail/pw"`
 works. An unset variable is left as written, so the error names it.
 
+An env file that sets `MXROUTE_PASSWORD` is held to the same mode rule as a
+password file: `0600` or `0400`, or it is refused with the `chmod` that fixes
+it. One that only names a password file or command is not.
+
 `--password VALUE` exists and is the **least safe** option: the value is
 visible in the process list to every user on the machine and your shell
 saves it to history. mxfilter warns when you use it.
@@ -62,6 +86,9 @@ saves it to history. mxfilter warns when you use it.
 ```bash
 # Check both services and what they support. Changes nothing.
 mxfilter test
+
+# The same, taking settings from ./.env rather than the environment.
+mxfilter test --env-file
 
 # What does this server call its folders, and which does webmail show?
 mxfilter folders

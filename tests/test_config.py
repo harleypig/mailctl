@@ -20,15 +20,24 @@ import pytest
 from mxfilter import MxFilterError
 from mxfilter.cli import build_parser, configure
 from mxfilter.config import (
+    CONFIG_FILE,
+    DEFAULT,
     DEFAULT_IMAP_PORT,
     DEFAULT_SIEVE_PORT,
     DEFAULT_SIEVE_TLS,
+    DERIVED,
+    ENV_FILE,
+    ENVIRONMENT,
+    FLAG,
     PASSWORD_STATE_LABELS,
+    PROMPT,
     Config,
     Secret,
+    Source,
     config_path,
     load_config,
     read_config_file,
+    read_env_file,
     read_password_file,
     run_password_command,
 )
@@ -628,6 +637,9 @@ def test_a_password_file_supplies_the_credential(secret_file):
 # with each other -- only with everything below.
 FLAG_LEVELS = ("flag-file", "flag-cmd", "flag-value")
 AMBIENT_LEVELS = (
+    "dotenv-file",
+    "dotenv-cmd",
+    "dotenv-literal",
     "env-file",
     "env-cmd",
     "env-literal",
@@ -641,6 +653,9 @@ PASSWORD_LEVEL_STATE = {
     "flag-file": "set (via file)",
     "flag-cmd": "set (via command)",
     "flag-value": "set (via flag)",
+    "dotenv-file": "set (via file)",
+    "dotenv-cmd": "set (via command)",
+    "dotenv-literal": "set",
     "env-file": "set (via file)",
     "env-cmd": "set (via command)",
     "env-literal": "set",
@@ -682,8 +697,28 @@ def arrange_password_source(
 
     ``flags`` becomes the argparse namespace and ``toml`` the config file,
     so a caller can arrange several rungs at once and then build the
-    Config exactly the way the CLI does.
+    Config exactly the way the CLI does. A ``dotenv-*`` rung appends a
+    line to one shared env file and points ``--env-file`` at it.
     """
+    if level.startswith("dotenv-"):
+        line = {
+            "dotenv-file": "MXROUTE_PASSWORD_FILE={}".format(
+                write_password_file(tmp_path / level, f"{value}\n")
+            ),
+            "dotenv-cmd": f"MXROUTE_PASSWORD_CMD={printf_command(value)}",
+            "dotenv-literal": f"MXROUTE_PASSWORD={value}",
+        }[level]
+
+        env_file = tmp_path / "ladder.env"
+
+        with env_file.open("a", encoding="utf-8") as handle:
+            handle.write(f"{line}\n")
+
+        env_file.chmod(0o600)
+        flags["env_file"] = str(env_file)
+
+        return
+
     match level:
         case "flag-file":
             flags["password_file"] = str(
@@ -887,3 +922,447 @@ def test_a_flag_supplied_password_is_redacted_like_any_other():
     assert MARKER not in f"{secret!r}"
     assert MARKER not in "%s" % (secret,)  # noqa: UP031
     assert MARKER not in repr(config)
+
+
+# ############################################################################
+# The env file
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def write_env_file(path: Path, text: str, mode: int = 0o600) -> Path:
+    """Write an env file with an explicit mode and return its path."""
+    path.write_text(text, encoding="utf-8")
+    path.chmod(mode)
+
+    return path
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        pytest.param("MXROUTE_HOST=h.example", "h.example", id="plain"),
+        pytest.param(
+            "export MXROUTE_HOST=h.example", "h.example", id="export"
+        ),
+        pytest.param("MXROUTE_HOST='h.example'", "h.example", id="single"),
+        pytest.param('MXROUTE_HOST="h.example"', "h.example", id="double"),
+        pytest.param("MXROUTE_HOST= h.example  ", "h.example", id="trimmed"),
+        pytest.param("MXROUTE_HOST=' a b '", " a b ", id="quoted-kept"),
+        pytest.param("MXROUTE_HOST=a=b", "a=b", id="equals-in-value"),
+        pytest.param("MXROUTE_HOST=$HOME", "$HOME", id="no-interpolation"),
+        pytest.param("MXROUTE_HOST=a # b", "a # b", id="no-inline-comment"),
+        pytest.param('MXROUTE_HOST="it\'s"', "it's", id="other-quote"),
+        pytest.param("MXROUTE_HOST=", "", id="empty"),
+    ],
+)
+def test_an_env_file_line_is_read_the_plain_way(tmp_path, line, expected):
+    """One pair of matching quotes goes; nothing is expanded or escaped."""
+    env_file = read_env_file(write_env_file(tmp_path / ".env", f"{line}\n"))
+
+    assert env_file.values["MXROUTE_HOST"] == expected
+
+
+# ----------------------------------------------------------------------------
+def test_comments_blanks_and_other_programs_keys_are_skipped(tmp_path):
+    """A .env shared with another tool is read for MXROUTE_* only."""
+    path = write_env_file(
+        tmp_path / ".env",
+        "# a comment\n"
+        "\n"
+        "   \n"
+        "  # an indented comment\n"
+        "DATABASE_URL=postgres://elsewhere\n"
+        "export PATH=/nope\n"
+        "MXROUTE_USER=me@example.com\n",
+    )
+
+    assert read_env_file(path).values == {"MXROUTE_USER": "me@example.com"}
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("line", "reason"),
+    [
+        pytest.param(MARKER, "not a KEY=VALUE line", id="no-equals"),
+        pytest.param(
+            f"MX ROUTE={MARKER}", "not a KEY=VALUE line", id="bad-key"
+        ),
+        pytest.param(f"={MARKER}", "not a KEY=VALUE line", id="no-key"),
+        pytest.param(
+            f"MXROUTE_PASSWORD='{MARKER}",
+            "unterminated quote",
+            id="open-quote",
+        ),
+        pytest.param(
+            f"MXROUTE_PASSWORD=\"{MARKER}'",
+            "unterminated quote",
+            id="mismatch",
+        ),
+    ],
+)
+def test_a_bad_env_line_is_named_by_number_and_never_quoted(
+    tmp_path, line, reason
+):
+    """The line could be a password, so only its position is reported."""
+    path = write_env_file(tmp_path / ".env", f"# first\n\n{line}\n")
+
+    with pytest.raises(MxFilterError) as caught:
+        read_env_file(path)
+
+    message = str(caught.value)
+
+    assert str(path) in message
+    assert "line 3" in message
+    assert reason in message
+    assert MARKER not in message
+
+
+# ----------------------------------------------------------------------------
+def test_a_missing_env_file_names_the_path(tmp_path):
+    missing = tmp_path / "nowhere.env"
+
+    with pytest.raises(MxFilterError, match="cannot read") as caught:
+        read_env_file(missing)
+
+    assert str(missing) in str(caught.value)
+
+
+# ----------------------------------------------------------------------------
+def test_an_env_file_that_is_not_utf8_is_named(tmp_path):
+    path = tmp_path / ".env"
+    path.write_bytes(b"MXROUTE_HOST=\xff\xfe\n")
+
+    with pytest.raises(MxFilterError, match="not valid UTF-8") as caught:
+        read_env_file(path)
+
+    assert str(path) in str(caught.value)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("mode", [0o640, 0o604, 0o644, 0o660, 0o666])
+def test_an_env_file_with_a_password_and_a_shared_mode_is_refused(
+    tmp_path, mode
+):
+    """The password-file bar, applied to the file that now holds one."""
+    path = write_env_file(
+        tmp_path / ".env", f"MXROUTE_PASSWORD={MARKER}\n", mode
+    )
+
+    with pytest.raises(MxFilterError) as caught:
+        read_env_file(path)
+
+    message = str(caught.value)
+
+    assert str(path) in message
+    assert f"{mode:04o}" in message
+    assert f"chmod 600 {path}" in message
+    assert MARKER not in message
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("mode", [0o600, 0o400])
+def test_an_owner_only_env_file_may_hold_a_password(tmp_path, mode):
+    path = write_env_file(
+        tmp_path / ".env", f"MXROUTE_PASSWORD={MARKER}\n", mode
+    )
+
+    assert read_env_file(path).password.reveal() == MARKER
+
+
+# ----------------------------------------------------------------------------
+def test_a_shared_env_file_without_a_password_is_accepted(tmp_path):
+    """Only a literal password raises the bar; a pointer to one does not."""
+    path = write_env_file(
+        tmp_path / ".env",
+        "MXROUTE_HOST=h.example\nMXROUTE_PASSWORD_FILE=/somewhere/pw\n",
+        0o644,
+    )
+
+    assert read_env_file(path).values["MXROUTE_HOST"] == "h.example"
+
+
+# ----------------------------------------------------------------------------
+def test_an_env_file_password_never_renders(tmp_path):
+    """Held as a Secret from the moment it is parsed, not a plain str."""
+    path = write_env_file(tmp_path / ".env", f"MXROUTE_PASSWORD={MARKER}\n")
+    env_file = read_env_file(path)
+
+    assert isinstance(env_file.password, Secret)
+    assert "MXROUTE_PASSWORD" not in env_file.values
+    assert MARKER not in repr(env_file)
+
+    config = load_config(argparse.Namespace(env_file=str(path)))
+
+    assert MARKER not in repr(config)
+    assert config.password().reveal() == MARKER
+
+
+# ----------------------------------------------------------------------------
+def test_an_env_file_beats_the_environment_beats_the_file(
+    tmp_path, monkeypatch
+):
+    """The narrowing sequence again, with the env file in its rung.
+
+    Both directions are asserted: the flag beats the env file, and the env
+    file beats an exported variable -- it was named for this run, which is
+    the same reason a flag beats one.
+    """
+    write_config_file('host = "from-toml"\n')
+    monkeypatch.setenv("MXROUTE_HOST", "from-env")
+    path = write_env_file(tmp_path / ".env", "MXROUTE_HOST=from-env-file\n")
+
+    args = argparse.Namespace(host="from-flag", env_file=str(path))
+    assert load_config(args).host == "from-flag"
+
+    args = argparse.Namespace(host=None, env_file=str(path))
+    assert load_config(args).host == "from-env-file"
+
+    args = argparse.Namespace(host=None, env_file=None)
+    assert load_config(args).host == "from-env"
+
+    monkeypatch.delenv("MXROUTE_HOST")
+    assert load_config(args).host == "from-toml"
+
+
+# ----------------------------------------------------------------------------
+def test_every_setting_can_come_from_the_env_file(tmp_path):
+    path = write_env_file(
+        tmp_path / ".env",
+        "MXROUTE_HOST=h.example\n"
+        "MXROUTE_USER=me@example.com\n"
+        "MXROUTE_IMAP_HOST=imap.example\n"
+        "MXROUTE_IMAP_PORT=143\n"
+        "MXROUTE_SIEVE_PORT=4191\n"
+        "MXROUTE_SIEVE_TLS=ssl\n"
+        f"MXROUTE_BACKUP_DIR={tmp_path / 'b'}\n",
+    )
+
+    config = load_config(argparse.Namespace(env_file=str(path)))
+
+    assert (config.host, config.user, config.imap_host) == (
+        "h.example",
+        "me@example.com",
+        "imap.example",
+    )
+    assert (config.imap_port, config.sieve_port) == (143, 4191)
+    assert config.sieve_tls == "ssl"
+    assert config.backup_dir == tmp_path / "b"
+
+
+# ----------------------------------------------------------------------------
+def test_the_env_file_does_not_touch_the_process_environment(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("MXROUTE_HOST", raising=False)
+    path = write_env_file(tmp_path / ".env", "MXROUTE_HOST=h.example\n")
+    before = dict(os.environ)
+
+    load_config(argparse.Namespace(env_file=str(path)))
+
+    assert dict(os.environ) == before
+
+
+# ----------------------------------------------------------------------------
+def test_an_explicit_environ_mapping_replaces_os_environ(monkeypatch):
+    monkeypatch.setenv("MXROUTE_HOST", "from-os")
+
+    config = load_config(argparse.Namespace(), {"MXROUTE_HOST": "from-map"})
+
+    assert config.host == "from-map"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        pytest.param(["test"], None, id="absent"),
+        pytest.param(["test", "--env-file"], ".env", id="bare"),
+        pytest.param(["test", "--env-file", "x.env"], "x.env", id="named"),
+        pytest.param(["test", "--env-file=x.env"], "x.env", id="equals"),
+    ],
+)
+def test_the_env_file_flag_defaults_to_dot_env(argv, expected):
+    assert build_parser().parse_args(argv).env_file == expected
+
+
+# ----------------------------------------------------------------------------
+def test_a_bare_env_file_flag_reads_dot_env_in_the_current_directory(
+    tmp_path, monkeypatch
+):
+    write_env_file(tmp_path / ".env", "MXROUTE_HOST=from-cwd\n")
+    monkeypatch.chdir(tmp_path)
+
+    config = configure(build_parser().parse_args(["test", "--env-file"]))
+
+    assert config.host == "from-cwd"
+
+
+# ----------------------------------------------------------------------------
+def test_a_missing_env_file_named_by_the_flag_is_an_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(MxFilterError, match=r"env file \.env: cannot read"):
+        configure(build_parser().parse_args(["test", "--env-file"]))
+
+
+# ----------------------------------------------------------------------------
+def test_a_bad_sieve_tls_mode_names_where_it_came_from(tmp_path):
+    path = write_env_file(tmp_path / ".env", "MXROUTE_SIEVE_TLS=maybe\n")
+
+    with pytest.raises(MxFilterError, match="not one of") as caught:
+        load_config(argparse.Namespace(env_file=str(path)))
+
+    assert f"env file {path}" in str(caught.value)
+
+
+# ############################################################################
+# Provenance
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "rung", ["flag", "env file", "environment", "config file", "default"]
+)
+def test_each_rung_records_itself_as_the_source(rung, tmp_path, monkeypatch):
+    """Every rung supplies ``host`` in turn; the source must name it."""
+    args = argparse.Namespace()
+
+    match rung:
+        case "flag":
+            args.host = "h"
+        case "env file":
+            args.env_file = str(
+                write_env_file(tmp_path / ".env", "MXROUTE_HOST=h\n")
+            )
+        case "environment":
+            monkeypatch.setenv("MXROUTE_HOST", "h")
+        case "config file":
+            write_config_file('host = "h"\n')
+
+    source = load_config(args).sources["host"]
+
+    assert source.kind == rung
+
+    expected = {
+        "flag": Source(FLAG, "--host"),
+        "env file": Source(ENV_FILE, "MXROUTE_HOST", tmp_path / ".env"),
+        "environment": Source(ENVIRONMENT, "MXROUTE_HOST"),
+        "config file": Source(CONFIG_FILE, "host", config_path()),
+        "default": Source(DEFAULT),
+    }[rung]
+
+    assert source == expected
+
+
+# ----------------------------------------------------------------------------
+def test_every_setting_records_a_source():
+    config = load_config(argparse.Namespace(host="h"))
+
+    assert set(config.sources) == {
+        "host",
+        "user",
+        "imap_host",
+        "imap_port",
+        "sieve_port",
+        "sieve_tls",
+        "backup_dir",
+        "default_folder",
+        "source_folder",
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_the_imap_host_records_that_it_was_copied_from_the_host():
+    config = load_config(argparse.Namespace(host="h"))
+
+    assert config.sources["imap_host"] == Source(DERIVED, "host")
+    assert config.sources["imap_host"].describe() == "same as host"
+
+
+# ----------------------------------------------------------------------------
+def test_a_flag_typed_with_the_default_value_is_still_a_flag():
+    """#55: a typed 4190 is the user's value, not "the default"."""
+    config = load_config(argparse.Namespace(sieve_port=DEFAULT_SIEVE_PORT))
+
+    assert config.sources["sieve_port"] == Source(FLAG, "--sieve-port")
+    assert config.sources["sieve_tls"] == Source(DEFAULT)
+
+
+# ----------------------------------------------------------------------------
+def test_the_consulted_sources_are_listed_highest_first(tmp_path):
+    path = write_env_file(tmp_path / ".env", "MXROUTE_HOST=h\n")
+
+    assert load_config(argparse.Namespace()).consulted == [Source(ENVIRONMENT)]
+
+    write_config_file("")
+
+    assert load_config(argparse.Namespace(env_file=str(path))).consulted == [
+        Source(ENV_FILE, path=path),
+        Source(ENVIRONMENT),
+        Source(CONFIG_FILE, path=config_path()),
+    ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("level", PASSWORD_LEVELS)
+def test_the_password_origin_names_its_rung_and_not_its_value(
+    level, tmp_path, monkeypatch
+):
+    flags: dict = {}
+    toml: dict = {}
+
+    arrange_password_source(level, MARKER, tmp_path, monkeypatch, flags, toml)
+    write_password_toml(toml)
+
+    config = load_config(argparse.Namespace(**flags))
+    origin = config.password_origin()
+
+    expected_kind = {
+        "flag": FLAG,
+        "dotenv": ENV_FILE,
+        "env": ENVIRONMENT,
+        "toml": CONFIG_FILE,
+    }[level.split("-")[0]]
+
+    assert origin.kind == expected_kind
+    assert MARKER not in repr(origin)
+    assert MARKER not in origin.describe()
+
+    config.password()
+
+    assert config.password_origin() == origin
+
+
+# ----------------------------------------------------------------------------
+def test_the_prompt_is_the_password_origin_only_when_there_is_one():
+    assert Config().password_origin() is None
+
+    config = Config(prompter=lambda _prompt: MARKER)
+
+    assert config.password_origin() == Source(PROMPT)
+
+    config.password()
+
+    assert config.password_origin() == Source(PROMPT)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (Source(FLAG, "--host"), "flag --host"),
+        (Source(ENV_FILE, "MXROUTE_HOST", Path(".env")), "env file .env"),
+        (Source(ENVIRONMENT, "MXROUTE_HOST"), "environment"),
+        (Source(CONFIG_FILE, "host", Path("/c.toml")), "config file /c.toml"),
+        (Source(DEFAULT), "default"),
+        (Source(DERIVED, "host"), "same as host"),
+        (Source(PROMPT), "interactive prompt"),
+    ],
+)
+def test_a_source_describes_itself_in_a_short_phrase(source, expected):
+    assert source.describe() == expected

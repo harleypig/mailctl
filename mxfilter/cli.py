@@ -16,7 +16,13 @@ import sys
 import traceback
 
 from . import MxFilterError, __version__, engine
-from .config import SIEVE_TLS_MODES, load_config
+from .config import (
+    CONFIG_FILE,
+    ENV_FILE,
+    ENVIRONMENT,
+    SIEVE_TLS_MODES,
+    load_config,
+)
 from .criteria import COMPARE_OPS, MATCH_MODES, Criteria
 from .engine import DEFAULT_MAX_MESSAGES, ActionSpec, RuleRequest
 from .imap import FolderCreation, decode_header_value
@@ -904,13 +910,20 @@ def cmd_test(args) -> int:
     """Connect to both services and report what they support."""
     config = configure(args)
 
-    print(f"Host:      {config.host}")
-    print(f"User:      {config.user}")
-    print(f"Password:  {config.password_state()}")
-    print(f"IMAP:      {config.imap_host}:{config.imap_port}")
+    print(f"Sources:   {', '.join(s.describe() for s in config.consulted)}")
+    print(f"Host:      {config.host}  ({origin_of(config, 'host')})")
+    print(f"User:      {config.user}  ({origin_of(config, 'user')})")
+    print(
+        f"Password:  {config.password_state()}{password_origin_suffix(config)}"
+    )
+    print(
+        f"IMAP:      {config.imap_host}:{config.imap_port}  "
+        f"({origin_of(config, host='imap_host', port='imap_port')})"
+    )
     print(
         f"Sieve:     {config.host}:{config.sieve_port} "
-        f"(tls={config.sieve_tls})"
+        f"(tls={config.sieve_tls})  "
+        f"({origin_of(config, port='sieve_port', tls='sieve_tls')})"
     )
 
     with connect(config, args) as sessions:
@@ -970,6 +983,44 @@ def cmd_test(args) -> int:
     )
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def origin_of(config, *names: str, **labelled: str) -> str:
+    """Say where one or more settings came from.
+
+    One source for all of them is said once; differing sources are said
+    per setting, under the label given (``port=`` / ``tls=``).
+    """
+    pairs = [(name, name) for name in names] + list(labelled.items())
+    described = [
+        (label, source.describe() if source else "unknown")
+        for label, name in pairs
+        for source in [config.sources.get(name)]
+    ]
+
+    if len({text for _label, text in described}) == 1:
+        return described[0][1]
+
+    return ", ".join(f"{label}: {text}" for label, text in described)
+
+
+# ----------------------------------------------------------------------------
+def password_origin_suffix(config) -> str:
+    """Where the password comes from, with no part of the password.
+
+    The variable or key is named alongside the file it was in, since
+    three of them can supply a password from one env file or environment.
+    """
+    origin = config.password_origin()
+
+    if origin is None:
+        return ""
+
+    if origin.kind in (ENV_FILE, ENVIRONMENT, CONFIG_FILE):
+        return f"  ({origin.name}, {origin.describe()})"
+
+    return f"  ({origin.describe()})"
 
 
 # ----------------------------------------------------------------------------
@@ -1334,6 +1385,17 @@ def connection_parser() -> argparse.ArgumentParser:
         "--password",
         help="the password itself; least safe -- visible in the process "
         "list and saved to shell history",
+    )
+    group.add_argument(
+        "--env-file",
+        dest="env_file",
+        nargs="?",
+        const=".env",
+        metavar="PATH",
+        help="read MXROUTE_* settings from a dotenv-style file (default "
+        ".env in the current directory); they beat the environment and "
+        "the config file, and lose to a flag. A file setting "
+        "MXROUTE_PASSWORD must be mode 0600 (or 0400)",
     )
     group.add_argument("--imap-host", dest="imap_host")
     group.add_argument("--imap-port", dest="imap_port", type=int)

@@ -24,7 +24,7 @@ from sievelib.managesieve import Client
 from sievelib.managesieve import Error as SieveProtocolError
 
 from . import MxFilterError
-from .config import Config
+from .config import DEFAULT, DEFAULT_SIEVE_PORT, DEFAULT_SIEVE_TLS, Config
 
 __all__ = [
     "FILTERSET_NAME",
@@ -933,6 +933,9 @@ class SieveSession:
             raise MxFilterError(f"SETACTIVE {name!r} failed")
 
 
+DEFAULT_PORT_AND_TLS = f"{DEFAULT_SIEVE_PORT} + {DEFAULT_SIEVE_TLS}"
+
+
 # ----------------------------------------------------------------------------
 def _connection_hint(config: Config) -> str:
     """Return a hint tuned to the port and TLS mode that failed.
@@ -942,11 +945,36 @@ def _connection_hint(config: Config) -> str:
     and the Dovecot default, which makes it the right default and not a
     verified fact -- so a failure has to say that plainly instead of
     implying the user mistyped something.
+
+    It calls the pair the default only when both actually came from the
+    built-in default; a value somebody configured is named with where it
+    was configured instead.
     """
+    origins = [
+        config.sources.get(name) for name in ("sieve_port", "sieve_tls")
+    ]
+
+    if all(
+        origin is not None and origin.kind == DEFAULT for origin in origins
+    ):
+        used = (
+            f"{config.sieve_port} + {config.sieve_tls} is the RFC 5804 / "
+            f"Dovecot default, not a documented MXRoute setting."
+        )
+
+    else:
+        port, tls = (
+            f" ({origin.describe()})" if origin is not None else ""
+            for origin in origins
+        )
+        used = (
+            f"this attempt used port {config.sieve_port}{port} and TLS mode "
+            f"{config.sieve_tls}{tls}; the RFC 5804 / Dovecot default is "
+            f"{DEFAULT_PORT_AND_TLS}."
+        )
+
     hints = [
-        f"MXRoute does not publish its ManageSieve port or TLS mode; "
-        f"{config.sieve_port} + {config.sieve_tls} is the RFC 5804 / Dovecot "
-        f"default, not a documented MXRoute setting."
+        f"MXRoute does not publish its ManageSieve port or TLS mode; {used}"
     ]
 
     if config.sieve_tls == "starttls":
