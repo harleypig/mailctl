@@ -112,6 +112,12 @@ creates and manages filters matching it, shows which existing filters would
 catch a given message (the entry above), and bulk-moves matching mail. It is
 **not** intended to replace MXroute's web UI, at least initially.
 
+**None of those capabilities is the TUI's alone.** Every command is in every
+interface ([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *The core
+returns data; only the CLI prints*), so finding and viewing messages is an
+engine operation with CLI commands (`messages`, `view`). What stays iceboxed
+here is the TUI itself.
+
 **Deferred, and deliberately not designed for.** No framework has been chosen
 and none should be until the feature is requested. The architecture a second
 front-end needs is **in place now**: `mxfilter/engine.py` does all the work

@@ -49,11 +49,21 @@ and telling the user to go fix it somewhere else. That is the shape a
 management tool should not end on — it is a report wearing a command's
 clothes.
 
-It cuts the other way too. Scope is not *everything about email*: reading
-mail, composing, an address book, and account provisioning are not filters or
-settings on this account, and the sibling
+**Finding and viewing messages is in scope** — listing the messages a set of
+criteria matches, with their UIDs, and showing one message's headers, text,
+and attachment names. Apply the test to it: a filter is built from what the
+mail says, so seeing the mail is part of managing filters, and a tool that
+cannot show it sends the user to another client to learn what to match on.
+The operator, 2026-09-27, wanting it in every interface: *"I want the same
+functionality for all interfaces"* — see *Every command is in every
+interface* below.
+
+It cuts the other way too. Scope is not *everything about email*: composing
+and sending, an address book, account provisioning, and saving or opening
+attachments are not filters or settings on this account, and the sibling
 [terraform-provider-mxroute][provider] owns account state as code (see *The
-sibling repository* below).
+sibling repository* below). Viewing a message stops at what building a filter
+needs: an attachment is named, never saved or opened.
 
 **A worked example**, so this reads as a rule rather than a slogan. Four
 observations came out of the subscription work
@@ -135,6 +145,20 @@ path beside them.
 Safety policy lives in the engine, not the front-end: the backup before every
 upload, merge-never-overwrite, and the `--max-messages` ceiling (re-checked
 when a mail plan is executed) hold whichever front-end calls it.
+
+**Every command is in every interface.** The operator, 2026-09-27:
+
+> I want the same functionality for all interfaces. I honestly don't remember
+> if I just didn't explain myself well, or something got lost along the way.
+> There may be some parameters differences between cli, tui, gui, and web but
+> the commands should all be available in all environments.
+
+So every operation the engine offers is a command in every front-end — CLI,
+TUI, GUI, and web. **Parameters may differ per front-end; availability may
+not.** A capability wanted for one front-end is built into the engine and
+exposed in all of them; a feature only one front-end has is a gap in the
+others, not a design choice. The CLI is the only front-end today, so today
+this means the CLI exposes every engine operation.
 
 ## The protocols
 
