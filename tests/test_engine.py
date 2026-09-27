@@ -18,7 +18,14 @@ from mxfilter import MxFilterError, engine
 from mxfilter import sieve as sieve_module
 from mxfilter.criteria import Criteria
 from mxfilter.engine import ActionSpec, RuleRequest, Sessions
-from mxfilter.sieve import PLACE_FIRST, Placement, parse_script, rule_names
+from mxfilter.sieve import (
+    PLACE_AFTER,
+    PLACE_BEFORE,
+    PLACE_FIRST,
+    Placement,
+    parse_script,
+    rule_names,
+)
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
 NO_MAILBOX = ["fileinto", "imap4flags"]
@@ -953,3 +960,96 @@ def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
 
     assert "put_script" not in fake.names()
     assert len(list((tmp_path / "backups").iterdir())) == 1
+
+
+# ############################################################################
+# Moving a rule
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_move_changes_the_order_and_nothing_else(
+    sessions, fake_sieve, reparse
+):
+    plan = engine.plan_move(sessions, "bin-the-noise", Placement(PLACE_FIRST))
+
+    assert (plan.from_index, plan.to_index, plan.count) == (1, 0, 2)
+    assert plan.changes
+    assert rule_names(parse_script(plan.after)) == [
+        "bin-the-noise",
+        "keep-boss",
+    ]
+    assert "put_script" not in fake_sieve.names()
+
+    before = {
+        r.name: (r.tests, r.actions)
+        for r in engine.read_rule_list(parse_script(plan.before))
+    }
+    after = {
+        r.name: (r.tests, r.actions)
+        for r in engine.read_rule_list(parse_script(plan.after))
+    }
+
+    assert before == after
+    reparse(plan.after)
+
+
+# ----------------------------------------------------------------------------
+def test_moving_a_broad_rule_first_reports_what_it_starves(imap_config):
+    script = (
+        'require ["fileinto"];\n'
+        "# rule:[announce]\n"
+        'if header :contains "to" "announce@lists.example.com" '
+        '{ fileinto "A"; stop; }\n'
+        "# rule:[all-lists]\n"
+        'if header :contains "to" "@lists.example.com" '
+        '{ fileinto "L"; stop; }\n'
+    )
+    live = Sessions(sieve=FakeSieveSession(script=script))
+
+    plan = engine.plan_move(live, "all-lists", Placement(PLACE_FIRST))
+
+    assert {f.narrow for f in plan.placement.starves} == {"announce"}
+    assert plan.placement.dead_on_arrival == []
+
+
+# ----------------------------------------------------------------------------
+def test_a_move_to_where_the_rule_already_is_changes_nothing(sessions):
+    plan = engine.plan_move(sessions, "keep-boss", Placement(PLACE_FIRST))
+
+    assert not plan.changes
+
+
+# ----------------------------------------------------------------------------
+def test_moving_an_unknown_rule_or_against_an_unknown_anchor_is_refused(
+    sessions,
+):
+    with pytest.raises(MxFilterError, match="no rule named 'phantom'"):
+        engine.plan_move(sessions, "phantom", Placement(PLACE_FIRST))
+
+    with pytest.raises(MxFilterError, match="Known rules"):
+        engine.plan_move(
+            sessions, "keep-boss", Placement(PLACE_AFTER, "phantom")
+        )
+
+    with pytest.raises(MxFilterError, match="has no position"):
+        engine.plan_move(
+            sessions, "keep-boss", Placement(PLACE_BEFORE, "keep-boss")
+        )
+
+
+# ----------------------------------------------------------------------------
+def test_an_executed_move_is_backed_up_and_uploaded(
+    sessions, imap_config, fake_sieve, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    plan = engine.plan_move(sessions, "bin-the-noise", Placement(PLACE_FIRST))
+
+    engine.execute_script_change(sessions, imap_config, plan)
+
+    assert fake_sieve.names()[-3:] == [
+        "check_script",
+        "put_script",
+        "set_active",
+    ]
+    assert len(list(tmp_path.iterdir())) == 1

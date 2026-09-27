@@ -122,6 +122,23 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # (the text of config.toml), and file (the text of a file that "<FILE>" in
 # argv is replaced with the path of).
 
+# A narrow rule ahead of a broad one that covers it. Moving the broad one
+# first is the move that starves the narrow one.
+NARROW_THEN_BROAD = """require ["fileinto"];
+# rule:[announce]
+if header :contains "to" "announce@lists.example.com"
+{
+\tfileinto "INBOX.Announce";
+\tstop;
+}
+# rule:[all-lists]
+if header :contains "to" "@lists.example.com"
+{
+\tfileinto "INBOX.Lists";
+\tstop;
+}
+"""
+
 # The Roundcube script with its second rule gone -- a backup taken before
 # that rule was added.
 ONE_RULE = """require ["fileinto","imap4flags"];
@@ -153,6 +170,24 @@ SCENARIOS = {
     "add-nosubscribe-alone": (
         ["add", *GITHUB, "--fileinto", "Lists", "--no-subscribe"],
         {},
+    ),
+    "move-dry": (["move-rule", "bin-the-noise", "--first", "--dry-run"], {}),
+    "move-yes": (["move-rule", "bin-the-noise", "--first", "--yes"], {}),
+    "move-notty": (["move-rule", "keep-boss", "--last"], {}),
+    "move-noop": (["move-rule", "keep-boss", "--first"], {}),
+    "move-unknown": (["move-rule", "phantom", "--first"], {}),
+    "move-anchor-unknown": (
+        ["move-rule", "keep-boss", "--after", "phantom"],
+        {},
+    ),
+    "move-self-anchor": (
+        ["move-rule", "keep-boss", "--before", "keep-boss"],
+        {},
+    ),
+    "move-no-position": (["move-rule", "keep-boss"], {}),
+    "move-starves": (
+        ["move-rule", "all-lists", "--first", "--dry-run"],
+        {"script": NARROW_THEN_BROAD},
     ),
     "restore-dry": (["restore", "<FILE>", "--dry-run"], {"file": ONE_RULE}),
     "restore-yes": (["restore", "<FILE>", "--yes"], {"file": ONE_RULE}),

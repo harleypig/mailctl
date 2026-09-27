@@ -1155,6 +1155,52 @@ def cmd_remove_rule(args) -> int:
 
 
 # ----------------------------------------------------------------------------
+def cmd_move_rule(args) -> int:
+    """Move a named rule to a new position, leaving it otherwise unchanged."""
+    config = configure(args)
+
+    with connect(config, args) as sessions:
+        plan = engine.plan_move(
+            sessions, args.rule_name, placement_from_args(args), args.script
+        )
+
+        if not plan.changes:
+            print(
+                f"Rule {plan.rule!r} is already at position "
+                f"{plan.to_index + 1} of {plan.count} in {plan.script!r}; "
+                f"nothing to change."
+            )
+
+            return 0
+
+        print(
+            f"Move rule {plan.rule!r} in script {plan.script!r}: position "
+            f"{plan.from_index + 1} -> {plan.to_index + 1} of {plan.count}"
+        )
+
+        print_placement(plan.placement)
+        print_script_diff(plan.diff)
+
+        if args.dry_run:
+            print("\n[dry-run] the script was NOT uploaded.")
+
+            return 0
+
+        if not confirm(
+            f"Move rule {plan.rule!r} to position {plan.to_index + 1} in "
+            f"{plan.script!r}?",
+            args.yes,
+        ):
+            print("Aborted; nothing was changed.")
+
+            return 0
+
+        engine.execute_script_change(sessions, config, plan, render_event)
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
 def print_message(message, uid: int, folder: str) -> None:
     """Show the message a rule is about to be derived from.
 
@@ -1630,6 +1676,49 @@ def build_parser() -> argparse.ArgumentParser:
     remove.add_argument("rule_name", metavar="NAME")
     remove.add_argument("--script", help="script name; default active")
     remove.set_defaults(handler=cmd_remove_rule)
+
+    move = subparsers.add_parser(
+        "move-rule",
+        parents=[common, connection, safety],
+        help="move a named rule to a new position, unchanged",
+        description="Reorder one rule without restating it: only its "
+        "position changes. Sieve runs rules in order and 'stop' ends the "
+        "run, so the move is judged where the rule lands -- what would "
+        "stop it running, and what it would now stop -- before the diff "
+        "is shown. The script is backed up first and you are asked to "
+        "confirm.",
+    )
+    move.add_argument("rule_name", metavar="NAME")
+    move.add_argument("--script", help="script name; default active")
+
+    where = move.add_argument_group("position").add_mutually_exclusive_group(
+        required=True
+    )
+    where.add_argument(
+        "--first",
+        dest="place_first",
+        action="store_true",
+        help="before every other rule",
+    )
+    where.add_argument(
+        "--last",
+        dest="place_last",
+        action="store_true",
+        help="after every other rule",
+    )
+    where.add_argument(
+        "--before",
+        dest="place_before",
+        metavar="OTHER",
+        help="immediately before the rule named OTHER",
+    )
+    where.add_argument(
+        "--after",
+        dest="place_after",
+        metavar="OTHER",
+        help="immediately after the rule named OTHER",
+    )
+    move.set_defaults(handler=cmd_move_rule)
 
     return parser
 

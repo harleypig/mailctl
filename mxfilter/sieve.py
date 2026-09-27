@@ -494,6 +494,31 @@ def remove_rule(existing: str, name: str) -> str:
 
 
 # ----------------------------------------------------------------------------
+def move_rule(existing: str, name: str, placement: Placement) -> str:
+    """Move a named rule, unchanged, and return the new script source.
+
+    Only the position changes. The index comes from
+    :func:`resolve_position`, measured against the script with the moved
+    rule taken out, so an unknown or self-naming anchor raises the same way
+    it does for ``add``.
+    """
+    filters = parse_script(existing)
+
+    if not filters.filter_exists(name):
+        known = ", ".join(rule_names(filters)) or "(none)"
+
+        raise MxFilterError(
+            f"no rule named {name!r} in the active script. Known rules: "
+            f"{known}"
+        )
+
+    position = resolve_position(rule_names(filters), placement, name)
+    _move_rule(filters, name, position)
+
+    return render_script(filters)
+
+
+# ----------------------------------------------------------------------------
 def script_diff(before: str, after: str, name: str = "sieve") -> str:
     """Return a unified diff between two script versions."""
     lines = difflib.unified_diff(

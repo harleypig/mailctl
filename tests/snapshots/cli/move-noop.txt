@@ -1,0 +1,14 @@
+$ mxfilter move-rule keep-boss --first
+exit: 0
+--- stdout
+Rule 'keep-boss' is already at position 1 of 2 in 'managesieve'; nothing to change.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

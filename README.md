@@ -93,6 +93,10 @@ mxfilter list
 mxfilter show
 mxfilter remove-rule from-newsletter-example-com
 
+# Reorder a rule without restating it; reports what the move would starve.
+mxfilter move-rule from-newsletter-example-com --first --dry-run
+mxfilter move-rule from-newsletter-example-com --after keep-boss
+
 # Save the active script, byte for byte, before you touch anything.
 mxfilter backup
 mxfilter backup --output ~/mxfilter-before-first-run.sieve

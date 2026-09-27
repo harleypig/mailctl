@@ -51,6 +51,7 @@ from .sieve import (
     backup_script,
     display_diff,
     merge_rule,
+    move_rule,
     parse_script,
     remove_rule,
     resolve_backup_target,
@@ -862,6 +863,31 @@ class RemovalPlan:
     diff: DisplayDiff
 
 
+@dataclass(frozen=True)
+class MovePlan:
+    """A rule moved within the script, not yet uploaded.
+
+    Positions are 0-based over the whole script. ``placement`` judges the
+    rule where it lands, both ways: what would stop it running, and what it
+    would now stop.
+    """
+
+    rule: str
+    script: str
+    before: str
+    after: str
+    from_index: int
+    to_index: int
+    count: int
+    placement: Analysis
+    diff: DisplayDiff
+
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        return self.from_index != self.to_index
+
+
 # ----------------------------------------------------------------------------
 def fetch_active(
     sessions: Sessions, requested: str | None = None
@@ -999,6 +1025,42 @@ def plan_removal(
 
 
 # ----------------------------------------------------------------------------
+def plan_move(
+    sessions: Sessions,
+    rule: str,
+    placement: Placement,
+    script: str | None = None,
+) -> MovePlan:
+    """Reorder a named rule without restating it, and without uploading."""
+    name, before = fetch_active(sessions, script)
+
+    if not before.strip():
+        raise MxFilterError(f"script {name!r} is empty")
+
+    after = move_rule(before, rule, placement)
+
+    present = read_rule_list(parse_script(before))
+    names = [entry.name for entry in present]
+    from_index = names.index(rule)
+    to_index = resolve_position(names, placement, rule)
+
+    candidate = present[from_index]
+    others = present[:from_index] + present[from_index + 1 :]
+
+    return MovePlan(
+        rule=rule,
+        script=name,
+        before=before,
+        after=after,
+        from_index=from_index,
+        to_index=to_index,
+        count=len(present),
+        placement=analyze_placement(others, candidate, at_index=to_index),
+        diff=display_diff(before, after, name),
+    )
+
+
+# ----------------------------------------------------------------------------
 def upload_script(
     sieve: SieveSession,
     config: Config,
@@ -1037,7 +1099,7 @@ def upload_script(
 def execute_script_change(
     sessions: Sessions,
     config: Config,
-    plan: RulePlan | RemovalPlan,
+    plan: RulePlan | RemovalPlan | MovePlan,
     on_event: EventSink | None = None,
 ) -> Path:
     """Upload a planned rule change; return the backup's path.

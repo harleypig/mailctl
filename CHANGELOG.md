@@ -6,6 +6,13 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 
 FEATURES:
 
+* **`mxfilter move-rule NAME` reorders a rule without restating it** (#36).
+  `--first`, `--last`, `--before OTHER`, or `--after OTHER`; only the
+  position changes. The move is judged where the rule lands — what would
+  stop it running, and what it would now stop — before the diff is shown,
+  and the script is backed up and the move confirmed (`--yes`, `--dry-run`)
+  like any other change. A move to where the rule already is sends nothing.
+
 * **`mxfilter restore FILE` puts a backup back** (#13). It uploads the file
   byte for byte over the active script, and only that script. It shows the
   raw diff against what the server has now, backs the current script up
