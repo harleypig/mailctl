@@ -159,7 +159,11 @@ assumptions below get settled for your account.
   cannot be undone; a move says it can be reversed.
 * `--max-messages` (default 500) refuses the whole batch when more matches
   than that come back. It never processes a partial set: silent truncation
-  reads as "it handled everything" when it did not.
+  reads as "it handled everything" when it did not. Raising it is safe:
+  mxfilter talks to the server in batches of 250 regardless, so a large
+  pass never becomes one oversized IMAP command. If a batch fails part-way,
+  mxfilter says how many messages were fully handled, and re-running the
+  same command picks up the rest.
 * A `--fileinto` target that does not exist is a **warning, not an error**,
   unless you pass `--create-folder`. `add` will still write the rule, and
   mail filed there by the server later may be lost. `apply` refuses outright,

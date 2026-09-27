@@ -42,12 +42,21 @@ from . import MxFilterError
 from .config import Config
 from .criteria import Criteria
 
+# UIDs per IMAP command. Every UID goes into the command line, and servers
+# cap line length -- RFC 7162 section 4 asks clients to keep command lines
+# under 8192 octets. 250 UIDs of up to ten digits plus separators is about
+# 2.7 KB, leaving room for a long folder name. Kept well below the default
+# --max-messages (500) so the two stay independent: the cap is a policy on
+# how much to touch, this is transport and never the user's concern.
+BULK_CHUNK = 250
+
 __all__ = [
     "FolderCreation",
     "ImapSession",
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
+    "PartialExecution",
     "decode_header_value",
     "normalize_folder",
     "split_path",
@@ -209,6 +218,44 @@ class MailActionResult:
     flagged: int = 0
     moved: int = 0
     deleted: int = 0
+
+
+class PartialExecution(MxFilterError):
+    """A chunked pass failed after some chunks were already applied.
+
+    ``result`` counts what completed -- every chunk before the failing one
+    was flagged and moved or deleted in full -- and ``total`` is the size
+    of the whole plan.
+    """
+
+    # ------------------------------------------------------------------------
+    def __init__(self, cause: Exception, result, total: int, fallback: bool):
+        self.result = result
+        self.total = total
+
+        done = result.moved or result.deleted or result.flagged
+        partial = (
+            " (without MOVE, that batch may have been copied but not yet "
+            "removed from the source, so a message can appear in both)"
+            if fallback
+            else ""
+        )
+
+        super().__init__(
+            f"{cause} -- stopped part-way: {done} of {total} message(s) were "
+            f"fully processed, in batches of {BULK_CHUNK}. The failing batch "
+            f"may be partly applied{partial}; later ones were not touched. "
+            f"Re-running the same command is safe: it searches again, so "
+            f"mail already moved or deleted is not matched twice, and a "
+            f"flag already set stays set."
+        )
+
+
+# ----------------------------------------------------------------------------
+def chunked(items: list, size: int = BULK_CHUNK):
+    """Yield ``items`` in consecutive slices of at most ``size``."""
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
 
 
 # ----------------------------------------------------------------------------
@@ -621,31 +668,68 @@ class ImapSession:
     def execute(self, plan: MailActionPlan) -> MailActionResult:
         """Carry out a plan and report what was done.
 
-        Flags are applied before any move, because a move invalidates the
-        UIDs the flag call would otherwise use. Nothing here asks the user
-        anything: whether a plan should run at all is the caller's decision,
-        already made by the time this is called.
+        Work goes to the server in chunks of ``BULK_CHUNK`` UIDs, and each
+        chunk is finished -- flagged, then moved or deleted -- before the
+        next starts, so a failure leaves whole chunks done and later ones
+        untouched. Flags go first within a chunk because a move invalidates
+        the UIDs the flag call would otherwise use. A failure after the
+        first chunk raises :class:`PartialExecution` with the counts.
+
+        Nothing here asks the user anything: whether a plan should run at
+        all is the caller's decision, already made by the time this is
+        called.
         """
         if plan.is_empty:
             return MailActionResult()
 
-        uids = plan.uids
-
         self._select(plan.source, readonly=False)
 
+        flags = [flag.encode() for flag in plan.flags]
+        done = MailActionResult()
+
+        for chunk in chunked(plan.uids):
+            try:
+                step = self._execute_chunk(plan, chunk, flags)
+
+            except MxFilterError as exc:
+                if not (done.flagged or done.moved or done.deleted):
+                    raise
+
+                fallback = (
+                    plan.moves
+                    and not self._require_client().has_capability("MOVE")
+                )
+
+                raise PartialExecution(
+                    exc, done, plan.count, fallback
+                ) from exc
+
+            done = MailActionResult(
+                flagged=done.flagged + step.flagged,
+                moved=done.moved + step.moved,
+                deleted=done.deleted + step.deleted,
+            )
+
+        return done
+
+    # ------------------------------------------------------------------------
+    def _execute_chunk(
+        self, plan: MailActionPlan, uids: list[int], flags: list[bytes]
+    ) -> MailActionResult:
+        """Apply the whole plan to one chunk of its UIDs."""
         flagged = 0
 
-        if plan.flags:
-            self.add_flags(uids, [flag.encode() for flag in plan.flags])
+        if flags:
+            self.add_flags(uids, flags)
             flagged = len(uids)
 
         if plan.discard:
             return MailActionResult(flagged=flagged, deleted=self.delete(uids))
 
         if plan.moves:
-            moved = self.move(uids, plan.destination)
-
-            return MailActionResult(flagged=flagged, moved=moved)
+            return MailActionResult(
+                flagged=flagged, moved=self.move(uids, plan.destination)
+            )
 
         return MailActionResult(flagged=flagged)
 
@@ -655,9 +739,16 @@ class ImapSession:
     ) -> list[MessageSummary]:
         """Fetch headers for candidates and keep only the real matches."""
         client = self._require_client()
+        fetched = {}
 
+        # A broad search can return far more candidates than --max-messages
+        # (the cap applies after this re-check), so the FETCH is chunked for
+        # the same line-length reason as the bulk writes.
         try:
-            fetched = client.fetch(uids, ["BODY.PEEK[HEADER]", "INTERNALDATE"])
+            for chunk in chunked(uids):
+                fetched.update(
+                    client.fetch(chunk, ["BODY.PEEK[HEADER]", "INTERNALDATE"])
+                )
 
         except IMAPClientError as exc:
             raise MxFilterError(f"IMAP fetch failed -- {exc}") from exc

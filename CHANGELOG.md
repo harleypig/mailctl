@@ -64,6 +64,15 @@ ENHANCEMENTS:
 
 BUG FIXES:
 
+* **Bulk IMAP operations are chunked** (#24). Every matched UID used to go
+  into a single MOVE, COPY, STORE, EXPUNGE, or header FETCH, so a large
+  pass was one command line tens of kilobytes long — which servers may
+  reject. Only the `--max-messages` default of 500 kept that from
+  happening, by accident, so raising the cap for a big cleanup removed a
+  protection nobody knew about. Work now goes out 250 UIDs at a time,
+  independent of the cap. A failure part-way reports how many messages
+  were fully processed and that re-running is safe.
+
 * **`--no-subscribe` without `--create-folder` is refused** (#43). It only
   ever affected a folder the run created, so on its own it was accepted and
   did nothing. It is now a usage error that points at `mxfilter
