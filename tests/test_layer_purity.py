@@ -105,6 +105,7 @@ def test_the_walk_finds_the_component_modules():
 
     assert "components/managesieve/client.py" in names
     assert "components/managesieve/script.py" in names
+    assert "components/managesieve/servers/pigeonhole.py" in names
 
 
 # ----------------------------------------------------------------------------

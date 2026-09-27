@@ -49,7 +49,7 @@ CRLF_SCRIPT = (
 
 
 class FakeSieveClient:
-    """A stand-in for ``sievelib.managesieve.Client``.
+    """A stand-in for ``SieveClient``, mailctl's wrapper of sievelib's.
 
     Patched in at mailctl's import boundary, the same way ``fake_imap``
     stands in for ``IMAPClient`` -- so ``SieveSession`` and everything above
@@ -80,14 +80,15 @@ class FakeSieveClient:
         return (self.active, [])
 
     # ------------------------------------------------------------------------
-    def getscript(self, name: str):
+    def getscript_bytes(self, name: str):
         self.calls.append(("getscript", name))
 
-        return self.script
+        return self.script.encode("utf-8")
 
     # ------------------------------------------------------------------------
-    def get_sieve_capabilities(self):
-        return ["fileinto", "imap4flags"]
+    @property
+    def capability_response(self) -> bytes:
+        return b'"SIEVE" "fileinto imap4flags"\r\n'
 
 
 # ----------------------------------------------------------------------------
@@ -96,10 +97,10 @@ def fake_sieve(monkeypatch) -> FakeSieveClient:
     """Patch the ManageSieve client and hand the double back."""
     client = FakeSieveClient()
 
-    def factory(host, port, debug=False):
+    def factory(host, port, timeout):
         return client
 
-    monkeypatch.setattr(sieve_client, "Client", factory)
+    monkeypatch.setattr(sieve_client, "SieveClient", factory)
 
     return client
 

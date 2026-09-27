@@ -145,7 +145,7 @@ def test_connect_opens_only_what_was_asked_for_and_tags_progress(
 ):
     opened = []
     monkeypatch.setattr(
-        sieve_client, "Client", lambda *a, **k: opened.append("sieve")
+        sieve_client, "SieveClient", lambda *a, **k: opened.append("sieve")
     )
 
     seen = []
