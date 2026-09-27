@@ -433,6 +433,29 @@ SCENARIOS = {
         ],
         {},
     ),
+    "add-real-sievecreate": (
+        [
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists/GitHub",
+            "--create-folder",
+            "--yes",
+        ],
+        {},
+    ),
+    "add-noimap-sievecreate": (
+        [
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists/GitHub",
+            "--create-folder",
+            "--no-imap",
+            "--yes",
+        ],
+        {},
+    ),
     "add-dry-imapcreate": (
         [
             "add",

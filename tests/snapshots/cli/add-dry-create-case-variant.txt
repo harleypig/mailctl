@@ -2,8 +2,8 @@ $ mxfilter add --from noreply@github.com --fileinto lists --create-folder --dry-
 exit: 0
 --- stdout
 Folder 'lists' resolves to 'INBOX.lists' (delimiter '.')
-Folder 'INBOX.lists' will be created by Sieve (fileinto :create)
-  Nothing promises Sieve will subscribe to a folder it creates, so it may not appear in webmail until you subscribe to it: once the first message has created it, run 'mxfilter subscribe INBOX.lists'.
+[dry-run] would create IMAP folder 'INBOX.lists' and subscribe to it
+  The rule also says 'fileinto :create', so Sieve recreates the folder if it is ever deleted.
 
 Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'

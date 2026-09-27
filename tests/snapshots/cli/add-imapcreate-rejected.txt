@@ -2,7 +2,7 @@ $ mxfilter add --from noreply@github.com --fileinto Lists/GitHub --create-folder
 exit: 1
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-Folder 'INBOX.Lists.GitHub' does not exist; it will be created over IMAP when the change is applied
+Folder 'INBOX.Lists.GitHub' does not exist; it will be created over IMAP and subscribed to when the change is applied
 
 Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'

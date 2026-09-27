@@ -77,6 +77,7 @@ FOLDER_EXISTS = "exists"
 FOLDER_MISSING = "missing"
 FOLDER_SIEVE_CREATES = "sieve-creates"
 FOLDER_IMAP_CREATE = "imap-create"
+FOLDER_BOTH_CREATE = "imap-and-sieve-create"
 FOLDER_UNCREATABLE = "uncreatable"
 
 
@@ -769,7 +770,13 @@ class FolderPlan:
     @property
     def use_create(self) -> bool:
         """Whether the rule should say ``fileinto :create``."""
-        return self.status == FOLDER_SIEVE_CREATES
+        return self.status in (FOLDER_SIEVE_CREATES, FOLDER_BOTH_CREATE)
+
+    # ------------------------------------------------------------------------
+    @property
+    def imap_creates(self) -> bool:
+        """Whether the execute step makes the folder over IMAP."""
+        return self.status in (FOLDER_IMAP_CREATE, FOLDER_BOTH_CREATE)
 
 
 # ----------------------------------------------------------------------------
@@ -784,12 +791,16 @@ def plan_folder(
 ) -> FolderPlan:
     """Normalize the target folder and decide how it gets to exist.
 
-    ``:create`` is preferred when the server advertises ``mailbox``, since
-    then Sieve makes the folder at delivery time. Otherwise the folder is
-    made over IMAP by :func:`create_folder`, and the rule stays a plain
-    ``fileinto``. Read-only: nothing is created here, and a folder that
-    cannot be created is reported as such for :func:`check_folder` to
-    refuse, so the front-end can show the plan first.
+    With an IMAP session the folder is made over IMAP by
+    :func:`create_folder` and subscribed unless declined -- Sieve's
+    ``:create`` makes it only at delivery time, when nothing is running to
+    subscribe to it (#40). When the server also advertises ``mailbox`` the
+    rule says ``fileinto :create`` as well, so it recreates the folder if
+    it is later deleted; otherwise it stays a plain ``fileinto``. With no
+    IMAP session ``:create`` is the only route. Read-only: nothing is
+    created here, and a folder that cannot be created is reported as such
+    for :func:`check_folder` to refuse, so the front-end can show the plan
+    first.
 
     With no ManageSieve session (the existing-mail pass alone) the Sieve
     route is simply unavailable.
@@ -829,13 +840,13 @@ def plan_folder(
     if not create:
         return FolderPlan(status=FOLDER_MISSING, **shape)
 
-    if has_mailbox:
-        return FolderPlan(status=FOLDER_SIEVE_CREATES, **shape)
-
     if imap is None:
-        return FolderPlan(status=FOLDER_UNCREATABLE, **shape)
+        status = FOLDER_SIEVE_CREATES if has_mailbox else FOLDER_UNCREATABLE
 
-    return FolderPlan(status=FOLDER_IMAP_CREATE, **shape)
+    else:
+        status = FOLDER_BOTH_CREATE if has_mailbox else FOLDER_IMAP_CREATE
+
+    return FolderPlan(status=status, **shape)
 
 
 # ----------------------------------------------------------------------------
@@ -851,7 +862,7 @@ def check_folder(plan: FolderPlan) -> None:
 # ----------------------------------------------------------------------------
 def create_folder(sessions: Sessions, plan: FolderPlan) -> FolderCreation:
     """Create the planned folder over IMAP, subscribing unless declined."""
-    if plan.status != FOLDER_IMAP_CREATE:
+    if not plan.imap_creates:
         raise MxFilterError(
             f"folder {plan.folder!r} is not planned for IMAP creation "
             f"({plan.status})"
@@ -863,9 +874,7 @@ def create_folder(sessions: Sessions, plan: FolderPlan) -> FolderCreation:
 # ----------------------------------------------------------------------------
 def folder_pending(sessions: Sessions, plan: FolderPlan) -> bool:
     """Whether a folder planned for IMAP creation has not been made yet."""
-    return plan.status == FOLDER_IMAP_CREATE and not _imap(sessions).exists(
-        plan.folder
-    )
+    return plan.imap_creates and not _imap(sessions).exists(plan.folder)
 
 
 # ----------------------------------------------------------------------------
