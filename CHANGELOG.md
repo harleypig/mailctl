@@ -9,15 +9,56 @@ BREAKING CHANGES:
 * **`mxfilter` is now `mailctl`** ([#45]). The command is `mailctl`
   (`python -m mailctl`), the distribution and the Python package are
   `mailctl`, and the exception every actionable failure raises is
-  `MailctlError` rather than `MxFilterError`. Nothing else changes: the
-  config directory (`$XDG_CONFIG_HOME/mxfilter/`, backups included), the
-  `MXROUTE_*` and `MXFILTER_*` environment variables, and the `mxfilter`
-  default script name are untouched, so an existing setup keeps working.
-  Reinstall to get the new command. An existing `mxfilter` install is a
-  different distribution and stays until removed (`uv tool uninstall
-  mxfilter`, `pipx uninstall mxfilter`, or `uv pip uninstall mxfilter` in a
-  venv). The config and environment migration follows as its own change,
-  with its own entry here.
+  `MailctlError` rather than `MxFilterError`. Reinstall to get the new
+  command. An existing `mxfilter` install is a different distribution and
+  stays until removed (`uv tool uninstall mxfilter`, `pipx uninstall
+  mxfilter`, or `uv pip uninstall mxfilter` in a venv).
+
+  **The config directory and every setting name moved with it, as a clean
+  break: the old names are not read.** Every command warns loudly while the
+  old directory exists and the new one does not, and names any old variable
+  still set without its new one — by name only, never its value. Every old
+  name and its replacement:
+
+  | Old | New |
+  |-----|-----|
+  | `$XDG_CONFIG_HOME/mxfilter/` (`config.toml`, `backups/`) | `$XDG_CONFIG_HOME/mailctl/` |
+  | `MXROUTE_HOST` | `MAILCTL_HOST` |
+  | `MXROUTE_USER` | `MAILCTL_USER` |
+  | `MXROUTE_PASSWORD` | `MAILCTL_PASSWORD` |
+  | `MXROUTE_PASSWORD_FILE` | `MAILCTL_PASSWORD_FILE` |
+  | `MXROUTE_PASSWORD_CMD` | `MAILCTL_PASSWORD_CMD` |
+  | `MXROUTE_IMAP_HOST` | `MAILCTL_IMAP_HOST` |
+  | `MXROUTE_IMAP_PORT` | `MAILCTL_IMAP_PORT` |
+  | `MXROUTE_SIEVE_PORT` | `MAILCTL_SIEVE_PORT` |
+  | `MXROUTE_SIEVE_TLS` | `MAILCTL_SIEVE_TLS` |
+  | `MXROUTE_BACKUP_DIR` | `MAILCTL_BACKUP_DIR` |
+  | `MXROUTE_SOURCE_FOLDER` | `MAILCTL_SOURCE_FOLDER` |
+  | `MXFILTER_LIVE` (live test gate) | `MAILCTL_LIVE` |
+  | `MXFILTER_UPDATE_SNAPSHOTS` (snapshot regeneration) | `MAILCTL_UPDATE_SNAPSHOTS` |
+  | default Sieve script `mxfilter` | `mailctl`, for an account with no script of ours |
+
+  The same `MXROUTE_*` → `MAILCTL_*` renames apply to the keys of an
+  `--env-file` file. An existing `mxfilter` script is still recognised as
+  mailctl's own: with nothing active it is reused, never duplicated, and an
+  active one stays the one edited. `sieve.MXROUTE_FORBIDDEN_ACTIONS` keeps
+  its name; it is a fact about MXroute, not a setting.
+
+  **To upgrade:** run `mailctl migrate-config` (new — `--dry-run` to preview)
+  to move the old directory's contents across, then rename each `MXROUTE_*`
+  variable in your shell config and env files to `MAILCTL_*`, including any
+  that hold a path inside the old directory.
+
+FEATURES:
+
+* **`mailctl migrate-config`** moves everything in `$XDG_CONFIG_HOME/mxfilter/`
+  into `$XDG_CONFIG_HOME/mailctl/` ([#45]). It lists what would move with each
+  file's mode, honours `--dry-run` and `--yes`, and moves by rename, so a
+  `0600` backup stays `0600` and a directory keeps `0700`. A new directory
+  that already exists is merged into; anything that would be overwritten
+  stops the whole move before any file is touched. A `password_file` or
+  `backup_dir` in `config.toml` that named the old directory is pointed at
+  the new one, and the old directory is removed once empty.
 
 ## 0.4.0
 

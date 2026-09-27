@@ -17,7 +17,7 @@ python3 -m venv .venv
 
 Copy `.env.example` to `.env` and fill it in, then either export it
 (`set -a; . ./.env; set +a`) or point mailctl at it with `--env-file`. Or
-copy `config.toml.example` to `$XDG_CONFIG_HOME/mxfilter/config.toml` — flat
+copy `config.toml.example` to `$XDG_CONFIG_HOME/mailctl/config.toml` — flat
 top-level keys, every one explained in the file:
 
 ```toml
@@ -30,26 +30,31 @@ default_folder = "Lists"
 Resolution order is **CLI flag > env file > environment > config file >
 default**.
 
-The tool was called `mxfilter` until recently. Its config directory
-(`$XDG_CONFIG_HOME/mxfilter/`, backups included), the `MXROUTE_*`
-variables, and the default script name below still use the old names, so an
-existing setup keeps working; their migration is a separate change.
+The tool was called `mxfilter` until recently, and the rename was a clean
+break: the old config directory (`$XDG_CONFIG_HOME/mxfilter/`) and the old
+`MXROUTE_*` variables are **not read**. Every command warns while the old
+directory exists and the new one does not, and `mailctl migrate-config`
+moves its contents — `config.toml`, the backups, anything else — across,
+keeping modes and overwriting nothing (`--dry-run` shows what would move).
+An old `MXROUTE_*` variable still set, with no `MAILCTL_*` counterpart, is
+named in a warning; rename it. [CHANGELOG.md](CHANGELOG.md) lists every old
+and new name.
 
-`--env-file PATH` reads the `MXROUTE_*` lines of a dotenv-style file; given
+`--env-file PATH` reads the `MAILCTL_*` lines of a dotenv-style file; given
 bare, `--env-file` means `.env` in the current directory. The file is read,
 not exported, and it outranks the environment because it was named for this
 run. The format is the plain one: `KEY=VALUE`, an optional leading
 `export`, blank lines and `#` comment lines skipped, and one pair of
 matching single or double quotes stripped. Nothing is interpolated, a `#`
 after a value is part of the value, and a value cannot span lines — quote a
-value whose leading or trailing spaces matter. Keys not starting `MXROUTE_`
+value whose leading or trailing spaces matter. Keys not starting `MAILCTL_`
 are ignored, so a `.env` shared with another tool is fine. A line mailctl
 cannot read is reported by line number, never quoted. Because it takes an
 optional value, put `--env-file` after any positional argument, or write
 `--env-file=PATH`.
 
 `--folder`, on the commands that read mail (`add`, `apply`, `from-message`,
-`messages`, `view`), resolves the same way: `MXROUTE_SOURCE_FOLDER`, then
+`messages`, `view`), resolves the same way: `MAILCTL_SOURCE_FOLDER`, then
 `source_folder` in the config file, then `INBOX`.
 
 `mailctl test` says where each setting came from — a flag, the env file,
@@ -62,10 +67,10 @@ ladder — the same shape, highest first:
 | # | Source |
 |---|--------|
 | 1 | `--password-file`, `--password-cmd`, or `--password` (mutually exclusive) |
-| 2 | `MXROUTE_PASSWORD_FILE`, then `_CMD`, then `MXROUTE_PASSWORD`, in the `--env-file` file |
-| 3 | `MXROUTE_PASSWORD_FILE` |
-| 4 | `MXROUTE_PASSWORD_CMD` |
-| 5 | `MXROUTE_PASSWORD` |
+| 2 | `MAILCTL_PASSWORD_FILE`, then `_CMD`, then `MAILCTL_PASSWORD`, in the `--env-file` file |
+| 3 | `MAILCTL_PASSWORD_FILE` |
+| 4 | `MAILCTL_PASSWORD_CMD` |
+| 5 | `MAILCTL_PASSWORD` |
 | 6 | `password_file` in the config file |
 | 7 | `password_cmd` in the config file |
 | 8 | an interactive prompt |
@@ -84,7 +89,7 @@ part of a password. The path may start with `~` and may use `$VAR` or
 `${VAR}`, wherever it is given — `password_file = "~/.config/mail/pw"`
 works. An unset variable is left as written, so the error names it.
 
-An env file that sets `MXROUTE_PASSWORD` is held to the same mode rule as a
+An env file that sets `MAILCTL_PASSWORD` is held to the same mode rule as a
 password file: `0600` or `0400`, or it is refused with the `chmod` that fixes
 it. One that only names a password file or command is not.
 
@@ -154,6 +159,10 @@ mailctl backup --output ~/mailctl-before-first-run.sieve
 # Put a backup back over the active script: diff, back up, confirm.
 mailctl restore ~/mailctl-before-first-run.sieve --dry-run
 mailctl restore ~/mailctl-before-first-run.sieve
+
+# Coming from mxfilter: move the old config directory's contents across.
+mailctl migrate-config --dry-run
+mailctl migrate-config
 ```
 
 **Before the first run against a real mailbox, work through
@@ -206,12 +215,12 @@ assumptions below get settled for your account.
 * The current active script is backed up to a timestamped file before any
   upload, and the path is printed. `mailctl backup` takes the same copy on
   demand, without changing anything on the server.
-* Backups land in `$XDG_CONFIG_HOME/mxfilter/backups` (usually
-  `~/.config/mxfilter/backups`) — beside your `config.toml`, one file per
+* Backups land in `$XDG_CONFIG_HOME/mailctl/backups` (usually
+  `~/.config/mailctl/backups`) — beside your `config.toml`, one file per
   backup, named `<script>-<UTC timestamp>.sieve`. XDG would call a backup
   *state* rather than config; keeping it here is a deliberate departure from
   that, not something XDG endorses, because a backup you cannot find is not a
-  backup. `--backup-dir`, `MXROUTE_BACKUP_DIR`, and `backup_dir` in
+  backup. `--backup-dir`, `MAILCTL_BACKUP_DIR`, and `backup_dir` in
   `config.toml` move it, with `~` and `$VAR` expanded in each. The file is
   written mode `0600` in a directory created `0700`: a Sieve script is not a
   password, but it does say who you correspond with and how you sort it.
@@ -335,8 +344,10 @@ documentation read better.
 The active script's name is read from `LISTSCRIPTS` and written back to, and
 is never guessed — the webmail's script name is server-side config, and
 MXRoute is mid-migration on both its panel and Dovecot. `--script` overrides
-it; the name `mxfilter` (the tool's old name, not yet migrated) is used only
-when the account has no scripts at all.
+it. With nothing active, a script called `mxfilter` — what the tool created
+before it was renamed — is still recognised as its own and reused rather
+than a second one made beside it; the name `mailctl` is used only when there
+is neither.
 
 The server runs one script, and editing a different one does not change
 which. `--script NAME` on a script that is not the active one stores the
