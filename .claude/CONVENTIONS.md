@@ -586,17 +586,26 @@ will read it.
 
 ## Merge policy & versioning
 
-- **`master` is PR-only**, enforced today by the local `no-commit-to-branch`
-  pre-commit hook and the global `branch-protection.py` edit-time hook. There
-  is **no server-side ruleset yet** — that is the missing layer, and until it
-  exists the guard is local-only and anyone without the hooks installed can
-  still push (`git.md` *Protecting the Default Branch*).
-- **Neither merge sentinel is declared, and that is a precondition failure,
-  not an oversight.** The auto-merge opt-in (`gh.md`) rests on server-side
-  guardrails making a manual merge gate redundant; there are none here yet, so
-  the line does not go in. The merge-finalization enforcement hook likewise
-  waits on there being a merge pipeline to backstop. Both become live
-  questions the moment a ruleset and CI exist — not before.
+- **`master` is PR-only, enforced server-side.** The *Protect Master Branch*
+  ruleset is active on `master` with no bypass actors: it blocks deletion and
+  non-fast-forward pushes, requires a pull request (squash-only, 0 approvals,
+  review threads resolved), and requires the `Lint` and `Test` status checks.
+  The local `no-commit-to-branch` pre-commit hook and the global
+  `branch-protection.py` edit-time hook sit in front of it as earlier layers
+  (`git.md` *Protecting the Default Branch*).
+- **Auto-merge is declared** (operator, 2026-09-27,
+  [#11](https://github.com/harleypig/mxroute-email-filters/issues/11)). The
+  ruleset is the server-side guardrail the opt-in (`gh.md`) rests on, so
+  invoking push-pr is consent through merge once the required checks are
+  green. This is the agent workflow's opt-in, **not** GitHub's own auto-merge
+  feature; the merge still obeys the ruleset, and the repo deletes head
+  branches on merge. The sentinel push-pr reads:
+
+  auto-merge: enabled
+
+- **`merge-finalization` is not declared.** Its hook guards `TODO.md` /
+  `ROADMAP.md` finalization, and this repo has neither — work is tracked as
+  issues (*Where work is tracked*).
 - **Versioning:** semver `vX.Y.Z`, `repo` scope (one version for the whole
   tool — the `git.md` *Versioning & tags* method). See below.
 
