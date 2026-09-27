@@ -101,6 +101,19 @@ NUL_CHARSET = rfc822(
     body="body\r\n",
 )
 
+# RFC 2231 continuations mixed with a whole value: the stdlib's
+# decode_params sorts None against int and raises TypeError.
+MIXED_2231 = rfc822(
+    "From: a@example.com",
+    "Subject: s",
+    "MIME-Version: 1.0",
+    'Content-Type: multipart/mixed; boundary="b"',
+    body="--b\r\nContent-Type: text/plain\r\n\r\nhi\r\n"
+    "--b\r\nContent-Type: application/octet-stream\r\n"
+    "Content-Disposition: attachment; filename*0*=utf-8''a; "
+    "filename*=utf-8''b\r\n\r\nzz\r\n--b--\r\n",
+)
+
 EIGHT_BIT_HEADER = rfc822(
     "From: Jos\xe9 <jose@example.com>",
     "Subject: raw 8-bit",
@@ -398,6 +411,20 @@ def test_a_charset_with_a_nul_falls_back_without_raising(sessions, fake_imap):
     content = engine.read_message(sessions, "INBOX", 1)
 
     assert content.body == "body\n"
+
+
+# ----------------------------------------------------------------------------
+def test_an_unreadable_filename_leaves_the_attachment_unnamed(
+    sessions, fake_imap
+):
+    fake_imap.messages = {1: MIXED_2231}
+
+    content = engine.read_message(sessions, "INBOX", 1)
+
+    assert content.body == "hi"
+    assert [(a.name, a.content_type) for a in content.attachments] == [
+        ("", "application/octet-stream")
+    ]
 
 
 # ----------------------------------------------------------------------------

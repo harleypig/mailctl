@@ -1595,20 +1595,35 @@ def _marked_attachment(part) -> bool:
     """Whether a part declares itself a file rather than message text."""
     return (
         part.get_content_disposition() == "attachment"
-        or part.get_filename() is not None
+        or _filename(part) is not None
     )
 
 
 # ----------------------------------------------------------------------------
 def _attachment(part) -> Attachment:
     """Describe a part as an attachment, without keeping its content."""
-    name = part.get_filename() or ""
+    name = _filename(part) or ""
 
     return Attachment(
         name=_header_text(name) if name else "",
         content_type=part.get_content_type(),
         size=_payload_size(part),
     )
+
+
+# ----------------------------------------------------------------------------
+def _filename(part) -> str | None:
+    """A part's file name; "" when it declares one that cannot be read.
+
+    The stdlib's RFC 2231 decoding raises TypeError on continuations
+    (``filename*0*``) mixed with a whole ``filename*``, so a malformed
+    name is reported as unnamed rather than failing the whole message.
+    """
+    try:
+        return part.get_filename()
+
+    except (TypeError, ValueError):
+        return ""
 
 
 # ----------------------------------------------------------------------------
