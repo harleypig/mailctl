@@ -33,7 +33,6 @@ __all__ = [
     "PLACE_BEFORE",
     "PLACE_FIRST",
     "PLACE_LAST",
-    "REPORTABLE_EXTENSIONS",
     "ROUNDCUBE_NAME_MARKER",
     "SIEVELIB_NAME_MARKER",
     "UNIMPLEMENTED_ACTIONS",
@@ -92,22 +91,6 @@ UNIMPLEMENTED_ACTIONS = {
     "notify": "notify (enotify)",
     "vacation": "vacation",
 }
-
-# Extensions worth reporting on in 'test', purely so the answer comes from
-# the server rather than from folklore. Presence or absence is discovered,
-# never assumed.
-REPORTABLE_EXTENSIONS = (
-    "fileinto",
-    "imap4flags",
-    "mailbox",
-    "copy",
-    "envelope",
-    "enotify",
-    "vacation",
-    "regex",
-    "spamtest",
-    "extlists",
-)
 
 # The name given to the in-memory filter set. It is not the script name and
 # it never reaches the server -- sievelib only uses it for its own

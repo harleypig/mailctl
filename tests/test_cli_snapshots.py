@@ -736,6 +736,61 @@ SCENARIOS = {
         {},
     ),
     "from-nothing": (["from-message", "--fileinto", "Lists"], {}),
+    # #82: disabled_extensions, from a flag and from the config file, and
+    # what 'add' does with it -- refuse, or fall back to IMAP creation.
+    "test-disabled": (
+        [
+            "test",
+            "--disable-extension",
+            "Mailbox",
+            "--disable-extension",
+            "copy",
+        ],
+        {},
+    ),
+    "test-disabled-config": (
+        ["test"],
+        {"config": 'disabled_extensions = ["imap4flags"]\n'},
+    ),
+    "test-disabled-unknown": (["test", "--disable-extension", "mailbx"], {}),
+    "add-disabled-mailbox": (
+        [
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists/GitHub",
+            "--create-folder",
+            "--disable-extension",
+            "mailbox",
+            "--yes",
+        ],
+        {},
+    ),
+    "add-disabled-mailbox-noimap": (
+        [
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists/GitHub",
+            "--create-folder",
+            "--no-imap",
+            "--disable-extension",
+            "mailbox",
+        ],
+        {},
+    ),
+    "add-disabled-imap4flags": (
+        [
+            "add",
+            *GITHUB,
+            "--mark-read",
+            "--fileinto",
+            "Lists",
+            "--disable-extension",
+            "imap4flags",
+        ],
+        {},
+    ),
 }
 
 # ############################################################################

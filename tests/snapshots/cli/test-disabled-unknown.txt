@@ -1,0 +1,16 @@
+$ mailctl test --disable-extension mailbx
+exit: 1
+--- stdout
+Sources:   environment
+Host:      mail.example.com  (environment)
+User:      user@example.com  (environment)
+Password:  set  (MAILCTL_PASSWORD, environment)
+IMAP:      mail.example.com:993  (host: same as host, port: default)
+Sieve:     mail.example.com:4190 (tls=starttls)  (default)
+Folder:    INBOX  (default)  -- read by apply, messages, view, from-message
+
+--- stderr
+mailctl: disabled_extensions: unknown Sieve extension(s) 'mailbx' (from flag --disable-extension). Known: fileinto, imap4flags, mailbox, copy, envelope, enotify, vacation, regex, spamtest, extlists
+
+--- sieve calls
+--- imap calls

@@ -300,6 +300,107 @@ def test_a_flag_beats_the_environment_beats_the_file_beats_the_default(
 
 
 # ----------------------------------------------------------------------------
+def test_disabled_extensions_climb_the_ladder_whole(tmp_path, monkeypatch):
+    """#82: the highest source replaces the lower ones, as every other
+    setting does -- it is not a union -- and the source is recorded.
+
+    Stripped one rung at a time, like the host test above, so a wrong
+    order or a union fails rather than a single rung passing alone.
+    """
+    write_config_file('disabled_extensions = ["copy"]\n')
+    monkeypatch.setenv("MAILCTL_DISABLED_EXTENSIONS", "regex")
+    env_path = write_env_file(
+        tmp_path / "x.env", "MAILCTL_DISABLED_EXTENSIONS=envelope\n"
+    )
+
+    args = argparse.Namespace(
+        disable_extension=["Mailbox"], env_file=str(env_path)
+    )
+    config = load_config(args)
+    assert config.disabled_extensions == {"mailbox"}
+    assert config.sources["disabled_extensions"] == Source(
+        FLAG, "--disable-extension"
+    )
+
+    args = argparse.Namespace(env_file=str(env_path))
+    config = load_config(args)
+    assert config.disabled_extensions == {"envelope"}
+    assert config.sources["disabled_extensions"] == Source(
+        ENV_FILE, "MAILCTL_DISABLED_EXTENSIONS", env_path
+    )
+
+    args = argparse.Namespace()
+    config = load_config(args)
+    assert config.disabled_extensions == {"regex"}
+    assert config.sources["disabled_extensions"] == Source(
+        ENVIRONMENT, "MAILCTL_DISABLED_EXTENSIONS"
+    )
+
+    monkeypatch.delenv("MAILCTL_DISABLED_EXTENSIONS")
+    config = load_config(args)
+    assert config.disabled_extensions == {"copy"}
+    assert config.sources["disabled_extensions"].kind == CONFIG_FILE
+
+    write_config_file("")
+    config = load_config(args)
+    assert config.disabled_extensions == frozenset()
+    assert config.sources["disabled_extensions"] == Source(DEFAULT)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("mailbox", {"mailbox"}, id="one"),
+        pytest.param(" Mailbox , IMAP4FLAGS ", {"mailbox", "imap4flags"}),
+        pytest.param("mailbox,,", {"mailbox"}, id="blanks-dropped"),
+    ],
+)
+def test_a_comma_separated_variable_is_split_and_lower_cased(
+    value, expected, monkeypatch
+):
+    monkeypatch.setenv("MAILCTL_DISABLED_EXTENSIONS", value)
+
+    config = load_config(argparse.Namespace())
+
+    assert config.disabled_extensions == expected
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param('disabled_extensions = "mailbox"\n', id="string"),
+        pytest.param("disabled_extensions = [1]\n", id="not-names"),
+    ],
+)
+def test_a_config_file_value_that_is_not_a_list_of_names_is_refused(text):
+    write_config_file(text)
+
+    with pytest.raises(MailctlError, match="expected a list") as caught:
+        load_config(argparse.Namespace())
+
+    assert "config file" in str(caught.value)
+
+
+# ----------------------------------------------------------------------------
+def test_the_disable_flag_is_repeatable_through_the_real_parser():
+    args = build_parser().parse_args(
+        [
+            "test",
+            "--disable-extension",
+            "mailbox",
+            "--disable-extension",
+            "copy",
+        ]
+    )
+
+    config = load_config(args)
+
+    assert config.disabled_extensions == {"mailbox", "copy"}
+
+
+# ----------------------------------------------------------------------------
 def test_the_built_in_defaults_apply_when_nothing_is_configured():
     """4190/starttls is the RFC 5804 default, not a known MXroute fact."""
     config = load_config(argparse.Namespace())
@@ -1326,6 +1427,7 @@ def test_every_setting_records_a_source():
         "backup_dir",
         "default_folder",
         "source_folder",
+        "disabled_extensions",
     }
 
 
