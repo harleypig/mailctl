@@ -32,6 +32,15 @@ BUG FIXES:
   headers they show**, as `messages` and `view` do. They used to print them
   raw, so a sender could put escape sequences on your terminal.
 
+* **The Sieve diff, `show`, and `rules` escape control characters too.**
+  A rule derived from a message carries that message's text into the
+  diff, and a stored script can hold the same bytes, so both were a way
+  for escape sequences to reach the terminal.
+
+* **One message with a malformed encoded-word header no longer stops the
+  whole command.** A Subject such as `=?utf-8?b?G=?=` made `apply` and
+  `messages` fail outright; the header is now shown as its raw text.
+
 NOTES:
 
 * **`config.toml.example` documents the config file.** The TOML
