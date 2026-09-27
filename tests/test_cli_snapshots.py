@@ -362,6 +362,16 @@ SCENARIOS = {
         ["restore", "<FILE>", "--script", "spare", "--yes"],
         {"file": ONE_RULE, "others": {"spare": "# nothing yet\n"}},
     ),
+    # #54: with nothing active a bare restore names --script; naming the
+    # deactivated script is the recovery, and activates it.
+    "restore-noactive": (
+        ["restore", "<FILE>", "--yes"],
+        {"file": ONE_RULE, "active": None, "others": {"managesieve": "x\n"}},
+    ),
+    "restore-noactive-script": (
+        ["restore", "<FILE>", "--script", "managesieve", "--yes"],
+        {"file": ONE_RULE, "active": None, "others": {"managesieve": "x\n"}},
+    ),
     "restore-empty": (["restore", "<FILE>", "--yes"], {"file": "\n"}),
     "restore-empty-allowed": (
         ["restore", "<FILE>", "--allow-empty", "--dry-run"],

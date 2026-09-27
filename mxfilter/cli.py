@@ -899,14 +899,11 @@ def cmd_backup(args) -> int:
 def cmd_restore(args) -> int:
     """Replace a script with a backup file, after showing it."""
     config = configure(args)
+    backup = engine.read_backup_file(args.file, args.allow_empty)
 
     with connect(config, args) as sessions:
         plan = engine.plan_restore(
-            sessions,
-            args.file,
-            args.script,
-            args.activate,
-            args.allow_empty,
+            sessions, backup, args.script, args.activate
         )
 
         print(

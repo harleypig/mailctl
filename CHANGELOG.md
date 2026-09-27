@@ -37,6 +37,14 @@ BUG FIXES:
   it already was the active one, when the account has no active script, or
   when `--activate` (new on those commands) asks for it. When a change goes
   to a script that stays inactive, mxfilter says so before uploading.
+* **`mxfilter restore` on an account with no active script** now names
+  `--script` as the way out instead of dead-ending ([#54]). With
+  `--script NAME` the backup is restored and NAME activated — the recovery
+  case.
+* **`mxfilter restore` reads and checks FILE before connecting** ([#54]), so
+  a mistyped path or an empty file is reported without a login first.
+* **`mxfilter restore` expands `$VAR` / `${VAR}` in FILE** as well as `~`
+  ([#54]), the same as the password-file path.
 
 ## 0.3.0
 
@@ -415,3 +423,4 @@ NOTES:
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
 [#53]: https://github.com/harleypig/mxroute-email-filters/issues/53
 [#52]: https://github.com/harleypig/mxroute-email-filters/issues/52
+[#54]: https://github.com/harleypig/mxroute-email-filters/issues/54

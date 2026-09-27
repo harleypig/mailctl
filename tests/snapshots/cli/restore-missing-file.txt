@@ -6,6 +6,4 @@ exit: 1
 mxfilter: could not read backup /nonexistent/x.sieve -- [Errno 2] No such file or directory: '/nonexistent/x.sieve'
 
 --- sieve calls
-('connect',)
-('logout',)
 --- imap calls

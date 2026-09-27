@@ -24,7 +24,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from . import MxFilterError
-from .config import Config
+from .config import Config, expand_path
 from .criteria import Criteria, escape_sieve_string
 from .imap import (
     FolderCreation,
@@ -524,18 +524,30 @@ class RestorePlan:
         return self.before != self.after
 
 
+@dataclass(frozen=True)
+class BackupFile:
+    """A backup read from disk, exactly as written, ready to restore."""
+
+    path: Path
+    text: str
+
+
 # ----------------------------------------------------------------------------
 def read_backup_file(
     path: str | Path, allow_empty: bool = False
-) -> tuple[Path, str]:
+) -> BackupFile:
     """Read a backup file exactly as written, newline translation off.
+
+    Needs no server, so a front-end calls it before connecting: a mistyped
+    path or an empty file is reported without costing a login. ``~`` and
+    ``$VAR`` / ``${VAR}`` are expanded, as for every other path setting.
 
     A file holding nothing but whitespace is refused unless
     ``allow_empty``: uploading it removes every rule, and an empty file is
     as likely to be a truncated copy or the wrong path as a deliberate
     wipe.
     """
-    source = Path(path).expanduser()
+    source = expand_path(str(path))
 
     try:
         with source.open(encoding="utf-8", newline="") as handle:
@@ -553,16 +565,15 @@ def read_backup_file(
             f"want."
         )
 
-    return source, text
+    return BackupFile(source, text)
 
 
 # ----------------------------------------------------------------------------
 def plan_restore(
     sessions: Sessions,
-    path: str | Path,
+    backup: BackupFile,
     script: str | None = None,
     activate: bool = False,
-    allow_empty: bool = False,
 ) -> RestorePlan:
     """Work out replacing a script with a backup, without doing it.
 
@@ -573,14 +584,17 @@ def plan_restore(
     merge, and the current bytes are backed up before anything is sent,
     so overwriting it loses nothing (ADR 0005).
     """
-    source, after = read_backup_file(path, allow_empty)
-
+    source, after = backup.path, backup.text
     name, before, active = fetch_active(sessions, script)
 
+    # Not a guess at a name: with nothing active there is no "the script"
+    # to mean, and the recovery case is served by naming one, which is
+    # then activated because nothing else runs.
     if script is None and active is None:
         raise MxFilterError(
-            "no active script on the server to restore over. 'mxfilter "
-            "list' shows what the account has."
+            "no active script on the server to restore over. Name the "
+            "script to restore with --script NAME; with nothing active it "
+            "is activated. 'mxfilter list' shows what the account has."
         )
 
     return RestorePlan(

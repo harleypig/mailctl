@@ -215,7 +215,10 @@ assumptions below get settled for your account.
   rather than merges: a rule added since the backup was taken is removed, and
   the diff shows it. It works even over a script mxfilter cannot parse
   ([ADR 0005][adr5]). An empty FILE would remove every rule, so it is refused
-  unless `--allow-empty` is given.
+  unless `--allow-empty` is given. FILE is read and checked before mxfilter
+  connects, and `~` and `$VAR` in it are expanded. If the account has no
+  active script, restore refuses rather than guess, and `--script NAME` is
+  the way back: NAME is restored and made active.
 * Rules are merged into the parsed existing script, never appended blindly,
   so other rules survive. If the existing script cannot be parsed, mxfilter
   stops rather than overwrite it.
