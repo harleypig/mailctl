@@ -323,6 +323,18 @@ SCENARIOS = {
         ["add", *GITHUB, "--dry-run", "--no-apply"],
         {"caps": ["imap4flags"], "config": 'default_folder = "Lists"\n'},
     ),
+    "add-fileinto-source-normalized": (
+        [
+            "add",
+            *GITHUB,
+            "--folder",
+            "Lists",
+            "--fileinto",
+            "INBOX.Lists",
+            "--yes",
+        ],
+        {},
+    ),
     "add-fileinto-source": (
         ["add", *GITHUB, "--fileinto", "INBOX", "--yes"],
         {},

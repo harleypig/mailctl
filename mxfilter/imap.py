@@ -59,6 +59,7 @@ __all__ = [
     "PartialExecution",
     "decode_header_value",
     "normalize_folder",
+    "same_folder",
     "split_path",
 ]
 
@@ -86,6 +87,21 @@ def split_path(name: str, delimiter: str) -> list[str]:
         parts = [piece for part in parts for piece in part.split(separator)]
 
     return [part for part in parts if part]
+
+
+# ----------------------------------------------------------------------------
+def same_folder(left: str, right: str) -> bool:
+    """Whether two mailbox names name the same folder.
+
+    Mailbox names are case-sensitive except ``INBOX`` itself (RFC 3501
+    section 5.1), and Dovecot honours that: ``INBOX.Foo`` and ``INBOX.foo``
+    are two folders. Folding case everywhere would treat a move between
+    them as a no-op and silently skip it.
+    """
+    if left.upper() == "INBOX" and right.upper() == "INBOX":
+        return True
+
+    return left == right
 
 
 # ----------------------------------------------------------------------------
@@ -201,7 +217,7 @@ class MailActionPlan:
         return bool(
             self.destination
             and not self.discard
-            and self.destination.casefold() != self.source.casefold()
+            and not same_folder(self.destination, self.source)
         )
 
     # ------------------------------------------------------------------------

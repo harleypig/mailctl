@@ -18,6 +18,7 @@ from mxfilter import MxFilterError, engine
 from mxfilter import sieve as sieve_module
 from mxfilter.criteria import Criteria
 from mxfilter.engine import ActionSpec, RuleRequest, Sessions
+from mxfilter.imap import MailActionPlan
 from mxfilter.sieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
@@ -1053,3 +1054,45 @@ def test_an_executed_move_is_backed_up_and_uploaded(
         "set_active",
     ]
     assert len(list(tmp_path.iterdir())) == 1
+
+
+# ############################################################################
+# Folder names are case-sensitive, except INBOX (RFC 3501 section 5.1)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("source", "destination", "noop"),
+    [
+        ("INBOX.Foo", "INBOX.foo", False),
+        ("INBOX.foo", "INBOX.foo", True),
+        ("inbox", "INBOX", True),
+        ("Inbox", "INBOX", True),
+    ],
+)
+def test_only_inbox_compares_case_insensitively(source, destination, noop):
+    """On a case-sensitive server INBOX.Foo and INBOX.foo are two folders.
+
+    Treating them as one skipped a real move as a no-op.
+    """
+    spec = ActionSpec(fileinto=destination)
+
+    assert engine.mail_pass_is_noop(spec, source, destination) is noop
+    assert MailActionPlan(source, destination, [], False).moves is not noop
+
+
+# ----------------------------------------------------------------------------
+def test_the_source_folder_is_normalized_like_the_destination(
+    sessions, fake_imap
+):
+    """--folder Lists and --fileinto Lists name the same folder."""
+    fake_imap.listing.append(((), b".", b"INBOX.Lists.X"))
+    sessions.imap._read_folders()
+
+    source = engine.source_folder(sessions, "Lists/X")
+
+    assert source == "INBOX.Lists.X"
+    assert engine.mail_pass_is_noop(
+        ActionSpec(fileinto="Lists/X"), source, "INBOX.Lists.X"
+    )

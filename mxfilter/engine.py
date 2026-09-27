@@ -32,6 +32,7 @@ from .imap import (
     MailActionResult,
     decode_header_value,
     normalize_folder,
+    same_folder,
 )
 from .rules import (
     Analysis,
@@ -1154,8 +1155,19 @@ def mail_pass_is_noop(spec: ActionSpec, source: str, destination: str) -> bool:
     return (
         not spec.discard
         and not spec.flags
-        and (not destination or destination.casefold() == source.casefold())
+        and (not destination or same_folder(destination, source))
     )
+
+
+# ----------------------------------------------------------------------------
+def source_folder(sessions: Sessions, name: str) -> str:
+    """Normalize the folder the existing-mail pass reads from.
+
+    The same normalization the target gets, so ``--folder Lists/X`` and
+    ``--fileinto Lists/X`` are recognised as one folder, and the search
+    selects the server's real name for it.
+    """
+    return _imap(sessions).normalize(name)
 
 
 # ----------------------------------------------------------------------------
