@@ -43,9 +43,9 @@ The rest of the write-path discipline is kept, not relaxed:
 - `restore` removes any rule added since the backup was taken, including one
   made in the panel. The diff shows every such rule as removed, and the
   confirmation is where that is caught.
-- 0002's hard stop is unchanged for every merging path (`add`,
-  `from-message`, `remove-rule`, and anything that edits one rule). This ADR
-  is an exception for the one path that does not merge, not a relaxation of
-  that rule.
+- 0002's hard stop is unchanged for every path that edits the parsed script
+  (`add`, `from-message`, `remove-rule`, `move-rule`). This ADR is an
+  exception for the one path that does not merge, not a relaxation of that
+  rule.
 
 [i13]: https://github.com/harleypig/mxroute-email-filters/issues/13

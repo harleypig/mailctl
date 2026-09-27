@@ -19,7 +19,7 @@ FEATURES:
   first, has the server validate the file, and asks before replacing
   anything (`--yes`, `--dry-run`). It works over a script mxfilter cannot
   parse — the one deliberate exception to the merge-only rule, recorded in
-  ADR 0005.
+  [ADR 0005][adr5].
 
 * **Folder subscription is a setting you can see and change** (#42).
   `mxfilter subscribe FOLDER` and `mxfilter unsubscribe FOLDER` show or hide
@@ -84,8 +84,9 @@ BUG FIXES:
   change.** The folder was made over IMAP while the change was still being
   worked out — before the diff, before any confirmation — so an abort, a
   rejected script, or a failed merge left a stray folder behind. It is now
-  announced with the plan and created on execute: after CHECKSCRIPT accepts
-  the script for `add`, after you confirm for `apply`. An `apply` with no
+  announced with the plan and created on execute: for `add` and
+  `from-message`, after CHECKSCRIPT accepts the script; for `apply`, after
+  you confirm. An `apply` with no
   matching mail no longer creates the folder at all, and says so.
 
 * **A rule that leaves mail where it is no longer offers to change it.**
@@ -301,3 +302,5 @@ NOTES:
 * CI runs `ruff check`, `ruff format --check`, and `pytest` on every pull
   request and on pushes to `master`; both checks are required by the branch
   ruleset.
+
+[adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
