@@ -30,8 +30,9 @@ from mailctl.cli import (
     render_event,
     report_folder_creation,
 )
+from mailctl.components.imap import FolderCreation
 from mailctl.engine import Sessions
-from mailctl.imap import FolderCreation, ImapSession
+from mailctl.providers.mxroute.imap import new_imap_session
 
 NEW_FOLDER = "INBOX.Lists.GitHub"
 
@@ -119,7 +120,7 @@ def test_an_lsub_failure_is_named_rather_than_treated_as_empty(
     fake_imap.failures["list_sub_folders"] = IMAPClientError("nope")
 
     with pytest.raises(MailctlError, match="LSUB failed"):
-        ImapSession(imap_config).open()
+        new_imap_session(imap_config).open()
 
 
 # ----------------------------------------------------------------------------

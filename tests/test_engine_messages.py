@@ -12,9 +12,9 @@ import pytest
 from imapclient.response_parser import parse_fetch_response
 
 from mailctl import MailctlError, engine
+from mailctl.components.imap import structure_has_attachment
 from mailctl.criteria import Criteria
 from mailctl.engine import Sessions
-from mailctl.imap import structure_has_attachment
 
 # ############################################################################
 # Messages

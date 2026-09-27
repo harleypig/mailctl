@@ -1,6 +1,6 @@
 """The core returns data; only the CLI prints.
 
-``config``, ``criteria``, ``imap``, ``rules``, every module under
+``config``, ``criteria``, ``rules``, every module under
 ``components/`` and ``providers/``, and the ``engine`` that drives them
 return structured values and raise ``MailctlError``. Every piece of
 rendering, prompting, and progress output lives in ``cli.py``
@@ -50,7 +50,6 @@ LAYERED_PACKAGES = ("components", "providers")
 CORE_MODULES = (
     "config",
     "criteria",
-    "imap",
     "rules",
     "engine",
     *sorted(
@@ -208,7 +207,9 @@ def test_the_walk_reaches_the_layered_packages():
     """A walk that found nothing would pass every guard above vacuously."""
     assert "components/managesieve/client" in CORE_MODULES
     assert "components/managesieve/script" in CORE_MODULES
+    assert "components/imap/client" in CORE_MODULES
     assert "providers/mxroute/sieve" in CORE_MODULES
+    assert "providers/mxroute/imap" in CORE_MODULES
 
 
 # ----------------------------------------------------------------------------
@@ -255,7 +256,10 @@ def test_reveal_is_called_only_where_a_credential_is_handed_to_a_client():
         if count:
             sites[name] = count
 
-    assert sites == {"components/managesieve/client": 1, "imap": 1}, (
+    assert sites == {
+        "components/managesieve/client": 1,
+        "components/imap/client": 1,
+    }, (
         f"Secret.reveal() call sites changed: {sites}. Each one hands the "
         f"password to a connection method and nothing else; review the "
         f"new one against CONVENTIONS.md > Credentials."

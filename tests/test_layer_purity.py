@@ -1,10 +1,14 @@
 """Layer 1 knows its protocol and nothing about any host (ADR 0006).
 
 A module under ``mailctl/components/`` may import the standard library, the
-protocol library it wraps, other ``mailctl.components`` modules, and
-``MailctlError`` -- and nothing else. Never the engine, the CLI, mailctl's
-``Config``, or a provider: each of those would tie a protocol library to
-one host or one front-end, which is the mix the two layers exist to undo.
+protocol library its own component wraps, other ``mailctl.components``
+modules, and ``MailctlError`` -- and nothing else. Never the engine, the
+CLI, mailctl's ``Config``, or a provider: each of those would tie a
+protocol library to one host or one front-end, which is the mix the two
+layers exist to undo.
+
+The wrapped library is per component: ``imap`` importing ``sievelib`` would
+tie the Gmail provider, which has no Sieve, to a library it never uses.
 
 The check resolves relative imports to absolute names first, because
 ``from ...config import Config`` and ``from mailctl.config import Config``
@@ -21,8 +25,8 @@ import mailctl
 
 PACKAGE = Path(mailctl.__file__).parent
 
-# The protocol libraries layer 1 wraps, by import name.
-WRAPPED_LIBRARIES = {"sievelib"}
+# The protocol library each layer-1 component wraps, by import name.
+WRAPPED_LIBRARIES = {"imap": "imapclient", "managesieve": "sievelib"}
 
 # The one name layer 1 may take from mailctl's own top level.
 ALLOWED_FROM_MAILCTL = {"MailctlError"}
@@ -71,13 +75,19 @@ def imports(source: str, package: str) -> list[tuple[str, set[str]]]:
 
 # ----------------------------------------------------------------------------
 def violations(source: str, package: str) -> list[str]:
-    """Return every import in ``source`` that layer 1 may not make."""
+    """Return every import in ``source`` that layer 1 may not make.
+
+    ``package`` names the component, as ``mailctl.components.<name>...``,
+    and so which wrapped library the source may use.
+    """
+    component = package.split(".")[2] if package.count(".") >= 2 else ""
+    wrapped = WRAPPED_LIBRARIES.get(component)
     bad = []
 
     for module, names in imports(source, package):
         top = module.split(".")[0]
 
-        if top in sys.stdlib_module_names or top in WRAPPED_LIBRARIES:
+        if top in sys.stdlib_module_names or top == wrapped:
             continue
 
         if module == "mailctl.components" or module.startswith(
@@ -106,6 +116,21 @@ def test_the_walk_finds_the_component_modules():
     assert "components/managesieve/client.py" in names
     assert "components/managesieve/script.py" in names
     assert "components/managesieve/servers/pigeonhole.py" in names
+    assert "components/imap/client.py" in names
+    assert "components/imap/servers/dovecot.py" in names
+
+
+# ----------------------------------------------------------------------------
+def test_every_component_names_the_library_it_wraps():
+    """A component missing from the table could import no library at all,
+    and one that should not be there would be allowed one."""
+    components = {
+        path.name
+        for path in (PACKAGE / "components").iterdir()
+        if (path / "__init__.py").exists()
+    }
+
+    assert components == set(WRAPPED_LIBRARIES)
 
 
 # ----------------------------------------------------------------------------
@@ -147,6 +172,22 @@ def test_the_guard_would_actually_catch_a_violation(source):
 @pytest.mark.parametrize(
     "source",
     [
+        "from ...config import Config\n",
+        "from ...providers.mxroute.imap import imap_session\n",
+        "from ...criteria import Criteria\n",
+        "import sievelib\n",
+        "from sievelib.managesieve import Client\n",
+    ],
+)
+def test_the_guard_catches_a_violation_in_the_imap_component(source):
+    """The same line for ``imap``, whose library is a different one."""
+    assert violations(source, "mailctl.components.imap"), source
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
         "from ... import MailctlError\n",
         "from .script import parse_script\n",
         "from ..managesieve import client\n",
@@ -157,3 +198,18 @@ def test_the_guard_would_actually_catch_a_violation(source):
 def test_the_guard_allows_what_layer_1_may_use(source):
     """Too wide a guard teaches people to ignore it."""
     assert violations(source, "mailctl.components.managesieve") == [], source
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from ... import MailctlError\n",
+        "from .folders import same_folder\n",
+        "from imapclient import IMAPClient\n",
+        "from imapclient.exceptions import LoginError\n",
+        "import email\n",
+    ],
+)
+def test_the_guard_allows_what_the_imap_component_may_use(source):
+    assert violations(source, "mailctl.components.imap") == [], source

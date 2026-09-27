@@ -15,6 +15,7 @@ import email
 import pytest
 
 from mailctl import MailctlError, engine
+from mailctl.components.imap import MailActionPlan
 from mailctl.components.managesieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
@@ -25,7 +26,6 @@ from mailctl.components.managesieve import (
 from mailctl.components.managesieve import client as sieve_client
 from mailctl.criteria import Criteria
 from mailctl.engine import ActionSpec, RuleRequest, Sessions
-from mailctl.imap import MailActionPlan
 from mailctl.providers.mxroute.sieve import parse_script
 
 FULL = ["fileinto", "imap4flags", "mailbox"]

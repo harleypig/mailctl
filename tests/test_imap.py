@@ -13,9 +13,9 @@ import pytest
 from imapclient.exceptions import IMAPClientError, LoginError
 
 from mailctl import MailctlError
-from mailctl.criteria import Criteria
-from mailctl.imap import (
+from mailctl.components.imap import (
     BULK_CHUNK,
+    ImapAuthenticationError,
     ImapSession,
     MailActionPlan,
     MessageSummary,
@@ -26,6 +26,8 @@ from mailctl.imap import (
     normalize_folder,
     split_path,
 )
+from mailctl.config import Secret
+from mailctl.criteria import Criteria
 
 # ############################################################################
 # Helpers
@@ -38,6 +40,20 @@ def message(sender: str, subject: str = "Subject line") -> bytes:
     return (
         f"From: {sender}\r\nSubject: {subject}\r\nTo: me@example.com\r\n\r\n"
     ).encode()
+
+
+# ----------------------------------------------------------------------------
+def plain_session(**overrides) -> ImapSession:
+    """An unopened session from plain parameters, as any provider builds it."""
+    settings = {
+        "host": "mail.example.com",
+        "port": 993,
+        "username": "user@example.com",
+        "password": lambda: Secret("not-a-real-password"),
+        **overrides,
+    }
+
+    return ImapSession(**settings)
 
 
 # ----------------------------------------------------------------------------
@@ -268,56 +284,56 @@ def test_open_reads_the_delimiter_and_the_folder_list(imap_session):
 
 
 # ----------------------------------------------------------------------------
-def test_port_993_uses_implicit_tls_and_143_uses_starttls(
-    fake_imap, imap_config
-):
-    """993 and 143 are different protocols, not different port numbers."""
-    ImapSession(imap_config).open()
+def test_ssl_is_implicit_tls_and_starttls_upgrades_a_plain_socket(fake_imap):
+    """Implicit TLS and STARTTLS are different protocols, not port numbers."""
+    plain_session().open()
 
     assert fake_imap.connected_to == ("mail.example.com", 993, True)
     assert fake_imap.starttls_called is False
 
-    imap_config.imap_port = 143
-    ImapSession(imap_config).open()
+    plain_session(port=143, tls="starttls").open()
 
     assert fake_imap.connected_to == ("mail.example.com", 143, False)
     assert fake_imap.starttls_called is True
 
 
 # ----------------------------------------------------------------------------
-def test_a_missing_setting_is_named_before_anything_connects(fake_imap):
-    """Failing on the settings is friendlier than failing on the socket."""
-    from mailctl.config import Config, Secret
-
-    config = Config(user="user@example.com")
-    config._password = Secret("x")
-
-    with pytest.raises(MailctlError, match="imap_host"):
-        ImapSession(config).open()
-
-    assert fake_imap.connected_to is None
-
-
-# ----------------------------------------------------------------------------
-def test_a_login_failure_names_the_full_address_convention(
-    fake_imap, imap_config
+def test_a_login_failure_is_its_own_error_and_never_holds_the_password(
+    fake_imap,
 ):
-    """MXroute wants the whole email address; the wrong guess looks generic.
-
-    The message also has to report the credential *state* and never the
-    credential.
-    """
+    """The provider adds host advice; the session says only what failed."""
     fake_imap.failures["login"] = LoginError("no")
 
-    with pytest.raises(MailctlError, match="FULL email address") as caught:
-        ImapSession(imap_config).open()
+    with pytest.raises(ImapAuthenticationError) as caught:
+        plain_session().open()
 
+    assert caught.value.username == "user@example.com"
+    assert caught.value.reason == "no"
     assert "not-a-real-password" not in str(caught.value)
 
 
 # ----------------------------------------------------------------------------
-def test_calling_a_method_before_open_fails_clearly(imap_config):
-    session = ImapSession(imap_config)
+def test_the_password_is_asked_for_only_as_the_login_is_made(fake_imap):
+    """A prompt or a credential command runs when needed, never before."""
+    asked = []
+
+    def password():
+        asked.append(True)
+
+        return Secret("not-a-real-password")
+
+    session = plain_session(password=password)
+
+    assert asked == []
+
+    session.open()
+
+    assert asked == [True]
+
+
+# ----------------------------------------------------------------------------
+def test_calling_a_method_before_open_fails_clearly():
+    session = plain_session()
 
     with pytest.raises(MailctlError, match="IMAP session is not open"):
         session.search(Criteria(), "INBOX")
@@ -333,22 +349,20 @@ def test_close_is_safe_to_call_twice(imap_session, fake_imap):
 
 
 # ----------------------------------------------------------------------------
-def test_the_session_works_as_a_context_manager(fake_imap, imap_config):
-    with ImapSession(imap_config) as session:
+def test_the_session_works_as_a_context_manager(fake_imap):
+    with plain_session() as session:
         assert session.delimiter == "."
 
     assert "logout" in fake_imap.names()
 
 
 # ----------------------------------------------------------------------------
-def test_the_progress_callback_receives_steps_instead_of_printing(
-    fake_imap, imap_config
-):
+def test_the_progress_callback_receives_steps_instead_of_printing(fake_imap):
     """The core returns data and reports through a callback; only the CLI
     prints (CONVENTIONS.md). A second front-end depends on that holding."""
     seen = []
 
-    ImapSession(imap_config, progress=seen.append).open()
+    plain_session(progress=seen.append).open()
 
     assert any("connecting to" in line for line in seen)
     assert any("delimiter" in line for line in seen)

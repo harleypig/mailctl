@@ -17,6 +17,7 @@ import sys
 import traceback
 
 from . import MailctlError, __version__, engine
+from .components.imap import FolderCreation, decode_header_value
 from .components.managesieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
@@ -39,7 +40,6 @@ from .engine import (
     ActionSpec,
     RuleRequest,
 )
-from .imap import FolderCreation, decode_header_value
 from .rules import CERTAIN
 
 __all__ = ["build_parser", "main"]

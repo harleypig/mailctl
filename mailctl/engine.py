@@ -27,6 +27,17 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from . import MailctlError
+from .components.imap import (
+    FolderCreation,
+    ImapSession,
+    MailActionPlan,
+    MailActionResult,
+    MessageSummary,
+    case_variant_hint,
+    decode_header_value,
+    normalize_folder,
+    same_folder,
+)
 from .components.managesieve import (
     UNIMPLEMENTED_ACTIONS,
     DisplayDiff,
@@ -49,17 +60,7 @@ from .config import (
     legacy_config_dir,
 )
 from .criteria import Criteria, escape_sieve_string
-from .imap import (
-    FolderCreation,
-    ImapSession,
-    MailActionPlan,
-    MailActionResult,
-    MessageSummary,
-    case_variant_hint,
-    decode_header_value,
-    normalize_folder,
-    same_folder,
-)
+from .providers.mxroute.imap import imap_session
 from .providers.mxroute.sieve import (
     MXROUTE_FORBIDDEN_ACTIONS,
     display_diff,
@@ -248,7 +249,7 @@ def connect(
 
         if imap:
             sessions.imap = stack.enter_context(
-                ImapSession(config, progress=channel("imap"))
+                imap_session(config, progress=channel("imap"))
             )
 
         if sieve:
