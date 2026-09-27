@@ -4,6 +4,10 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.4.0
+
+Released 2026-09-27.
+
 ENHANCEMENTS:
 
 * **`view --raw` into a file or a pipe is byte-exact.** `mxfilter view N
