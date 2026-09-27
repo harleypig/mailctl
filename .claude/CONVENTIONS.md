@@ -86,6 +86,9 @@ Built on two libraries, both of which the code wraps rather than exposes:
   script-editing helpers (parse / merge / render / diff / backup).
 - `mxfilter/imap.py` — the IMAP session wrapper (folders, search, move, flag)
   and folder-name normalization.
+- `mxfilter/rules.py` — reads a parsed script into a flat rule model and
+  reports which rules cannot fire where they are (shadowing, in both
+  directions); offline.
 - `mxfilter/engine.py` — the engine: every piece of work the tool does
   (open sessions, plan the target folder, merge a rule, back up and upload,
   plan and run the existing-mail pass, derive criteria from a message), for
@@ -103,12 +106,12 @@ live there.
 
 ## The core returns data; only the CLI prints
 
-**`config`, `criteria`, `sieve`, `imap`, and the `engine` that drives them
-return structured values and raise `MxFilterError`. Every piece of rendering,
-prompting, confirmation, and progress output lives in `cli.py`.** Two reasons,
-both cashing out now: the core stays testable without capturing stdout, and a
-future front-end can sit on the same core instead of requiring it to be torn
-apart first.
+**`config`, `criteria`, `sieve`, `imap`, `rules`, and the `engine` that
+drives them return structured values and raise `MxFilterError`. Every piece
+of rendering, prompting, confirmation, and progress output lives in
+`cli.py`.** Two reasons, both cashing out now: the core stays testable
+without capturing stdout, and a future front-end can sit on the same core
+instead of requiring it to be torn apart first.
 
 **The engine does not know how it was called.** It never takes an `argparse`
 namespace, never imports the CLI, and never reads the terminal or the

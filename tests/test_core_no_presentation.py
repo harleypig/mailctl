@@ -1,9 +1,9 @@
 """The core returns data; only the CLI prints.
 
-``config``, ``criteria``, ``sieve``, ``imap``, and the ``engine`` that
-drives them return structured values and raise ``MxFilterError``. Every
-piece of rendering, prompting, and progress output lives in ``cli.py``
-(CONVENTIONS.md).
+``config``, ``criteria``, ``sieve``, ``imap``, ``rules``, and the
+``engine`` that drives them return structured values and raise
+``MxFilterError``. Every piece of rendering, prompting, and progress output
+lives in ``cli.py`` (CONVENTIONS.md).
 
 The engine is held to one bar more: it must not know how it was called.
 So it may not import ``argparse`` or the CLI, and may not reach for the
@@ -40,7 +40,7 @@ BANNED_NAMES = {"print", "input", "breakpoint"}
 # takes a `prompter` callback for exactly this reason).
 BANNED_ATTRIBUTES = {"getpass", "getpass_", "print_exc"}
 
-CORE_MODULES = ("config", "criteria", "sieve", "imap", "engine")
+CORE_MODULES = ("config", "criteria", "sieve", "imap", "rules", "engine")
 
 # What would tie the engine to one front-end. The CLI module is named both
 # ways a package-relative import can spell it.
