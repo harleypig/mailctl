@@ -1,10 +1,10 @@
-$ mailctl test --password-file <TMP>/restore.sieve
+$ mailctl test --disable-extension Mailbox --disable-extension copy
 exit: 0
 --- stdout
 Sources:   environment
 Host:      mail.example.com  (environment)
 User:      user@example.com  (environment)
-Password:  set (via file)  (flag --password-file)
+Password:  set  (MAILCTL_PASSWORD, environment)
 IMAP:      mail.example.com:993  (host: same as host, port: default)
 Sieve:     mail.example.com:4190 (tls=starttls)  (default)
 Folder:    INBOX  (default)  -- read by apply, messages, view, from-message
@@ -15,10 +15,10 @@ ManageSieve: connected
   extensions mailctl uses (it writes rules that need them):
     fileinto     yes
     imap4flags   yes
-    mailbox      yes
+    mailbox      disabled by mailctl (flag --disable-extension)
 
   other extensions, for information (mailctl never uses):
-    copy         not advertised
+    copy         not advertised; disabled by mailctl too (flag --disable-extension)
     envelope     not advertised
     enotify      not advertised
     vacation     not advertised

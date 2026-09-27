@@ -1,0 +1,12 @@
+$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap --disable-extension mailbox
+exit: 1
+--- stdout
+
+--- stderr
+warning: no IMAP connection: assuming delimiter '.', target folder 'INBOX.Lists.GitHub'
+mailctl: the Sieve 'mailbox' extension is disabled by mailctl (disabled_extensions, from flag --disable-extension) and --no-imap was given, so 'INBOX.Lists.GitHub' cannot be created
+
+--- sieve calls
+('connect',)
+('logout',)
+--- imap calls

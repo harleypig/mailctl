@@ -363,6 +363,18 @@ about MXroute's configuration** is not.
   which is the failure this repo's *Confidence* discipline exists to prevent.
 - **Supported and used:** `fileinto`, `discard`, `stop`, `keep`, and flag
   actions.
+- **Every emitted feature declares its extension, in one table.**
+  `engine.EMIT_TABLE` maps each command, test, and tag a rule can contain to
+  the Sieve extension it needs (None for the base language). The required
+  set `mailctl test` reports and the check a rule is held to are both read
+  off it, and `tests/test_extensions.py` checks it against sievelib's own
+  `require` line over every rule shape — so a new action is added to the
+  table, never listed by hand anywhere else.
+- **`disabled_extensions` narrows what we emit; it never widens it.** A
+  disabled extension counts as not advertised, in plan and in execute: a
+  rule that needs it is refused naming the setting, and a fallback is used
+  where one exists (`mailbox` off → plain `fileinto`, folder created over
+  IMAP). It governs what mailctl writes, not rules already in the script.
 - **One criteria model, two translations.** A new matching capability is added
   to `criteria.py` and translated to *both* Sieve and IMAP `SEARCH` — never to
   one side only. Where IMAP `SEARCH` is coarser than the Sieve comparator, the

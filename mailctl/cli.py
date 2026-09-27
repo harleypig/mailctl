@@ -38,7 +38,6 @@ from .sieve import (
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
-    REPORTABLE_EXTENSIONS,
     DisplayDiff,
     Placement,
 )
@@ -524,6 +523,13 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
 
     elif plan.status == engine.FOLDER_IMAP_CREATE:
         announce_folder_creation(plan, args.dry_run)
+
+        if plan.mailbox_disabled_by is not None:
+            print(
+                "  The rule says plain 'fileinto', not 'fileinto :create': "
+                "the Sieve 'mailbox' extension is disabled by mailctl "
+                f"({plan.mailbox_disabled_by.describe()})."
+            )
 
     elif plan.status == engine.FOLDER_BOTH_CREATE:
         announce_folder_creation(plan, args.dry_run)
@@ -1214,13 +1220,13 @@ def cmd_test(args) -> int:
         # Nothing here asserts what MXRoute does or does not enable -- only
         # 'redirect' is a documented MXRoute policy, and a policy is not a
         # capability, so it would not show up here at all.
-        advertised = {name.lower() for name in sieve.capabilities}
+        report = engine.report_extensions(sieve, config)
 
-        print("\n  extensions mailctl checks:")
+        print("\n  extensions mailctl uses (it writes rules that need them):")
+        print_extension_states(report.required)
 
-        for name in REPORTABLE_EXTENSIONS:
-            state = "yes" if name in advertised else "not advertised"
-            print(f"    {name:<12} {state}")
+        print("\n  other extensions, for information (mailctl never uses):")
+        print_extension_states(report.informational)
 
         print(f"\n  active script: {sieve.active or '(none)'}")
         print(f"  other scripts: {', '.join(sieve.others) or '(none)'}")
@@ -1266,6 +1272,25 @@ def cmd_test(args) -> int:
     )
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def print_extension_states(states) -> None:
+    """One line per extension: advertised, and whether mailctl disabled it."""
+    for state in states:
+        if state.disabled_by is None:
+            shown = "yes" if state.advertised else "not advertised"
+
+        elif state.advertised:
+            shown = f"disabled by mailctl ({state.disabled_by.describe()})"
+
+        else:
+            shown = (
+                f"not advertised; disabled by mailctl too "
+                f"({state.disabled_by.describe()})"
+            )
+
+        print(f"    {state.name:<12} {shown}")
 
 
 # ----------------------------------------------------------------------------
@@ -1386,6 +1411,7 @@ def run_add(config, args, criteria: Criteria) -> int:
 
         plan = engine.plan_rule(
             sessions,
+            config,
             RuleRequest(
                 criteria=criteria,
                 actions=spec,
@@ -1855,6 +1881,16 @@ def connection_parser() -> argparse.ArgumentParser:
         help="where script backups are written, both the automatic "
         "pre-upload one and 'mailctl backup'; default "
         "$XDG_CONFIG_HOME/mailctl/backups",
+    )
+    group.add_argument(
+        "--disable-extension",
+        dest="disable_extension",
+        action="append",
+        metavar="NAME",
+        help="never emit this Sieve extension, even if the server "
+        "advertises it; repeatable, and replaces "
+        "MAILCTL_DISABLED_EXTENSIONS / disabled_extensions for this run. "
+        "'mailctl test' lists the names",
     )
 
     return parser

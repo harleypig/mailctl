@@ -4,14 +4,31 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **`disabled_extensions`: tell mailctl not to use a Sieve extension**
+  ([#82]). Set it in `config.toml` (a list), as
+  `MAILCTL_DISABLED_EXTENSIONS` (comma-separated, env file or environment),
+  or per run with `--disable-extension NAME` (repeatable); the highest source
+  replaces the lower ones, as every setting does. A disabled extension counts
+  as not advertised, whatever the server says: with `mailbox` off the rule
+  says plain `fileinto` and the folder is created over IMAP; a rule needing
+  `fileinto` or `imap4flags` while it is off is refused, naming the setting.
+  Disabling one the server lacks anyway changes nothing, and an unknown name
+  is an error naming it. `mailctl test` shows each extension as `yes`, `not
+  advertised`, or `disabled by mailctl (<source>)`.
+* **`mailctl test` splits its extension checklist in two** ([#82]):
+  `extensions mailctl uses (it writes rules that need them):`, now derived
+  from what mailctl actually writes rather than a hand-kept list, then `other
+  extensions, for information (mailctl never uses):`.
+
 ENHANCEMENTS:
 
 * **Clearer extension headings in `mailctl test`.** The server's raw Sieve
   list is now headed `capability (as the server reports it):` instead of
-  `extensions:`, and the yes / not-advertised checklist is headed
-  `extensions mailctl checks:` instead of `advertised extensions (from this
-  server, not assumed):`. Both are still read from the server; only the
-  wording changed.
+  `extensions:`. The yes / not-advertised checklist below it, briefly headed
+  `extensions mailctl checks:`, is now two blocks — see FEATURES above. Both
+  are still read from the server.
 
 ## 0.5.0
 
@@ -542,3 +559,4 @@ NOTES:
 [#56]: https://github.com/harleypig/mailctl/issues/56
 [#40]: https://github.com/harleypig/mailctl/issues/40
 [#45]: https://github.com/harleypig/mailctl/issues/45
+[#82]: https://github.com/harleypig/mailctl/issues/82

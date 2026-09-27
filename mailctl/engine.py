@@ -28,8 +28,10 @@ from pathlib import Path
 
 from . import MailctlError
 from .config import (
+    DEFAULT,
     Config,
     LegacySetting,
+    Source,
     config_dir,
     expand_path,
     legacy_config_dir,
@@ -93,6 +95,50 @@ FOLDER_SIEVE_CREATES = "sieve-creates"
 FOLDER_IMAP_CREATE = "imap-create"
 FOLDER_BOTH_CREATE = "imap-and-sieve-create"
 FOLDER_UNCREATABLE = "uncreatable"
+
+# Every command, test, and tag the engine can put in a rule, and the Sieve
+# extension it has to be `require`d under -- None for the base language.
+# The required set 'test' reports and the set a rule is checked against are
+# both read off this table, so a new emitted feature that is missing from
+# it fails at the first plan that emits it, not silently later.
+EMIT_TABLE: dict[str, str | None] = {
+    # actions
+    "addflag": "imap4flags",
+    "discard": None,
+    "fileinto": "fileinto",
+    "keep": None,
+    "stop": None,
+    # action tags
+    ":create": "mailbox",
+    # tests, their match types, and the combinators joining them
+    "header": None,
+    ":contains": None,
+    ":is": None,
+    ":matches": None,
+    "anyof": None,
+    "allof": None,
+}
+
+REQUIRED_EXTENSIONS = tuple(
+    sorted({ext for ext in EMIT_TABLE.values() if ext is not None})
+)
+
+# Reported by 'test' so the answer comes from the server rather than from
+# folklore. mailctl emits none of these; none of them decides anything.
+INFORMATIONAL_EXTENSIONS = (
+    "copy",
+    "envelope",
+    "enotify",
+    "vacation",
+    "regex",
+    "spamtest",
+    "extlists",
+)
+
+# The names disabled_extensions accepts: the ones 'test' reports. Disabling
+# an informational one changes nothing mailctl emits today, and keeps
+# holding if a later feature starts emitting it.
+KNOWN_EXTENSIONS = REQUIRED_EXTENSIONS + INFORMATIONAL_EXTENSIONS
 
 
 # ############################################################################
@@ -187,6 +233,8 @@ def connect(
     IMAP is opened first, so a login failure there is reported before any
     ManageSieve traffic.
     """
+
+    check_disabled_extensions(config)
 
     def channel(name: str):
         return partial(progress, name) if progress else None
@@ -380,6 +428,130 @@ def probe_imap(sessions: Sessions) -> ImapProbe:
         imap.delimiter,
         len(listing.folders),
         listing.unsubscribed,
+    )
+
+
+# ############################################################################
+# Sieve extensions -- what the server advertises, less what is disabled
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class ExtensionState:
+    """One extension as a run of mailctl sees it.
+
+    ``disabled_by`` is where ``disabled_extensions`` came from when the
+    name is in it, else None. Disabled wins over advertised: it is a
+    narrowing of what mailctl emits, never a claim about the server.
+    """
+
+    name: str
+    advertised: bool
+    disabled_by: Source | None = None
+
+    # ------------------------------------------------------------------------
+    @property
+    def usable(self) -> bool:
+        return self.advertised and self.disabled_by is None
+
+
+@dataclass(frozen=True)
+class ExtensionReport:
+    """The extensions mailctl emits, then the ones it only reports."""
+
+    required: list[ExtensionState]
+    informational: list[ExtensionState]
+
+
+# ----------------------------------------------------------------------------
+def check_disabled_extensions(config: Config) -> None:
+    """Refuse a disabled_extensions entry mailctl does not know.
+
+    A typo would otherwise disable nothing and say nothing, which is the
+    one outcome a switch must not have.
+    """
+    unknown = sorted(config.disabled_extensions - set(KNOWN_EXTENSIONS))
+
+    if unknown:
+        raise MailctlError(
+            f"disabled_extensions: unknown Sieve extension(s) "
+            f"{', '.join(repr(name) for name in unknown)} "
+            f"(from {disabled_source(config).describe()}). Known: "
+            f"{', '.join(KNOWN_EXTENSIONS)}"
+        )
+
+
+# ----------------------------------------------------------------------------
+def disabled_source(config: Config) -> Source:
+    """Where disabled_extensions came from; a hand-built Config has none."""
+    return config.sources.get("disabled_extensions", Source(DEFAULT))
+
+
+# ----------------------------------------------------------------------------
+def disabled_message(config: Config, names: Iterable[str]) -> str:
+    """Name what is disabled and the setting that disabled it."""
+    names = sorted(names)
+    listed = ", ".join(repr(name) for name in names)
+    noun = "extension" if len(names) == 1 else "extensions"
+    verb = "is" if len(names) == 1 else "are"
+
+    return (
+        f"the Sieve {noun} {listed} {verb} disabled by mailctl "
+        f"(disabled_extensions, from {disabled_source(config).describe()})"
+    )
+
+
+# ----------------------------------------------------------------------------
+def emitted_extensions(
+    actions: Iterable[tuple],
+    conditions: Iterable[tuple] = (),
+    matchtype: str | None = None,
+) -> set[str]:
+    """Return the extensions a rule's actions and tests need, by EMIT_TABLE.
+
+    An action tuple is ``(command, *arguments)``; any argument that is a
+    ``:tag`` counts. A condition is ``(header, :matchtype, value)``, the
+    shape ``Criteria.sieve_conditions`` builds.
+    """
+    names = []
+
+    for action in actions:
+        names.append(action[0])
+        names += [
+            part
+            for part in action[1:]
+            if isinstance(part, str) and part.startswith(":")
+        ]
+
+    for condition in conditions:
+        names += ["header", condition[1]]
+
+    if matchtype:
+        names.append(matchtype)
+
+    return {
+        extension
+        for name in names
+        if (extension := EMIT_TABLE[name]) is not None
+    }
+
+
+# ----------------------------------------------------------------------------
+def report_extensions(probe: SieveProbe, config: Config) -> ExtensionReport:
+    """Say, per extension, whether it is advertised and whether disabled."""
+    advertised = {name.lower() for name in probe.capabilities}
+    origin = disabled_source(config)
+
+    def state(name: str) -> ExtensionState:
+        return ExtensionState(
+            name,
+            name in advertised,
+            origin if name in config.disabled_extensions else None,
+        )
+
+    return ExtensionReport(
+        [state(name) for name in REQUIRED_EXTENSIONS],
+        [state(name) for name in INFORMATIONAL_EXTENSIONS],
     )
 
 
@@ -1039,6 +1211,23 @@ def sieve_actions(spec: ActionSpec, folder: str, use_create: bool) -> list:
     Flags are emitted before ``fileinto`` so the delivered copy carries
     them, and ``stop`` last so later rules do not also fire.
     """
+    actions = _action_tuples(spec, folder, use_create)
+
+    if not actions:
+        raise MailctlError(
+            "no action requested -- use --fileinto, --discard, --mark-read, "
+            "--flag, or --keep"
+        )
+
+    if spec.stop:
+        actions.append(("stop",))
+
+    return actions
+
+
+# ----------------------------------------------------------------------------
+def _action_tuples(spec: ActionSpec, folder: str, use_create: bool) -> list:
+    """The actions ahead of ``stop``; empty when nothing was asked for."""
     actions: list[tuple] = []
 
     for flag in spec.flags:
@@ -1059,15 +1248,6 @@ def sieve_actions(spec: ActionSpec, folder: str, use_create: bool) -> list:
     if spec.keep:
         actions.append(("keep",))
 
-    if not actions:
-        raise MailctlError(
-            "no action requested -- use --fileinto, --discard, --mark-read, "
-            "--flag, or --keep"
-        )
-
-    if spec.stop:
-        actions.append(("stop",))
-
     return actions
 
 
@@ -1080,18 +1260,26 @@ def required_extensions(
     ``folder`` is the resolved target, so a folder that came from
     ``Config.default_folder`` rather than ``spec.fileinto`` counts too.
     """
-    needed = set()
+    return emitted_extensions(_action_tuples(spec, folder, use_create))
 
-    if spec.flags:
-        needed.add("imap4flags")
 
-    if not spec.discard and folder:
-        needed.add("fileinto")
+# ----------------------------------------------------------------------------
+def check_rule_extensions(config: Config, actions: list) -> None:
+    """Refuse actions needing an extension disabled_extensions turns off.
 
-    if use_create:
-        needed.add("mailbox")
+    Checked at plan and again at execute, so a plan made under one
+    setting is not carried out under another.
+    """
+    blocked = emitted_extensions(actions) & config.disabled_extensions
 
-    return needed
+    if blocked:
+        it = "it" if len(blocked) == 1 else "them"
+
+        raise MailctlError(
+            f"{disabled_message(config, blocked)}, and this rule needs "
+            f"{it}. Drop the action that needs {it}, or take {it} out of "
+            f"disabled_extensions."
+        )
 
 
 # ----------------------------------------------------------------------------
@@ -1120,6 +1308,10 @@ class FolderPlan:
     only in case. Folder names are case-sensitive, so none of them is the
     target -- but a missing or to-be-created folder with one beside it is
     most likely a typo, and the front-end should say so (#56).
+
+    ``mailbox_disabled_by`` is set when the server advertises ``mailbox``
+    but ``disabled_extensions`` turns it off, so ``:create`` is not used;
+    it names where that setting came from.
     """
 
     requested: str
@@ -1129,6 +1321,7 @@ class FolderPlan:
     status: str
     subscribe: bool
     case_variants: tuple[str, ...] = ()
+    mailbox_disabled_by: Source | None = None
 
     # ------------------------------------------------------------------------
     @property
@@ -1167,7 +1360,10 @@ def plan_folder(
     first.
 
     With no ManageSieve session (the existing-mail pass alone) the Sieve
-    route is simply unavailable.
+    route is simply unavailable. ``mailbox`` named in
+    ``disabled_extensions`` counts as not advertised: the rule stays a
+    plain ``fileinto`` and IMAP, where there is a session, makes the
+    folder.
     """
     requested = requested or config.default_folder or ""
     imap = sessions.imap
@@ -1197,9 +1393,14 @@ def plan_folder(
     if imap is not None:
         shape["case_variants"] = tuple(imap.case_variants(folder))
 
-    has_mailbox = sessions.sieve is not None and not (
+    advertised = sessions.sieve is not None and not (
         sessions.sieve.missing_extensions({"mailbox"})
     )
+    disabled = "mailbox" in config.disabled_extensions
+    has_mailbox = advertised and not disabled
+
+    if advertised and disabled:
+        shape["mailbox_disabled_by"] = disabled_source(config)
 
     if not create:
         return FolderPlan(status=FOLDER_MISSING, **shape)
@@ -1216,11 +1417,21 @@ def plan_folder(
 # ----------------------------------------------------------------------------
 def check_folder(plan: FolderPlan) -> None:
     """Refuse a folder that was asked to be created and cannot be."""
-    if plan.status == FOLDER_UNCREATABLE:
+    if plan.status != FOLDER_UNCREATABLE:
+        return
+
+    if plan.mailbox_disabled_by is not None:
         raise MailctlError(
-            f"the server does not advertise the Sieve 'mailbox' extension "
-            f"and --no-imap was given, so {plan.folder!r} cannot be created"
+            f"the Sieve 'mailbox' extension is disabled by mailctl "
+            f"(disabled_extensions, from "
+            f"{plan.mailbox_disabled_by.describe()}) and --no-imap was "
+            f"given, so {plan.folder!r} cannot be created"
         )
+
+    raise MailctlError(
+        f"the server does not advertise the Sieve 'mailbox' extension "
+        f"and --no-imap was given, so {plan.folder!r} cannot be created"
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -1426,17 +1637,24 @@ def placement_analysis(
 
 # ----------------------------------------------------------------------------
 def plan_rule(
-    sessions: Sessions, request: RuleRequest, folder: FolderPlan
+    sessions: Sessions,
+    config: Config,
+    request: RuleRequest,
+    folder: FolderPlan,
 ) -> RulePlan:
     """Merge a rule into the active script without uploading it.
 
     Never overwrites: the rule is merged into the parsed existing script,
     and a parse failure is raised rather than fallen back from (ADR 0002).
+    A rule needing an extension named in ``disabled_extensions`` is
+    refused; the one with a fallback, ``mailbox``, was already dropped by
+    :func:`plan_folder`.
     """
     request.criteria.require_terms()
     check_folder(folder)
 
     actions = sieve_actions(request.actions, folder.folder, folder.use_create)
+    check_rule_extensions(config, actions)
     name = request.name or default_rule_name(request.criteria)
     script, before, active = fetch_active(sessions, request.script)
 
@@ -1592,6 +1810,7 @@ def execute_script_change(
     before_put = None
 
     if isinstance(plan, RulePlan):
+        check_rule_extensions(config, plan.actions)
         folder = plan.folder
 
         def before_put():

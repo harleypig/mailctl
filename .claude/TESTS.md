@@ -35,6 +35,11 @@ fixture required before anything writes to one is still outstanding
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - `engine` — every plan and execute step driven with plain inputs and
      session fakes, as any front-end would call it (`test_engine.py`).
+   - **Sieve extensions** (`test_extensions.py`) — the emit table checked
+     against sievelib's `require` line over every rule shape, and
+     `disabled_extensions` refusing, falling back, and doing nothing where
+     the server lacks the extension anyway. Its ladder is in
+     `test_config.py`.
    - **The old name** (`test_migration.py`) — `migrate-config` moving the
      old config directory (modes kept, a clash refused, `--dry-run` inert),
      the old-directory warning and when it stays silent, and old

@@ -240,6 +240,11 @@ class Config:
     source_folder: str = DEFAULT_SOURCE_FOLDER
     backup_dir: Path = field(default_factory=lambda: default_backup_dir())
 
+    # Sieve extensions mailctl must not emit, lower-cased, whatever the
+    # server advertises. Which names are known is the engine's to judge,
+    # since the engine owns what gets emitted; this only parses the list.
+    disabled_extensions: frozenset[str] = frozenset()
+
     # The three credential flags. argparse makes them mutually exclusive,
     # so at most one is ever populated from the command line: they are
     # three ways of saying the same explicit thing, and ranking equally
@@ -877,6 +882,29 @@ def _as_port(value, label: str) -> int:
 
 
 # ----------------------------------------------------------------------------
+def _as_extension_names(value, origin: Source) -> frozenset[str]:
+    """Normalize ``disabled_extensions`` from whichever source won.
+
+    The flag and the config file give a list, and a variable gives one
+    comma-separated string -- TOML has lists, so a string there is refused
+    rather than guessed at. Names are case-insensitive, as Sieve's own
+    are, so they are kept lower-cased; blanks are dropped.
+    """
+    if isinstance(value, str) and origin.kind != CONFIG_FILE:
+        value = value.split(",")
+
+    if not isinstance(value, list | tuple) or not all(
+        isinstance(item, str) for item in value
+    ):
+        raise MailctlError(
+            f"disabled_extensions: expected a list of extension names "
+            f"(from {origin.describe()})"
+        )
+
+    return frozenset(item.strip().lower() for item in value if item.strip())
+
+
+# ----------------------------------------------------------------------------
 def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
     """Build a Config from CLI args, an env file, environment, and TOML.
 
@@ -972,6 +1000,20 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
 
     backup_dir = setting("backup_dir", None)
 
+    # A list, but it climbs the ladder like any scalar: the highest source
+    # that sets it replaces the rest, so a one-run flag can narrow or widen
+    # what the config file says without the user having to unset anything.
+    disabled_raw = resolve(
+        "disabled_extensions",
+        flag="disable_extension",
+        var="MAILCTL_DISABLED_EXTENSIONS",
+        key="disabled_extensions",
+        default=((), Source(DEFAULT)),
+    )
+    disabled_extensions = _as_extension_names(
+        disabled_raw, sources["disabled_extensions"]
+    )
+
     default_folder = resolve(
         "default_folder", key="default_folder", default=("", Source(DEFAULT))
     )
@@ -1000,6 +1042,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
         sieve_tls=sieve_tls,
         default_folder=default_folder,
         source_folder=source_folder,
+        disabled_extensions=disabled_extensions,
         # Four fields rather than two: which source a credential came from
         # is what decides the order, so collapsing a flag and a config-file
         # value into one field would throw the answer away before

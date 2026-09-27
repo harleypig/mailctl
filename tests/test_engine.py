@@ -437,7 +437,7 @@ def test_a_folder_that_cannot_be_created_is_planned_then_refused(
     request = RuleRequest(criteria(), ActionSpec(fileinto="New"))
 
     with pytest.raises(MailctlError, match="cannot be created"):
-        engine.plan_rule(live, request, plan)
+        engine.plan_rule(live, imap_config, request, plan)
 
 
 # ############################################################################
@@ -457,7 +457,7 @@ def test_plan_rule_merges_without_touching_the_server(
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = engine.plan_rule(
-        sessions, request, folder_for(sessions, imap_config)
+        sessions, imap_config, request, folder_for(sessions, imap_config)
     )
 
     assert plan.script == "managesieve"
@@ -480,7 +480,9 @@ def test_on_an_empty_account_the_default_script_name_is_used(
     live = Sessions(FakeSieveSession(active=None), imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
-    plan = engine.plan_rule(live, request, folder_for(live, imap_config))
+    plan = engine.plan_rule(
+        live, imap_config, request, folder_for(live, imap_config)
+    )
 
     assert plan.script == engine.DEFAULT_SCRIPT_NAME
     assert plan.before == ""
@@ -499,7 +501,9 @@ def test_an_inactive_old_name_script_is_reused_not_duplicated(
     live = Sessions(sieve, imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
-    plan = engine.plan_rule(live, request, folder_for(live, imap_config))
+    plan = engine.plan_rule(
+        live, imap_config, request, folder_for(live, imap_config)
+    )
 
     assert plan.script == "mxfilter"
     assert plan.before == "# rule:[old]\n"
@@ -513,7 +517,9 @@ def test_an_active_old_name_script_stays_the_one_edited(
     live = Sessions(FakeSieveSession(active="mxfilter"), imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
-    plan = engine.plan_rule(live, request, folder_for(live, imap_config))
+    plan = engine.plan_rule(
+        live, imap_config, request, folder_for(live, imap_config)
+    )
 
     assert plan.script == "mxfilter"
 
@@ -524,7 +530,10 @@ def test_a_rule_that_does_nothing_is_refused(sessions, imap_config):
 
     with pytest.raises(MailctlError, match="no action requested"):
         engine.plan_rule(
-            sessions, request, folder_for(sessions, imap_config, None)
+            sessions,
+            imap_config,
+            request,
+            folder_for(sessions, imap_config, None),
         )
 
 
@@ -535,7 +544,9 @@ def test_a_duplicate_name_is_refused_without_replace(sessions, imap_config):
     )
 
     with pytest.raises(MailctlError, match="already exists"):
-        engine.plan_rule(sessions, request, folder_for(sessions, imap_config))
+        engine.plan_rule(
+            sessions, imap_config, request, folder_for(sessions, imap_config)
+        )
 
 
 # ----------------------------------------------------------------------------
@@ -549,7 +560,7 @@ def test_the_plan_judges_the_rule_where_it_will_land(sessions, imap_config):
     )
 
     plan = engine.plan_rule(
-        sessions, request, folder_for(sessions, imap_config)
+        sessions, imap_config, request, folder_for(sessions, imap_config)
     )
 
     assert "keep-boss" in {
@@ -574,7 +585,7 @@ def test_an_upload_backs_up_first_and_reports_each_step(
     imap_config.backup_dir = tmp_path / "backups"
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
     plan = engine.plan_rule(
-        sessions, request, folder_for(sessions, imap_config)
+        sessions, imap_config, request, folder_for(sessions, imap_config)
     )
 
     events = []
@@ -604,7 +615,7 @@ def test_a_rejected_upload_still_leaves_and_announces_the_backup(
     fake_sieve.reject = True
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
     plan = engine.plan_rule(
-        sessions, request, folder_for(sessions, imap_config)
+        sessions, imap_config, request, folder_for(sessions, imap_config)
     )
 
     events = []
@@ -763,7 +774,7 @@ def imap_created_folder_plan(imap_session, imap_config):
     folder = engine.plan_folder(live, imap_config, "New", create=True)
     request = RuleRequest(criteria(), ActionSpec(fileinto="New"))
 
-    return live, engine.plan_rule(live, request, folder)
+    return live, engine.plan_rule(live, imap_config, request, folder)
 
 
 # ----------------------------------------------------------------------------
@@ -814,7 +825,10 @@ def test_a_sieve_create_rule_also_creates_and_subscribes_on_execute(
         sessions, imap_config, "New", create=True, subscribe=subscribe
     )
     plan = engine.plan_rule(
-        sessions, RuleRequest(criteria(), ActionSpec(fileinto="New")), folder
+        sessions,
+        imap_config,
+        RuleRequest(criteria(), ActionSpec(fileinto="New")),
+        folder,
     )
 
     assert 'fileinto :create "INBOX.New"' in plan.after
@@ -839,7 +853,10 @@ def test_a_rejected_sieve_create_rule_leaves_no_folder_behind(
     imap_config.backup_dir = tmp_path
     folder = engine.plan_folder(sessions, imap_config, "New", create=True)
     plan = engine.plan_rule(
-        sessions, RuleRequest(criteria(), ActionSpec(fileinto="New")), folder
+        sessions,
+        imap_config,
+        RuleRequest(criteria(), ActionSpec(fileinto="New")),
+        folder,
     )
     sessions.sieve.reject = True
 
@@ -1210,7 +1227,9 @@ def test_activate_switches_the_running_script_when_asked(
             script="spare",
             activate=True,
         )
-        plan = engine.plan_rule(live, request, folder_for(live, imap_config))
+        plan = engine.plan_rule(
+            live, imap_config, request, folder_for(live, imap_config)
+        )
 
     elif kind == "removal":
         plan = engine.plan_removal(live, "keep-boss", "spare", activate=True)
@@ -1236,7 +1255,7 @@ def test_with_no_active_script_the_edited_one_is_activated(
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = engine.plan_rule(
-        sessions, request, folder_for(sessions, imap_config)
+        sessions, imap_config, request, folder_for(sessions, imap_config)
     )
 
     assert plan.activate

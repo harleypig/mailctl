@@ -12,10 +12,12 @@ Folder:    Lists  (config file <TMP>/config/mailctl/config.toml)  -- read by app
 ManageSieve: connected
   capability (as the server reports it): fileinto, imap4flags, mailbox, regex
 
-  extensions mailctl checks:
+  extensions mailctl uses (it writes rules that need them):
     fileinto     yes
     imap4flags   yes
     mailbox      yes
+
+  other extensions, for information (mailctl never uses):
     copy         not advertised
     envelope     not advertised
     enotify      not advertised
