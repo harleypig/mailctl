@@ -1,4 +1,4 @@
-$ mxfilter from-message --uid 9 --derive subject --fileinto Lists --dry-run
+$ mailctl from-message --uid 9 --derive subject --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Message uid 9 in 'INBOX':
@@ -13,7 +13,7 @@ Rule 'subject-inv-0-pwn-oice' on script 'managesieve':
   when:  Subject contains 'Inv\x1b]0;pwn\x07oice'
   then:  fileinto INBOX.Lists; stop
 
-Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
 --- sieve diff ---
 --- managesieve (current)

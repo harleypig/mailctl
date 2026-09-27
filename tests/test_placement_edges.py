@@ -5,7 +5,7 @@ they say on the shapes they were written for. This file assumes they do not.
 
 Two properties are worth attacking, and only two:
 
-* **ADR 0002 -- rules mxfilter did not write must survive.** Reordering is a
+* **ADR 0002 -- rules mailctl did not write must survive.** Reordering is a
   brand-new way to break that. Every earlier merge appended, so the list the
   user's hand-made rules live in was never rewritten; now it is, on every
   placed rule. A reorder that drops a rule, mangles a body, loses a name, or
@@ -28,12 +28,12 @@ import re
 
 import pytest
 
-from mxfilter import MxFilterError
-from mxfilter.cli import build_parser, print_placement
-from mxfilter.criteria import Criteria
-from mxfilter.engine import placement_analysis
-from mxfilter.rules import analyze_placement, read_rules, rule_from_criteria
-from mxfilter.sieve import (
+from mailctl import MailctlError
+from mailctl.cli import build_parser, print_placement
+from mailctl.criteria import Criteria
+from mailctl.engine import placement_analysis
+from mailctl.rules import analyze_placement, read_rules, rule_from_criteria
+from mailctl.sieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
@@ -131,7 +131,7 @@ def script_of(*names: str) -> str:
 def rule_blocks(text: str) -> dict[str, str]:
     """Split a rendered script into its rule bodies, keyed by rule name.
 
-    Everything mxfilter emits carries a Roundcube name marker, so the
+    Everything mailctl emits carries a Roundcube name marker, so the
     markers are the block boundaries. The bodies come back stripped, which
     is what lets two renders be compared for byte identity without the
     blank line between rules counting as a difference.
@@ -160,7 +160,7 @@ def require_line(text: str) -> str:
 
 # ----------------------------------------------------------------------------
 def baseline() -> str:
-    """Return MIXED_SCRIPT as mxfilter renders it, with nothing moved.
+    """Return MIXED_SCRIPT as mailctl renders it, with nothing moved.
 
     A merge normalises whitespace, so the user's original text is not the
     thing a reorder has to preserve -- the *rendered* form is. Comparing a
@@ -180,7 +180,7 @@ def test_both_name_dialects_survive_a_reorder_attached_to_the_right_rules():
     """A reorder must not shuffle names against bodies.
 
     Names and bodies live in the same dict entry, so nothing *obviously*
-    detaches them -- which is the reason to check. mxfilter reads two
+    detaches them -- which is the reason to check. mailctl reads two
     dialects and writes one, so a rule Roundcube named and a rule sievelib
     named travel through the reorder by different routes, and a name that
     lands on its neighbour's body is a rule the user can no longer find by
@@ -330,7 +330,7 @@ def test_a_reorder_neither_drops_nor_duplicates_a_requirement(placement):
 def test_a_reordered_script_re_renders_to_itself(reparse):
     """Parse, render, parse, render -- the second pass must change nothing.
 
-    The next ``mxfilter add`` parses whatever this one wrote, so instability
+    The next ``mailctl add`` parses whatever this one wrote, so instability
     here would mean a script that drifts on every run, and a diff that shows
     changes nobody asked for. The reorder is the new thing that could
     introduce it, because it is the only step that rewrites the rule list.
@@ -388,7 +388,7 @@ def test_a_name_marker_inside_a_string_is_not_a_rule_to_reorder_around():
     assert 'header :contains "subject" "# rule:[phantom]"' in merged
     assert 'fileinto "INBOX.# rule:[fake]";' in merged
 
-    with pytest.raises(MxFilterError, match="no rule named 'phantom'"):
+    with pytest.raises(MailctlError, match="no rule named 'phantom'"):
         merge(
             DECOY_SCRIPT,
             "new",
@@ -417,7 +417,7 @@ def test_a_placement_flag_opens_no_way_around_the_parse_hard_stop(placement):
     """
     unparseable = 'require ["fileinto"];\nif header :contains "to" {\n oops\n'
 
-    with pytest.raises(MxFilterError, match="could not be parsed"):
+    with pytest.raises(MailctlError, match="could not be parsed"):
         merge(unparseable, "new", "INBOX.New", placement=placement)
 
 
@@ -430,7 +430,7 @@ def test_a_name_collision_is_reported_before_a_placement_is_resolved():
     send the user off to check their anchor for a fault that is not there --
     and the anchor may be perfectly valid, as it is below.
     """
-    with pytest.raises(MxFilterError, match="already exists"):
+    with pytest.raises(MailctlError, match="already exists"):
         merge(
             script_of("taken", "other"),
             "taken",
@@ -634,7 +634,7 @@ def test_an_anchor_that_only_looks_like_a_rule_name_is_refused(anchor):
     ``Lists`` -- the space is not part of the name -- so a user copying the
     marker text verbatim is holding a string the script does not contain.
     """
-    with pytest.raises(MxFilterError, match="no rule named"):
+    with pytest.raises(MailctlError, match="no rule named"):
         merge(
             script_of("Lists", "Other"),
             "new",
@@ -847,7 +847,7 @@ def test_no_two_placement_flags_are_accepted_together(argv):
 # ############################################################################
 #
 # `# rule:[Lists]` and `# rule:[Lists ]` both parse to `Lists`, so a
-# hand-edited script can hold two rules mxfilter sees as one name. That is
+# hand-edited script can hold two rules mailctl sees as one name. That is
 # already ambiguous for `--replace` -- it updates one of them -- but the
 # reorder is new, and losing one of the two would be an ADR 0002 failure
 # rather than an ambiguity.

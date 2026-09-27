@@ -1,4 +1,4 @@
-$ mxfilter subscribe Lists
+$ mailctl subscribe Lists
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

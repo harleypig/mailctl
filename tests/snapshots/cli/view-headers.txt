@@ -1,4 +1,4 @@
-$ mxfilter view 4 --headers-only
+$ mailctl view 4 --headers-only
 exit: 0
 --- stdout
 From: Boss <boss@example.com>

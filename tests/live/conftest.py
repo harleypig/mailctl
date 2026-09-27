@@ -28,6 +28,7 @@ import os
 
 import pytest
 
+# Still the old name's prefix; renaming it is the env migration (#45).
 LIVE_FLAG = "MXFILTER_LIVE"
 LIVE_VALUE = "1"
 
@@ -108,7 +109,7 @@ def live_config():
     """The account settings, resolved the same way the CLI resolves them."""
     import argparse
 
-    from mxfilter.config import load_config
+    from mailctl.config import load_config
 
     return load_config(argparse.Namespace())
 

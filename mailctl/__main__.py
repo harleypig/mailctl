@@ -1,4 +1,4 @@
-"""Allow ``python -m mxfilter`` alongside the installed console script."""
+"""Allow ``python -m mailctl`` alongside the installed console script."""
 
 import sys
 

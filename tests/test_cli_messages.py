@@ -19,8 +19,8 @@ import sys
 
 import pytest
 
-from mxfilter import cli
-from mxfilter.imap import MessageSummary
+from mailctl import cli
+from mailctl.imap import MessageSummary
 
 ESC = "\x1b"
 
@@ -251,7 +251,7 @@ def test_a_bidi_override_cannot_disguise_an_attachment(run):
     ],
 )
 def test_raw_into_a_pipe_is_the_exact_message(run_piped, uid, source):
-    """'mxfilter view N --raw > msg.eml' saves the message itself: no
+    """'mailctl view N --raw > msg.eml' saves the message itself: no
     decoding, no escaping, no newline added or translated."""
     assert run_piped("view", str(uid), "--raw") == source
 

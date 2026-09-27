@@ -16,16 +16,16 @@ covers the two things that are not visible in the rendered script:
 
 import pytest
 
-from mxfilter import MxFilterError
-from mxfilter.cli import build_parser, placement_from_args
-from mxfilter.criteria import Criteria
-from mxfilter.rules import (
+from mailctl import MailctlError
+from mailctl.cli import build_parser, placement_from_args
+from mailctl.criteria import Criteria
+from mailctl.rules import (
     CERTAIN,
     analyze_placement,
     read_rules,
     rule_from_criteria,
 )
-from mxfilter.sieve import (
+from mailctl.sieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
@@ -75,7 +75,7 @@ def candidate(value: str, name: str = "New"):
 
 # ----------------------------------------------------------------------------
 def test_no_placement_appends_a_rule_that_is_not_there_yet():
-    """None means "whatever mxfilter did before the flags existed"."""
+    """None means "whatever mailctl did before the flags existed"."""
     assert resolve_position(NAMES, None, "new") == 3
 
 
@@ -153,7 +153,7 @@ def test_an_anchor_on_an_empty_script_says_the_script_is_empty():
     known rules reads ``(none)``, which answers the question the error
     raises rather than leaving the user to run ``list`` to find out.
     """
-    with pytest.raises(MxFilterError, match=r"Known rules: \(none\)"):
+    with pytest.raises(MailctlError, match=r"Known rules: \(none\)"):
         resolve_position([], Placement(PLACE_BEFORE, "anything"), "new")
 
 
@@ -164,7 +164,7 @@ def test_an_unknown_anchor_names_the_flag_that_could_not_be_satisfied():
     ``--before`` and ``--after`` fail identically otherwise, and a user who
     typed one of them wants to be told about that one.
     """
-    with pytest.raises(MxFilterError) as raised:
+    with pytest.raises(MailctlError) as raised:
         resolve_position(NAMES, Placement(PLACE_AFTER, "typo"), "new")
 
     assert "--after" in str(raised.value)
@@ -180,7 +180,7 @@ def test_naming_the_rule_itself_is_refused_before_the_lookup():
     rule does not exist -- while listing it among the known ones. Checking
     self-reference first is what keeps the message honest.
     """
-    with pytest.raises(MxFilterError, match="names the rule being added"):
+    with pytest.raises(MailctlError, match="names the rule being added"):
         resolve_position(NAMES, Placement(PLACE_BEFORE, "two"), "two")
 
 

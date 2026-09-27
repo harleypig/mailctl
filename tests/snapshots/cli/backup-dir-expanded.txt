@@ -1,4 +1,4 @@
-$ mxfilter backup
+$ mailctl backup
 exit: 0
 --- stdout
 wrote 2 rule(s) to <TMP>/config/elsewhere/managesieve-<STAMP>.sieve

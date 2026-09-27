@@ -1,11 +1,11 @@
-$ mxfilter apply --from noreply@github.com --fileinto lists
+$ mailctl apply --from noreply@github.com --fileinto lists
 exit: 1
 --- stdout
 Folder 'lists' resolves to 'INBOX.lists' (delimiter '.')
 
 --- stderr
 warning: no folder 'INBOX.lists', but 'INBOX.Lists' differs only in case; folder names are case-sensitive, so it does not count
-mxfilter: target folder 'INBOX.lists' does not exist; pass --create-folder to create it
+mailctl: target folder 'INBOX.lists' does not exist; pass --create-folder to create it
 
 --- sieve calls
 --- imap calls

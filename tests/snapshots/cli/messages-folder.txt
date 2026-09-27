@@ -1,4 +1,4 @@
-$ mxfilter messages --folder Lists
+$ mailctl messages --folder Lists
 exit: 0
 --- stdout
 5 message(s) in 'INBOX.Lists', newest first:

@@ -14,12 +14,12 @@ import email
 
 import pytest
 
-from mxfilter import MxFilterError, engine
-from mxfilter import sieve as sieve_module
-from mxfilter.criteria import Criteria
-from mxfilter.engine import ActionSpec, RuleRequest, Sessions
-from mxfilter.imap import MailActionPlan
-from mxfilter.sieve import (
+from mailctl import MailctlError, engine
+from mailctl import sieve as sieve_module
+from mailctl.criteria import Criteria
+from mailctl.engine import ActionSpec, RuleRequest, Sessions
+from mailctl.imap import MailActionPlan
+from mailctl.sieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
@@ -75,7 +75,7 @@ class FakeSieveSession:
         self.calls.append(("check_script",))
 
         if self.reject:
-            raise MxFilterError("the server rejected the script")
+            raise MailctlError("the server rejected the script")
 
     # ------------------------------------------------------------------------
     def put_script(self, name, content):
@@ -160,10 +160,10 @@ def test_connect_opens_only_what_was_asked_for_and_tags_progress(
 
 # ----------------------------------------------------------------------------
 def test_an_operation_without_its_session_raises_rather_than_crashing():
-    with pytest.raises(MxFilterError, match="no ManageSieve session"):
+    with pytest.raises(MailctlError, match="no ManageSieve session"):
         engine.list_scripts(Sessions())
 
-    with pytest.raises(MxFilterError, match="no IMAP session"):
+    with pytest.raises(MailctlError, match="no IMAP session"):
         engine.list_folders(Sessions())
 
 
@@ -184,7 +184,7 @@ def test_read_script_takes_the_active_one_and_parses_only_on_demand(
     # Showing an unparseable script must still be possible.
     broken = engine.ScriptText("broken", "if {{{")
 
-    with pytest.raises(MxFilterError):
+    with pytest.raises(MailctlError):
         broken.rule_names()
 
 
@@ -192,10 +192,10 @@ def test_read_script_takes_the_active_one_and_parses_only_on_demand(
 def test_reading_with_no_active_script_says_so():
     empty = Sessions(sieve=FakeSieveSession(active=None))
 
-    with pytest.raises(MxFilterError, match="name one explicitly"):
+    with pytest.raises(MailctlError, match="name one explicitly"):
         engine.read_script(empty)
 
-    with pytest.raises(MxFilterError, match="no rules to show"):
+    with pytest.raises(MailctlError, match="no rules to show"):
         engine.read_rules(empty)
 
 
@@ -244,7 +244,7 @@ def test_a_backup_is_planned_then_written_byte_for_byte(
 
 # ----------------------------------------------------------------------------
 def test_a_backup_with_no_active_script_is_refused(imap_config):
-    with pytest.raises(MxFilterError, match="nothing to back up"):
+    with pytest.raises(MailctlError, match="nothing to back up"):
         engine.plan_backup(
             Sessions(sieve=FakeSieveSession(active=None)), imap_config
         )
@@ -265,13 +265,13 @@ def test_count_rules_reports_rather_than_raises_on_a_broken_script(
 
 # ----------------------------------------------------------------------------
 def test_redirect_is_refused_with_the_forwarder_pointer():
-    with pytest.raises(MxFilterError, match=r"(?i)forward"):
+    with pytest.raises(MailctlError, match=r"(?i)forward"):
         engine.reject_actions(["redirect"])
 
 
 # ----------------------------------------------------------------------------
 def test_an_unimplemented_action_is_refused_as_our_choice():
-    with pytest.raises(MxFilterError, match="conservative choice of ours"):
+    with pytest.raises(MailctlError, match="conservative choice of ours"):
         engine.reject_actions(["vacation"])
 
 
@@ -400,7 +400,7 @@ def test_creating_a_folder_that_was_not_planned_for_it_is_refused(
 ):
     plan = engine.plan_folder(sessions, imap_config, "Lists")
 
-    with pytest.raises(MxFilterError, match="not planned for IMAP creation"):
+    with pytest.raises(MailctlError, match="not planned for IMAP creation"):
         engine.create_folder(sessions, plan)
 
 
@@ -425,12 +425,12 @@ def test_a_folder_that_cannot_be_created_is_planned_then_refused(
 
     assert plan.status == engine.FOLDER_UNCREATABLE
 
-    with pytest.raises(MxFilterError, match="cannot be created"):
+    with pytest.raises(MailctlError, match="cannot be created"):
         engine.check_folder(plan)
 
     request = RuleRequest(criteria(), ActionSpec(fileinto="New"))
 
-    with pytest.raises(MxFilterError, match="cannot be created"):
+    with pytest.raises(MailctlError, match="cannot be created"):
         engine.plan_rule(live, request, plan)
 
 
@@ -484,7 +484,7 @@ def test_on_an_empty_account_the_default_script_name_is_used(
 def test_a_rule_that_does_nothing_is_refused(sessions, imap_config):
     request = RuleRequest(criteria(), ActionSpec())
 
-    with pytest.raises(MxFilterError, match="no action requested"):
+    with pytest.raises(MailctlError, match="no action requested"):
         engine.plan_rule(
             sessions, request, folder_for(sessions, imap_config, None)
         )
@@ -496,7 +496,7 @@ def test_a_duplicate_name_is_refused_without_replace(sessions, imap_config):
         criteria(), ActionSpec(fileinto="Lists"), name="keep-boss"
     )
 
-    with pytest.raises(MxFilterError, match="already exists"):
+    with pytest.raises(MailctlError, match="already exists"):
         engine.plan_rule(sessions, request, folder_for(sessions, imap_config))
 
 
@@ -571,7 +571,7 @@ def test_a_rejected_upload_still_leaves_and_announces_the_backup(
 
     events = []
 
-    with pytest.raises(MxFilterError, match="rejected"):
+    with pytest.raises(MailctlError, match="rejected"):
         engine.execute_script_change(
             sessions, imap_config, plan, events.append
         )
@@ -595,12 +595,12 @@ def test_a_removal_is_planned_without_touching_the_server(
 def test_removing_from_an_empty_script_or_an_unknown_rule_is_refused(
     sessions,
 ):
-    with pytest.raises(MxFilterError, match="no rule named"):
+    with pytest.raises(MailctlError, match="no rule named"):
         engine.plan_removal(sessions, "phantom")
 
     empty = Sessions(sieve=FakeSieveSession(script=""))
 
-    with pytest.raises(MxFilterError, match="is empty"):
+    with pytest.raises(MailctlError, match="is empty"):
         engine.plan_removal(empty, "keep-boss")
 
 
@@ -651,10 +651,10 @@ def test_a_plan_over_the_cap_is_refused_whole(sessions, mailbox):
         sessions, criteria(), ActionSpec(), "INBOX", "INBOX.Lists"
     )
 
-    with pytest.raises(MxFilterError, match="NO existing message"):
+    with pytest.raises(MailctlError, match="NO existing message"):
         engine.check_message_cap(plan, 1)
 
-    with pytest.raises(MxFilterError, match="NO existing message"):
+    with pytest.raises(MailctlError, match="NO existing message"):
         engine.execute_mail(sessions, plan, max_messages=1)
 
     assert "move" not in mailbox.names()
@@ -664,7 +664,7 @@ def test_a_plan_over_the_cap_is_refused_whole(sessions, mailbox):
 def test_a_mail_pass_that_would_do_nothing_is_refused(sessions, imap_config):
     folder = engine.plan_folder(sessions, imap_config, None)
 
-    with pytest.raises(MxFilterError, match="nothing to do"):
+    with pytest.raises(MailctlError, match="nothing to do"):
         engine.require_mail_action(folder, ActionSpec())
 
     engine.require_mail_action(folder, ActionSpec(discard=True))
@@ -686,7 +686,7 @@ def test_a_search_picks_the_newest_match_and_says_how_many(sessions, mailbox):
 
 # ----------------------------------------------------------------------------
 def test_a_search_with_no_match_is_refused(sessions, fake_imap):
-    with pytest.raises(MxFilterError, match="matched"):
+    with pytest.raises(MailctlError, match="matched"):
         engine.pick_message(sessions, "INBOX", search="FROM nobody")
 
 
@@ -710,7 +710,7 @@ def test_a_missing_header_is_reported_as_skipped_not_raised():
 
     empty = engine.derive_criteria(headers(From="a@x.org"), "cc")
 
-    with pytest.raises(MxFilterError):
+    with pytest.raises(MailctlError):
         empty.criteria.require_terms()
 
 
@@ -756,7 +756,7 @@ def test_a_rejected_script_leaves_no_folder_behind(
     live, plan = imap_created_folder_plan(imap_session, imap_config)
     live.sieve.reject = True
 
-    with pytest.raises(MxFilterError, match="rejected"):
+    with pytest.raises(MailctlError, match="rejected"):
         engine.execute_script_change(live, imap_config, plan)
 
     assert "create_folder" not in fake_imap.names()
@@ -805,7 +805,7 @@ def test_a_rejected_sieve_create_rule_leaves_no_folder_behind(
     )
     sessions.sieve.reject = True
 
-    with pytest.raises(MxFilterError, match="rejected"):
+    with pytest.raises(MailctlError, match="rejected"):
         engine.execute_script_change(sessions, imap_config, plan)
 
     assert "create_folder" not in fake_imap.names()
@@ -902,10 +902,10 @@ def test_a_plan_that_changes_nothing_does_nothing(sessions, fake_imap):
 
 # ----------------------------------------------------------------------------
 def test_a_missing_folder_cannot_be_subscribed(sessions):
-    with pytest.raises(MxFilterError, match="nothing to subscribe to"):
+    with pytest.raises(MailctlError, match="nothing to subscribe to"):
         engine.plan_subscription(sessions, "Nowhere", subscribe=True)
 
-    with pytest.raises(MxFilterError, match="no folder or subscription"):
+    with pytest.raises(MailctlError, match="no folder or subscription"):
         engine.plan_subscription(sessions, "Nowhere", subscribe=False)
 
 
@@ -926,7 +926,7 @@ def test_a_subscribe_the_server_ignores_is_an_error(sessions, fake_imap):
     fake_imap.subscribe_takes_effect = False
     plan = engine.plan_subscription(sessions, "spam", subscribe=True)
 
-    with pytest.raises(MxFilterError, match="still does not list it"):
+    with pytest.raises(MailctlError, match="still does not list it"):
         engine.execute_subscription(sessions, plan)
 
 
@@ -997,7 +997,7 @@ def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
 
 # ----------------------------------------------------------------------------
 def test_a_restore_needs_a_readable_file(tmp_path):
-    with pytest.raises(MxFilterError, match="could not read backup"):
+    with pytest.raises(MailctlError, match="could not read backup"):
         engine.read_backup_file(tmp_path / "no")
 
 
@@ -1007,7 +1007,7 @@ def test_with_nothing_active_a_restore_asks_for_script(tmp_path):
     backup.write_text("x")
     live = Sessions(sieve=FakeSieveSession(active=None))
 
-    with pytest.raises(MxFilterError, match=r"no active script.*--script"):
+    with pytest.raises(MailctlError, match=r"no active script.*--script"):
         engine.plan_restore(live, engine.read_backup_file(backup))
 
 
@@ -1078,7 +1078,7 @@ def test_an_empty_backup_is_refused_unless_allowed(content, tmp_path):
     backup.write_bytes(content.encode())
     live = Sessions(sieve=FakeSieveSession(script="old\n"))
 
-    with pytest.raises(MxFilterError, match="--allow-empty"):
+    with pytest.raises(MailctlError, match="--allow-empty"):
         engine.read_backup_file(backup)
 
     plan = engine.plan_restore(
@@ -1100,7 +1100,7 @@ def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
     fake.reject = True
     live = Sessions(sieve=fake)
 
-    with pytest.raises(MxFilterError, match="rejected"):
+    with pytest.raises(MailctlError, match="rejected"):
         engine.execute_restore(
             live,
             imap_config,
@@ -1268,15 +1268,15 @@ def test_a_move_to_where_the_rule_already_is_changes_nothing(sessions):
 def test_moving_an_unknown_rule_or_against_an_unknown_anchor_is_refused(
     sessions,
 ):
-    with pytest.raises(MxFilterError, match="no rule named 'phantom'"):
+    with pytest.raises(MailctlError, match="no rule named 'phantom'"):
         engine.plan_move(sessions, "phantom", Placement(PLACE_FIRST))
 
-    with pytest.raises(MxFilterError, match="Known rules"):
+    with pytest.raises(MailctlError, match="Known rules"):
         engine.plan_move(
             sessions, "keep-boss", Placement(PLACE_AFTER, "phantom")
         )
 
-    with pytest.raises(MxFilterError, match="has no position"):
+    with pytest.raises(MailctlError, match="has no position"):
         engine.plan_move(
             sessions, "keep-boss", Placement(PLACE_BEFORE, "keep-boss")
         )
@@ -1351,7 +1351,7 @@ def test_an_exact_folder_has_no_case_variants(sessions, imap_config):
 
 # ----------------------------------------------------------------------------
 def test_subscribing_a_case_variant_names_the_real_folder(sessions):
-    with pytest.raises(MxFilterError, match=r"'INBOX\.Lists' exists"):
+    with pytest.raises(MailctlError, match=r"'INBOX\.Lists' exists"):
         engine.plan_subscription(sessions, "lists", subscribe=True)
 
 

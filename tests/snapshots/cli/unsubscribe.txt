@@ -1,4 +1,4 @@
-$ mxfilter unsubscribe Lists
+$ mailctl unsubscribe Lists
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

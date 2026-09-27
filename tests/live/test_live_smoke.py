@@ -17,8 +17,8 @@ restore fixture the safety contract in ``conftest.py`` describes first.
 
 import pytest
 
-from mxfilter.imap import ImapSession
-from mxfilter.sieve import SieveSession
+from mailctl.imap import ImapSession
+from mailctl.sieve import SieveSession
 
 pytestmark = pytest.mark.live
 

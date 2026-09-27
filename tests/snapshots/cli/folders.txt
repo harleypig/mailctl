@@ -1,4 +1,4 @@
-$ mxfilter folders
+$ mailctl folders
 exit: 0
 --- stdout
 Hierarchy delimiter: '.'

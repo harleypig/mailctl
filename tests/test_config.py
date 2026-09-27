@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from mxfilter import MxFilterError
-from mxfilter.cli import build_parser, configure
-from mxfilter.config import (
+from mailctl import MailctlError
+from mailctl.cli import build_parser, configure
+from mailctl.config import (
     CONFIG_FILE,
     DEFAULT,
     DEFAULT_IMAP_PORT,
@@ -193,7 +193,7 @@ def test_the_resolved_password_is_cached():
 # ----------------------------------------------------------------------------
 def test_no_password_and_no_prompter_is_an_actionable_error():
     """A core module with nowhere to ask must fail, never block on stdin."""
-    with pytest.raises(MxFilterError, match="MXROUTE_PASSWORD_CMD"):
+    with pytest.raises(MailctlError, match="MXROUTE_PASSWORD_CMD"):
         Config().password()
 
 
@@ -201,7 +201,7 @@ def test_no_password_and_no_prompter_is_an_actionable_error():
 def test_an_empty_prompt_answer_is_refused():
     config = Config(prompter=lambda _prompt: "")
 
-    with pytest.raises(MxFilterError, match="no password available"):
+    with pytest.raises(MailctlError, match="no password available"):
         config.password()
 
 
@@ -228,13 +228,13 @@ def test_a_password_command_is_split_without_a_shell():
 
 # ----------------------------------------------------------------------------
 def test_an_empty_password_command_is_refused():
-    with pytest.raises(MxFilterError, match="password command is empty"):
+    with pytest.raises(MailctlError, match="password command is empty"):
         run_password_command("   ")
 
 
 # ----------------------------------------------------------------------------
 def test_a_missing_password_program_is_named():
-    with pytest.raises(MxFilterError, match="could not be run"):
+    with pytest.raises(MailctlError, match="could not be run"):
         run_password_command("/nonexistent/credential-helper")
 
 
@@ -247,7 +247,7 @@ def test_a_failing_password_command_does_not_echo_its_output():
     """
     command = f"sh -c 'printf %s {MARKER} >&2; exit 3'"
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         run_password_command(command)
 
     assert MARKER not in str(caught.value)
@@ -257,7 +257,7 @@ def test_a_failing_password_command_does_not_echo_its_output():
 
 # ----------------------------------------------------------------------------
 def test_a_silent_password_command_is_refused():
-    with pytest.raises(MxFilterError, match="produced no output"):
+    with pytest.raises(MailctlError, match="produced no output"):
         run_password_command("true")
 
 
@@ -379,7 +379,7 @@ def test_the_password_is_never_read_from_the_config_file():
     assert MARKER not in repr(config)
     assert config.password_state() == "unset"
 
-    with pytest.raises(MxFilterError, match="no password available"):
+    with pytest.raises(MailctlError, match="no password available"):
         config.password()
 
 
@@ -401,7 +401,7 @@ def test_a_non_numeric_port_is_named(monkeypatch, port):
 
         return
 
-    with pytest.raises(MxFilterError, match="sieve_port"):
+    with pytest.raises(MailctlError, match="sieve_port"):
         load_config(argparse.Namespace())
 
 
@@ -409,7 +409,7 @@ def test_a_non_numeric_port_is_named(monkeypatch, port):
 def test_an_unknown_tls_mode_is_refused_with_the_valid_set(monkeypatch):
     monkeypatch.setenv("MXROUTE_SIEVE_TLS", "maybe")
 
-    with pytest.raises(MxFilterError, match="starttls, ssl, none"):
+    with pytest.raises(MailctlError, match="starttls, ssl, none"):
         load_config(argparse.Namespace())
 
 
@@ -422,7 +422,7 @@ def test_an_absent_config_file_is_not_an_error():
 def test_invalid_toml_names_the_file():
     write_config_file("this is not = = toml\n")
 
-    with pytest.raises(MxFilterError, match="invalid TOML"):
+    with pytest.raises(MailctlError, match="invalid TOML"):
         read_config_file(config_path())
 
 
@@ -443,7 +443,7 @@ def test_require_lists_every_missing_setting_and_its_flag():
     """One message naming all of them beats three round trips."""
     config = Config()
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         config.require("host", "user", "imap_host")
 
     message = str(caught.value)
@@ -533,7 +533,7 @@ def test_an_empty_password_file_is_refused_by_name(secret_file, contents):
     """A blank file is a half-written one, not a password of spaces."""
     path = secret_file(contents=contents)
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         read_password_file(path)
 
     message = str(caught.value)
@@ -571,7 +571,7 @@ def test_an_unset_variable_is_left_literal_and_named_in_the_error(
 ):
     monkeypatch.delenv("MXFILTER_NO_SUCH_DIR", raising=False)
 
-    with pytest.raises(MxFilterError, match=r"\$MXFILTER_NO_SUCH_DIR/pw"):
+    with pytest.raises(MailctlError, match=r"\$MXFILTER_NO_SUCH_DIR/pw"):
         Config(password_file="$MXFILTER_NO_SUCH_DIR/pw").password()
 
 
@@ -579,7 +579,7 @@ def test_an_unset_variable_is_left_literal_and_named_in_the_error(
 def test_a_missing_password_file_names_the_path_and_the_reason(tmp_path):
     path = tmp_path / "no-such-file"
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         read_password_file(path)
 
     message = str(caught.value)
@@ -597,7 +597,7 @@ def test_an_unreadable_password_file_is_named_but_never_quoted(secret_file):
     and then fails to open, which is the OS error path this pins."""
     path = secret_file(mode=0o000)
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         read_password_file(path)
 
     message = str(caught.value)
@@ -632,7 +632,7 @@ def test_a_group_or_world_readable_password_file_is_refused(secret_file, mode):
     """
     path = secret_file(mode=mode)
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         read_password_file(path)
 
     message = str(caught.value)
@@ -644,7 +644,7 @@ def test_a_group_or_world_readable_password_file_is_refused(secret_file, mode):
 
     assert message.splitlines() == [
         f"password file {path} is readable by group/other (mode {mode:04o});",
-        "mxfilter refuses to read it.",
+        "mailctl refuses to read it.",
         f"Fix with: chmod 600 {path}",
     ]
 
@@ -662,7 +662,7 @@ def test_a_refused_password_file_is_never_opened(secret_file, monkeypatch):
 
     monkeypatch.setattr(Path, "read_text", explode)
 
-    with pytest.raises(MxFilterError, match="refuses to read it"):
+    with pytest.raises(MailctlError, match="refuses to read it"):
         read_password_file(secret_file(mode=0o644))
 
 
@@ -942,7 +942,7 @@ def test_only_the_inline_password_flag_warns(capsys, argv, warns):
 
     The value is readable in the process list by every user on the machine
     while the command runs, and the shell wrote it to history before
-    mxfilter started. The warning names neither the value nor a fragment
+    mailctl started. The warning names neither the value nor a fragment
     of it.
     """
     configure(build_parser().parse_args(["test", *argv]))
@@ -1054,7 +1054,7 @@ def test_a_bad_env_line_is_named_by_number_and_never_quoted(
     """The line could be a password, so only its position is reported."""
     path = write_env_file(tmp_path / ".env", f"# first\n\n{line}\n")
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         read_env_file(path)
 
     message = str(caught.value)
@@ -1069,7 +1069,7 @@ def test_a_bad_env_line_is_named_by_number_and_never_quoted(
 def test_a_missing_env_file_names_the_path(tmp_path):
     missing = tmp_path / "nowhere.env"
 
-    with pytest.raises(MxFilterError, match="cannot read") as caught:
+    with pytest.raises(MailctlError, match="cannot read") as caught:
         read_env_file(missing)
 
     assert str(missing) in str(caught.value)
@@ -1080,7 +1080,7 @@ def test_an_env_file_that_is_not_utf8_is_named(tmp_path):
     path = tmp_path / ".env"
     path.write_bytes(b"MXROUTE_HOST=\xff\xfe\n")
 
-    with pytest.raises(MxFilterError, match="not valid UTF-8") as caught:
+    with pytest.raises(MailctlError, match="not valid UTF-8") as caught:
         read_env_file(path)
 
     assert str(path) in str(caught.value)
@@ -1096,7 +1096,7 @@ def test_an_env_file_with_a_password_and_a_shared_mode_is_refused(
         tmp_path / ".env", f"MXROUTE_PASSWORD={MARKER}\n", mode
     )
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         read_env_file(path)
 
     message = str(caught.value)
@@ -1109,7 +1109,7 @@ def test_an_env_file_with_a_password_and_a_shared_mode_is_refused(
     assert message.splitlines() == [
         f"env file {path} sets MXROUTE_PASSWORD and is readable by "
         f"group/other (mode {mode:04o});",
-        "mxfilter refuses to use it.",
+        "mailctl refuses to use it.",
         f"Fix with: chmod 600 {path}",
     ]
 
@@ -1258,7 +1258,7 @@ def test_a_missing_env_file_named_by_the_flag_is_an_error(
 ):
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(MxFilterError, match=r"env file \.env: cannot read"):
+    with pytest.raises(MailctlError, match=r"env file \.env: cannot read"):
         configure(build_parser().parse_args(["test", "--env-file"]))
 
 
@@ -1266,7 +1266,7 @@ def test_a_missing_env_file_named_by_the_flag_is_an_error(
 def test_a_bad_sieve_tls_mode_names_where_it_came_from(tmp_path):
     path = write_env_file(tmp_path / ".env", "MXROUTE_SIEVE_TLS=maybe\n")
 
-    with pytest.raises(MxFilterError, match="not one of") as caught:
+    with pytest.raises(MailctlError, match="not one of") as caught:
         load_config(argparse.Namespace(env_file=str(path)))
 
     assert f"env file {path}" in str(caught.value)

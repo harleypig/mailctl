@@ -1,4 +1,4 @@
-# mxfilter testing workflow.
+# mailctl testing workflow.
 name: Tests
 
 # Runs on every pull request and on pushes to the default branch. The

@@ -1,4 +1,4 @@
-$ mxfilter show
+$ mailctl show
 exit: 0
 --- stdout
 # ---- managesieve ----

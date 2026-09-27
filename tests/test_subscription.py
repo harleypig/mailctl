@@ -3,7 +3,7 @@
 Issue #38. A folder created over IMAP exists and receives mail, but a
 webmail client draws its folder tree from ``LSUB`` rather than ``LIST`` --
 so a folder that was never subscribed to is invisible to the person who
-asked for it, while every check mxfilter ran said the rule was fine. The
+asked for it, while every check mailctl ran said the rule was fine. The
 tool could not even see the condition it was creating, because it cached
 ``LIST`` alone.
 
@@ -23,15 +23,15 @@ from types import SimpleNamespace
 import pytest
 from imapclient.exceptions import IMAPClientError
 
-from mxfilter import MxFilterError, engine
-from mxfilter.cli import (
+from mailctl import MailctlError, engine
+from mailctl.cli import (
     build_parser,
     prepare_folder,
     render_event,
     report_folder_creation,
 )
-from mxfilter.engine import Sessions
-from mxfilter.imap import FolderCreation, ImapSession
+from mailctl.engine import Sessions
+from mailctl.imap import FolderCreation, ImapSession
 
 NEW_FOLDER = "INBOX.Lists.GitHub"
 
@@ -118,7 +118,7 @@ def test_an_lsub_failure_is_named_rather_than_treated_as_empty(
     """
     fake_imap.failures["list_sub_folders"] = IMAPClientError("nope")
 
-    with pytest.raises(MxFilterError, match="LSUB failed"):
+    with pytest.raises(MailctlError, match="LSUB failed"):
         ImapSession(imap_config).open()
 
 
@@ -229,7 +229,7 @@ def test_a_create_failure_still_raises(imap_session, fake_imap):
     """A folder that does not exist is a different failure entirely."""
     fake_imap.failures["create_folder"] = IMAPClientError("no room")
 
-    with pytest.raises(MxFilterError, match="could not create folder"):
+    with pytest.raises(MailctlError, match="could not create folder"):
         imap_session.create_folder(NEW_FOLDER)
 
     assert "subscribe_folder" not in fake_imap.names()
@@ -279,7 +279,7 @@ def test_the_primitives_raise_and_name_the_folder(
     """Called directly they are loud; only ``create_folder`` softens it."""
     fake_imap.failures[failure] = IMAPClientError("denied")
 
-    with pytest.raises(MxFilterError, match=message) as caught:
+    with pytest.raises(MailctlError, match=message) as caught:
         getattr(imap_session, method)("INBOX.spam")
 
     assert "INBOX.spam" in str(caught.value)
@@ -420,7 +420,7 @@ def test_planning_a_real_run_creates_nothing_before_the_decision(
 @pytest.mark.parametrize("command", ["add", "apply", "from-message"])
 def test_no_subscribe_without_create_folder_is_refused(command, capsys):
     """#43: a flag that does nothing must not be accepted silently."""
-    from mxfilter.cli import main
+    from mailctl.cli import main
 
     extra = (
         ["--uid", "1"] if command == "from-message" else ["--from", "a@b.c"]

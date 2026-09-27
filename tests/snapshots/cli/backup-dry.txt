@@ -1,4 +1,4 @@
-$ mxfilter backup --dry-run
+$ mailctl backup --dry-run
 exit: 0
 --- stdout
 [dry-run] would write 2 rule(s) to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve

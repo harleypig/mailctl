@@ -1,4 +1,4 @@
-$ mxfilter messages --from noreply@github.com
+$ mailctl messages --from noreply@github.com
 exit: 0
 --- stdout
 2 message(s) in 'INBOX', newest first:

@@ -1,4 +1,4 @@
-"""The actions mxfilter will not emit, and why each one is refused.
+"""The actions mailctl will not emit, and why each one is refused.
 
 Two different reasons, deliberately kept apart, and the difference is the
 whole point of these tests:
@@ -8,7 +8,7 @@ whole point of these tests:
   works -- a forwarder.
 * ``notify`` and ``vacation`` are simply **not implemented here**. No
   MXroute source says either way, so the message must not claim they are
-  unavailable; it points at the control panel and at ``mxfilter test``,
+  unavailable; it points at the control panel and at ``mailctl test``,
   which reads the answer off the server.
 
 Collapsing those two into one "unsupported" message would state as fact
@@ -22,10 +22,10 @@ silently drops mail.
 
 import pytest
 
-from mxfilter import MxFilterError
-from mxfilter.cli import actions_from_args, build_parser, reject_forbidden
-from mxfilter.engine import sieve_actions
-from mxfilter.sieve import MXROUTE_FORBIDDEN_ACTIONS, UNIMPLEMENTED_ACTIONS
+from mailctl import MailctlError
+from mailctl.cli import actions_from_args, build_parser, reject_forbidden
+from mailctl.engine import sieve_actions
+from mailctl.sieve import MXROUTE_FORBIDDEN_ACTIONS, UNIMPLEMENTED_ACTIONS
 
 # ############################################################################
 # Helpers
@@ -55,7 +55,7 @@ def test_redirect_is_refused_and_names_the_forwarder_alternative():
     provider's ``mxroute_forwarder`` resource). A bare refusal would send
     them looking for a Sieve workaround that cannot exist.
     """
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         reject_forbidden(parse_add("--redirect", "elsewhere@example.com"))
 
     message = str(caught.value)
@@ -89,7 +89,7 @@ def test_an_unimplemented_action_is_refused_without_claiming_it_is_disabled(
     The message has to say that plainly and hand the user the way to find
     out for themselves, since nothing MXroute publishes answers it.
     """
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         reject_forbidden(parse_add(flag, value))
 
     message = str(caught.value)
@@ -97,7 +97,7 @@ def test_an_unimplemented_action_is_refused_without_claiming_it_is_disabled(
     assert f"does not generate the Sieve '{label}' action" in message
     assert "conservative choice of ours" in message
     assert "not a documented" in message
-    assert "mxfilter test" in message
+    assert "mailctl test" in message
 
 
 # ----------------------------------------------------------------------------
@@ -121,13 +121,13 @@ def test_every_refused_action_has_a_flag_the_gate_can_see(name):
 
     Without the (hidden) flag the user's request would fall through to
     argparse's own 'unrecognized arguments' error, which explains nothing
-    about why mxfilter will not do it.
+    about why mailctl will not do it.
     """
     args = parse_add(f"--{name}", "value")
 
     assert getattr(args, name) == "value"
 
-    with pytest.raises(MxFilterError):
+    with pytest.raises(MailctlError):
         reject_forbidden(args)
 
 
@@ -170,7 +170,7 @@ def test_an_add_with_no_action_at_all_is_refused():
     """A rule that tests but does nothing is never what someone meant."""
     args = build_parser().parse_args(["add", "--from", "boss@example.com"])
 
-    with pytest.raises(MxFilterError, match="no action requested"):
+    with pytest.raises(MailctlError, match="no action requested"):
         sieve_actions(actions_from_args(args), "", False)
 
 

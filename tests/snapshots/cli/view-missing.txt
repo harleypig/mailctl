@@ -1,9 +1,9 @@
-$ mxfilter view 99
+$ mailctl view 99
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: no message with uid 99 in 'INBOX'
+mailctl: no message with uid 99 in 'INBOX'
 
 --- sieve calls
 --- imap calls

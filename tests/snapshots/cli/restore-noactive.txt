@@ -1,9 +1,9 @@
-$ mxfilter restore <TMP>/restore.sieve --yes
+$ mailctl restore <TMP>/restore.sieve --yes
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: no active script on the server to restore over. Name the script to restore with --script NAME; with nothing active it is activated. 'mxfilter list' shows what the account has.
+mailctl: no active script on the server to restore over. Name the script to restore with --script NAME; with nothing active it is activated. 'mailctl list' shows what the account has.
 
 --- sieve calls
 ('connect',)

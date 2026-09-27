@@ -1,10 +1,10 @@
-"""The engine: every piece of work mxfilter does, for any front-end.
+"""The engine: every piece of work mailctl does, for any front-end.
 
 A front-end -- the CLI today -- turns what a person asked for into the
 plain values below, calls the engine, and decides what to show and whether
 to go on. The engine never learns how it was called: it takes no parsed
 arguments, never prints or prompts, and reports through return values,
-exceptions (``MxFilterError``), and two optional callbacks -- ``progress``
+exceptions (``MailctlError``), and two optional callbacks -- ``progress``
 for protocol chatter and ``on_event`` for the steps of a change as they
 happen.
 
@@ -23,7 +23,7 @@ from functools import partial
 from html.parser import HTMLParser
 from pathlib import Path
 
-from . import MxFilterError
+from . import MailctlError
 from .config import Config, expand_path
 from .criteria import Criteria, escape_sieve_string
 from .imap import (
@@ -65,6 +65,8 @@ from .sieve import (
     write_backup,
 )
 
+# The tool's old name, kept: it names a script on the server, and changing
+# it is part of the separate migration, not the mechanical rename (#45).
 DEFAULT_SCRIPT_NAME = "mxfilter"
 DEFAULT_MAX_MESSAGES = 500
 
@@ -197,7 +199,7 @@ def connect(
 def _sieve(sessions: Sessions) -> SieveSession:
     """Return the ManageSieve session, or raise if none was opened."""
     if sessions.sieve is None:
-        raise MxFilterError("no ManageSieve session is open")
+        raise MailctlError("no ManageSieve session is open")
 
     return sessions.sieve
 
@@ -206,7 +208,7 @@ def _sieve(sessions: Sessions) -> SieveSession:
 def _imap(sessions: Sessions) -> ImapSession:
     """Return the IMAP session, or raise if none was opened."""
     if sessions.imap is None:
-        raise MxFilterError("no IMAP session is open")
+        raise MailctlError("no IMAP session is open")
 
     return sessions.imap
 
@@ -291,7 +293,7 @@ class ImapProbe:
     def has_filter_sieve(self) -> bool:
         """Whether Dovecot's ``imap_filter_sieve`` is enabled.
 
-        Detection only: mxfilter has no FILTER=SIEVE code path.
+        Detection only: mailctl has no FILTER=SIEVE code path.
         """
         return any(
             item.upper().startswith("FILTER=SIEVE")
@@ -312,7 +314,7 @@ def read_script(sessions: Sessions, name: str | None = None) -> ScriptText:
     name = name or sieve.active_script_name()
 
     if not name:
-        raise MxFilterError("no active script; name one explicitly")
+        raise MailctlError("no active script; name one explicitly")
 
     return ScriptText(name, sieve.get_script(name))
 
@@ -324,9 +326,9 @@ def read_rules(sessions: Sessions, script: str | None = None) -> RulesReport:
     name = script or sieve.active_script_name()
 
     if not name:
-        raise MxFilterError(
+        raise MailctlError(
             "no active script on the server, so there are no rules to "
-            "show. 'mxfilter list' shows what the account has."
+            "show. 'mailctl list' shows what the account has."
         )
 
     rules = read_rule_list(parse_script(sieve.get_script(name)))
@@ -409,15 +411,15 @@ def plan_subscription(
     hint = case_variant_hint(folder, imap.folders)
 
     if subscribe and not imap.exists(folder):
-        raise MxFilterError(
+        raise MailctlError(
             f"no folder named {folder!r} on the server, so there is nothing "
-            f"to subscribe to. {hint}'mxfilter folders' lists what exists."
+            f"to subscribe to. {hint}'mailctl folders' lists what exists."
         )
 
     if not subscribe and not subscribed_now and not imap.exists(folder):
-        raise MxFilterError(
+        raise MailctlError(
             f"no folder or subscription named {folder!r} on the server. "
-            f"{hint}'mxfilter folders' lists what exists."
+            f"{hint}'mailctl folders' lists what exists."
         )
 
     return SubscriptionPlan(
@@ -467,9 +469,9 @@ def plan_backup(
     name = sieve.active_script_name()
 
     if not name:
-        raise MxFilterError(
+        raise MailctlError(
             "no active script on the server, so there is nothing to back "
-            "up. 'mxfilter list' shows what the account has."
+            "up. 'mailctl list' shows what the account has."
         )
 
     source = sieve.get_script(name)
@@ -494,7 +496,7 @@ def count_rules(source: str) -> int | None:
     try:
         return len(rule_names(parse_script(source)))
 
-    except MxFilterError:
+    except MailctlError:
         return None
 
 
@@ -556,12 +558,10 @@ def read_backup_file(
             text = handle.read()
 
     except (OSError, UnicodeDecodeError) as exc:
-        raise MxFilterError(
-            f"could not read backup {source} -- {exc}"
-        ) from exc
+        raise MailctlError(f"could not read backup {source} -- {exc}") from exc
 
     if not text.strip() and not allow_empty:
-        raise MxFilterError(
+        raise MailctlError(
             f"backup {source} is empty; restoring it would remove every "
             f"rule from the script. Pass --allow-empty if that is what you "
             f"want."
@@ -582,7 +582,7 @@ def plan_restore(
     The target is ``script``, or the active script when none is named; no
     other stored script is touched, and whether the target ends up active
     follows the same rule as every other upload (``activates``). The
-    current script may be one mxfilter cannot parse: restore does not
+    current script may be one mailctl cannot parse: restore does not
     merge, and the current bytes are backed up before anything is sent,
     so overwriting it loses nothing (ADR 0005).
     """
@@ -593,10 +593,10 @@ def plan_restore(
     # to mean, and the recovery case is served by naming one, which is
     # then activated because nothing else runs.
     if script is None and active is None:
-        raise MxFilterError(
+        raise MailctlError(
             "no active script on the server to restore over. Name the "
             "script to restore with --script NAME; with nothing active it "
-            "is activated. 'mxfilter list' shows what the account has."
+            "is activated. 'mailctl list' shows what the account has."
         )
 
     return RestorePlan(
@@ -647,24 +647,24 @@ def reject_actions(requested: Iterable[str]) -> None:
 
     ``redirect`` is refused because MXRoute has publicly disabled it -- a
     policy, so the alternative is named. The rest are simply not
-    implemented here, and mxfilter has no evidence either way about whether
+    implemented here, and mailctl has no evidence either way about whether
     this server supports them.
     """
     requested = set(requested)
 
     for name, explanation in MXROUTE_FORBIDDEN_ACTIONS.items():
         if name in requested:
-            raise MxFilterError(explanation)
+            raise MailctlError(explanation)
 
     for name, label in UNIMPLEMENTED_ACTIONS.items():
         if name in requested:
-            raise MxFilterError(
-                f"mxfilter does not generate the Sieve '{label}' action. "
+            raise MailctlError(
+                f"mailctl does not generate the Sieve '{label}' action. "
                 f"This is a conservative choice of ours, not a documented "
                 f"MXRoute restriction -- the MXRoute control panel is where "
                 f"this feature lives if you need it. To see whether the "
                 f"server advertises the extension at all, run "
-                f"'mxfilter test'."
+                f"'mailctl test'."
             )
 
 
@@ -696,7 +696,7 @@ def sieve_actions(spec: ActionSpec, folder: str, use_create: bool) -> list:
         actions.append(("keep",))
 
     if not actions:
-        raise MxFilterError(
+        raise MailctlError(
             "no action requested -- use --fileinto, --discard, --mark-read, "
             "--flag, or --keep"
         )
@@ -853,7 +853,7 @@ def plan_folder(
 def check_folder(plan: FolderPlan) -> None:
     """Refuse a folder that was asked to be created and cannot be."""
     if plan.status == FOLDER_UNCREATABLE:
-        raise MxFilterError(
+        raise MailctlError(
             f"the server does not advertise the Sieve 'mailbox' extension "
             f"and --no-imap was given, so {plan.folder!r} cannot be created"
         )
@@ -863,7 +863,7 @@ def check_folder(plan: FolderPlan) -> None:
 def create_folder(sessions: Sessions, plan: FolderPlan) -> FolderCreation:
     """Create the planned folder over IMAP, subscribing unless declined."""
     if not plan.imap_creates:
-        raise MxFilterError(
+        raise MailctlError(
             f"folder {plan.folder!r} is not planned for IMAP creation "
             f"({plan.status})"
         )
@@ -1107,7 +1107,7 @@ def plan_removal(
     name, before, active = fetch_active(sessions, script)
 
     if not before.strip():
-        raise MxFilterError(f"script {name!r} is empty")
+        raise MailctlError(f"script {name!r} is empty")
 
     after = remove_rule(before, rule)
 
@@ -1134,7 +1134,7 @@ def plan_move(
     name, before, active = fetch_active(sessions, script)
 
     if not before.strip():
-        raise MxFilterError(f"script {name!r} is empty")
+        raise MailctlError(f"script {name!r} is empty")
 
     after = move_rule(before, rule, placement)
 
@@ -1247,7 +1247,7 @@ def execute_script_change(
 def require_mail_action(folder: FolderPlan, spec: ActionSpec) -> None:
     """Refuse an existing-mail pass that would do nothing to a message."""
     if not folder.folder and not spec.discard and not spec.flags:
-        raise MxFilterError(
+        raise MailctlError(
             "nothing to do -- use --fileinto, --discard, --mark-read, "
             "or --flag"
         )
@@ -1309,7 +1309,7 @@ def check_message_cap(plan: MailActionPlan, max_messages: int) -> None:
     if plan.count <= max_messages:
         return
 
-    raise MxFilterError(
+    raise MailctlError(
         f"{plan.count} message(s) match but --max-messages is "
         f"{max_messages}. NO existing message was touched -- a "
         f"partial batch is never processed, because handling the first "
@@ -1386,7 +1386,7 @@ def pick_message(
         uids = imap.raw_search(folder, search or "")
 
         if not uids:
-            raise MxFilterError(f"no message in {folder!r} matched {search!r}")
+            raise MailctlError(f"no message in {folder!r} matched {search!r}")
 
         candidates = len(uids)
         uid = max(uids)
@@ -1586,12 +1586,12 @@ def list_messages(
         criteria = None
 
     if criteria is not None and search:
-        raise MxFilterError(
+        raise MailctlError(
             "give criteria or a raw IMAP search expression, not both"
         )
 
     if limit is not None and limit < 1:
-        raise MxFilterError(
+        raise MailctlError(
             f"the message limit must be at least 1, not {limit}"
         )
 
@@ -1614,7 +1614,7 @@ def read_message(sessions: Sessions, folder: str, uid: int) -> MessageContent:
     written to disk: attachments are described, never saved.
     """
     if uid < 1:
-        raise MxFilterError(f"message UIDs start at 1, not {uid}")
+        raise MailctlError(f"message UIDs start at 1, not {uid}")
 
     imap = _imap(sessions)
     folder = imap.normalize(folder)

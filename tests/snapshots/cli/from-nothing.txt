@@ -1,9 +1,9 @@
-$ mxfilter from-message --fileinto Lists
+$ mailctl from-message --fileinto Lists
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: give either --uid N or --search EXPRESSION
+mailctl: give either --uid N or --search EXPRESSION
 
 --- sieve calls
 --- imap calls

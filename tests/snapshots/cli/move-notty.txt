@@ -1,9 +1,9 @@
-$ mxfilter move-rule keep-boss --last
+$ mailctl move-rule keep-boss --last
 exit: 1
 --- stdout
 Move rule 'keep-boss' in script 'managesieve': position 1 -> 2 of 2
 
-Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
 --- sieve diff ---
 --- managesieve (current)
@@ -31,7 +31,7 @@ Note: the script on the server is not in mxfilter's formatting, so uploading re-
 --- end diff ---
 
 --- stderr
-mxfilter: Move rule 'keep-boss' to position 2 in 'managesieve'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+mailctl: Move rule 'keep-boss' to position 2 in 'managesieve'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
 
 --- sieve calls
 ('connect',)

@@ -39,7 +39,7 @@ from email.header import decode_header, make_header
 from imapclient import IMAPClient
 from imapclient.exceptions import IMAPClientError, LoginError
 
-from . import MxFilterError
+from . import MailctlError
 from .config import Config
 from .criteria import Criteria
 
@@ -174,7 +174,7 @@ def normalize_folder(
     components = split_path(name, delimiter)
 
     if not components:
-        raise MxFilterError("empty folder name")
+        raise MailctlError("empty folder name")
 
     candidate = delimiter.join(components)
 
@@ -290,7 +290,7 @@ class MailActionResult:
     deleted: int = 0
 
 
-class PartialExecution(MxFilterError):
+class PartialExecution(MailctlError):
     """A chunked pass failed after some chunks were already applied.
 
     ``result`` counts what completed -- every chunk before the failing one
@@ -539,7 +539,7 @@ class ImapSession:
             client.login(config.user, config.password().reveal())
 
         except LoginError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"IMAP authentication failed for {config.user!r} (password "
                 f"{config.password_state()}). MXRoute expects the FULL "
                 f"email address as the username, e.g. you@yourdomain.com. "
@@ -547,19 +547,19 @@ class ImapSession:
             ) from exc
 
         except ssl.SSLError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"TLS failure against {config.imap_host}:{config.imap_port} "
                 f"-- {exc}. Port 993 is implicit TLS; port 143 uses STARTTLS."
             ) from exc
 
         except (socket.gaierror, OSError) as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"cannot reach {config.imap_host}:{config.imap_port} -- "
                 f"{exc}. Check --imap-host and --imap-port."
             ) from exc
 
         except IMAPClientError as exc:
-            raise MxFilterError(f"IMAP error -- {exc}") from exc
+            raise MailctlError(f"IMAP error -- {exc}") from exc
 
         self.client = client
         self._read_folders()
@@ -584,7 +584,7 @@ class ImapSession:
     def _require_client(self) -> IMAPClient:
         """Return the live client or fail loudly."""
         if self.client is None:
-            raise MxFilterError("IMAP session is not open")
+            raise MailctlError("IMAP session is not open")
 
         return self.client
 
@@ -608,13 +608,13 @@ class ImapSession:
             listing = client.list_folders()
 
         except IMAPClientError as exc:
-            raise MxFilterError(f"LIST failed -- {exc}") from exc
+            raise MailctlError(f"LIST failed -- {exc}") from exc
 
         try:
             subscribed = client.list_sub_folders()
 
         except IMAPClientError as exc:
-            raise MxFilterError(f"LSUB failed -- {exc}") from exc
+            raise MailctlError(f"LSUB failed -- {exc}") from exc
 
         self._folders, delimiter = self._decode_listing(listing)
         self._subscribed, _ = self._decode_listing(subscribed)
@@ -717,14 +717,14 @@ class ImapSession:
             client.subscribe_folder(folder)
 
         except IMAPClientError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"could not subscribe to folder {folder!r} -- {exc}"
             ) from exc
 
         self._read_folders()
 
         if not self.is_subscribed(folder):
-            raise MxFilterError(
+            raise MailctlError(
                 f"the server accepted SUBSCRIBE for {folder!r} but still "
                 f"does not list it as subscribed (LSUB), so mail clients "
                 f"will not show it"
@@ -740,7 +740,7 @@ class ImapSession:
             client.unsubscribe_folder(folder)
 
         except IMAPClientError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"could not unsubscribe from folder {folder!r} -- {exc}"
             ) from exc
 
@@ -769,7 +769,7 @@ class ImapSession:
             client.create_folder(folder)
 
         except IMAPClientError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"could not create folder {folder!r} -- {exc}"
             ) from exc
 
@@ -781,7 +781,7 @@ class ImapSession:
         try:
             self.subscribe(folder)
 
-        except MxFilterError as exc:
+        except MailctlError as exc:
             return FolderCreation(
                 folder=folder, subscribed=False, subscribe_error=str(exc)
             )
@@ -824,7 +824,7 @@ class ImapSession:
             return list(client.search(key))
 
         except IMAPClientError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"IMAP search in {folder!r} failed -- {exc}"
             ) from exc
 
@@ -866,7 +866,7 @@ class ImapSession:
                 fetched = client.fetch(chunk, SUMMARY_ITEMS)
 
             except IMAPClientError as exc:
-                raise MxFilterError(f"IMAP fetch failed -- {exc}") from exc
+                raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
 
             for uid in chunk:
                 examined += 1
@@ -946,7 +946,7 @@ class ImapSession:
             try:
                 step = self._execute_chunk(plan, chunk, flags)
 
-            except MxFilterError as exc:
+            except MailctlError as exc:
                 if not (done.flagged or done.moved or done.deleted):
                     raise
 
@@ -1006,7 +1006,7 @@ class ImapSession:
                 )
 
         except IMAPClientError as exc:
-            raise MxFilterError(f"IMAP fetch failed -- {exc}") from exc
+            raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
 
         matches = []
 
@@ -1031,9 +1031,9 @@ class ImapSession:
             client.select_folder(folder, readonly=readonly)
 
         except IMAPClientError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"cannot open folder {folder!r} -- {exc}. "
-                f"{case_variant_hint(folder, self._folders)}Run 'mxfilter "
+                f"{case_variant_hint(folder, self._folders)}Run 'mailctl "
                 f"folders' to see the exact names this server uses."
             ) from exc
 
@@ -1047,7 +1047,7 @@ class ImapSession:
             client.add_flags(uids, flags)
 
         except IMAPClientError as exc:
-            raise MxFilterError(f"could not set flags -- {exc}") from exc
+            raise MailctlError(f"could not set flags -- {exc}") from exc
 
     # ------------------------------------------------------------------------
     def move(self, uids: list[int], destination: str) -> int:
@@ -1085,7 +1085,7 @@ class ImapSession:
                 client.expunge()
 
         except IMAPClientError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"could not move messages to {destination!r} -- {exc}"
             ) from exc
 
@@ -1111,7 +1111,7 @@ class ImapSession:
                 client.expunge()
 
         except IMAPClientError as exc:
-            raise MxFilterError(f"could not delete messages -- {exc}") from exc
+            raise MailctlError(f"could not delete messages -- {exc}") from exc
 
         return len(uids)
 
@@ -1142,12 +1142,12 @@ class ImapSession:
             fetched = client.fetch([uid], items)
 
         except IMAPClientError as exc:
-            raise MxFilterError(f"IMAP fetch failed -- {exc}") from exc
+            raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
 
         data = fetched.get(uid)
 
         if not data:
-            raise MxFilterError(f"no message with uid {uid} in {folder!r}")
+            raise MailctlError(f"no message with uid {uid} in {folder!r}")
 
         return data
 
@@ -1163,7 +1163,7 @@ class ImapSession:
             return list(client.search(expression))
 
         except IMAPClientError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"IMAP search {expression!r} failed -- {exc}. Use IMAP "
                 f"syntax, e.g. 'FROM boss@example.com' or 'UNSEEN'."
             ) from exc

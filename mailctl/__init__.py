@@ -1,6 +1,6 @@
 """Manage MXRoute email filters over ManageSieve and IMAP.
 
-``mxfilter`` builds a Sieve rule from command-line criteria, merges it
+``mailctl`` builds a Sieve rule from command-line criteria, merges it
 non-destructively into the account's active script, and optionally applies
 the same criteria to mail that has already been delivered.
 
@@ -15,7 +15,7 @@ without a server:
 ``cli``       argument parsing and the subcommand implementations
 """
 
-__all__ = ["MxFilterError", "__version__"]
+__all__ = ["MailctlError", "__version__"]
 
 __version__ = "0.4.0"
 
@@ -25,7 +25,7 @@ __version__ = "0.4.0"
 # ############################################################################
 
 
-class MxFilterError(Exception):
+class MailctlError(Exception):
     """An expected failure that should be reported without a traceback.
 
     Every code path that can fail for a reason the user can act on raises

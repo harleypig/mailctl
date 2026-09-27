@@ -13,7 +13,8 @@ Regenerate after an intended change with::
 
     MXFILTER_UPDATE_SNAPSHOTS=1 pytest tests/test_cli_snapshots.py
 
-and read the diff before committing it.
+and read the diff before committing it. The variable keeps the tool's old
+name until the environment migration (#45).
 """
 
 import io
@@ -24,8 +25,8 @@ from pathlib import Path
 
 import pytest
 
-from mxfilter import cli
-from mxfilter import sieve as sieve_module
+from mailctl import cli
+from mailctl import sieve as sieve_module
 
 SNAPSHOTS = Path(__file__).parent / "snapshots" / "cli"
 
@@ -834,7 +835,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         return re.sub(r"\d{8}T\d{6}(\.\d+)?Z?", "<STAMP>", text)
 
     sections = [
-        scrub(f"$ mxfilter {' '.join(argv)}"),
+        scrub(f"$ mailctl {' '.join(argv)}"),
         f"exit: {code}",
         "--- stdout",
         scrub(out.text()),

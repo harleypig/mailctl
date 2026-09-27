@@ -1,7 +1,7 @@
 """Command-line interface.
 
 This module is the CLI front-end and nothing else: it parses arguments,
-turns them into the engine's plain inputs, calls ``mxfilter.engine``, and
+turns them into the engine's plain inputs, calls ``mailctl.engine``, and
 renders what comes back. Every decision a person makes -- confirming,
 ``--dry-run``, ``--yes`` -- is taken here, between the engine's plan and
 its execution.
@@ -16,7 +16,7 @@ import re
 import sys
 import traceback
 
-from . import MxFilterError, __version__, engine
+from . import MailctlError, __version__, engine
 from .config import (
     CONFIG_FILE,
     ENV_FILE,
@@ -122,7 +122,7 @@ def confirm(prompt: str, assume_yes: bool) -> bool:
         return True
 
     if not sys.stdin.isatty():
-        raise MxFilterError(
+        raise MailctlError(
             f"{prompt} -- refusing to continue without a terminal to ask. "
             f"Re-run with --yes to confirm, or --dry-run to preview."
         )
@@ -305,7 +305,7 @@ def warn_about_inline_password(args) -> None:
     because what it gives away is not obvious: an argument is readable in
     the process list by every user on the machine for as long as the
     command runs, and the shell has already written it to history by the
-    time mxfilter starts.
+    time mailctl starts.
 
     The message names no part of the value.
     """
@@ -342,7 +342,7 @@ def criteria_from_args(args) -> Criteria:
 
     for item in args.header or []:
         if "=" not in item:
-            raise MxFilterError(f"--header expects NAME=VALUE, got {item!r}")
+            raise MailctlError(f"--header expects NAME=VALUE, got {item!r}")
 
         name, value = item.split("=", 1)
         criteria.add(name, value)
@@ -490,7 +490,7 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
         if plan.subscribe:
             # Only reached under --no-imap: with an IMAP session the folder
             # is created and subscribed over IMAP as well (#40). Here Sieve
-            # creates it at delivery time, when mxfilter is not running and
+            # creates it at delivery time, when mailctl is not running and
             # cannot subscribe to it. Whether the server does so itself is
             # genuinely unknown -- RFC 5490 says :create creates the mailbox
             # and says nothing about subscription, and this account has
@@ -504,7 +504,7 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
                 "  Nothing promises Sieve will subscribe to a folder it "
                 "creates, so it may not appear in webmail until you "
                 f"subscribe to it: once the first message has created it, "
-                f"run 'mxfilter subscribe {plan.folder}'."
+                f"run 'mailctl subscribe {plan.folder}'."
             )
 
     elif plan.status == engine.FOLDER_IMAP_CREATE:
@@ -564,14 +564,14 @@ def report_folder_creation(result: FolderCreation) -> None:
             f"created folder {folder!r}, but subscribing to it failed: "
             f"{result.subscribe_error}. The folder exists and mail filed "
             f"there will arrive, but it will not appear in webmail until "
-            f"you subscribe to it: run 'mxfilter subscribe {folder}'."
+            f"you subscribe to it: run 'mailctl subscribe {folder}'."
         )
 
         return
 
     print(
         f"Created IMAP folder {folder!r}; not subscribed (--no-subscribe), "
-        f"so it will not appear in webmail ('mxfilter subscribe {folder}' "
+        f"so it will not appear in webmail ('mailctl subscribe {folder}' "
         f"shows it later)."
     )
 
@@ -580,7 +580,7 @@ def report_folder_creation(result: FolderCreation) -> None:
 def print_script_diff(report: DisplayDiff) -> None:
     """Show the diff, and say what the diff itself is not showing.
 
-    Both sides are rendered in mxfilter's own formatting so the rule
+    Both sides are rendered in mailctl's own formatting so the rule
     change is legible rather than buried under the renderer's layout. The
     cost of that is a reformat the reader can no longer see in the diff,
     and hiding it silently would be a worse trade than the noise it
@@ -593,7 +593,7 @@ def print_script_diff(report: DisplayDiff) -> None:
     """
     if report.reformats:
         print(
-            "\nNote: the script on the server is not in mxfilter's "
+            "\nNote: the script on the server is not in mailctl's "
             "formatting, so uploading re-indents the whole file. The diff "
             "below shows only the rule change; no rule body is altered."
         )
@@ -984,7 +984,7 @@ def rule_count_phrase(source: str) -> str:
     count = engine.count_rules(source)
 
     if count is None:
-        return "a script mxfilter could not parse"
+        return "a script mailctl could not parse"
 
     return f"{count} rule(s)"
 
@@ -1113,7 +1113,7 @@ def cmd_test(args) -> int:
         print(f"\n  active script: {sieve.active or '(none)'}")
         print(f"  other scripts: {', '.join(sieve.others) or '(none)'}")
         print(
-            "  (mxfilter always edits the ACTIVE script under its own "
+            "  (mailctl always edits the ACTIVE script under its own "
             "name; it never guesses one.)"
         )
 
@@ -1142,22 +1142,22 @@ def cmd_test(args) -> int:
     print(
         "\nNote: MXRoute disables the Sieve 'redirect' action as a matter "
         "of policy (2024-03-21) -- use a panel forwarder, which handles "
-        "SRS properly. That is the only MXRoute restriction mxfilter "
+        "SRS properly. That is the only MXRoute restriction mailctl "
         "asserts; everything else above came from the server."
     )
     print(
         "\nNote: this covers the Sieve stage only. Mail may first pass a "
         "DirectAdmin panel filter (an Exim filter, run before Sieve) that "
-        "mxfilter cannot see or change; a message it drops never reaches "
+        "mailctl cannot see or change; a message it drops never reaches "
         "any Sieve rule. Whether your account has one is unconfirmed -- "
-        "see 'A filtering stage mxfilter cannot see' in the README."
+        "see 'A filtering stage mailctl cannot see' in the README."
     )
 
     return 0
 
 
 # ----------------------------------------------------------------------------
-def resolve_password(config) -> tuple[str, MxFilterError | None]:
+def resolve_password(config) -> tuple[str, MailctlError | None]:
     """Read the password now, so the report says how reading it went.
 
     Returns the state to print and the error to raise once the settings
@@ -1170,7 +1170,7 @@ def resolve_password(config) -> tuple[str, MxFilterError | None]:
     try:
         config.password()
 
-    except MxFilterError as exc:
+    except MailctlError as exc:
         return "not usable", exc
 
     # Nothing configured and the prompt answered: the state read before
@@ -1233,7 +1233,7 @@ def report_filter_sieve(present: bool) -> None:
             "to existing mail itself."
         )
         print(
-            "                mxfilter still uses its own client-side pass; "
+            "                mailctl still uses its own client-side pass; "
             "the server-side path is not implemented."
         )
 
@@ -1243,7 +1243,7 @@ def report_filter_sieve(present: bool) -> None:
             "(Dovecot imap_filter_sieve is not enabled)."
         )
         print(
-            "                mxfilter's client-side search-and-move pass "
+            "                mailctl's client-side search-and-move pass "
             "is the only option here."
         )
 
@@ -1358,7 +1358,7 @@ def cmd_apply(args) -> int:
         engine.require_mail_action(folder, spec)
 
         if folder.status == engine.FOLDER_MISSING:
-            raise MxFilterError(
+            raise MailctlError(
                 f"target folder {folder.folder!r} does not exist; pass "
                 f"--create-folder to create it"
             )
@@ -1489,7 +1489,7 @@ def cmd_from_message(args) -> int:
     config = configure(args)
 
     if not args.uid and not args.search:
-        raise MxFilterError("give either --uid N or --search EXPRESSION")
+        raise MailctlError("give either --uid N or --search EXPRESSION")
 
     with connect(config, args, sieve=False, imap=True) as sessions:
         picked = engine.pick_message(
@@ -1663,7 +1663,7 @@ def cmd_view(args) -> int:
 def global_parser() -> argparse.ArgumentParser:
     """Flags accepted both before and after the subcommand.
 
-    ``--verbose mxfilter add`` and ``mxfilter add --verbose`` should both
+    ``--verbose mailctl add`` and ``mailctl add --verbose`` should both
     work; people type the second. ``SUPPRESS`` is what makes that safe --
     without it the subparser's default would overwrite a value already set
     by the top-level parser, so passing the flag first would silently do
@@ -1741,7 +1741,7 @@ def connection_parser() -> argparse.ArgumentParser:
         "--backup-dir",
         dest="backup_dir",
         help="where script backups are written, both the automatic "
-        "pre-upload one and 'mxfilter backup'; default "
+        "pre-upload one and 'mailctl backup'; default "
         "$XDG_CONFIG_HOME/mxfilter/backups",
     )
 
@@ -1902,13 +1902,13 @@ def build_parser() -> argparse.ArgumentParser:
     mail_safety = mail_safety_parser()
 
     parser = argparse.ArgumentParser(
-        prog="mxfilter",
+        prog="mailctl",
         description="Manage MXRoute Sieve filters and apply them to "
         "existing mail.",
     )
 
     parser.add_argument(
-        "--version", action="version", version=f"mxfilter {__version__}"
+        "--version", action="version", version=f"mailctl {__version__}"
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="step-by-step progress"
@@ -1950,9 +1950,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="save the active script to a file",
         description="Save the active Sieve script to a file, byte for byte "
         "as the server has it -- no banner lines, nothing reformatted "
-        "(which is what 'mxfilter show' adds, and why it is not a backup). "
+        "(which is what 'mailctl show' adds, and why it is not a backup). "
         "The file is written mode 0600, in a directory created 0700 if it "
-        "was not there. Nothing on the server is touched. 'mxfilter "
+        "was not there. Nothing on the server is touched. 'mailctl "
         "restore FILE' puts a backup back.",
     )
     backup.add_argument(
@@ -1983,13 +1983,13 @@ def build_parser() -> argparse.ArgumentParser:
         "server has now is shown first, the current script is backed up "
         "before anything is sent, the server validates the file "
         "(CHECKSCRIPT), and you are asked to confirm. No other stored "
-        "script is touched. Unlike every other change mxfilter makes, "
+        "script is touched. Unlike every other change mailctl makes, "
         "this REPLACES the script rather than merging into it -- any rule "
         "added since the backup was taken is removed, which the diff "
         "shows.",
     )
     restore.add_argument(
-        "file", metavar="FILE", help="a file written by 'mxfilter backup'"
+        "file", metavar="FILE", help="a file written by 'mailctl backup'"
     )
     restore.add_argument("--script", help="script name; default active")
     restore.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
@@ -2260,7 +2260,7 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "no_subscribe", False) and not args.create_folder:
         parser.error(
             "--no-subscribe only applies with --create-folder; to hide a "
-            "folder that already exists, use 'mxfilter unsubscribe FOLDER'"
+            "folder that already exists, use 'mailctl unsubscribe FOLDER'"
         )
 
     if getattr(args, "no_imap", False):
@@ -2269,7 +2269,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.handler(args)
 
-    except MxFilterError as exc:
+    except MailctlError as exc:
         if args.debug:
             traceback.print_exc()
 
@@ -2277,7 +2277,7 @@ def main(argv: list[str] | None = None) -> int:
         # leaves the layout here; indent them under the prefix.
         message = str(exc).replace("\n", "\n  ")
 
-        print(f"mxfilter: {message}", file=sys.stderr)
+        print(f"mailctl: {message}", file=sys.stderr)
 
         return 1
 
@@ -2291,7 +2291,7 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
 
         print(
-            f"mxfilter: unexpected {type(exc).__name__}: {exc} "
+            f"mailctl: unexpected {type(exc).__name__}: {exc} "
             f"(re-run with --debug for a traceback)",
             file=sys.stderr,
         )

@@ -1,9 +1,9 @@
-$ mxfilter test --env-file nowhere.env
+$ mailctl test --env-file nowhere.env
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: env file nowhere.env: cannot read -- No such file or directory
+mailctl: env file nowhere.env: cannot read -- No such file or directory
 
 --- sieve calls
 --- imap calls

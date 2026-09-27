@@ -1,9 +1,9 @@
-$ mxfilter move-rule keep-boss --after phantom
+$ mailctl move-rule keep-boss --after phantom
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: no rule named 'phantom' in the active script, so --after has nothing to place this rule against. Known rules: keep-boss, bin-the-noise
+mailctl: no rule named 'phantom' in the active script, so --after has nothing to place this rule against. Known rules: keep-boss, bin-the-noise
 
 --- sieve calls
 ('connect',)

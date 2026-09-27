@@ -1,4 +1,4 @@
-$ mxfilter apply --from noreply@github.com --discard
+$ mailctl apply --from noreply@github.com --discard
 exit: 1
 --- stdout
 Criteria: From contains 'noreply@github.com'
@@ -9,7 +9,7 @@ Searching 'INBOX' for existing matches...
   uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
 
 --- stderr
-mxfilter: PERMANENTLY DELETE 2 message(s) from 'INBOX'? This cannot be undone -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+mailctl: PERMANENTLY DELETE 2 message(s) from 'INBOX'? This cannot be undone -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
 
 --- sieve calls
 --- imap calls

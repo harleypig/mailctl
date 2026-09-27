@@ -2,7 +2,7 @@
 
 ``config``, ``criteria``, ``sieve``, ``imap``, ``rules``, and the
 ``engine`` that drives them return structured values and raise
-``MxFilterError``. Every piece of rendering, prompting, and progress output
+``MailctlError``. Every piece of rendering, prompting, and progress output
 lives in ``cli.py`` (CONVENTIONS.md).
 
 The engine is held to one bar more: it must not know how it was called.
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-import mxfilter
+import mailctl
 
 # Anything that puts a value in front of a person, or takes one from them.
 BANNED_NAMES = {"print", "input", "breakpoint"}
@@ -44,7 +44,7 @@ CORE_MODULES = ("config", "criteria", "sieve", "imap", "rules", "engine")
 
 # What would tie the engine to one front-end. The CLI module is named both
 # ways a package-relative import can spell it.
-FRONT_END_MODULES = {"argparse", "cli", "mxfilter.cli"}
+FRONT_END_MODULES = {"argparse", "cli", "mailctl.cli"}
 
 # The terminal and the environment: the CLI's to read, never the engine's.
 FRONT_END_ATTRIBUTES = {"stdin", "stdout", "stderr", "environ", "getenv"}
@@ -56,8 +56,8 @@ FRONT_END_ATTRIBUTES = {"stdin", "stdout", "stderr", "environ", "getenv"}
 
 # ----------------------------------------------------------------------------
 def module_path(name: str) -> Path:
-    """Return the source file of one mxfilter module."""
-    return Path(mxfilter.__file__).parent / f"{name}.py"
+    """Return the source file of one mailctl module."""
+    return Path(mailctl.__file__).parent / f"{name}.py"
 
 
 # ----------------------------------------------------------------------------
@@ -116,7 +116,7 @@ def touched_attributes(tree: ast.AST) -> set[str]:
 
 # ----------------------------------------------------------------------------
 def module_tree(name: str) -> ast.AST:
-    """Parse one mxfilter module."""
+    """Parse one mailctl module."""
     return ast.parse(module_path(name).read_text(encoding="utf-8"))
 
 
@@ -134,7 +134,7 @@ def test_a_core_module_never_prints_or_prompts(name):
     found = called & (BANNED_NAMES | BANNED_ATTRIBUTES)
 
     assert found == set(), (
-        f"mxfilter/{name}.py calls {sorted(found)}; presentation and "
+        f"mailctl/{name}.py calls {sorted(found)}; presentation and "
         f"prompting belong in cli.py (CONVENTIONS.md > The core returns "
         f"data)"
     )
@@ -153,7 +153,7 @@ def test_the_engine_does_not_import_a_front_end():
     found = imported_modules(module_tree("engine")) & FRONT_END_MODULES
 
     assert found == set(), (
-        f"mxfilter/engine.py imports {sorted(found)}; the engine must not "
+        f"mailctl/engine.py imports {sorted(found)}; the engine must not "
         f"know how it was called"
     )
 
@@ -164,7 +164,7 @@ def test_the_engine_does_not_touch_the_terminal_or_environment():
     found = touched_attributes(module_tree("engine")) & FRONT_END_ATTRIBUTES
 
     assert found == set(), (
-        f"mxfilter/engine.py reads {sorted(found)}; interaction belongs in "
+        f"mailctl/engine.py reads {sorted(found)}; interaction belongs in "
         f"the front-end"
     )
 
@@ -174,7 +174,7 @@ def test_the_engine_does_not_touch_the_terminal_or_environment():
 def test_a_core_module_never_exits_the_process(name):
     """Libraries raise; only an executable may exit (code-style.md).
 
-    ``MxFilterError`` exists so ``cli.main`` can turn a failure into one
+    ``MailctlError`` exists so ``cli.main`` can turn a failure into one
     diagnostic line and a status code. A ``sys.exit`` in the core takes
     that decision away from every caller, including a future front-end.
     """

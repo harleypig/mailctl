@@ -1,9 +1,9 @@
-$ mxfilter messages --from noreply@github.com --search ALL
+$ mailctl messages --from noreply@github.com --search ALL
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: give criteria or a raw IMAP search expression, not both
+mailctl: give criteria or a raw IMAP search expression, not both
 
 --- sieve calls
 --- imap calls

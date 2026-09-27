@@ -1,6 +1,6 @@
 default: fmt lint test
 
-# There is no `build` target on purpose: mxfilter is pure Python with only
+# There is no `build` target on purpose: mailctl is pure Python with only
 # setuptools metadata, so there is nothing to compile or bundle (the Build QA
 # dimension is N/A — see .claude/CONVENTIONS.md).
 
@@ -30,6 +30,7 @@ test:
 # MXROUTE_* credentials in the environment. TESTARGS passes extra flags
 # through to pytest, e.g. a run filter for a scoped pass:
 #   make testlive TESTARGS='-k sieve'
+# MXFILTER_LIVE keeps the tool's old name until the env migration (#45).
 testlive:
 	MXFILTER_LIVE=1 pytest -v $(TESTARGS)
 

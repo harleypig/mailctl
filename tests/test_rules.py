@@ -11,8 +11,8 @@ weaker answer.
 
 import pytest
 
-from mxfilter.criteria import Criteria
-from mxfilter.rules import (
+from mailctl.criteria import Criteria
+from mailctl.rules import (
     CERTAIN,
     POSSIBLE,
     analyze_placement,
@@ -20,7 +20,7 @@ from mxfilter.rules import (
     read_rules,
     rule_from_criteria,
 )
-from mxfilter.sieve import parse_script
+from mailctl.sieve import parse_script
 
 # ############################################################################
 # Fixtures
@@ -408,7 +408,7 @@ def test_a_broad_github_rule_makes_that_ruleset_order_sensitive():
 def test_a_single_condition_allof_is_read_as_a_disjunction():
     """Roundcube writes one condition as ``allof``, and it must still count.
 
-    Found by running ``mxfilter rules`` against the live script rather than
+    Found by running ``mailctl rules`` against the live script rather than
     by a test: every rule Roundcube's UI had written was a one-test
     ``allof``, and treating ``allof`` as undecidable made the analysis
     refuse to decide anything at all on exactly the scripts it exists to

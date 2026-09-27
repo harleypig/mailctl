@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Short records of significant, deliberate decisions for `mxfilter` — the
+Short records of significant, deliberate decisions for `mailctl` — the
 context, the choice, and why — so a considered "we decided X (and not Y)"
 isn't re-litigated or lost. Format is lightweight [MADR][madr]. These are
 **records of decisions already made**, not open work; open work lives in

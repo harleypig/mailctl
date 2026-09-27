@@ -3,7 +3,7 @@
 One set of user-supplied criteria has to be expressed twice: as Sieve
 conditions for mail that has not arrived yet, and as IMAP SEARCH keys for
 mail that already has. Keeping both derivations in one place is what stops
-the two halves of ``mxfilter add`` from drifting apart.
+the two halves of ``mailctl add`` from drifting apart.
 
 The two languages are not equally expressive, and the gap is handled
 explicitly rather than papered over:
@@ -20,7 +20,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from . import MxFilterError
+from . import MailctlError
 
 __all__ = [
     "COMPARE_OPS",
@@ -171,7 +171,7 @@ class Term:
     # ------------------------------------------------------------------------
     def __post_init__(self):
         if not self.header:
-            raise MxFilterError("a criterion needs a header name")
+            raise MailctlError("a criterion needs a header name")
 
 
 @dataclass
@@ -185,12 +185,12 @@ class Criteria:
     # ------------------------------------------------------------------------
     def __post_init__(self):
         if self.match not in MATCH_MODES:
-            raise MxFilterError(
+            raise MailctlError(
                 f"--match must be one of {', '.join(MATCH_MODES)}"
             )
 
         if self.compare not in COMPARE_OPS:
-            raise MxFilterError(
+            raise MailctlError(
                 f"--compare must be one of {', '.join(COMPARE_OPS)}"
             )
 
@@ -202,7 +202,7 @@ class Criteria:
     def add(self, header: str, value: str) -> None:
         """Append a term, canonicalizing the header name."""
         if value == "":
-            raise MxFilterError(f"criterion for {header!r} has an empty value")
+            raise MailctlError(f"criterion for {header!r} has an empty value")
 
         self.terms.append(Term(canonical_header(header), value))
 
@@ -214,7 +214,7 @@ class Criteria:
         what someone meant to type.
         """
         if not self.terms:
-            raise MxFilterError(
+            raise MailctlError(
                 "no criteria given -- use --from/--to/--cc/--subject/"
                 "--list-id/--header"
             )
@@ -394,7 +394,7 @@ def _or_chain(keys: list) -> list:
     IMAPClient adds the parentheses around each nested list itself.
     """
     if not keys:
-        raise MxFilterError("cannot build a search key from no criteria")
+        raise MailctlError("cannot build a search key from no criteria")
 
     if len(keys) == 1:
         return keys[0]

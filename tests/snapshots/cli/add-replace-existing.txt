@@ -1,4 +1,4 @@
-$ mxfilter add --subject newsletter --fileinto Lists --name keep-boss --replace --first --dry-run
+$ mailctl add --subject newsletter --fileinto Lists --name keep-boss --replace --first --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
@@ -11,7 +11,7 @@ This rule would come before:
   ! 'bin-the-noise' never runs -- 'keep-boss' carries stop and its conditions cover every case 'bin-the-noise' tests for
 
 
-Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
 --- sieve diff ---
 --- managesieve (current)
