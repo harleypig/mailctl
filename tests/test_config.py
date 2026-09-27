@@ -602,6 +602,12 @@ def test_a_group_or_world_readable_password_file_is_refused(secret_file, mode):
     assert "chmod 600" in message
     assert MARKER not in message
 
+    assert message.splitlines() == [
+        f"password file {path} is readable by group/other (mode {mode:04o});",
+        "mxfilter refuses to read it.",
+        f"Fix with: chmod 600 {path}",
+    ]
+
 
 # ----------------------------------------------------------------------------
 def test_a_refused_password_file_is_never_opened(secret_file, monkeypatch):
@@ -1059,6 +1065,13 @@ def test_an_env_file_with_a_password_and_a_shared_mode_is_refused(
     assert f"{mode:04o}" in message
     assert f"chmod 600 {path}" in message
     assert MARKER not in message
+
+    assert message.splitlines() == [
+        f"env file {path} sets MXROUTE_PASSWORD and is readable by "
+        f"group/other (mode {mode:04o});",
+        "mxfilter refuses to use it.",
+        f"Fix with: chmod 600 {path}",
+    ]
 
 
 # ----------------------------------------------------------------------------

@@ -574,7 +574,8 @@ def read_env_file(path: Path) -> EnvFile:
     if env_file.password is not None and mode & 0o077:
         raise MxFilterError(
             f"env file {path} sets MXROUTE_PASSWORD and is readable by "
-            f"group/other (mode {mode:04o}); mxfilter refuses to use it. "
+            f"group/other (mode {mode:04o});\n"
+            "mxfilter refuses to use it.\n"
             f"Fix with: chmod 600 {path}"
         )
 
@@ -638,8 +639,10 @@ def check_password_file_mode(path: Path) -> None:
         return
 
     raise MxFilterError(
-        f"password file {path} is readable by group/other (mode {mode:04o}); "
-        f"mxfilter refuses to read it. Fix with: chmod 600 {path}"
+        f"password file {path} is readable by group/other "
+        f"(mode {mode:04o});\n"
+        "mxfilter refuses to read it.\n"
+        f"Fix with: chmod 600 {path}"
     )
 
 

@@ -1881,7 +1881,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.debug:
             traceback.print_exc()
 
-        print(f"mxfilter: {exc}", file=sys.stderr)
+        # The core breaks a long message into lines with bare newlines and
+        # leaves the layout here; indent them under the prefix.
+        message = str(exc).replace("\n", "\n  ")
+
+        print(f"mxfilter: {message}", file=sys.stderr)
 
         return 1
 
