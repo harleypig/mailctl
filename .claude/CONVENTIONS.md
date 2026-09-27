@@ -114,9 +114,9 @@ Asking was the error.
 
 Built on two libraries, both of which the code wraps rather than exposes:
 
-- **`sievelib` (≥ 1.5.0)** — the ManageSieve client (`sievelib.managesieve`),
+- **`sievelib` (≥ 1.5.0, < 2)** — the ManageSieve client (`sievelib.managesieve`),
   the Sieve parser, and the `factory.FiltersSet` script builder.
-- **`IMAPClient` (≥ 3.1.0)** — the IMAP half.
+- **`IMAPClient` (≥ 4.1, < 5)** — the IMAP half.
 
 ## Layout
 
@@ -496,9 +496,11 @@ stops being readable.
   ```
 
 - **Runtime dependencies are `sievelib` and `IMAPClient`, and that is
-  deliberate.** Both are pinned by lower bound in `pyproject.toml`. Adding a
-  third runtime dependency to a tool whose whole job is two protocol
-  conversations deserves an argument first.
+  deliberate.** Both are pinned by lower bound in `pyproject.toml`, and
+  both now carry an upper bound on the next major, so raising a bound is a
+  deliberate, tested change rather than something a fresh install does
+  unreviewed. Adding a third runtime dependency to a tool whose whole job is
+  two protocol conversations deserves an argument first.
 - Dev tooling (`ruff`, `pytest`) is an **optional dependency group**, so a
   user installing the CLI never pulls the linter in.
 
