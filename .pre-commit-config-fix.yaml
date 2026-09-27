@@ -6,8 +6,12 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # The CLI snapshots record output byte for byte, trailing whitespace
+      # and final newline included; rewriting them breaks the tests (#66).
       - id: trailing-whitespace
+        exclude: ^tests/snapshots/
       - id: end-of-file-fixer
+        exclude: ^tests/snapshots/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.3
