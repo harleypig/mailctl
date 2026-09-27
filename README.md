@@ -83,8 +83,8 @@ A refusal names the setting and where it came from. A name mailctl does not
 know is an error, naming it, before anything connects — a typo would
 otherwise switch off nothing without a word. Disabling an extension the
 server does not advertise anyway changes nothing and is not an error.
-`mailctl test` shows each extension as `yes`, `not advertised`, or `disabled
-by mailctl (...)` with the source.
+`mailctl test` shows each extension as `yes`, `not listed by server`, or
+`disabled by mailctl (...)` with the source.
 
 The names `mailctl test` reports, and what each one adds to Sieve:
 

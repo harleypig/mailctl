@@ -16,7 +16,7 @@ FEATURES:
   `fileinto` or `imap4flags` while it is off is refused, naming the setting.
   Disabling one the server lacks anyway changes nothing, and an unknown name
   is an error naming it. `mailctl test` shows each extension as `yes`, `not
-  advertised`, or `disabled by mailctl (<source>)`.
+  listed by server`, or `disabled by mailctl (<source>)`.
 * **`mailctl test` splits its extension checklist in two** ([#82]):
   `extensions mailctl uses (it writes rules that need them):`, now derived
   from what mailctl actually writes rather than a hand-kept list, then `other

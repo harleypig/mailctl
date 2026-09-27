@@ -20,13 +20,13 @@ ManageSieve: connected
     mailbox      yes
 
   other extensions, for information (mailctl never uses):
-    copy         not advertised
-    envelope     not advertised
-    enotify      not advertised
-    vacation     not advertised
+    copy         not listed by server
+    envelope     not listed by server
+    enotify      not listed by server
+    vacation     not listed by server
     regex        yes
-    spamtest     not advertised
-    extlists     not advertised
+    spamtest     not listed by server
+    extlists     not listed by server
 
   active script: managesieve
   other scripts: (none)

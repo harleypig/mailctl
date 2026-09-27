@@ -52,10 +52,10 @@ writes nothing anywhere.
 * `ManageSieve: connected`, then `capability (as the server reports it):`
   followed by every Sieve extension the server lists.
 * `extensions mailctl uses (it writes rules that need them):`, a table of
-  the extensions mailctl's own rules can need, with `yes` or `not
-  advertised` beside each — also read from the server, not assumed. Then
-  `other extensions, for information (mailctl never uses):`, the same for
-  extensions mailctl only reports on.
+  the extensions mailctl's own rules can need, with `yes` or
+  `not listed by server` beside each — also read from the server, not
+  assumed. Then `other extensions, for information (mailctl never uses):`,
+  the same for extensions mailctl only reports on.
   **`fileinto` and `imap4flags` must say `yes`** — those are what an ordinary
   rule needs. `mailbox` saying `yes` means Sieve can create the target folder
   itself. An extension you turned off with `disabled_extensions` reads
@@ -86,8 +86,8 @@ it is worth knowing before step 6.
   then ask MXRoute support.
 * Authentication fails on either service. The username must be the **full
   email address**, not the part before the `@`.
-* `fileinto` says `not advertised`. Do not continue; a rule that files mail
-  is the whole point, and the server would reject the script.
+* `fileinto` says `not listed by server`. Do not continue; a rule that files
+  mail is the whole point, and the server would reject the script.
 
 ## 2. `mailctl folders` — read-only
 

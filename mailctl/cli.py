@@ -1279,14 +1279,14 @@ def print_extension_states(states) -> None:
     """One line per extension: advertised, and whether mailctl disabled it."""
     for state in states:
         if state.disabled_by is None:
-            shown = "yes" if state.advertised else "not advertised"
+            shown = "yes" if state.advertised else "not listed by server"
 
         elif state.advertised:
             shown = f"disabled by mailctl ({state.disabled_by.describe()})"
 
         else:
             shown = (
-                f"not advertised; disabled by mailctl too "
+                f"not listed by server; disabled by mailctl too "
                 f"({state.disabled_by.describe()})"
             )
 
