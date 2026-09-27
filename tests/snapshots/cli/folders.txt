@@ -2,10 +2,10 @@ $ mxfilter folders
 exit: 0
 --- stdout
 Hierarchy delimiter: '.'
-3 folder(s):
+3 folder(s), 2 subscribed (webmail shows only subscribed folders):
   INBOX
   INBOX.Lists
-  INBOX.spam
+  INBOX.spam   (not subscribed)
 
 --- stderr
 

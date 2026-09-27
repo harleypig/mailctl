@@ -130,6 +130,13 @@ SCENARIOS = {
     "test-verbose": (["test", "-v"], {}),
     "backup-dry": (["backup", "--dry-run"], {}),
     "backup-noactive": (["backup"], {"active": None}),
+    "subscribe": (["subscribe", "spam"], {}),
+    "subscribe-dry": (["subscribe", "INBOX.spam", "--dry-run"], {}),
+    "subscribe-already": (["subscribe", "Lists"], {}),
+    "subscribe-missing": (["subscribe", "Nowhere"], {}),
+    "unsubscribe": (["unsubscribe", "Lists"], {}),
+    "unsubscribe-already": (["unsubscribe", "spam"], {}),
+    "unsubscribe-missing": (["unsubscribe", "Nowhere"], {}),
     "add-dry-missing": (
         ["add", *GITHUB, "--fileinto", "Lists/GitHub", "--dry-run"],
         {},

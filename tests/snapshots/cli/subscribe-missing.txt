@@ -1,0 +1,11 @@
+$ mxfilter subscribe Nowhere
+exit: 1
+--- stdout
+
+--- stderr
+mxfilter: no folder named 'INBOX.Nowhere' on the server, so there is nothing to subscribe to. 'mxfilter folders' lists what exists.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

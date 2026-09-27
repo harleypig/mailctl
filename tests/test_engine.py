@@ -773,3 +773,84 @@ def test_a_mail_pass_that_changes_nothing_is_recognised(
     spec, destination, noop
 ):
     assert engine.mail_pass_is_noop(spec, "INBOX", destination) is noop
+
+
+# ############################################################################
+# Subscription
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_the_folder_listing_says_which_folders_webmail_shows(sessions):
+    listing = engine.list_folders(sessions)
+
+    assert listing.unsubscribed == ["INBOX.spam"]
+    assert listing.is_subscribed("inbox.lists")
+    assert engine.probe_imap(sessions).unsubscribed == ["INBOX.spam"]
+
+
+# ----------------------------------------------------------------------------
+def test_subscribing_is_planned_then_executed(sessions, fake_imap):
+    plan = engine.plan_subscription(sessions, "spam", subscribe=True)
+
+    assert plan.folder == "INBOX.spam"
+    assert plan.changes
+    assert "subscribe_folder" not in fake_imap.names()
+
+    engine.execute_subscription(sessions, plan)
+
+    assert ("subscribe_folder", "INBOX.spam") in fake_imap.calls
+    assert engine.list_folders(sessions).unsubscribed == []
+
+
+# ----------------------------------------------------------------------------
+def test_unsubscribing_hides_without_deleting(sessions, fake_imap):
+    plan = engine.plan_subscription(sessions, "Lists", subscribe=False)
+
+    engine.execute_subscription(sessions, plan)
+
+    listing = engine.list_folders(sessions)
+
+    assert "INBOX.Lists" in listing.folders
+    assert "INBOX.Lists" in listing.unsubscribed
+
+
+# ----------------------------------------------------------------------------
+def test_a_plan_that_changes_nothing_does_nothing(sessions, fake_imap):
+    plan = engine.plan_subscription(sessions, "Lists", subscribe=True)
+
+    assert not plan.changes
+
+    engine.execute_subscription(sessions, plan)
+
+    assert "subscribe_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_missing_folder_cannot_be_subscribed(sessions):
+    with pytest.raises(MxFilterError, match="nothing to subscribe to"):
+        engine.plan_subscription(sessions, "Nowhere", subscribe=True)
+
+    with pytest.raises(MxFilterError, match="no folder or subscription"):
+        engine.plan_subscription(sessions, "Nowhere", subscribe=False)
+
+
+# ----------------------------------------------------------------------------
+def test_a_stale_subscription_to_a_gone_folder_can_be_removed(
+    sessions, fake_imap
+):
+    fake_imap.subscriptions.append(((), b".", b"INBOX.Gone"))
+    sessions.imap._read_folders()
+
+    plan = engine.plan_subscription(sessions, "Gone", subscribe=False)
+
+    assert plan.changes
+
+
+# ----------------------------------------------------------------------------
+def test_a_subscribe_the_server_ignores_is_an_error(sessions, fake_imap):
+    fake_imap.subscribe_takes_effect = False
+    plan = engine.plan_subscription(sessions, "spam", subscribe=True)
+
+    with pytest.raises(MxFilterError, match="still does not list it"):
+        engine.execute_subscription(sessions, plan)

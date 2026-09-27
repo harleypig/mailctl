@@ -1,0 +1,11 @@
+$ mxfilter subscribe INBOX.spam --dry-run
+exit: 0
+--- stdout
+[dry-run] would subscribe to 'INBOX.spam'
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

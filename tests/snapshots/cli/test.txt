@@ -28,7 +28,8 @@ ManageSieve: connected
 
 IMAP: connected
   delimiter: '.'
-  folders:   3
+  folders:   3 (2 subscribed)
+  not subscribed (exist, but webmail will not show them): INBOX.spam
   MOVE:      yes
   UIDPLUS:   yes
   FILTER=SIEVE: no -- no server-side retroactive filtering (Dovecot imap_filter_sieve is not enabled).

@@ -4,6 +4,17 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **Folder subscription is a setting you can see and change** (#42).
+  `mxfilter subscribe FOLDER` and `mxfilter unsubscribe FOLDER` show or hide
+  an existing folder in webmail, with the usual folder-name normalization
+  and `--dry-run`. `folders` marks the folders that exist but are not
+  subscribed, and `test` reports how many are subscribed and names the
+  rest. Nothing is judged: an unsubscribed folder may be exactly what you
+  wanted. Warnings that used to end "subscribe to it in your mail client"
+  now name the `mxfilter subscribe` command instead.
+
 ENHANCEMENTS:
 
 * **`from-message` shows the message before it derives anything.** Date,

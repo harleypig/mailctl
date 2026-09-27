@@ -291,8 +291,7 @@ means the criteria were broader than you thought.
   appear in webmail: a folder that was created but not subscribed to
   receives mail and stays invisible. If instead you see a warning that
   subscribing failed, the folder is still real and mail will still arrive
-  there — subscribe to it in your mail client (Roundcube: Settings ›
-  Folders).
+  there — run `mxfilter subscribe Scratch` to make it visible.
 * `Criteria: Subject contains 'Your invoice for March'`.
 * `Searching 'INBOX' for existing matches...` then `N message(s) match:` and
   the preview.

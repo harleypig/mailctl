@@ -61,8 +61,12 @@ saves it to history. mxfilter warns when you use it.
 # Check both services and what they support. Changes nothing.
 mxfilter test
 
-# What does this server call its folders?
+# What does this server call its folders, and which does webmail show?
 mxfilter folders
+
+# Show a folder in webmail, or hide one (it keeps its mail either way).
+mxfilter subscribe Lists/News
+mxfilter unsubscribe Lists/Noisy --dry-run
 
 # See exactly what would change, without changing it.
 mxfilter add --from newsletter@example.com --fileinto Lists/News --dry-run
@@ -156,7 +160,7 @@ assumptions below get settled for your account.
   because an invisible folder nobody was told about is the bug, not the
   feature. If the subscription fails, the folder is **not** torn back down:
   it exists and mail filed there will arrive, so mxfilter warns and tells
-  you to subscribe to it from your mail client.
+  you to run `mxfilter subscribe` on it.
 * The folder is **announced when the change is shown and created only when
   it is applied** — for `add`, once the server has accepted the new script
   and just before it is stored; for `apply`, after you confirm the move. A

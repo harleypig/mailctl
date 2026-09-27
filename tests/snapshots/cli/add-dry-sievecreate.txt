@@ -3,7 +3,7 @@ exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
 Folder 'INBOX.Lists.GitHub' will be created by Sieve (fileinto :create)
-  Nothing promises Sieve will subscribe to a folder it creates, so it may not appear in webmail until you subscribe to it there.
+  Nothing promises Sieve will subscribe to a folder it creates, so it may not appear in webmail until you subscribe to it: once the first message has created it, run 'mxfilter subscribe INBOX.Lists.GitHub'.
 
 Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'

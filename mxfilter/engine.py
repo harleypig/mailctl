@@ -231,10 +231,24 @@ class RulesReport:
 
 @dataclass(frozen=True)
 class FolderListing:
-    """The account's folders and the hierarchy delimiter."""
+    """The account's folders, the hierarchy delimiter, and which folders
+    are subscribed (LSUB) -- the ones webmail actually draws."""
 
     delimiter: str
     folders: list[str]
+    subscribed: list[str] = field(default_factory=list)
+
+    # ------------------------------------------------------------------------
+    def is_subscribed(self, folder: str) -> bool:
+        return folder.casefold() in {
+            name.casefold() for name in self.subscribed
+        }
+
+    # ------------------------------------------------------------------------
+    @property
+    def unsubscribed(self) -> list[str]:
+        """Folders that exist but that webmail will not show."""
+        return [name for name in self.folders if not self.is_subscribed(name)]
 
 
 @dataclass(frozen=True)
@@ -253,6 +267,7 @@ class ImapProbe:
     capabilities: list[str]
     delimiter: str
     folder_count: int
+    unsubscribed: list[str] = field(default_factory=list)
 
     # ------------------------------------------------------------------------
     @property
@@ -317,7 +332,9 @@ def list_folders(sessions: Sessions) -> FolderListing:
     """Return the folder list, sorted, with the delimiter."""
     imap = _imap(sessions)
 
-    return FolderListing(imap.delimiter, sorted(imap.folders))
+    return FolderListing(
+        imap.delimiter, sorted(imap.folders), list(imap.subscribed_folders)
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -335,7 +352,87 @@ def probe_imap(sessions: Sessions) -> ImapProbe:
     """Read the IMAP capabilities and folder shape."""
     imap = _imap(sessions)
 
-    return ImapProbe(imap.capabilities(), imap.delimiter, len(imap.folders))
+    listing = list_folders(sessions)
+
+    return ImapProbe(
+        imap.capabilities(),
+        imap.delimiter,
+        len(listing.folders),
+        listing.unsubscribed,
+    )
+
+
+# ############################################################################
+# Folder subscription -- a setting, reported and changed like one
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class SubscriptionPlan:
+    """A folder's subscription, as it is and as it was asked to be."""
+
+    requested: str
+    folder: str
+    delimiter: str
+    subscribe: bool
+    subscribed_now: bool
+
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        """Whether executing the plan would change anything."""
+        return self.subscribe != self.subscribed_now
+
+
+# ----------------------------------------------------------------------------
+def plan_subscription(
+    sessions: Sessions, name: str, subscribe: bool
+) -> SubscriptionPlan:
+    """Work out a subscription change without making it.
+
+    The name is normalized like every other folder name, so one copied out
+    of the folder listing works. Subscribing needs the folder to exist;
+    unsubscribing does not, since a subscription can outlive its folder and
+    removing that stale entry is a legitimate thing to want.
+    """
+    imap = _imap(sessions)
+    folder = imap.normalize(name)
+    subscribed_now = imap.is_subscribed(folder)
+
+    if subscribe and not imap.exists(folder):
+        raise MxFilterError(
+            f"no folder named {folder!r} on the server, so there is nothing "
+            f"to subscribe to. 'mxfilter folders' lists what exists."
+        )
+
+    if not subscribe and not subscribed_now and not imap.exists(folder):
+        raise MxFilterError(
+            f"no folder or subscription named {folder!r} on the server. "
+            f"'mxfilter folders' lists what exists."
+        )
+
+    return SubscriptionPlan(
+        name, folder, imap.delimiter, subscribe, subscribed_now
+    )
+
+
+# ----------------------------------------------------------------------------
+def execute_subscription(sessions: Sessions, plan: SubscriptionPlan) -> None:
+    """Apply a subscription plan; a plan that changes nothing does nothing.
+
+    Subscribing is confirmed by re-reading LSUB (``ImapSession.subscribe``),
+    so a server that answers OK without acting on it raises here.
+    """
+    if not plan.changes:
+        return
+
+    imap = _imap(sessions)
+
+    if plan.subscribe:
+        imap.subscribe(plan.folder)
+
+    else:
+        imap.unsubscribe(plan.folder)
 
 
 # ############################################################################

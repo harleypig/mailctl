@@ -369,7 +369,8 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
             print(
                 "  Nothing promises Sieve will subscribe to a folder it "
                 "creates, so it may not appear in webmail until you "
-                "subscribe to it there."
+                f"subscribe to it: once the first message has created it, "
+                f"run 'mxfilter subscribe {plan.folder}'."
             )
 
     elif plan.status == engine.FOLDER_IMAP_CREATE:
@@ -411,15 +412,15 @@ def report_folder_creation(result: FolderCreation) -> None:
             f"created folder {folder!r}, but subscribing to it failed: "
             f"{result.subscribe_error}. The folder exists and mail filed "
             f"there will arrive, but it will not appear in webmail until "
-            f"you subscribe to it in your mail client (Roundcube: "
-            f"Settings > Folders)."
+            f"you subscribe to it: run 'mxfilter subscribe {folder}'."
         )
 
         return
 
     print(
         f"Created IMAP folder {folder!r}; not subscribed (--no-subscribe), "
-        f"so it will not appear in webmail."
+        f"so it will not appear in webmail ('mxfilter subscribe {folder}' "
+        f"shows it later)."
     )
 
 
@@ -795,10 +796,63 @@ def cmd_folders(args) -> int:
         listing = engine.list_folders(sessions)
 
         print(f"Hierarchy delimiter: {listing.delimiter!r}")
-        print(f"{len(listing.folders)} folder(s):")
+        print(
+            f"{len(listing.folders)} folder(s), "
+            f"{len(listing.folders) - len(listing.unsubscribed)} subscribed "
+            f"(webmail shows only subscribed folders):"
+        )
+
+        width = max((len(name) for name in listing.folders), default=0)
 
         for folder in listing.folders:
-            print(f"  {folder}")
+            if listing.is_subscribed(folder):
+                print(f"  {folder}")
+
+            else:
+                print(f"  {folder:<{width}}  (not subscribed)")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def cmd_subscribe(args) -> int:
+    """Subscribe to, or unsubscribe from, an existing folder."""
+    config = configure(args)
+    subscribe = args.command == "subscribe"
+
+    with connect(config, args, sieve=False, imap=True) as sessions:
+        plan = engine.plan_subscription(sessions, args.folder, subscribe)
+
+        if plan.requested != plan.folder:
+            print(
+                f"Folder {plan.requested!r} resolves to {plan.folder!r} "
+                f"(delimiter {plan.delimiter!r})"
+            )
+
+        if not plan.changes:
+            state = "subscribed" if subscribe else "not subscribed"
+            print(f"{plan.folder!r} is already {state}; nothing to change.")
+
+            return 0
+
+        verb = "subscribe to" if subscribe else "unsubscribe from"
+
+        if args.dry_run:
+            print(f"[dry-run] would {verb} {plan.folder!r}")
+
+            return 0
+
+        engine.execute_subscription(sessions, plan)
+
+    if subscribe:
+        print(f"Subscribed to {plan.folder!r}; webmail will show it.")
+
+    else:
+        print(
+            f"Unsubscribed from {plan.folder!r}. It still exists, keeps its "
+            f"mail, and still receives anything filed there, but webmail "
+            f"will not show it."
+        )
 
     return 0
 
@@ -849,7 +903,16 @@ def cmd_test(args) -> int:
 
         print("\nIMAP: connected")
         print(f"  delimiter: {imap.delimiter!r}")
-        print(f"  folders:   {imap.folder_count}")
+        print(
+            f"  folders:   {imap.folder_count} "
+            f"({imap.folder_count - len(imap.unsubscribed)} subscribed)"
+        )
+
+        if imap.unsubscribed:
+            print(
+                f"  not subscribed (exist, but webmail will not show them): "
+                f"{', '.join(imap.unsubscribed)}"
+            )
         print(
             f"  MOVE:      {'yes' if imap.has_move else 'no (COPY+EXPUNGE)'}"
         )
@@ -1432,6 +1495,29 @@ def build_parser() -> argparse.ArgumentParser:
         "folders", parents=[common, connection], help="list IMAP folders"
     )
     folders.set_defaults(handler=cmd_folders)
+
+    for name, summary in (
+        ("subscribe", "show a folder in webmail (IMAP SUBSCRIBE)"),
+        ("unsubscribe", "hide a folder from webmail; it keeps its mail"),
+    ):
+        toggle = subparsers.add_parser(
+            name,
+            parents=[common, connection],
+            help=summary,
+            description=f"{summary[0].upper()}{summary[1:]}. Webmail draws "
+            "its folder tree from the subscription list (LSUB), so this is "
+            "what decides whether a folder is visible there. The folder "
+            "name is normalized like every other: 'Lists/GitHub' and "
+            "'INBOX.Lists.GitHub' name the same folder.",
+        )
+        toggle.add_argument("folder", metavar="FOLDER")
+        toggle.add_argument(
+            "--dry-run",
+            dest="dry_run",
+            action="store_true",
+            help="say what would change; change nothing",
+        )
+        toggle.set_defaults(handler=cmd_subscribe)
 
     test = subparsers.add_parser(
         "test",

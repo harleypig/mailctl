@@ -1,0 +1,13 @@
+$ mxfilter subscribe spam
+exit: 0
+--- stdout
+Folder 'spam' resolves to 'INBOX.spam' (delimiter '.')
+Subscribed to 'INBOX.spam'; webmail will show it.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('subscribe_folder', 'INBOX.spam')
+('logout',)
