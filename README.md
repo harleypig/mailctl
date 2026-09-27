@@ -202,9 +202,10 @@ assumptions below get settled for your account.
   backup, named `<script>-<UTC timestamp>.sieve`. XDG would call a backup
   *state* rather than config; keeping it here is a deliberate departure from
   that, not something XDG endorses, because a backup you cannot find is not a
-  backup. `--backup-dir` and `MXROUTE_BACKUP_DIR` move it. The file is written
-  mode `0600` in a directory created `0700`: a Sieve script is not a password,
-  but it does say who you correspond with and how you sort it.
+  backup. `--backup-dir`, `MXROUTE_BACKUP_DIR`, and `backup_dir` in
+  `config.toml` move it, with `~` and `$VAR` expanded in each. The file is
+  written mode `0600` in a directory created `0700`: a Sieve script is not a
+  password, but it does say who you correspond with and how you sort it.
 * **`mxfilter restore FILE` puts a backup back.** The backup is the server's
   exact bytes — no banner lines, nothing reformatted — and restore uploads
   them exactly, over the active script — or over the one `--script NAME`

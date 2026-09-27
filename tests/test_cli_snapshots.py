@@ -313,6 +313,11 @@ SCENARIOS = {
         {"env": ENV_FILE, "config": 'sieve_tls = "ssl"\n'},
     ),
     "test-env-file-missing": (["test", "--env-file", "nowhere.env"], {}),
+    # #50: backup_dir expands $VAR / ${VAR} and ~, like any path setting.
+    "backup-dir-expanded": (
+        ["backup"],
+        {"config": 'backup_dir = "${XDG_CONFIG_HOME}/elsewhere"\n'},
+    ),
     "backup-dry": (["backup", "--dry-run"], {}),
     "backup-noactive": (["backup"], {"active": None}),
     "subscribe": (["subscribe", "spam"], {}),

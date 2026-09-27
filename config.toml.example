@@ -88,10 +88,10 @@ password_cmd = "pass show email/you@yourdomain.com"
 # departure from that, not something XDG endorses, because a backup you
 # cannot find is not a backup.
 #
-# Write an absolute path. Unlike password_file, this path is taken
-# literally: a leading ~ or a $VAR is NOT expanded, so "~/backups" would
-# create a directory named "~" under the current directory (issue #50).
-#backup_dir = "/home/you/mail-backups"
+# Like password_file, the path may start with ~ and may use $VAR or
+# ${VAR}; the same expansion applies to MXROUTE_BACKUP_DIR and
+# --backup-dir.
+#backup_dir = "~/mail-backups"
 
 # The folder `add` and `apply` file into when you give no --fileinto.
 # There is no flag or environment variable for this one; it lives only

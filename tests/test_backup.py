@@ -182,6 +182,35 @@ def test_mxroute_backup_dir_still_overrides_the_default(monkeypatch, tmp_path):
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize("source", ["file", "env", "flag"])
+@pytest.mark.parametrize(
+    "spelled", ["~/bk", "$MXFILTER_TEST_DIR/bk", "${MXFILTER_TEST_DIR}/bk"]
+)
+def test_backup_dir_expands_home_and_variables(
+    source, spelled, monkeypatch, tmp_path
+):
+    """#50: a literal ``~`` would otherwise create a directory named ``~``."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("MXFILTER_TEST_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.delenv("MXROUTE_BACKUP_DIR", raising=False)
+    args = SimpleNamespace()
+
+    if source == "file":
+        config_dir = tmp_path / "cfg" / "mxfilter"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(f'backup_dir = "{spelled}"\n')
+
+    elif source == "env":
+        monkeypatch.setenv("MXROUTE_BACKUP_DIR", spelled)
+
+    else:
+        args.backup_dir = spelled
+
+    assert load_config(args).backup_dir == tmp_path / "bk"
+
+
+# ----------------------------------------------------------------------------
 def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
     """The automatic backup and ``mxfilter backup`` agree on one place.
 

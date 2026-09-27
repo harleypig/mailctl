@@ -45,6 +45,9 @@ BUG FIXES:
   a mistyped path or an empty file is reported without a login first.
 * **`mxfilter restore` expands `$VAR` / `${VAR}` in FILE** as well as `~`
   ([#54]), the same as the password-file path.
+* **`backup_dir` expands `~` and `$VAR` / `${VAR}`** ([#50]) — in
+  `config.toml`, in `MXROUTE_BACKUP_DIR`, and in `--backup-dir`. It was taken
+  literally, so `backup_dir = "~/backups"` created a directory named `~`.
 
 ## 0.3.0
 
@@ -424,3 +427,4 @@ NOTES:
 [#53]: https://github.com/harleypig/mxroute-email-filters/issues/53
 [#52]: https://github.com/harleypig/mxroute-email-filters/issues/52
 [#54]: https://github.com/harleypig/mxroute-email-filters/issues/54
+[#50]: https://github.com/harleypig/mxroute-email-filters/issues/50
