@@ -4,6 +4,8 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.5.0
+
 BREAKING CHANGES:
 
 * **`mxfilter` is now `mailctl`** ([#45]). The command is `mailctl`
