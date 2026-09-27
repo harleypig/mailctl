@@ -14,6 +14,7 @@ the [issue tracker][issues], and deliberate "not now" deferrals in
 | [0003](0003-python-core-with-per-component-language-choice.md) | Python is the core; another language is allowed per component |
 | [0004](0004-adopt-go-sieve-as-the-evaluation-engine.md) | Adopt `migadu/go-sieve` as the Sieve evaluation engine |
 | [0005](0005-restore-may-replace-an-unparseable-script.md) | `restore` may replace a script mxfilter cannot parse |
+| [0006](0006-two-layer-component-and-provider-architecture.md) | Two layers: protocol component libraries under per-host providers |
 
 [madr]: https://adr.github.io/madr/
 
