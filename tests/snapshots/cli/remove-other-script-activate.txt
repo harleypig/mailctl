@@ -1,0 +1,37 @@
+$ mxfilter remove-rule keep-boss --script spare --activate --yes
+exit: 0
+--- stdout
+
+Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- spare (current)
++++ spare (proposed)
+@@ -1,8 +1,2 @@
+ require ["fileinto", "imap4flags"];
+ 
+-# rule:[keep-boss]
+-if header :contains "from" "boss@example.com" {
+-    fileinto "INBOX.Boss";
+-    setflag "\\Flagged";
+-    stop;
+-}
+
+--- end diff ---
+
+Script 'spare' will become the active script, in place of 'managesieve'.
+Backed up current script to <TMP>/config/mxfilter/backups/spare-<STAMP>.sieve
+Uploaded and activated script 'spare'
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'spare')
+('checkscript',)
+('putscript', 'spare', 'require ["fileinto", "imap4flags"];\n\n')
+('setactive', 'spare')
+('logout',)
+--- imap calls

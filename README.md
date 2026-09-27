@@ -309,6 +309,13 @@ is never guessed — the webmail's script name is server-side config, and
 MXRoute is mid-migration on both its panel and Dovecot. `--script` overrides
 it; the name `mxfilter` is used only when the account has no scripts at all.
 
+The server runs one script, and editing a different one does not change
+which. `--script NAME` on a script that is not the active one stores the
+change and leaves NAME inactive, and mxfilter says so before it uploads;
+`--activate` makes NAME the active script as well. When the account has no
+active script at all, the script mxfilter writes is activated, since
+otherwise nothing would run it.
+
 ## `--compare` tests the whole header value
 
 `--compare contains` (the default) is a substring test and behaves the way

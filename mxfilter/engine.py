@@ -110,6 +110,7 @@ class RuleRequest:
     script: str | None = None
     replace: bool = False
     placement: Placement | None = None
+    activate: bool = False
 
 
 # ############################################################################
@@ -127,9 +128,10 @@ class ScriptBackedUp:
 
 @dataclass(frozen=True)
 class ScriptUploaded:
-    """The new script was validated, uploaded, and activated."""
+    """The new script was validated and uploaded, and maybe activated."""
 
     script: str
+    activated: bool
 
 
 @dataclass(frozen=True)
@@ -587,6 +589,7 @@ def execute_restore(
         plan.before,
         plan.after,
         on_event,
+        activate=True,
     )
 
 
@@ -853,6 +856,8 @@ class RulePlan:
     placement: Analysis
     diff: DisplayDiff
     folder: FolderPlan
+    active: str | None
+    activate: bool
 
 
 @dataclass(frozen=True)
@@ -864,6 +869,8 @@ class RemovalPlan:
     before: str
     after: str
     diff: DisplayDiff
+    active: str | None
+    activate: bool
 
 
 @dataclass(frozen=True)
@@ -884,6 +891,8 @@ class MovePlan:
     count: int
     placement: Analysis
     diff: DisplayDiff
+    active: str | None
+    activate: bool
 
     # ------------------------------------------------------------------------
     @property
@@ -894,8 +903,10 @@ class MovePlan:
 # ----------------------------------------------------------------------------
 def fetch_active(
     sessions: Sessions, requested: str | None = None
-) -> tuple[str, str]:
-    """Return ``(script_name, source)`` for the script to edit.
+) -> tuple[str, str, str | None]:
+    """Return ``(script_name, source, active)`` for the script to edit.
+
+    ``active`` is the name of the script the server runs now, or None.
 
     The name always comes from LISTSCRIPTS and is written back to. It is
     never guessed: whatever the webmail's managesieve plugin calls its
@@ -916,9 +927,22 @@ def fetch_active(
     _active, others = sieve.list_scripts()
 
     if name == active or name in others:
-        return (name, sieve.get_script(name))
+        return (name, sieve.get_script(name), active)
 
-    return (name, "")
+    return (name, "", active)
+
+
+# ----------------------------------------------------------------------------
+def activates(name: str, active: str | None, requested: bool) -> bool:
+    """Whether uploading ``name`` should also make it the active script.
+
+    Only one script runs, so switching it is a change of its own and is
+    never a side effect of editing another: ``--script other`` edits
+    ``other`` and leaves the running script alone unless activation was
+    asked for. With nothing active, activating is the only way the upload
+    does anything at all.
+    """
+    return requested or active is None or name == active
 
 
 # ----------------------------------------------------------------------------
@@ -983,7 +1007,7 @@ def plan_rule(
 
     actions = sieve_actions(request.actions, folder.folder, folder.use_create)
     name = request.name or default_rule_name(request.criteria)
-    script, before = fetch_active(sessions, request.script)
+    script, before, active = fetch_active(sessions, request.script)
 
     after = merge_rule(
         before,
@@ -1007,15 +1031,20 @@ def plan_rule(
         ),
         diff=display_diff(before, after, script),
         folder=folder,
+        active=active,
+        activate=activates(script, active, request.activate),
     )
 
 
 # ----------------------------------------------------------------------------
 def plan_removal(
-    sessions: Sessions, rule: str, script: str | None = None
+    sessions: Sessions,
+    rule: str,
+    script: str | None = None,
+    activate: bool = False,
 ) -> RemovalPlan:
     """Take a named rule out of the script without uploading the result."""
-    name, before = fetch_active(sessions, script)
+    name, before, active = fetch_active(sessions, script)
 
     if not before.strip():
         raise MxFilterError(f"script {name!r} is empty")
@@ -1023,7 +1052,13 @@ def plan_removal(
     after = remove_rule(before, rule)
 
     return RemovalPlan(
-        rule, name, before, after, display_diff(before, after, name)
+        rule,
+        name,
+        before,
+        after,
+        display_diff(before, after, name),
+        active,
+        activates(name, active, activate),
     )
 
 
@@ -1033,9 +1068,10 @@ def plan_move(
     rule: str,
     placement: Placement,
     script: str | None = None,
+    activate: bool = False,
 ) -> MovePlan:
     """Reorder a named rule without restating it, and without uploading."""
-    name, before = fetch_active(sessions, script)
+    name, before, active = fetch_active(sessions, script)
 
     if not before.strip():
         raise MxFilterError(f"script {name!r} is empty")
@@ -1060,6 +1096,8 @@ def plan_move(
         count=len(present),
         placement=analyze_placement(others, candidate, at_index=to_index),
         diff=display_diff(before, after, name),
+        active=active,
+        activate=activates(name, active, activate),
     )
 
 
@@ -1072,8 +1110,14 @@ def upload_script(
     after: str,
     on_event: EventSink | None = None,
     before_put: Callable[[], object] | None = None,
+    *,
+    activate: bool,
 ) -> Path:
-    """Back up, validate, upload, and activate a script.
+    """Back up, validate, and upload a script; activate it if asked.
+
+    ``activate`` has no default: whether the upload also switches which
+    script the server runs is decided by the plan (``activates``), and a
+    caller that forgot to pass it would otherwise switch it silently.
 
     The backup is written, and announced, before the server sees anything,
     so a rejected upload still leaves the user knowing where the copy is.
@@ -1091,9 +1135,11 @@ def upload_script(
         before_put()
 
     sieve.put_script(name, after)
-    sieve.set_active(name)
 
-    emit(ScriptUploaded(name))
+    if activate:
+        sieve.set_active(name)
+
+    emit(ScriptUploaded(name, activate))
 
     return path
 
@@ -1128,6 +1174,7 @@ def execute_script_change(
         plan.after,
         on_event,
         before_put,
+        activate=plan.activate,
     )
 
 

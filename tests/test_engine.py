@@ -40,9 +40,10 @@ class FakeSieveSession:
     """Stands in for ``SieveSession``, recording what it was asked to do."""
 
     # ------------------------------------------------------------------------
-    def __init__(self, script="", active="managesieve", caps=FULL):
+    def __init__(self, script="", active="managesieve", caps=FULL, others=()):
         self.script = script
         self.active = active
+        self.others = list(others)
         self.caps = list(caps)
         self.reject = False
         self.calls: list[tuple] = []
@@ -57,7 +58,7 @@ class FakeSieveSession:
 
     # ------------------------------------------------------------------------
     def list_scripts(self):
-        return (self.active, [])
+        return (self.active, list(self.others))
 
     # ------------------------------------------------------------------------
     def active_script_name(self):
@@ -961,6 +962,101 @@ def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
 
     assert "put_script" not in fake.names()
     assert len(list((tmp_path / "backups").iterdir())) == 1
+
+
+# ############################################################################
+# Which script ends up active (#53)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("name", "active", "requested", "expected"),
+    [
+        ("managesieve", "managesieve", False, True),
+        ("spare", "managesieve", False, False),
+        ("spare", "managesieve", True, True),
+        ("spare", None, False, True),
+    ],
+)
+def test_only_the_active_script_or_an_explicit_ask_activates(
+    name, active, requested, expected
+):
+    assert engine.activates(name, active, requested) is expected
+
+
+# ----------------------------------------------------------------------------
+def test_editing_another_script_leaves_the_active_one_running(
+    imap_config, tmp_path, roundcube_script
+):
+    imap_config.backup_dir = tmp_path
+    fake = FakeSieveSession(script=roundcube_script, others=["spare"])
+    live = Sessions(sieve=fake)
+
+    plan = engine.plan_removal(live, "keep-boss", script="spare")
+
+    assert (plan.script, plan.active, plan.activate) == (
+        "spare",
+        "managesieve",
+        False,
+    )
+
+    events = []
+    engine.execute_script_change(live, imap_config, plan, events.append)
+
+    assert "set_active" not in fake.names()
+    assert fake.calls[-1][:2] == ("put_script", "spare")
+    assert events[-1] == engine.ScriptUploaded("spare", activated=False)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("kind", ["rule", "removal", "move"])
+def test_activate_switches_the_running_script_when_asked(
+    kind, imap_config, imap_session, tmp_path, roundcube_script
+):
+    imap_config.backup_dir = tmp_path
+    fake = FakeSieveSession(script=roundcube_script, others=["spare"])
+    live = Sessions(sieve=fake, imap=imap_session)
+
+    if kind == "rule":
+        request = RuleRequest(
+            criteria(),
+            ActionSpec(fileinto="Lists"),
+            script="spare",
+            activate=True,
+        )
+        plan = engine.plan_rule(live, request, folder_for(live, imap_config))
+
+    elif kind == "removal":
+        plan = engine.plan_removal(live, "keep-boss", "spare", activate=True)
+
+    else:
+        plan = engine.plan_move(
+            live, "bin-the-noise", Placement(PLACE_FIRST), "spare", True
+        )
+
+    events = []
+    engine.execute_script_change(live, imap_config, plan, events.append)
+
+    assert fake.calls[-1] == ("set_active", "spare")
+    assert events[-1] == engine.ScriptUploaded("spare", activated=True)
+
+
+# ----------------------------------------------------------------------------
+def test_with_no_active_script_the_edited_one_is_activated(
+    sessions, imap_config, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    sessions.sieve.active = None
+    request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
+
+    plan = engine.plan_rule(
+        sessions, request, folder_for(sessions, imap_config)
+    )
+
+    assert plan.activate
+    engine.execute_script_change(sessions, imap_config, plan)
+    assert sessions.sieve.calls[-1] == ("set_active", plan.script)
 
 
 # ############################################################################

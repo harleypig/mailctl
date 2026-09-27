@@ -204,6 +204,7 @@ def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
         "managesieve",
         CRLF_SCRIPT,
         'require ["fileinto"];\r\n',
+        activate=True,
     )
 
     written = sorted((tmp_path / "cfg" / "mxfilter" / "backups").iterdir())

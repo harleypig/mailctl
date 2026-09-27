@@ -23,6 +23,14 @@ BUG FIXES:
   and U+061C still pass, since they cannot reorder text and right-to-left
   mail uses them.
 
+* **`--script NAME` no longer switches the active script as a side
+  effect** ([#53]). `add`, `from-message`, `remove-rule`, and `move-rule`
+  used to activate whatever script they edited, so editing a spare script
+  silently changed the one Sieve runs. Now a script is activated only when
+  it already was the active one, when the account has no active script, or
+  when `--activate` (new on those commands) asks for it. When a change goes
+  to a script that stays inactive, mxfilter says so before uploading.
+
 ## 0.3.0
 
 Released 2026-09-27.
@@ -398,3 +406,4 @@ NOTES:
   ruleset.
 
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
+[#53]: https://github.com/harleypig/mxroute-email-filters/issues/53
