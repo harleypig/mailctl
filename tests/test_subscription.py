@@ -24,7 +24,8 @@ import pytest
 from imapclient.exceptions import IMAPClientError
 
 from mxfilter import MxFilterError
-from mxfilter.cli import build_parser, ensure_folder, report_folder_creation
+from mxfilter.cli import build_parser, prepare_folder, report_folder_creation
+from mxfilter.engine import Sessions
 from mxfilter.imap import FolderCreation, ImapSession
 
 NEW_FOLDER = "INBOX.Lists.GitHub"
@@ -314,7 +315,7 @@ def test_the_cli_warns_on_a_failed_subscription_without_calling_it_a_failure(
 
 
 # ############################################################################
-# The flag, end to end through ensure_folder
+# The flag, end to end through prepare_folder
 # ############################################################################
 
 
@@ -337,27 +338,29 @@ def test_every_folder_creating_command_takes_the_flag(command):
 
 # ----------------------------------------------------------------------------
 def test_ensure_folder_subscribes_and_reports_it(
-    imap_session, fake_imap, capsys
+    imap_session, imap_config, fake_imap, capsys
 ):
     """The default path, from the flags a user actually types."""
-    use_create = ensure_folder(
-        NEW_FOLDER, add_args(), imap_session, sieve_without_mailbox()
+    plan = prepare_folder(
+        Sessions(sieve_without_mailbox(), imap_session),
+        imap_config,
+        add_args(),
     )
 
-    assert use_create is False
+    assert plan.folder == NEW_FOLDER
+    assert plan.use_create is False
     assert ("subscribe_folder", NEW_FOLDER) in fake_imap.calls
     assert "subscribed" in capsys.readouterr().out
 
 
 # ----------------------------------------------------------------------------
 def test_ensure_folder_honours_no_subscribe_and_says_what_it_cost(
-    imap_session, fake_imap, capsys
+    imap_session, imap_config, fake_imap, capsys
 ):
-    ensure_folder(
-        NEW_FOLDER,
+    prepare_folder(
+        Sessions(sieve_without_mailbox(), imap_session),
+        imap_config,
         add_args("--no-subscribe"),
-        imap_session,
-        sieve_without_mailbox(),
     )
 
     assert "subscribe_folder" not in fake_imap.names()
@@ -365,13 +368,14 @@ def test_ensure_folder_honours_no_subscribe_and_says_what_it_cost(
 
 
 # ----------------------------------------------------------------------------
-def test_ensure_folder_creates_nothing_on_a_dry_run(imap_session, fake_imap):
+def test_ensure_folder_creates_nothing_on_a_dry_run(
+    imap_session, imap_config, fake_imap
+):
     """Showing before changing: the same rule the rest of the tool follows."""
-    ensure_folder(
-        NEW_FOLDER,
+    prepare_folder(
+        Sessions(sieve_without_mailbox(), imap_session),
+        imap_config,
         add_args("--dry-run"),
-        imap_session,
-        sieve_without_mailbox(),
     )
 
     assert "create_folder" not in fake_imap.names()

@@ -29,8 +29,9 @@ import re
 import pytest
 
 from mxfilter import MxFilterError
-from mxfilter.cli import build_parser, warn_about_placement
+from mxfilter.cli import build_parser, print_placement
 from mxfilter.criteria import Criteria
+from mxfilter.engine import placement_analysis
 from mxfilter.rules import analyze_placement, read_rules, rule_from_criteria
 from mxfilter.sieve import (
     PLACE_AFTER,
@@ -771,12 +772,14 @@ def test_the_warning_describes_the_position_the_rule_will_occupy(
     every row here collapses to the ``None`` row, which reports nothing at
     all for the two cases that starve working rules.
     """
-    warn_about_placement(
-        NARROW_SCRIPT,
-        "Lists",
-        _criteria("to", "@lists.example.com"),
-        BROAD_ACTIONS,
-        placement,
+    print_placement(
+        placement_analysis(
+            NARROW_SCRIPT,
+            "Lists",
+            _criteria("to", "@lists.example.com"),
+            BROAD_ACTIONS,
+            placement,
+        )
     )
 
     output = capsys.readouterr().out
@@ -798,12 +801,14 @@ def test_replacing_a_rule_does_not_report_it_shadowing_itself(capsys):
     warnings that are not. It would also put the index out by one, since
     ``resolve_position`` counts the other rules only.
     """
-    warn_about_placement(
-        NARROW_SCRIPT,
-        "Announce",
-        _criteria("to", "@lists.example.com"),
-        BROAD_ACTIONS,
-        Placement(PLACE_FIRST),
+    print_placement(
+        placement_analysis(
+            NARROW_SCRIPT,
+            "Announce",
+            _criteria("to", "@lists.example.com"),
+            BROAD_ACTIONS,
+            Placement(PLACE_FIRST),
+        )
     )
 
     output = capsys.readouterr().out
