@@ -110,8 +110,8 @@ it lands ([#27][i27]).
   our expectations and Pigeonhole's has a place to be caught.
 
 [adr3]: 0003-python-core-with-per-component-language-choice.md
-[i26]: https://github.com/harleypig/mxroute-email-filters/issues/26
-[i27]: https://github.com/harleypig/mxroute-email-filters/issues/27
+[i26]: https://github.com/harleypig/mailctl/issues/26
+[i27]: https://github.com/harleypig/mailctl/issues/27
 
 ## Based on
 

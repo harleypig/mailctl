@@ -49,4 +49,4 @@ The rest of the write-path discipline is kept, not relaxed:
   exception for the one path that does not merge, not a relaxation of that
   rule.
 
-[i13]: https://github.com/harleypig/mxroute-email-filters/issues/13
+[i13]: https://github.com/harleypig/mailctl/issues/13
