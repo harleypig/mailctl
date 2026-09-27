@@ -6,6 +6,21 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 
 FEATURES:
 
+* **`--env-file [PATH]` reads settings from a `.env` file.** Bare, it means
+  `.env` in the current directory. Only `MXROUTE_*` lines are read, in the
+  plain dotenv form — `KEY=VALUE`, optional `export`, `#` comments, one pair
+  of quotes stripped, nothing interpolated. The file ranks between the
+  flags and the environment, for the password as well as everything else,
+  and the process environment is never modified. A file that sets
+  `MXROUTE_PASSWORD` is refused unless it is mode `0600` or `0400`, and a
+  line mxfilter cannot read is reported by number, never quoted.
+
+* **`mxfilter test` says where each setting came from.** Host, user,
+  password, IMAP, and Sieve each name their source — a flag, the env file,
+  the environment, the config file, or the default — and a `Sources:` line
+  lists what was read. The password line names its source and nothing
+  else. The same record is on the resolved config for any other front-end.
+
 * **`mxfilter move-rule NAME` reorders a rule without restating it** (#36).
   `--first`, `--last`, `--before OTHER`, or `--after OTHER`; only the
   position changes. The move is judged where the rule lands — what would
@@ -63,6 +78,13 @@ ENHANCEMENTS:
   display concern only.
 
 BUG FIXES:
+
+* **A failed ManageSieve connection no longer calls typed values the
+  default** (#55). With `--sieve-port 1 --sieve-tls none` the hint said
+  "1 + none is the RFC 5804 / Dovecot default". It now says so only when
+  both came from the default, and otherwise names where each came from.
+  The snapshot suite also refuses `MXFILTER_UPDATE_SNAPSHOTS=1` under CI,
+  where it would have rewritten every snapshot and passed unconditionally.
 
 * **Bulk IMAP operations are chunked** (#24). Every matched UID used to go
   into a single MOVE, COPY, STORE, EXPUNGE, or header FETCH, so a large

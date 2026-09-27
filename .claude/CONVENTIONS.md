@@ -151,9 +151,14 @@ There is no vendor API here — the tool speaks two standard protocols.
   always configuration and never a built-in default.
 
 Every setting resolves highest-priority-first: a CLI flag → an `MXROUTE_*`
-environment variable → the TOML config file
-(`$XDG_CONFIG_HOME/mxfilter/config.toml`) → a built-in default. The password
-is the exception and is handled separately (*Credentials*).
+line in the `--env-file` file → an `MXROUTE_*` environment variable → the
+TOML config file (`$XDG_CONFIG_HOME/mxfilter/config.toml`) → a built-in
+default. The env file is read, never exported: `load_config` takes the
+environment as a mapping and layers the file over it, so `os.environ` is
+never written. Where each setting came from is recorded on the resolved
+`Config` (`sources`, `consulted`) as data, so a front-end can report it and
+an error message can say "default" only about a default. The password is the
+exception and is handled separately (*Credentials*).
 
 ### Confidence — documented, observed, and unknown
 
@@ -319,15 +324,20 @@ and it is enforced by construction rather than by care:
   to a connection method — never to display, log, or format it.
 - The password resolves through its own ladder, highest first: **an explicit
   flag** (`--password-file`, `--password-cmd`, `--password` — argparse makes
-  them mutually exclusive) → `MXROUTE_PASSWORD_FILE` → `MXROUTE_PASSWORD_CMD`
-  → `MXROUTE_PASSWORD` → `password_file` → `password_cmd` (config file) → an
+  them mutually exclusive) → the `--env-file` file's `MXROUTE_PASSWORD_FILE`
+  → `MXROUTE_PASSWORD_CMD` → `MXROUTE_PASSWORD` → the same three from the
+  environment → `password_file` → `password_cmd` (config file) → an
   interactive `getpass` prompt. Two rules produce that order, and both are
   load-bearing:
   - **A flag beats an ambient variable.** It was typed for *this* run; the
     variable merely happens to be exported. The inverse — which is what the
     code did until the ladder was fixed — silently authenticates as the
     wrong account when `MXROUTE_PASSWORD` is exported for one mailbox and
-    `--password-cmd` names another.
+    `--password-cmd` names another. An env file was named for this run too,
+    so **all three** of its rungs sit above all three ambient ones rather
+    than interleaving by variable — otherwise an exported
+    `MXROUTE_PASSWORD_FILE` for one mailbox would beat the file's
+    `MXROUTE_PASSWORD` for another.
   - **A literal value never beats an instruction about where to fetch one.**
 - The **literal password is never read from the TOML config file** — only
   `password_file` and `password_cmd` are. That is unchanged.
@@ -340,6 +350,13 @@ and it is enforced by construction rather than by care:
   WSL: a file on a Windows mount reports
   `0777` regardless of intent, so the file has to live on the Linux
   filesystem — do **not** add a filesystem exception to the check.
+- **An env file that sets `MXROUTE_PASSWORD` is held to the password-file
+  bar** — any bit in `0o077` is a refusal naming the path, the mode, and the
+  `chmod`. The mode is taken from the open handle, so it is the mode of the
+  file actually read. The password is wrapped in `Secret` as it is parsed
+  and never sits in the file's plain value mapping. A line the parser
+  cannot read is reported by **line number only**, never quoted, because it
+  may be the password.
 - **`--password` is deliberately the least safe rung and says so.** It exists
   because it was asked for; `cli.py` warns on stderr that an argument is
   visible in the process list and saved to shell history. The warning is

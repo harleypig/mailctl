@@ -28,7 +28,28 @@ from mxfilter import cli
 from mxfilter import sieve as sieve_module
 
 SNAPSHOTS = Path(__file__).parent / "snapshots" / "cli"
-UPDATE = os.environ.get("MXFILTER_UPDATE_SNAPSHOTS") == "1"
+
+
+# ----------------------------------------------------------------------------
+def update_requested(environ) -> bool:
+    """Whether to rewrite the snapshots rather than check them.
+
+    Refused under CI: a run that rewrites every snapshot then compares it
+    with itself passes whatever the output is, so a CI job inheriting the
+    variable would stop checking anything while staying green.
+    """
+    if environ.get("MXFILTER_UPDATE_SNAPSHOTS") != "1":
+        return False
+
+    if environ.get("CI"):
+        pytest.fail(
+            "MXFILTER_UPDATE_SNAPSHOTS=1 under CI would rewrite every "
+            "snapshot and pass unconditionally; unset it",
+            pytrace=False,
+        )
+
+    return True
+
 
 FULL = ["fileinto", "imap4flags", "mailbox", "regex"]
 NO_MAILBOX = ["fileinto", "imap4flags"]
@@ -119,8 +140,19 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # ############################################################################
 
 # name -> (argv, options). Options: caps, active, script, reject, config
-# (the text of config.toml), and file (the text of a file that "<FILE>" in
-# argv is replaced with the path of).
+# (the text of config.toml), file (the text of a file that "<FILE>" in
+# argv is replaced with the path of), and env (the text of a .env written,
+# mode 0600, into the directory the command runs in).
+
+# Host from the env file over the exported MXROUTE_HOST, port from a flag
+# over the env file, TLS from the config file, and the password named
+# indirectly -- one rung each, so the report has to tell them apart.
+ENV_FILE = """# written by hand
+export MXROUTE_HOST=mail.from-env-file.example
+MXROUTE_SIEVE_PORT='4191'
+MXROUTE_PASSWORD_CMD="printf %s not-a-real-password"
+OTHER_TOOL=ignored
+"""
 
 # A narrow rule ahead of a broad one that covers it. Moving the broad one
 # first is the move that starves the narrow one.
@@ -158,6 +190,11 @@ SCENARIOS = {
     "folders": (["folders"], {}),
     "test": (["test"], {}),
     "test-verbose": (["test", "-v"], {}),
+    "test-env-file": (
+        ["test", "--env-file", "--sieve-port", "4192"],
+        {"env": ENV_FILE, "config": 'sieve_tls = "ssl"\n'},
+    ),
+    "test-env-file-missing": (["test", "--env-file", "nowhere.env"], {}),
     "backup-dry": (["backup", "--dry-run"], {}),
     "backup-noactive": (["backup"], {"active": None}),
     "subscribe": (["subscribe", "spam"], {}),
@@ -513,6 +550,12 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         restore_file.write_text(text, encoding="utf-8")
         argv = [str(restore_file) if arg == "<FILE>" else arg for arg in argv]
 
+    if "env" in options:
+        env_file = tmp_path / ".env"
+        env_file.write_text(options["env"], encoding="utf-8")
+        env_file.chmod(0o600)
+        monkeypatch.chdir(tmp_path)
+
     if "config" in options:
         config_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "mxfilter"
         config_dir.mkdir(parents=True, exist_ok=True)
@@ -568,7 +611,7 @@ def test_cli_output_matches_its_snapshot(
         argv, options, fake_imap, roundcube_script, monkeypatch, tmp_path
     )
 
-    if UPDATE:
+    if update_requested(os.environ):
         snapshot.parent.mkdir(parents=True, exist_ok=True)
         snapshot.write_text(actual, encoding="utf-8")
 
@@ -585,3 +628,25 @@ def test_every_snapshot_belongs_to_a_scenario():
 
     assert names, "no snapshots found -- the glob reads nothing"
     assert names == set(SCENARIOS)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("environ", "expected"),
+    [
+        pytest.param({}, False, id="unset"),
+        pytest.param({"CI": "true"}, False, id="ci-checking"),
+        pytest.param({"MXFILTER_UPDATE_SNAPSHOTS": "1"}, True, id="local"),
+    ],
+)
+def test_snapshot_rewriting_is_opt_in(environ, expected):
+    assert update_requested(environ) is expected
+
+
+# ----------------------------------------------------------------------------
+def test_snapshot_rewriting_is_refused_under_ci():
+    """#55: CI inheriting the variable would turn the tier into a no-op."""
+    environ = {"MXFILTER_UPDATE_SNAPSHOTS": "1", "CI": "true"}
+
+    with pytest.raises(pytest.fail.Exception, match="under CI"):
+        update_requested(environ)

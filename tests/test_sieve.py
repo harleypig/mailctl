@@ -8,10 +8,13 @@ silently -- PUTSCRIPT succeeds and the loss only surfaces days later
 the failure is loud.
 """
 
+import argparse
+
 import pytest
 
 from mxfilter import MxFilterError
 from mxfilter import sieve as sieve_module
+from mxfilter.config import Config, load_config
 from mxfilter.criteria import Criteria, escape_sieve_string
 from mxfilter.sieve import (
     PLACE_AFTER,
@@ -1148,3 +1151,39 @@ def test_backup_failure_raises_rather_than_losing_the_upload_guard(tmp_path):
 
     with pytest.raises(MxFilterError, match="could not write backup"):
         backup_script("x", "active", blocker / "backups")
+
+
+# ############################################################################
+# The connection-failure hint
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_the_hint_calls_the_port_the_default_only_when_it_is():
+    """4190 + starttls from the built-in default is described as such."""
+    hint = sieve_module._connection_hint(load_config(argparse.Namespace()))
+
+    assert "4190 + starttls is the RFC 5804 / Dovecot default" in hint
+
+
+# ----------------------------------------------------------------------------
+def test_the_hint_names_where_a_typed_port_and_mode_came_from():
+    """#55: typed values were reported as "the RFC 5804 / Dovecot default"."""
+    config = load_config(argparse.Namespace(sieve_port=1, sieve_tls="none"))
+    hint = sieve_module._connection_hint(config)
+
+    assert "is the RFC 5804 / Dovecot default" not in hint
+    assert "port 1 (flag --sieve-port)" in hint
+    assert "TLS mode none (flag --sieve-tls)" in hint
+    assert "the RFC 5804 / Dovecot default is 4190 + starttls" in hint
+
+
+# ----------------------------------------------------------------------------
+def test_the_hint_does_not_guess_for_a_config_built_by_hand():
+    """No recorded source is not the same as a default one."""
+    hint = sieve_module._connection_hint(
+        Config(sieve_port=1, sieve_tls="none")
+    )
+
+    assert "is the RFC 5804 / Dovecot default" not in hint
+    assert "port 1 and TLS mode none" in hint

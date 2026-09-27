@@ -1,12 +1,12 @@
-$ mxfilter test
+$ mxfilter test --env-file --sieve-port 4192
 exit: 0
 --- stdout
-Sources:   environment
-Host:      mail.example.com  (environment)
+Sources:   env file .env, environment, config file <TMP>/config/mxfilter/config.toml
+Host:      mail.from-env-file.example  (env file .env)
 User:      user@example.com  (environment)
-Password:  set  (MXROUTE_PASSWORD, environment)
-IMAP:      mail.example.com:993  (host: same as host, port: default)
-Sieve:     mail.example.com:4190 (tls=starttls)  (default)
+Password:  set (via command)  (MXROUTE_PASSWORD_CMD, env file .env)
+IMAP:      mail.from-env-file.example:993  (host: same as host, port: default)
+Sieve:     mail.from-env-file.example:4192 (tls=ssl)  (port: flag --sieve-port, tls: config file <TMP>/config/mxfilter/config.toml)
 
 ManageSieve: connected
   extensions: fileinto, imap4flags, mailbox, regex

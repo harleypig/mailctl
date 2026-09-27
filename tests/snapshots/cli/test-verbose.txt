@@ -1,11 +1,12 @@
 $ mxfilter test -v
 exit: 0
 --- stdout
-Host:      mail.example.com
-User:      user@example.com
-Password:  set
-IMAP:      mail.example.com:993
-Sieve:     mail.example.com:4190 (tls=starttls)
+Sources:   environment
+Host:      mail.example.com  (environment)
+User:      user@example.com  (environment)
+Password:  set  (MXROUTE_PASSWORD, environment)
+IMAP:      mail.example.com:993  (host: same as host, port: default)
+Sieve:     mail.example.com:4190 (tls=starttls)  (default)
 [sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
 [sieve] authenticated
 

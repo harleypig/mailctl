@@ -3,9 +3,14 @@
 Resolution order for every setting, highest priority first:
 
 1. a CLI flag
-2. an environment variable (``MXROUTE_*``)
-3. the TOML config file (``$XDG_CONFIG_HOME/mxfilter/config.toml``)
-4. a built-in default
+2. an ``MXROUTE_*`` line in the env file named by ``--env-file``
+3. an environment variable (``MXROUTE_*``)
+4. the TOML config file (``$XDG_CONFIG_HOME/mxfilter/config.toml``)
+5. a built-in default
+
+Where each setting came from is recorded on the Config as data
+(``Config.sources``), so a front-end can say so and an error message can
+avoid calling a typed value "the default".
 
 The password is handled separately -- it has more than one source and its
 own ladder (``Config.password``) -- and never lands in a plain string that
@@ -13,10 +18,11 @@ could be printed by accident -- see the ``Secret`` class below.
 """
 
 import os
+import re
 import shlex
 import subprocess
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,11 +30,14 @@ from . import MxFilterError
 
 __all__ = [
     "Config",
+    "EnvFile",
     "Secret",
+    "Source",
     "config_dir",
     "config_path",
     "default_backup_dir",
     "load_config",
+    "read_env_file",
 ]
 
 DEFAULT_SIEVE_PORT = 4190
@@ -37,6 +46,19 @@ DEFAULT_SIEVE_TLS = "starttls"
 DEFAULT_SOURCE_FOLDER = "INBOX"
 
 SIEVE_TLS_MODES = ("starttls", "ssl", "none")
+
+# The one prefix an env file is read for. Anything else in the file belongs
+# to some other program sharing it, and is ignored rather than refused.
+ENV_PREFIX = "MXROUTE_"
+
+# The kinds of place a setting can come from; ``Source.kind`` is one of these.
+FLAG = "flag"
+ENV_FILE = "env file"
+ENVIRONMENT = "environment"
+CONFIG_FILE = "config file"
+DEFAULT = "default"
+DERIVED = "derived"
+PROMPT = "prompt"
 
 # Every way of supplying a password, in one message, because a user who
 # sees this has just found out that none of them is in place.
@@ -101,6 +123,61 @@ class Secret:
 
 
 # ############################################################################
+# Provenance and the env file
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class Source:
+    """Where one setting's value came from.
+
+    ``kind`` is one of the module's source constants (``FLAG``,
+    ``ENV_FILE``, ...). ``name`` is the flag, variable, or config key that
+    supplied it -- or, for ``DERIVED``, the setting it was copied from.
+    ``path`` is the env file or config file, where there is one.
+    """
+
+    kind: str
+    name: str = ""
+    path: Path | None = None
+
+    # ------------------------------------------------------------------------
+    def describe(self) -> str:
+        """A short phrase naming the source, for messages and reports.
+
+        Carries no value, only where a value came from, so it is safe
+        beside a credential.
+        """
+        if self.kind == FLAG:
+            return f"flag {self.name}"
+
+        if self.kind in (ENV_FILE, CONFIG_FILE):
+            return f"{self.kind} {self.path}"
+
+        if self.kind == DERIVED:
+            return f"same as {self.name}"
+
+        if self.kind == PROMPT:
+            return "interactive prompt"
+
+        return self.kind
+
+
+@dataclass
+class EnvFile:
+    """The ``MXROUTE_*`` settings read from one env file.
+
+    ``MXROUTE_PASSWORD`` is held apart, already wrapped, so that nothing
+    holding this object -- a repr, a debug dump -- holds the credential as
+    a plain string.
+    """
+
+    path: Path
+    values: dict[str, str] = field(default_factory=dict)
+    password: Secret | None = None
+
+
+# ############################################################################
 # Config
 # ############################################################################
 
@@ -144,8 +221,21 @@ class Config:
     # a process blocked on a terminal read that will never be answered.
     prompter: Callable[[str], str] | None = field(default=None, repr=False)
 
+    # Where each setting came from, keyed by field name, and the places
+    # that were read at all, highest priority first. Filled by
+    # load_config(); a Config built by hand has none, and anything reading
+    # these must not assume a missing entry means "default".
+    sources: dict[str, Source] = field(default_factory=dict)
+    consulted: list[Source] = field(default_factory=list)
+
+    # The env file named by --env-file, and the environment it outranks.
+    # ``environ`` None means os.environ, read when the password is resolved.
+    env_file: EnvFile | None = field(default=None, repr=False)
+    environ: Mapping[str, str] | None = field(default=None, repr=False)
+
     # Resolved lazily by password(); never populated from a repr-able place.
     _password: Secret | None = field(default=None, repr=False)
+    _password_origin: Source | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------------
     def __repr__(self) -> str:
@@ -165,48 +255,116 @@ class Config:
         )
 
     # ------------------------------------------------------------------------
-    def password_sources(self) -> list[tuple[str, str]]:
+    def password_sources(self) -> list[tuple[str, str | Secret, Source]]:
         """Return the configured password sources, highest priority first.
 
-        Each entry is ``(kind, value)``, where the kind says how to turn
+        Each entry is ``(kind, value, origin)``: the kind says how to turn
         the value into a credential -- read a file, run a command, or take
-        it literally -- and the position says which one wins.
+        it literally -- the position says which one wins, and the origin
+        says where it was configured.
 
         The ladder, and why it is in this order:
 
         1. an explicit flag (``--password-file``, ``--password-cmd``,
            ``--password``; mutually exclusive, so only one can appear)
-        2. ``MXROUTE_PASSWORD_FILE``
-        3. ``MXROUTE_PASSWORD_CMD``
-        4. ``MXROUTE_PASSWORD``
-        5. ``password_file`` from the config file
-        6. ``password_cmd`` from the config file
+        2. ``MXROUTE_PASSWORD_FILE``, ``_CMD``, then ``MXROUTE_PASSWORD``
+           from the ``--env-file`` file
+        3. the same three from the environment, in the same order
+        4. ``password_file`` from the config file
+        5. ``password_cmd`` from the config file
 
         A flag outranks an ambient variable because it was typed for this
         run and the variable was not. The failure that ordering prevents
         is not an inconvenience: with ``MXROUTE_PASSWORD`` exported for one
         account, a ``--password-cmd`` naming a *second* account used to be
         ignored, and the command authenticated as the first -- the wrong
-        account, with no error anywhere.
+        account, with no error anywhere. The env file was named for this
+        run too, so all three of its rungs sit above all three ambient
+        ones for the same reason, rather than interleaving by variable.
 
         Within the flags the order is nominal, since argparse rejects more
         than one; it runs safest-first so a Config assembled by hand
         (a test, another front-end) still behaves sensibly.
         """
-        env = os.environ
+        env = os.environ if self.environ is None else self.environ
+        toml = config_path()
 
-        candidates = [
-            ("file", self.password_file),
-            ("command", self.password_cmd),
-            ("flag", self.inline_password),
-            ("file", env.get("MXROUTE_PASSWORD_FILE", "")),
-            ("command", env.get("MXROUTE_PASSWORD_CMD", "")),
-            ("env", env.get("MXROUTE_PASSWORD", "")),
-            ("file", self.toml_password_file),
-            ("command", self.toml_password_cmd),
+        candidates: list[tuple[str, str | Secret, Source]] = [
+            ("file", self.password_file, Source(FLAG, "--password-file")),
+            ("command", self.password_cmd, Source(FLAG, "--password-cmd")),
+            ("flag", self.inline_password, Source(FLAG, "--password")),
         ]
 
-        return [(kind, value) for kind, value in candidates if value]
+        if self.env_file is not None:
+            values, path = self.env_file.values, self.env_file.path
+
+            candidates += [
+                (
+                    "file",
+                    values.get("MXROUTE_PASSWORD_FILE", ""),
+                    Source(ENV_FILE, "MXROUTE_PASSWORD_FILE", path),
+                ),
+                (
+                    "command",
+                    values.get("MXROUTE_PASSWORD_CMD", ""),
+                    Source(ENV_FILE, "MXROUTE_PASSWORD_CMD", path),
+                ),
+                (
+                    "env",
+                    self.env_file.password or "",
+                    Source(ENV_FILE, "MXROUTE_PASSWORD", path),
+                ),
+            ]
+
+        candidates += [
+            (
+                "file",
+                env.get("MXROUTE_PASSWORD_FILE", ""),
+                Source(ENVIRONMENT, "MXROUTE_PASSWORD_FILE"),
+            ),
+            (
+                "command",
+                env.get("MXROUTE_PASSWORD_CMD", ""),
+                Source(ENVIRONMENT, "MXROUTE_PASSWORD_CMD"),
+            ),
+            (
+                "env",
+                env.get("MXROUTE_PASSWORD", ""),
+                Source(ENVIRONMENT, "MXROUTE_PASSWORD"),
+            ),
+            (
+                "file",
+                self.toml_password_file,
+                Source(CONFIG_FILE, "password_file", toml),
+            ),
+            (
+                "command",
+                self.toml_password_cmd,
+                Source(CONFIG_FILE, "password_cmd", toml),
+            ),
+        ]
+
+        return [entry for entry in candidates if entry[1]]
+
+    # ------------------------------------------------------------------------
+    def password_origin(self) -> Source | None:
+        """Report where the password comes (or came) from, never what it is.
+
+        The prompt counts as a source only when a prompter is set; with
+        none, and nothing configured, there is no source and None says so.
+        """
+        if self._password_origin is not None:
+            return self._password_origin
+
+        sources = self.password_sources()
+
+        if sources:
+            return sources[0][2]
+
+        if self.prompter is not None:
+            return Source(PROMPT)
+
+        return None
 
     # ------------------------------------------------------------------------
     def password_state(self) -> str:
@@ -224,7 +382,7 @@ class Config:
         if not sources:
             return "unset"
 
-        kind, _value = sources[0]
+        kind, _value, _origin = sources[0]
 
         return PASSWORD_STATE_LABELS[kind]
 
@@ -249,12 +407,15 @@ class Config:
         sources = self.password_sources()
 
         if sources:
-            self._password = self._resolve_source(*sources[0])
+            kind, value, origin = sources[0]
+            self._password = self._resolve_source(kind, value)
+            self._password_origin = origin
 
         elif self.prompter is not None:
             self._password = Secret(
                 self.prompter(f"Password for {self.user or 'account'}: ")
             )
+            self._password_origin = Source(PROMPT)
 
         else:
             raise MxFilterError(NO_PASSWORD_MESSAGE)
@@ -265,8 +426,11 @@ class Config:
         return self._password
 
     # ------------------------------------------------------------------------
-    def _resolve_source(self, kind: str, value: str) -> Secret:
+    def _resolve_source(self, kind: str, value: str | Secret) -> Secret:
         """Turn one ``(kind, value)`` source into a credential."""
+        if isinstance(value, Secret):
+            return value
+
         if kind == "file":
             return read_password_file(expand_path(value))
 
@@ -348,6 +512,103 @@ def read_config_file(path: Path) -> dict:
 
     except OSError as exc:
         raise MxFilterError(f"{path}: cannot read -- {exc}") from exc
+
+
+# Anything a shell would take as a variable name.
+_ENV_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_EXPORT = re.compile(r"export\s+")
+
+
+# ----------------------------------------------------------------------------
+def read_env_file(path: Path) -> EnvFile:
+    """Read the ``MXROUTE_*`` settings from a dotenv-style file.
+
+    The accepted form is the plain one people write by hand: ``KEY=VALUE``
+    lines, an optional leading ``export``, blank lines and ``#`` comment
+    lines skipped, and one pair of matching single or double quotes
+    stripped from a value. Nothing is interpolated or unescaped, and a
+    value cannot span lines; an unquoted value has its surrounding
+    whitespace removed, a quoted one keeps everything inside the quotes.
+
+    A line that is none of those is an error naming the file and the line
+    number and **never** the line, because the line may be a password.
+
+    A file that sets ``MXROUTE_PASSWORD`` is held to the password-file
+    bar: any group or other permission bit and it is refused. The mode is
+    taken from the open handle, so it is the mode of the file just read.
+    """
+    try:
+        with path.open(encoding="utf-8") as handle:
+            mode = os.fstat(handle.fileno()).st_mode & 0o777
+            lines = handle.read().splitlines()
+
+    except OSError as exc:
+        raise MxFilterError(
+            f"env file {path}: cannot read -- {exc.strerror or exc}"
+        ) from exc
+
+    except UnicodeDecodeError as exc:
+        raise MxFilterError(
+            f"env file {path}: not valid UTF-8 -- {exc.reason}"
+        ) from exc
+
+    env_file = EnvFile(path=path)
+
+    for number, raw in enumerate(lines, start=1):
+        line = raw.strip()
+
+        if not line or line.startswith("#"):
+            continue
+
+        key, value = _parse_env_line(line, path, number)
+
+        if not key.startswith(ENV_PREFIX):
+            continue
+
+        if key == "MXROUTE_PASSWORD":
+            env_file.password = Secret(value)
+
+        else:
+            env_file.values[key] = value
+
+    if env_file.password is not None and mode & 0o077:
+        raise MxFilterError(
+            f"env file {path} sets MXROUTE_PASSWORD and is readable by "
+            f"group/other (mode {mode:04o}); mxfilter refuses to use it. "
+            f"Fix with: chmod 600 {path}"
+        )
+
+    return env_file
+
+
+# ----------------------------------------------------------------------------
+def _parse_env_line(line: str, path: Path, number: int) -> tuple[str, str]:
+    """Split one stripped, non-comment line into ``(key, value)``.
+
+    Every error names the line by number only.
+    """
+    line = _EXPORT.sub("", line, count=1) if _EXPORT.match(line) else line
+
+    key, sep, value = line.partition("=")
+    key, value = key.strip(), value.strip()
+
+    if not sep or not _ENV_KEY.fullmatch(key):
+        raise MxFilterError(
+            f"env file {path}, line {number}: not a KEY=VALUE line "
+            f"(the line is not shown, as it may hold a password)"
+        )
+
+    if value[:1] in ("'", '"'):
+        if len(value) < 2 or value[-1] != value[0]:
+            raise MxFilterError(
+                f"env file {path}, line {number}: unterminated quote "
+                f"(values cannot span lines; the line is not shown, as it "
+                f"may hold a password)"
+            )
+
+        value = value[1:-1]
+
+    return key, value
 
 
 # ----------------------------------------------------------------------------
@@ -507,102 +768,146 @@ def _as_port(value, label: str) -> int:
 
 
 # ----------------------------------------------------------------------------
-def load_config(args) -> Config:
-    """Build a Config from CLI args, environment, and the config file.
+def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
+    """Build a Config from CLI args, an env file, environment, and TOML.
 
     ``args`` is the parsed argparse namespace; any of the connection
     attributes may be absent or None, which simply defers to the next
-    source in the resolution order.
+    source in the resolution order. ``args.env_file``, when set, names an
+    env file whose ``MXROUTE_*`` lines rank just below the flags.
+
+    ``environ`` is the ambient environment, ``os.environ`` when None. It
+    is only read, never written: the env file's values are layered over it
+    here rather than exported into the process.
     """
-    file_values = read_config_file(config_path())
-    env = os.environ
+    environ = os.environ if environ is None else environ
 
-    def flag(name):
-        return getattr(args, name, None)
-
-    host = _pick(
-        flag("host"),
-        env.get("MXROUTE_HOST"),
-        file_values.get("host"),
-        default="",
+    env_file_arg = getattr(args, "env_file", None)
+    env_file = (
+        read_env_file(expand_path(env_file_arg)) if env_file_arg else None
     )
 
-    user = _pick(
-        flag("user"),
-        env.get("MXROUTE_USER"),
-        file_values.get("user"),
-        default="",
+    toml = config_path()
+    file_values = read_config_file(toml)
+
+    sources: dict[str, Source] = {}
+
+    def resolve(field_name, *, flag=None, var=None, key=None, default=None):
+        """Take the first source that supplies a value, and record it."""
+        candidates = []
+
+        if flag:
+            candidates.append(
+                (getattr(args, flag, None), Source(FLAG, _flag_name(flag)))
+            )
+
+        if var and env_file is not None:
+            candidates.append(
+                (
+                    env_file.values.get(var),
+                    Source(ENV_FILE, var, env_file.path),
+                )
+            )
+
+        if var:
+            candidates.append((environ.get(var), Source(ENVIRONMENT, var)))
+
+        if key:
+            candidates.append(
+                (file_values.get(key), Source(CONFIG_FILE, key, toml))
+            )
+
+        for value, origin in candidates:
+            if value not in (None, ""):
+                sources[field_name] = origin
+
+                return value
+
+        sources[field_name] = default[1] if default else Source(DEFAULT)
+
+        return default[0] if default else None
+
+    def setting(name, default=""):
+        """The common shape: a flag, a variable, and a key of one name."""
+        return resolve(
+            name,
+            flag=name,
+            var=f"{ENV_PREFIX}{name.upper()}",
+            key=name,
+            default=(default, Source(DEFAULT)),
+        )
+
+    host = setting("host")
+    user = setting("user")
+
+    imap_host = resolve(
+        "imap_host",
+        flag="imap_host",
+        var="MXROUTE_IMAP_HOST",
+        key="imap_host",
+        default=(host, Source(DERIVED, "host")) if host else None,
     )
 
-    imap_host = _pick(
-        flag("imap_host"),
-        env.get("MXROUTE_IMAP_HOST"),
-        file_values.get("imap_host"),
-        host,
-        default="",
-    )
-
-    imap_port = _as_port(
-        _pick(
-            flag("imap_port"),
-            env.get("MXROUTE_IMAP_PORT"),
-            file_values.get("imap_port"),
-            default=DEFAULT_IMAP_PORT,
-        ),
-        "imap_port",
-    )
-
+    imap_port = _as_port(setting("imap_port", DEFAULT_IMAP_PORT), "imap_port")
     sieve_port = _as_port(
-        _pick(
-            flag("sieve_port"),
-            env.get("MXROUTE_SIEVE_PORT"),
-            file_values.get("sieve_port"),
-            default=DEFAULT_SIEVE_PORT,
-        ),
-        "sieve_port",
+        setting("sieve_port", DEFAULT_SIEVE_PORT), "sieve_port"
     )
-
-    sieve_tls = _pick(
-        flag("sieve_tls"),
-        env.get("MXROUTE_SIEVE_TLS"),
-        file_values.get("sieve_tls"),
-        default=DEFAULT_SIEVE_TLS,
-    )
+    sieve_tls = setting("sieve_tls", DEFAULT_SIEVE_TLS)
 
     if sieve_tls not in SIEVE_TLS_MODES:
         raise MxFilterError(
             f"sieve_tls: {sieve_tls!r} is not one of "
-            f"{', '.join(SIEVE_TLS_MODES)}"
+            f"{', '.join(SIEVE_TLS_MODES)} "
+            f"(from {sources['sieve_tls'].describe()})"
         )
 
-    backup_dir = _pick(
-        flag("backup_dir"),
-        env.get("MXROUTE_BACKUP_DIR"),
-        file_values.get("backup_dir"),
-        default=None,
+    backup_dir = setting("backup_dir", None)
+
+    default_folder = resolve(
+        "default_folder", key="default_folder", default=("", Source(DEFAULT))
+    )
+    source_folder = resolve(
+        "source_folder",
+        flag="folder",
+        key="source_folder",
+        default=(DEFAULT_SOURCE_FOLDER, Source(DEFAULT)),
     )
 
+    consulted = [Source(ENVIRONMENT)]
+
+    if env_file is not None:
+        consulted.insert(0, Source(ENV_FILE, path=env_file.path))
+
+    if toml.is_file():
+        consulted.append(Source(CONFIG_FILE, path=toml))
+
     return Config(
-        host=host,
-        user=user,
-        imap_host=imap_host,
+        host=host or "",
+        user=user or "",
+        imap_host=imap_host or "",
         imap_port=imap_port,
         sieve_port=sieve_port,
         sieve_tls=sieve_tls,
-        default_folder=_pick(file_values.get("default_folder"), default=""),
-        source_folder=_pick(
-            flag("folder"),
-            file_values.get("source_folder"),
-            default=DEFAULT_SOURCE_FOLDER,
-        ),
+        default_folder=default_folder,
+        source_folder=source_folder,
         # Four fields rather than two: which source a credential came from
         # is what decides the order, so collapsing a flag and a config-file
         # value into one field would throw the answer away before
         # password_sources() is ever asked the question.
-        inline_password=_pick(flag("password"), default=""),
-        password_file=_pick(flag("password_file"), default=""),
-        password_cmd=_pick(flag("password_cmd"), default=""),
+        inline_password=_pick(getattr(args, "password", None), default=""),
+        password_file=_pick(getattr(args, "password_file", None), default=""),
+        password_cmd=_pick(getattr(args, "password_cmd", None), default=""),
         toml_password_file=_pick(file_values.get("password_file"), default=""),
         toml_password_cmd=_pick(file_values.get("password_cmd"), default=""),
         backup_dir=Path(backup_dir) if backup_dir else default_backup_dir(),
+        sources=sources,
+        consulted=consulted,
+        env_file=env_file,
+        environ=environ,
     )
+
+
+# ----------------------------------------------------------------------------
+def _flag_name(dest: str) -> str:
+    """Spell an argparse ``dest`` the way the user typed it."""
+    return f"--{dest.replace('_', '-')}"
