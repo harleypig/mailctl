@@ -48,6 +48,12 @@ BUG FIXES:
 * **`backup_dir` expands `~` and `$VAR` / `${VAR}`** ([#50]) — in
   `config.toml`, in `MXROUTE_BACKUP_DIR`, and in `--backup-dir`. It was taken
   literally, so `backup_dir = "~/backups"` created a directory named `~`.
+* **`source_folder` in `config.toml` takes effect** ([#63]). `--folder`
+  carried a built-in `INBOX` default that outranked the config file, so the
+  key was read and never used. `--folder` on `add`, `apply`,
+  `from-message`, `messages`, and `view` now falls back to
+  `MXROUTE_SOURCE_FOLDER` (new), then `source_folder`, then `INBOX`, and
+  `mxfilter test` shows which one is in play.
 
 ## 0.3.0
 
@@ -428,3 +434,4 @@ NOTES:
 [#52]: https://github.com/harleypig/mxroute-email-filters/issues/52
 [#54]: https://github.com/harleypig/mxroute-email-filters/issues/54
 [#50]: https://github.com/harleypig/mxroute-email-filters/issues/50
+[#63]: https://github.com/harleypig/mxroute-email-filters/issues/63

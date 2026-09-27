@@ -53,6 +53,10 @@ ACTIVATE_HELP = (
     "--script other than the active one is stored but left inactive"
 )
 
+# --folder has no argparse default: one there would outrank
+# MXROUTE_SOURCE_FOLDER and source_folder in the config file (#63).
+FOLDER_DEFAULT_HELP = "default: source_folder from the config, else INBOX"
+
 # The action flags refused with an explanation rather than an argparse
 # "unrecognized arguments" error; see action_parser.
 REFUSED_ACTION_FLAGS = ("redirect", "notify", "vacation")
@@ -597,7 +601,7 @@ def print_placement(analysis) -> None:
 
 # ----------------------------------------------------------------------------
 def apply_to_existing(
-    sessions, criteria: Criteria, args, spec: ActionSpec, folder
+    sessions, config, criteria: Criteria, args, spec: ActionSpec, folder
 ) -> int:
     """Plan the existing-mail pass, show it, and run it if allowed.
 
@@ -606,7 +610,7 @@ def apply_to_existing(
     after showing it -- the decision to execute lives here, in the
     front-end, and never inside the engine.
     """
-    source = engine.source_folder(sessions, args.folder)
+    source = engine.source_folder(sessions, config.source_folder)
 
     if engine.mail_pass_is_noop(spec, source, folder.folder):
         print(
@@ -1042,6 +1046,11 @@ def cmd_test(args) -> int:
         f"(tls={config.sieve_tls})  "
         f"({origin_of(config, port='sieve_port', tls='sieve_tls')})"
     )
+    print(
+        f"Folder:    {config.source_folder}  "
+        f"({origin_of(config, 'source_folder')})  "
+        f"-- read by apply, messages, view, from-message"
+    )
 
     with connect(config, args) as sessions:
         sieve = engine.probe_sieve(sessions)
@@ -1233,7 +1242,7 @@ def run_add(config, args, criteria: Criteria) -> int:
 
             return 0
 
-        apply_to_existing(sessions, criteria, args, spec, folder)
+        apply_to_existing(sessions, config, criteria, args, spec, folder)
 
     return 0
 
@@ -1292,7 +1301,7 @@ def cmd_apply(args) -> int:
 
         print(f"Criteria: {criteria.describe()}")
 
-        apply_to_existing(sessions, criteria, args, spec, folder)
+        apply_to_existing(sessions, config, criteria, args, spec, folder)
 
     return 0
 
@@ -1417,7 +1426,10 @@ def cmd_from_message(args) -> int:
 
     with connect(config, args, sieve=False, imap=True) as sessions:
         picked = engine.pick_message(
-            sessions, args.folder, uid=args.uid, search=args.search
+            sessions,
+            config.source_folder,
+            uid=args.uid,
+            search=args.search,
         )
 
         if picked.candidates > 1:
@@ -1429,7 +1441,7 @@ def cmd_from_message(args) -> int:
     # Shown before the criteria, and before anything is derived, because
     # this is the answer to "did I pick the right email?" -- the question
     # the criteria below cannot answer.
-    print_message(picked.headers, picked.uid, args.folder)
+    print_message(picked.headers, picked.uid, config.source_folder)
 
     derived = engine.derive_criteria(
         picked.headers, args.derive, args.match, args.compare
@@ -1467,7 +1479,7 @@ def cmd_messages(args) -> int:
     with connect(config, args, sieve=False, imap=True) as sessions:
         listing = engine.list_messages(
             sessions,
-            args.folder,
+            config.source_folder,
             criteria=criteria,
             search=args.search,
             limit=args.limit,
@@ -1514,7 +1526,7 @@ def cmd_view(args) -> int:
     config = configure(args)
 
     with connect(config, args, sieve=False, imap=True) as sessions:
-        content = engine.read_message(sessions, args.folder, args.uid)
+        content = engine.read_message(sessions, config.source_folder, args.uid)
 
     if args.raw and not sys.stdout.isatty():
         # Nothing draws a pipe or a file, so hand over the exact bytes:
@@ -1990,7 +2002,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="apply criteria to existing mail only",
     )
     apply_cmd.add_argument(
-        "--folder", default="INBOX", help="source folder; default INBOX"
+        "--folder", help=f"source folder; {FOLDER_DEFAULT_HELP}"
     )
     apply_cmd.add_argument("--delimiter", help=argparse.SUPPRESS)
     apply_cmd.set_defaults(handler=cmd_apply, no_imap=False)
@@ -2001,7 +2013,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="list the newest messages in a folder",
     )
     messages.add_argument(
-        "--folder", default="INBOX", help="folder to list; default INBOX"
+        "--folder", help=f"folder to list; {FOLDER_DEFAULT_HELP}"
     )
     messages.add_argument(
         "--search",
@@ -2023,7 +2035,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     view.add_argument("uid", type=int, help="the message UID ('messages')")
     view.add_argument(
-        "--folder", default="INBOX", help="folder holding it; default INBOX"
+        "--folder", help=f"folder holding it; {FOLDER_DEFAULT_HELP}"
     )
     shape = view.add_mutually_exclusive_group()
     shape.add_argument(
@@ -2125,7 +2137,7 @@ def _add_rule_flags(parser: argparse.ArgumentParser) -> None:
         "folder delimiter",
     )
     group.add_argument(
-        "--folder", default="INBOX", help="source folder; default INBOX"
+        "--folder", help=f"source folder; {FOLDER_DEFAULT_HELP}"
     )
     group.add_argument(
         "--delimiter",

@@ -294,6 +294,19 @@ SCENARIOS = {
     "messages-both": (["messages", *GITHUB, "--search", "ALL"], MAIL),
     "messages-none": (["messages", "--from", "nobody@x.y"], MAIL),
     "messages-folder": (["messages", "--folder", "Lists"], MAIL),
+    # #63: source_folder in the config file is where --folder defaults to.
+    "messages-config-folder": (
+        ["messages"],
+        {**MAIL, "config": 'source_folder = "Lists"\n'},
+    ),
+    "apply-config-folder": (
+        ["apply", *GITHUB, "--fileinto", "spam", "--dry-run"],
+        {"config": 'source_folder = "Lists"\n'},
+    ),
+    "test-config-folder": (
+        ["test"],
+        {"config": 'source_folder = "Lists"\n'},
+    ),
     "view": (["view", "4"], MAIL),
     "view-html": (["view", "5"], MAIL),
     "view-headers": (["view", "4", "--headers-only"], MAIL),

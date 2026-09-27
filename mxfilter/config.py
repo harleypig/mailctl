@@ -872,6 +872,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
     source_folder = resolve(
         "source_folder",
         flag="folder",
+        var="MXROUTE_SOURCE_FOLDER",
         key="source_folder",
         default=(DEFAULT_SOURCE_FOLDER, Source(DEFAULT)),
     )

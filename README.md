@@ -43,6 +43,10 @@ cannot read is reported by line number, never quoted. Because it takes an
 optional value, put `--env-file` after any positional argument, or write
 `--env-file=PATH`.
 
+`--folder`, on the commands that read mail (`add`, `apply`, `from-message`,
+`messages`, `view`), resolves the same way: `MXROUTE_SOURCE_FOLDER`, then
+`source_folder` in the config file, then `INBOX`.
+
 `mxfilter test` says where each setting came from — a flag, the env file,
 the environment, the config file, or the default — and which of those
 sources it read.

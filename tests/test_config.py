@@ -311,6 +311,46 @@ def test_the_built_in_defaults_apply_when_nothing_is_configured():
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        pytest.param(["apply", "--from", "x"], id="apply"),
+        pytest.param(["add", "--from", "x"], id="add"),
+        pytest.param(["from-message", "--uid", "1"], id="from-message"),
+        pytest.param(["messages"], id="messages"),
+        pytest.param(["view", "1"], id="view"),
+    ],
+)
+def test_the_source_folder_resolves_like_every_other_setting(
+    argv, tmp_path, monkeypatch
+):
+    """#63: ``--folder`` defaulting to INBOX in argparse made the config
+    key unreachable. Parsed through the real parser, since that default is
+    exactly what a hand-built Namespace would not have caught."""
+    parser = build_parser()
+    env_file = tmp_path / ".env"
+    env_file.write_text("MXROUTE_SOURCE_FOLDER=from-env-file\n")
+
+    write_config_file('source_folder = "from-file"\n')
+    monkeypatch.setenv("MXROUTE_SOURCE_FOLDER", "from-env")
+
+    def resolved(*extra):
+        config = load_config(parser.parse_args([*argv, *extra]))
+
+        return config.source_folder, config.sources["source_folder"].kind
+
+    assert resolved("--folder", "from-flag") == ("from-flag", FLAG)
+    assert resolved(f"--env-file={env_file}") == ("from-env-file", ENV_FILE)
+    assert resolved() == ("from-env", ENVIRONMENT)
+
+    monkeypatch.delenv("MXROUTE_SOURCE_FOLDER")
+    assert resolved() == ("from-file", CONFIG_FILE)
+
+    write_config_file("")
+    assert resolved() == ("INBOX", DEFAULT)
+
+
+# ----------------------------------------------------------------------------
 def test_the_imap_host_falls_back_to_the_sieve_host():
     """One hostname is the common case; two is the exception."""
     config = load_config(argparse.Namespace(host="mail.example.com"))

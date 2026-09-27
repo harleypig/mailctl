@@ -7,6 +7,7 @@ User:      user@example.com  (environment)
 Password:  set (via command)  (MXROUTE_PASSWORD_CMD, env file .env)
 IMAP:      mail.from-env-file.example:993  (host: same as host, port: default)
 Sieve:     mail.from-env-file.example:4192 (tls=ssl)  (port: flag --sieve-port, tls: config file <TMP>/config/mxfilter/config.toml)
+Folder:    INBOX  (default)  -- read by apply, messages, view, from-message
 
 ManageSieve: connected
   extensions: fileinto, imap4flags, mailbox, regex

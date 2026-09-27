@@ -7,6 +7,7 @@ User:      user@example.com  (environment)
 Password:  set  (MXROUTE_PASSWORD, environment)
 IMAP:      mail.example.com:993  (host: same as host, port: default)
 Sieve:     mail.example.com:4190 (tls=starttls)  (default)
+Folder:    INBOX  (default)  -- read by apply, messages, view, from-message
 [sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
 [sieve] authenticated
 
