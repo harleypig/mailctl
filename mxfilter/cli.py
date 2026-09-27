@@ -1112,6 +1112,13 @@ def cmd_test(args) -> int:
         "SRS properly. That is the only MXRoute restriction mxfilter "
         "asserts; everything else above came from the server."
     )
+    print(
+        "\nNote: this covers the Sieve stage only. Mail may first pass a "
+        "DirectAdmin panel filter (an Exim filter, run before Sieve) that "
+        "mxfilter cannot see or change; a message it drops never reaches "
+        "any Sieve rule. Whether your account has one is unconfirmed -- "
+        "see 'A filtering stage mxfilter cannot see' in the README."
+    )
 
     return 0
 

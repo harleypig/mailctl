@@ -18,6 +18,13 @@ ENHANCEMENTS:
 * **`mxfilter restore` refuses an empty FILE** unless `--allow-empty` is
   given ([#52]). Uploading one removes every rule, and an empty file is more
   often a truncated copy or the wrong path than a deliberate wipe.
+* **mxfilter says it sees the Sieve stage only** ([#30]). Mail may first
+  pass a DirectAdmin panel filter — an Exim filter that runs before Sieve
+  and can drop a message before any Sieve rule sees it. mxfilter logs in as
+  a mailbox and cannot read or change that filter. `mxfilter test` now says
+  so, and the README's *A filtering stage mxfilter cannot see* explains
+  what is known and what is not: whether accounts set up since MXRoute
+  began phasing out DirectAdmin still have one is unconfirmed.
 
 BUG FIXES:
 
@@ -442,3 +449,4 @@ NOTES:
 [#50]: https://github.com/harleypig/mxroute-email-filters/issues/50
 [#63]: https://github.com/harleypig/mxroute-email-filters/issues/63
 [#61]: https://github.com/harleypig/mxroute-email-filters/issues/61
+[#30]: https://github.com/harleypig/mxroute-email-filters/issues/30
