@@ -162,8 +162,10 @@ assumptions below get settled for your account.
   reads as "it handled everything" when it did not. Raising it is safe:
   mxfilter talks to the server in batches of 250 regardless, so a large
   pass never becomes one oversized IMAP command. If a batch fails part-way,
-  mxfilter says how many messages were fully handled, and re-running the
-  same command picks up the rest.
+  mxfilter says how many messages were fully handled. Re-running the same
+  command picks up the rest — except on a server without `MOVE`, where the
+  failed batch may already have been copied and a re-run copies it again;
+  mxfilter says so, and names the folder to check.
 * A `--fileinto` target that does not exist is a **warning, not an error**,
   unless you pass `--create-folder`. `add` will still write the rule, and
   mail filed there by the server later may be lost. `apply` refuses outright,

@@ -727,7 +727,7 @@ def test_a_failure_part_way_reports_what_completed_and_stops(
 
     assert "250 of 600" in message
     assert "Re-running the same command is safe" in message
-    assert "copied but not yet removed" not in message
+    assert "not yet removed from the source" not in message
 
 
 # ----------------------------------------------------------------------------
@@ -737,8 +737,24 @@ def test_a_failure_in_the_copy_fallback_warns_of_duplicates(
     fake_imap.caps = {"UIDPLUS"}
     fail_on_call(fake_imap, "copy", 2)
 
-    with pytest.raises(PartialExecution, match="copied but not yet removed"):
+    with pytest.raises(PartialExecution) as caught:
         imap_session.execute(big_plan())
+
+    message = str(caught.value)
+
+    # Re-running copies the failed batch again, so "safe" would be false.
+    assert "not yet removed from the source" in message
+    assert "is safe" not in message
+    assert "copies them again" in message
+    assert "'INBOX.Lists'" in message
+
+
+# ----------------------------------------------------------------------------
+def test_a_partial_delete_says_re_running_is_safe(imap_session, fake_imap):
+    fail_on_call(fake_imap, "uid_expunge", 2)
+
+    with pytest.raises(PartialExecution, match="is safe"):
+        imap_session.execute(big_plan(discard=True, destination=""))
 
 
 # ----------------------------------------------------------------------------

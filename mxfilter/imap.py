@@ -245,25 +245,46 @@ class PartialExecution(MxFilterError):
     """
 
     # ------------------------------------------------------------------------
-    def __init__(self, cause: Exception, result, total: int, fallback: bool):
+    def __init__(
+        self,
+        cause: Exception,
+        result,
+        total: int,
+        fallback: bool,
+        destination: str = "",
+    ):
         self.result = result
         self.total = total
 
         done = result.moved or result.deleted or result.flagged
-        partial = (
-            " (without MOVE, that batch may have been copied but not yet "
-            "removed from the source, so a message can appear in both)"
-            if fallback
-            else ""
-        )
+
+        # Whether a re-run is safe depends on the mode, and saying "safe"
+        # where it is not is the dangerous error. MOVE is atomic per command
+        # and a delete or flag re-applies harmlessly, so the search simply
+        # finds what is left. The COPY fallback is the exception: a batch
+        # can be copied and not yet expunged, so it still matches in the
+        # source and a re-run copies it a second time.
+        if fallback:
+            advice = (
+                f"The failing batch may have been copied to {destination!r} "
+                f"but not yet removed from the source (this server has no "
+                f"MOVE), so a message can appear in both. Re-running copies "
+                f"them again: check {destination!r} for copies from that "
+                f"batch first, or remove the duplicates afterwards."
+            )
+
+        else:
+            advice = (
+                "The failing batch may be partly applied. Re-running the "
+                "same command is safe: it searches again, so mail already "
+                "moved or deleted is not matched twice, and a flag already "
+                "set stays set."
+            )
 
         super().__init__(
             f"{cause} -- stopped part-way: {done} of {total} message(s) were "
-            f"fully processed, in batches of {BULK_CHUNK}. The failing batch "
-            f"may be partly applied{partial}; later ones were not touched. "
-            f"Re-running the same command is safe: it searches again, so "
-            f"mail already moved or deleted is not matched twice, and a "
-            f"flag already set stays set."
+            f"fully processed, in batches of {BULK_CHUNK}; later batches were "
+            f"not touched. {advice}"
         )
 
 
@@ -717,7 +738,7 @@ class ImapSession:
                 )
 
                 raise PartialExecution(
-                    exc, done, plan.count, fallback
+                    exc, done, plan.count, fallback, plan.destination
                 ) from exc
 
             done = MailActionResult(

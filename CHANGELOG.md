@@ -71,7 +71,9 @@ BUG FIXES:
   happening, by accident, so raising the cap for a big cleanup removed a
   protection nobody knew about. Work now goes out 250 UIDs at a time,
   independent of the cap. A failure part-way reports how many messages
-  were fully processed and that re-running is safe.
+  were fully processed, and whether re-running is safe: it is, except on a
+  server without `MOVE`, where the failed batch may already have been
+  copied and would be copied again.
 
 * **`--no-subscribe` without `--create-folder` is refused** (#43). It only
   ever affected a folder the run created, so on its own it was accepted and
