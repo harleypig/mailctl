@@ -153,6 +153,7 @@ def test_raw_keeps_safe_characters_as_they_are(run):
         pytest.param("a\r\nb", "a\r\nb", id="crlf"),
         pytest.param("a\tb\nc", "a\tb\nc", id="tab-newline"),
         pytest.param("\x00\x7f", "\\x00\\x7f", id="nul-del"),
+        pytest.param("a\x0bb\x0cc", "a\\x0bb\\x0cc", id="vt-ff"),
         pytest.param("Café ☕", "Café ☕", id="printable-unicode"),
         pytest.param("\udce9", "\ufffd", id="lone-surrogate"),
     ],
