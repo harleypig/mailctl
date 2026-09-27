@@ -276,9 +276,11 @@ class FakeIMAPClient:
         self.readonly = readonly
 
     # ------------------------------------------------------------------------
-    def search(self, key):
+    def search(self, key, charset=None):
         self._maybe_fail("search")
-        self.calls.append(("search", key))
+        self.calls.append(
+            ("search", key) if charset is None else ("search", key, charset)
+        )
 
         return sorted(self.messages)
 

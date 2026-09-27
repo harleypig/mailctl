@@ -6,7 +6,7 @@ out, so the session and any front-end share one reading of a message.
 
 from dataclasses import dataclass, field
 from email.errors import HeaderParseError
-from email.header import decode_header, make_header
+from email.header import Header, decode_header, make_header
 
 from ... import MailctlError
 from .folders import same_folder
@@ -167,7 +167,7 @@ def chunked(items: list, size: int = BULK_CHUNK):
 
 
 # ----------------------------------------------------------------------------
-def decode_header_value(raw: str) -> str:
+def decode_header_value(raw: "str | Header") -> str:
     """Decode RFC 2047 encoded words, falling back to the raw value."""
     try:
         return str(make_header(decode_header(raw)))
@@ -175,7 +175,7 @@ def decode_header_value(raw: str) -> str:
     # HeaderParseError is not a ValueError: a bad base64 encoded word
     # raises it, and one such header must not abort a whole listing.
     except (UnicodeDecodeError, LookupError, ValueError, HeaderParseError):
-        return raw
+        return str(raw)
 
 
 # ----------------------------------------------------------------------------
@@ -192,7 +192,7 @@ def header_values(message) -> dict[str, list[str]]:
 
     for name, raw in message.items():
         key = name.upper()
-        decoded = decode_header_value(raw)
+        decoded = decode_header_value(_utf8_header(raw))
 
         values = collected.setdefault(key, [])
         values.append(decoded)
@@ -201,6 +201,33 @@ def header_values(message) -> dict[str, list[str]]:
             values.append(raw)
 
     return collected
+
+
+# ----------------------------------------------------------------------------
+def _utf8_header(raw: "str | Header") -> "str | Header":
+    """Read a raw 8-bit header as the UTF-8 it usually is.
+
+    ``email`` hands a header holding 8-bit bytes back as a ``Header`` of
+    ``unknown-8bit`` chunks, which render as replacement characters -- so a
+    raw UTF-8 header (RFC 6532), the only way a non-ASCII address can
+    appear, would never equal the text a search was for. A value that is
+    not valid UTF-8 is returned as it came, and read as before.
+    """
+    if not isinstance(raw, Header):
+        return raw
+
+    try:
+        return "".join(
+            chunk.decode(
+                "utf-8" if charset in (None, "unknown-8bit") else charset
+            )
+            if isinstance(chunk, bytes)
+            else chunk
+            for chunk, charset in decode_header(raw)
+        )
+
+    except (UnicodeError, LookupError):
+        return raw
 
 
 # ----------------------------------------------------------------------------

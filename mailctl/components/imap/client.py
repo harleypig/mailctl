@@ -45,7 +45,7 @@ from .messages import (
     header_values,
     summarize,
 )
-from .search import SearchCriteria
+from .search import SEARCH_CHARSET, SearchCriteria, encode_search_key
 from .servers import ServerProfile, select_server
 
 __all__ = [
@@ -497,9 +497,10 @@ class ImapSession:
 
         key = criteria.imap_search_key()
         self._log(f"searching {folder!r} with {key}")
+        wire_key, charset = encode_search_key(key)
 
         try:
-            return list(client.search(key))
+            return list(client.search(wire_key, charset=charset))
 
         except IMAPClientError as exc:
             raise MailctlError(
@@ -836,6 +837,16 @@ class ImapSession:
         self._select(folder, readonly=True)
 
         self._log(f"raw search in {folder!r}: {expression}")
+
+        # IMAPClient sends a whole-string expression unquoted, so a
+        # non-ASCII one would go out as a single literal the server cannot
+        # parse as search keys. Only structured criteria can carry it.
+        if not expression.isascii():
+            raise MailctlError(
+                f"IMAP search {expression!r} has non-ASCII text, which a raw "
+                f"expression cannot carry; use the criteria flags (e.g. "
+                f"--subject) for it, which search in {SEARCH_CHARSET}."
+            )
 
         try:
             return list(client.search(expression))
