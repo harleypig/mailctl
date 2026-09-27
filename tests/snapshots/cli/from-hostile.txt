@@ -1,0 +1,57 @@
+$ mxfilter from-message --uid 9 --derive subject --fileinto Lists --dry-run
+exit: 0
+--- stdout
+Message uid 9 in 'INBOX':
+  From:    m@example.com
+  Subject: Inv\x1b]0;pwn\x07oice
+
+Derived criteria:
+  Subject contains 'Inv\x1b]0;pwn\x07oice'
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+Rule 'subject-inv-0-pwn-oice' on script 'managesieve':
+  when:  Subject contains 'Inv\x1b]0;pwn\x07oice'
+  then:  fileinto INBOX.Lists; stop
+
+Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -11,3 +11,8 @@
+     fileinto "INBOX.Noise";
+     stop;
+ }
++# rule:[subject-inv-0-pwn-oice]
++if anyof (header :contains "Subject" "Inv\x1b]0;pwn\x07oice") {
++    fileinto "INBOX.Lists";
++    stop;
++}
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+Searching 'INBOX' for existing matches...
+1 message(s) match:
+  uid 9        2026-02-03 04:05:06  m@example.com                  Inv\x1b]0;pwn\x07oice
+[dry-run] would move 1 message(s) to 'INBOX.Lists'
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (9,))
+('logout',)
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['SUBJECT', 'Inv\x1b]0;pwn\x07oice']])
+('fetch', (1, 2, 3, 9))
+('logout',)

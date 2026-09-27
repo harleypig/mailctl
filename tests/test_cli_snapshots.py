@@ -226,7 +226,46 @@ NEWSLETTER = (
 
 MAIL = {"mail": {4: REPORT, 5: NEWSLETTER}, "flags": {1: (b"\\Seen",)}}
 
+# Message- and script-derived text carrying terminal escapes: an OSC title
+# change in a Subject that 'from-message --derive subject' copies into the
+# rule, and colour sequences in a stored script's rule name, test, and
+# folder, which 'show' and 'rules' print back.
+HOSTILE_SUBJECT = (
+    b"From: m@example.com\r\n"
+    b"Subject: =?utf-8?q?Inv=1B]0;pwn=07oice?=\r\n"
+    b"\r\n"
+    b"b\r\n"
+)
+
+HOSTILE_SCRIPT = """require ["fileinto"];
+# rule:[bad\x1b[31mname]
+if header :contains "subject" "x\x1b]0;pwn\x07y"
+{
+\tfileinto "INBOX.\x1b[32mZ";
+\tstop;
+}
+"""
+
+HOSTILE = {
+    "from-hostile": (
+        [
+            "from-message",
+            "--uid",
+            "9",
+            "--derive",
+            "subject",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
+        {"mail": {9: HOSTILE_SUBJECT}},
+    ),
+    "show-hostile": (["show"], {"script": HOSTILE_SCRIPT}),
+    "rules-hostile": (["rules"], {"script": HOSTILE_SCRIPT}),
+}
+
 SCENARIOS = {
+    **HOSTILE,
     "messages": (["messages"], MAIL),
     "messages-from": (["messages", *GITHUB], MAIL),
     "messages-limit": (["messages", "--limit", "2"], MAIL),
@@ -681,6 +720,25 @@ def test_cli_output_matches_its_snapshot(
         f"no snapshot for {name!r}; run with MXFILTER_UPDATE_SNAPSHOTS=1"
     )
     assert actual == snapshot.read_text(encoding="utf-8")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", sorted(HOSTILE))
+def test_hostile_text_reaches_the_terminal_escaped(
+    name, fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """What a sender or a stored script wrote is data, never a command to
+    the terminal. The snapshot shows the escapes; this names the defect."""
+    argv, options = SCENARIOS[name]
+
+    actual = run_scenario(
+        argv, options, fake_imap, roundcube_script, monkeypatch, tmp_path
+    )
+
+    output = actual.split("--- sieve calls")[0]
+
+    assert "\x1b" not in output
+    assert "\x07" not in output
 
 
 # ----------------------------------------------------------------------------

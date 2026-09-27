@@ -512,7 +512,9 @@ def print_script_diff(report: DisplayDiff) -> None:
         )
 
     print("\n--- sieve diff ---")
-    print(report.text if report.text.strip() else "(no change)")
+    # A rule built from a message carries that message's text, and a stored
+    # script can hold any bytes: both are untrusted by the time they print.
+    print(safe_text(report.text) if report.text.strip() else "(no change)")
     print("--- end diff ---")
 
 
@@ -709,12 +711,12 @@ def cmd_show(args) -> int:
 
     with connect(config, args) as sessions:
         script = engine.read_script(sessions, args.name)
-        source = script.source
+        source = safe_text(script.source)
 
-        print(f"# ---- {script.name} ----")
+        print(f"# ---- {safe_line(script.name)} ----")
         print(source, end="" if source.endswith("\n") else "\n")
 
-        names = script.rule_names()
+        names = [safe_line(name) for name in script.rule_names()]
 
         print(f"# ---- {len(names)} rule(s): {', '.join(names) or '(none)'}")
 
@@ -760,9 +762,11 @@ def print_rules(rules) -> None:
     for rule in rules:
         marker = "  [stop]" if rule.stops else ""
 
-        print(f"  {rule.index + 1}. {rule.name}{marker}")
+        actions = safe_line(", ".join(rule.actions))
+
+        print(f"  {rule.index + 1}. {safe_line(rule.name)}{marker}")
         print(f"       when:  {describe_rule_condition(rule)}")
-        print(f"       then:  {', '.join(rule.actions) or '(nothing)'}")
+        print(f"       then:  {actions or '(nothing)'}")
         print()
 
 
