@@ -144,14 +144,31 @@ Built on two libraries, both of which the code wraps rather than exposes:
   - `managesieve/servers/` — one module per server software, chosen by the
     `IMPLEMENTATION` capability, with a plain-protocol fallback;
     `pigeonhole.py` carries no quirks yet.
+  - `imap/client.py` — `ImapSession`, over IMAPClient, taking plain
+    connection parameters: `LIST` / `LSUB` and the delimiter, create and
+    subscribe (subscription confirmed by re-reading `LSUB`), the
+    re-checked search, flags, the move with its COPY + EXPUNGE fallback
+    (ADR 0006's I3), and `BODY.PEEK` reads under `EXAMINE`.
+  - `imap/folders.py` — folder names normalized against a reported
+    delimiter, and case variants; offline.
+  - `imap/messages.py` — message summaries, the existing-mail plan and its
+    result, and header decoding for the re-check; offline.
+  - `imap/search.py` — `SearchCriteria`, what the session needs from a
+    criteria object, and `encode_search_key`, which gets a non-ASCII value
+    to the server intact (I1, [#89][i89]).
+  - `imap/servers/` — one module per server software, chosen by the IMAP
+    `ID` response, with a plain-protocol fallback; `dovecot.py` carries no
+    quirks yet.
 - `mailctl/providers/mxroute/sieve.py` — **transitional** home of what is
   MXroute's rather than the protocol's: `MXROUTE_FORBIDDEN_ACTIONS`, the
   Roundcube `# rule:[NAME]` dialect and the script functions bound to it,
   the connection and login advice, and `sieve_session()`, which maps
   `Config` onto a `SieveSession`. Epic #92's step 4 turns it into the
   `mxroute` provider.
-- `mailctl/imap.py` — the IMAP session wrapper (folders, search, move, flag)
-  and folder-name normalization.
+- `mailctl/providers/mxroute/imap.py` — the same, **transitional**, for
+  IMAP: `imap_session()` maps `Config` onto an `ImapSession` (port 143 is
+  STARTTLS, any other implicit TLS) and adds the full-address login advice
+  and the hints that name mailctl's settings.
 - `mailctl/rules.py` — reads a parsed script into a flat rule model and
   reports which rules cannot fire where they are (shadowing, in both
   directions); offline.
@@ -172,8 +189,8 @@ live there.
 
 ## The core returns data; only the CLI prints
 
-**`config`, `criteria`, `imap`, `rules`, `components/`, `providers/`, and
-the `engine` that drives them return structured values and raise
+**`config`, `criteria`, `rules`, `components/`, `providers/`, and the
+`engine` that drives them return structured values and raise
 `MailctlError`. Every piece of rendering, prompting, confirmation, and
 progress output lives in `cli.py`.** Two reasons, both cashing out now: the
 core stays testable without capturing stdout, and a future front-end can
@@ -332,7 +349,7 @@ In practice:
 - Take the active script from the server's own listing, not a constant.
 - Take the folder delimiter from the server's folder list, and normalize
   user-supplied names against it — so `Lists/GitHub` and `INBOX.Lists.GitHub`
-  name the same folder (`imap.normalize_folder`).
+  name the same folder (`components.imap.normalize_folder`).
 - Read the advertised Sieve extensions rather than assuming a capability is
   present.
 
@@ -740,5 +757,6 @@ will read it.
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [i13]: https://github.com/harleypig/mailctl/issues/13
+[i89]: https://github.com/harleypig/mailctl/issues/89
 [i10]: https://github.com/harleypig/mailctl/issues/10
 [da495]: https://github.com/harleypig/dotagents/issues/495

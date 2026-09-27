@@ -17,7 +17,7 @@ restore fixture the safety contract in ``conftest.py`` describes first.
 
 import pytest
 
-from mailctl.imap import ImapSession
+from mailctl.providers.mxroute.imap import imap_session
 from mailctl.providers.mxroute.sieve import sieve_session
 
 pytestmark = pytest.mark.live
@@ -73,7 +73,7 @@ def test_the_folder_delimiter_is_discovered_not_assumed(live_config):
     opens -- so this is the assertion the offline normalization tests
     cannot make for themselves.
     """
-    with ImapSession(live_config) as session:
+    with imap_session(live_config) as session:
         delimiter = session.delimiter
         folders = session.folders
 

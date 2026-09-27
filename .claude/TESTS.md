@@ -30,8 +30,20 @@ fixture required before anything writes to one is still outstanding
      test with a hand-written Roundcube-shaped script as its fixture.
    - `sieve` — a refused action (`redirect`, `notify`, `vacation`) raises with
      the pointer message rather than emitting the action.
-   - `imap` — folder-name normalization across both separators
-     (`Lists/GitHub` ≡ `INBOX.Lists.GitHub`) against a reported delimiter.
+   - `imap` (`test_imap.py`) — folder-name normalization across both
+     separators (`Lists/GitHub` ≡ `INBOX.Lists.GitHub`) against a reported
+     delimiter, and the session over the `fake_imap` double built from
+     plain parameters. What MXroute and `Config` add — the port-to-TLS
+     rule and the login and connection advice — is
+     `test_mxroute_imap.py`; server-module selection by `ID` is
+     `test_imap_servers.py`.
+   - **Non-ASCII search** (`test_imap_search.py`) — a non-ASCII subject,
+     from address, and list-id, each flat and inside an `OR`, run through
+     IMAPClient's **real** `search` serializer over a recording transport,
+     because the double records a key without ever encoding it. Each value
+     must reach the wire as one whole UTF-8 literal under `CHARSET UTF-8`
+     with its parentheses balanced, and the re-check must still match the
+     decoded text ([#89][i89]).
    - `config` — the flag → env → file → default resolution order, and that a
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - `engine` — every plan and execute step driven with plain inputs and
@@ -62,7 +74,8 @@ fixture required before anything writes to one is still outstanding
      module prints, prompts, or exits, and the engine imports no front-end.
      `components/` and `providers/` are walked, not listed.
    - The **layer-purity guard** (`test_layer_purity.py`) — a module under
-     `components/` imports only the stdlib, the library it wraps, other
+     `components/` imports only the stdlib, the library its own component
+     wraps (`imapclient` for `imap`, `sievelib` for `managesieve`), other
      components, and `MailctlError` ([ADR 0006][adr6]).
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
@@ -120,5 +133,6 @@ make testlive          # live (MAILCTL_LIVE=1; needs MAILCTL_* in the env)
 `TESTARGS` passes extra flags through, e.g. a run filter for a scoped live
 pass: `make testlive TESTARGS='-k sieve'`.
 
+[i89]: https://github.com/harleypig/mailctl/issues/89
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md

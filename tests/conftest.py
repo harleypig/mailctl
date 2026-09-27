@@ -22,8 +22,9 @@ import socket
 import pytest
 from sievelib import parser
 
-from mailctl import imap as imap_module
+from mailctl.components.imap import client as imap_client
 from mailctl.config import Config, Secret
+from mailctl.providers.mxroute.imap import new_imap_session
 
 # ############################################################################
 # Environment isolation
@@ -179,6 +180,10 @@ class FakeIMAPClient:
         self.structures: dict[int, object] = {}
         self.caps = {"MOVE", "UIDPLUS"}
 
+        # The parsed ID response (RFC 2971), as IMAPClient's ``id_`` returns
+        # it; MXroute's reads ``name: Dovecot`` with no version (#18).
+        self.id_response: tuple = ((b"name", b"Dovecot"),)
+
         # Every FETCH as (uids, items), and the \Seen a real server would
         # have set in response -- kept apart from ``calls`` so the snapshot
         # records stay as they are.
@@ -252,6 +257,13 @@ class FakeIMAPClient:
         return name in self.caps
 
     # ------------------------------------------------------------------------
+    def id_(self):
+        self._maybe_fail("id_")
+        self.calls.append(("id_",))
+
+        return self.id_response
+
+    # ------------------------------------------------------------------------
     def create_folder(self, folder: str) -> None:
         self._maybe_fail("create_folder")
         self.calls.append(("create_folder", folder))
@@ -264,9 +276,11 @@ class FakeIMAPClient:
         self.readonly = readonly
 
     # ------------------------------------------------------------------------
-    def search(self, key):
+    def search(self, key, charset=None):
         self._maybe_fail("search")
-        self.calls.append(("search", key))
+        self.calls.append(
+            ("search", key) if charset is None else ("search", key, charset)
+        )
 
         return sorted(self.messages)
 
@@ -353,7 +367,7 @@ def fake_imap(monkeypatch) -> FakeIMAPClient:
 
         return client
 
-    monkeypatch.setattr(imap_module, "IMAPClient", factory)
+    monkeypatch.setattr(imap_client, "IMAPClient", factory)
 
     return client
 
@@ -376,7 +390,7 @@ def imap_config() -> Config:
 @pytest.fixture
 def imap_session(fake_imap, imap_config):
     """An opened ImapSession wired to the double."""
-    session = imap_module.ImapSession(imap_config)
+    session = new_imap_session(imap_config)
     session.open()
 
     return session
