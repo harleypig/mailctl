@@ -4,6 +4,14 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+NOTES:
+
+* **`config.toml.example` documents the config file.** The TOML
+  counterpart of `.env.example`: every key that takes effect, its
+  default, and the same caveats — the password is never read from it, only
+  `password_file` or `password_cmd`, and `backup_dir` does not expand `~`
+  (#50).
+
 ## 0.2.0
 
 Released 2026-09-27.

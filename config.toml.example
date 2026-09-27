@@ -1,0 +1,105 @@
+# mxfilter configuration file.
+#
+# Copy to $XDG_CONFIG_HOME/mxfilter/config.toml -- that is
+# ~/.config/mxfilter/config.toml when XDG_CONFIG_HOME is unset -- and fill
+# it in. It is the TOML counterpart of .env.example: the same settings,
+# minus the password itself.
+#
+# The format is flat: plain `key = value` lines at the top level, no
+# [tables]. Strings are quoted, ports are bare numbers. A key mxfilter does
+# not know is ignored, so a misspelt one is silently ignored too --
+# `mxfilter test` shows where each setting came from, which is the way to
+# check it was picked up.
+#
+# This file is the lowest-priority source. Resolution order, highest first:
+# a CLI flag > the --env-file file > an exported MXROUTE_* variable > this
+# file > the built-in default. So an exported MXROUTE_HOST overrides
+# `host` here without complaint.
+
+# The MXRoute server your account lives on. It is per-account -- the same
+# as your primary MX record -- and is shown on the panel's Email Clients
+# page. It is a machine name, not your domain, and there is no sensible
+# default, so this must be set.
+host = "mail.example-server.mxrouteXX.com"
+
+# MXRoute usernames are the FULL email address. A bare local part will fail
+# authentication on both ManageSieve and IMAP.
+user = "you@yourdomain.com"
+
+# --- Password: pick one source. -------------------------------------------
+#
+# This file NEVER holds the password itself: a `password` key is not read.
+# Only password_file and password_cmd are, and they rank below every flag
+# and every MXROUTE_PASSWORD* variable (see .env.example for the full
+# ladder). If this file sets both, password_file wins. Set neither and
+# nothing else supplies one, and mxfilter prompts on the terminal
+# (getpass, no echo).
+#
+# 1. A command that prints the password on stdout. mxfilter splits it like
+#    a shell would but runs it without a shell, and never echoes its
+#    output, so the value need not sit in a file or the environment at all.
+password_cmd = "pass show email/you@yourdomain.com"
+
+# 2. A file holding the password. mxfilter REFUSES to read the file unless
+#    its mode is 0600 or 0400 -- no group or other bits at all -- and names
+#    the chmod that fixes it.
+#
+#    Keep the file on the Linux filesystem. Anything under /mnt/c or
+#    another Windows mount (WSL) reports mode 0777 whatever you set it to,
+#    so it will always be refused.
+#
+#    Exactly one trailing newline is stripped and nothing else is, since a
+#    trailing space can be part of a password. The path may start with ~
+#    and may use $VAR or ${VAR}; an unset variable is left as written, so
+#    the error names it.
+#password_file = "~/.config/mxfilter/password"
+
+# There is also --password VALUE on the command line, the LEAST safe
+# option, which warns when used: an argument is visible in the process
+# list to every user on the machine, and your shell has already written it
+# to history. It has no config-file equivalent.
+
+# --- Endpoints (defaults are correct for MXRoute) -------------------------
+
+# You only need this if IMAP really lives on a different host from `host`.
+# On MXRoute it does not -- both are the same server -- and when this is
+# unset mxfilter uses `host` for IMAP.
+#imap_host = ""
+
+# IMAP over implicit TLS. Port 143 is also accepted and switches to
+# STARTTLS. Default 993.
+#imap_port = 993
+
+# ManageSieve. MXRoute documents NEITHER the port nor the TLS mode. 4190 is
+# the IANA-registered port (RFC 5804) and the Dovecot default, and STARTTLS
+# is Dovecot's usual mode there -- a good default, not a verified MXRoute
+# fact. If connecting fails, try sieve_tls = "ssl" (implicit TLS), then
+# ask MXRoute support. sieve_tls is one of "starttls", "ssl", or "none".
+#sieve_port = 4190
+#sieve_tls = "starttls"
+
+# --- Behaviour ------------------------------------------------------------
+
+# Where script backups are written -- both the automatic pre-upload copy
+# and 'mxfilter backup'.
+#
+# Default: $XDG_CONFIG_HOME/mxfilter/backups, beside this file. XDG would
+# call a backup state rather than config; keeping it here is a deliberate
+# departure from that, not something XDG endorses, because a backup you
+# cannot find is not a backup.
+#
+# Write an absolute path. Unlike password_file, this path is taken
+# literally: a leading ~ or a $VAR is NOT expanded, so "~/backups" would
+# create a directory named "~" under the current directory (issue #50).
+#backup_dir = "/home/you/mail-backups"
+
+# The folder `add` and `apply` file into when you give no --fileinto.
+# There is no flag or environment variable for this one; it lives only
+# here. Either
+# separator works -- "Lists/GitHub" and "INBOX.Lists.GitHub" name the same
+# folder, since the delimiter is read from the server. Default: none.
+#default_folder = "Lists"
+
+# source_folder is read from this file but has no effect yet: the folder
+# the existing-mail pass searches is always --folder (default INBOX). It is
+# left out here until that is wired (issue #63).

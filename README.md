@@ -16,7 +16,8 @@ python3 -m venv .venv
 
 Copy `.env.example` to `.env` and fill it in, then either export it
 (`set -a; . ./.env; set +a`) or point mxfilter at it with `--env-file`. Or
-write `$XDG_CONFIG_HOME/mxfilter/config.toml`:
+copy `config.toml.example` to `$XDG_CONFIG_HOME/mxfilter/config.toml` — flat
+top-level keys, every one explained in the file:
 
 ```toml
 host = "mail.example-server.mxrouteXX.com"
