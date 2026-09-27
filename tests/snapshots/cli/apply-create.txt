@@ -2,13 +2,14 @@ $ mxfilter apply --from noreply@github.com --fileinto Lists/GitHub --create-fold
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
+Folder 'INBOX.Lists.GitHub' does not exist; it will be created over IMAP when the change is applied
 Criteria: From contains 'noreply@github.com'
 
 Searching 'INBOX' for existing matches...
 2 message(s) match:
   uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
   uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
 Moved 2 message(s) from 'INBOX' to 'INBOX.Lists.GitHub'
 
 --- stderr
@@ -16,11 +17,11 @@ Moved 2 message(s) from 'INBOX' to 'INBOX.Lists.GitHub'
 --- sieve calls
 --- imap calls
 ('login', 'user@example.com')
-('create_folder', 'INBOX.Lists.GitHub')
-('subscribe_folder', 'INBOX.Lists.GitHub')
 ('select_folder', 'INBOX', True)
 ('search', [['FROM', 'noreply@github.com']])
 ('fetch', (1, 2, 3))
+('create_folder', 'INBOX.Lists.GitHub')
+('subscribe_folder', 'INBOX.Lists.GitHub')
 ('select_folder', 'INBOX', False)
 ('move', (1, 2), 'INBOX.Lists.GitHub')
 ('logout',)

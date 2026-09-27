@@ -127,6 +127,13 @@ class ScriptUploaded:
     script: str
 
 
+@dataclass(frozen=True)
+class FolderCreated:
+    """A planned folder was created over IMAP, on execute."""
+
+    result: FolderCreation
+
+
 EventSink = Callable[[object], None]
 
 
@@ -595,6 +602,35 @@ def create_folder(sessions: Sessions, plan: FolderPlan) -> FolderCreation:
     return _imap(sessions).create_folder(plan.folder, subscribe=plan.subscribe)
 
 
+# ----------------------------------------------------------------------------
+def folder_pending(sessions: Sessions, plan: FolderPlan) -> bool:
+    """Whether a folder planned for IMAP creation has not been made yet."""
+    return plan.status == FOLDER_IMAP_CREATE and not _imap(sessions).exists(
+        plan.folder
+    )
+
+
+# ----------------------------------------------------------------------------
+def realize_folder(
+    sessions: Sessions, plan: FolderPlan, on_event: EventSink | None = None
+) -> FolderCreation | None:
+    """Create a folder planned for IMAP creation, once.
+
+    Returns None, and does nothing, for any other plan or for a folder an
+    earlier execute step already made -- ``add`` creates it before the
+    upload, and its existing-mail pass must not try again.
+    """
+    if not folder_pending(sessions, plan):
+        return None
+
+    result = create_folder(sessions, plan)
+
+    if on_event:
+        on_event(FolderCreated(result))
+
+    return result
+
+
 # ############################################################################
 # Adding and removing rules
 # ############################################################################
@@ -612,6 +648,7 @@ class RulePlan:
     actions: list
     placement: Analysis
     diff: DisplayDiff
+    folder: FolderPlan
 
 
 @dataclass(frozen=True)
@@ -740,6 +777,7 @@ def plan_rule(
             before, name, request.criteria, actions, request.placement
         ),
         diff=display_diff(before, after, script),
+        folder=folder,
     )
 
 
@@ -768,11 +806,14 @@ def upload_script(
     before: str,
     after: str,
     on_event: EventSink | None = None,
+    before_put: Callable[[], object] | None = None,
 ) -> Path:
     """Back up, validate, upload, and activate a script.
 
     The backup is written, and announced, before the server sees anything,
     so a rejected upload still leaves the user knowing where the copy is.
+    ``before_put`` runs once CHECKSCRIPT has accepted the new script and
+    before it is stored -- the point where a prerequisite is worth making.
     """
     emit = on_event or (lambda event: None)
 
@@ -780,6 +821,10 @@ def upload_script(
     emit(ScriptBackedUp(name, path))
 
     sieve.check_script(after)
+
+    if before_put:
+        before_put()
+
     sieve.put_script(name, after)
     sieve.set_active(name)
 
@@ -795,7 +840,21 @@ def execute_script_change(
     plan: RulePlan | RemovalPlan,
     on_event: EventSink | None = None,
 ) -> Path:
-    """Upload a planned rule change; return the backup's path."""
+    """Upload a planned rule change; return the backup's path.
+
+    A rule's target folder, when it is planned for IMAP creation, is
+    created here -- after the server has accepted the script and before it
+    is stored -- so neither a dry run nor a rejected script leaves a stray
+    folder, and the rule never goes live pointing at a missing one.
+    """
+    before_put = None
+
+    if isinstance(plan, RulePlan):
+        folder = plan.folder
+
+        def before_put():
+            realize_folder(sessions, folder, on_event)
+
     return upload_script(
         _sieve(sessions),
         config,
@@ -803,6 +862,7 @@ def execute_script_change(
         plan.before,
         plan.after,
         on_event,
+        before_put,
     )
 
 
@@ -870,9 +930,18 @@ def execute_mail(
     sessions: Sessions,
     plan: MailActionPlan,
     max_messages: int = DEFAULT_MAX_MESSAGES,
+    folder: FolderPlan | None = None,
+    on_event: EventSink | None = None,
 ) -> MailActionResult:
-    """Carry out an approved plan, re-checking the cap first."""
+    """Carry out an approved plan, re-checking the cap first.
+
+    ``folder`` is the destination's plan; one due for IMAP creation is
+    created here, after the decision, rather than while planning.
+    """
     check_message_cap(plan, max_messages)
+
+    if folder is not None:
+        realize_folder(sessions, folder, on_event)
 
     return _imap(sessions).execute(plan)
 

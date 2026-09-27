@@ -29,6 +29,16 @@ ENHANCEMENTS:
   neither the backup nor what is uploaded is affected — normalisation is a
   display concern only.
 
+BUG FIXES:
+
+* **`--create-folder` no longer creates the folder before showing the
+  change.** The folder was made over IMAP while the change was still being
+  worked out — before the diff, before any confirmation — so an abort, a
+  rejected script, or a failed merge left a stray folder behind. It is now
+  announced with the plan and created on execute: after CHECKSCRIPT accepts
+  the script for `add`, after you confirm for `apply`. An `apply` with no
+  matching mail no longer creates the folder at all, and says so.
+
 NOTES:
 
 * **The work now lives in an engine, not the CLI.** Everything mxfilter

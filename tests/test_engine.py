@@ -672,3 +672,71 @@ def test_a_missing_header_is_reported_as_skipped_not_raised():
 
     with pytest.raises(MxFilterError):
         empty.criteria.require_terms()
+
+
+# ############################################################################
+# Folder creation happens on execute
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def imap_created_folder_plan(imap_session, imap_config):
+    live = Sessions(FakeSieveSession(caps=NO_MAILBOX), imap_session)
+    folder = engine.plan_folder(live, imap_config, "New", create=True)
+    request = RuleRequest(criteria(), ActionSpec(fileinto="New"))
+
+    return live, engine.plan_rule(live, request, folder)
+
+
+# ----------------------------------------------------------------------------
+def test_a_rule_plan_creates_its_folder_only_on_execute(
+    imap_session, imap_config, fake_imap, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    live, plan = imap_created_folder_plan(imap_session, imap_config)
+
+    assert "create_folder" not in fake_imap.names()
+
+    events = []
+    engine.execute_script_change(live, imap_config, plan, events.append)
+
+    assert ("create_folder", "INBOX.New") in fake_imap.calls
+    assert [type(event) for event in events] == [
+        engine.ScriptBackedUp,
+        engine.FolderCreated,
+        engine.ScriptUploaded,
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_rejected_script_leaves_no_folder_behind(
+    imap_session, imap_config, fake_imap, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    live, plan = imap_created_folder_plan(imap_session, imap_config)
+    live.sieve.reject = True
+
+    with pytest.raises(MxFilterError, match="rejected"):
+        engine.execute_script_change(live, imap_config, plan)
+
+    assert "create_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_the_mail_pass_creates_its_folder_once_and_only_on_execute(
+    sessions, imap_config, mailbox
+):
+    sessions.sieve = None
+    folder = engine.plan_folder(sessions, imap_config, "New", create=True)
+    plan = engine.plan_mail(
+        sessions, criteria(), ActionSpec(), "INBOX", "INBOX.New"
+    )
+
+    assert engine.folder_pending(sessions, folder)
+    assert "create_folder" not in mailbox.names()
+
+    engine.execute_mail(sessions, plan, 10, folder)
+    engine.realize_folder(sessions, folder)
+
+    assert mailbox.names().count("create_folder") == 1
+    assert not engine.folder_pending(sessions, folder)

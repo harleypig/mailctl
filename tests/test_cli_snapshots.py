@@ -306,6 +306,29 @@ SCENARIOS = {
         ],
         {},
     ),
+    "add-imapcreate-rejected": (
+        [
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists/GitHub",
+            "--create-folder",
+            "--no-apply",
+        ],
+        {"caps": NO_MAILBOX, "reject": True},
+    ),
+    "apply-create-nomatch": (
+        [
+            "apply",
+            "--from",
+            "nobody@x.y",
+            "--fileinto",
+            "Lists/GitHub",
+            "--create-folder",
+            "--yes",
+        ],
+        {},
+    ),
     "apply-nothing": (["apply", *GITHUB], {}),
     "apply-overcap": (
         [

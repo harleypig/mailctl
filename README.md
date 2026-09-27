@@ -157,6 +157,11 @@ assumptions below get settled for your account.
   feature. If the subscription fails, the folder is **not** torn back down:
   it exists and mail filed there will arrive, so mxfilter warns and tells
   you to subscribe to it from your mail client.
+* The folder is **announced when the change is shown and created only when
+  it is applied** — for `add`, once the server has accepted the new script
+  and just before it is stored; for `apply`, after you confirm the move. A
+  dry run, an abort, or a rejected script leaves no stray folder, and an
+  `apply` that matches nothing creates nothing and says so.
 
 ## MXRoute specifics
 

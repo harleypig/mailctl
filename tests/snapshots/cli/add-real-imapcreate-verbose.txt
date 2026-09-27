@@ -6,9 +6,7 @@ exit: 0
 [sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
 [sieve] authenticated
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-[imap] creating folder 'INBOX.Lists.GitHub'
-[imap] subscribing to folder 'INBOX.Lists.GitHub'
-Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
+Folder 'INBOX.Lists.GitHub' does not exist; it will be created over IMAP when the change is applied
 
 Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'
@@ -32,6 +30,9 @@ Note: the script on the server is not in mxfilter's formatting, so uploading re-
 --- end diff ---
 Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
 [sieve] validating script with CHECKSCRIPT
+[imap] creating folder 'INBOX.Lists.GitHub'
+[imap] subscribing to folder 'INBOX.Lists.GitHub'
+Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
 [sieve] uploading script 'managesieve' (414 bytes)
 [sieve] activating script 'managesieve'
 Uploaded and activated script 'managesieve'

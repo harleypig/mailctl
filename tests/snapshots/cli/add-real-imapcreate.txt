@@ -2,7 +2,7 @@ $ mxfilter add --from noreply@github.com --fileinto Lists/GitHub --create-folder
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
+Folder 'INBOX.Lists.GitHub' does not exist; it will be created over IMAP when the change is applied
 
 Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'
@@ -26,6 +26,7 @@ Note: the script on the server is not in mxfilter's formatting, so uploading re-
 
 --- end diff ---
 Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
 Uploaded and activated script 'managesieve'
 
 Searching 'INBOX' for existing matches...

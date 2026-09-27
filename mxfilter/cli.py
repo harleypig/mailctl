@@ -155,6 +155,9 @@ def render_event(event) -> None:
     elif isinstance(event, engine.ScriptUploaded):
         print(f"Uploaded and activated script {event.script!r}")
 
+    elif isinstance(event, engine.FolderCreated):
+        report_folder_creation(event.result)
+
 
 # ----------------------------------------------------------------------------
 def configure(args):
@@ -330,8 +333,10 @@ def prepare_folder(sessions, config, args) -> engine.FolderPlan:
 def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
     """Report how the target folder comes to exist, creating it if due.
 
-    Creation happens here, before the rule is shown, exactly as it always
-    has: the folder is the precondition the rule files into.
+    Nothing is created here. A folder due for IMAP creation is announced
+    now and created by the engine's execute step, after the change has
+    been shown and decided on -- so a dry run, an abort, or a rejected
+    plan leaves no stray folder behind.
     """
     engine.check_folder(plan)
 
@@ -368,18 +373,20 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
             )
 
     elif plan.status == engine.FOLDER_IMAP_CREATE:
-        create_planned_folder(sessions, plan, args.dry_run)
+        announce_folder_creation(plan, args.dry_run)
 
 
 # ----------------------------------------------------------------------------
-def create_planned_folder(sessions, plan: engine.FolderPlan, dry_run) -> None:
-    """Create an IMAP folder, or say that a dry run would have."""
+def announce_folder_creation(plan: engine.FolderPlan, dry_run: bool) -> None:
+    """Say that the target folder will be made over IMAP, before it is."""
     if dry_run:
         print(f"[dry-run] would create IMAP folder {plan.folder!r}")
 
-        return
-
-    report_folder_creation(engine.create_folder(sessions, plan))
+    else:
+        print(
+            f"Folder {plan.folder!r} does not exist; it will be created "
+            f"over IMAP when the change is applied"
+        )
 
 
 # ----------------------------------------------------------------------------
@@ -472,7 +479,7 @@ def print_placement(analysis) -> None:
 
 # ----------------------------------------------------------------------------
 def apply_to_existing(
-    sessions, criteria: Criteria, args, spec: ActionSpec, folder: str
+    sessions, criteria: Criteria, args, spec: ActionSpec, folder
 ) -> int:
     """Plan the existing-mail pass, show it, and run it if allowed.
 
@@ -483,10 +490,18 @@ def apply_to_existing(
     """
     print(f"\nSearching {args.folder!r} for existing matches...")
 
-    plan = engine.plan_mail(sessions, criteria, spec, args.folder, folder)
+    plan = engine.plan_mail(
+        sessions, criteria, spec, args.folder, folder.folder
+    )
 
     if plan.is_empty:
         print("No existing messages match.")
+
+        if not args.dry_run and engine.folder_pending(sessions, folder):
+            print(
+                f"Folder {folder.folder!r} was not created: there is "
+                f"nothing to move into it."
+            )
 
         return 0
 
@@ -512,7 +527,9 @@ def apply_to_existing(
 
         return 0
 
-    result = engine.execute_mail(sessions, plan, args.max_messages)
+    result = engine.execute_mail(
+        sessions, plan, args.max_messages, folder, render_event
+    )
 
     report_result(result, plan)
 
@@ -933,7 +950,7 @@ def run_add(config, args, criteria: Criteria) -> int:
 
             return 0
 
-        apply_to_existing(sessions, criteria, args, spec, folder.folder)
+        apply_to_existing(sessions, criteria, args, spec, folder)
 
     return 0
 
@@ -988,11 +1005,11 @@ def cmd_apply(args) -> int:
             )
 
         if folder.status == engine.FOLDER_IMAP_CREATE:
-            create_planned_folder(sessions, folder, args.dry_run)
+            announce_folder_creation(folder, args.dry_run)
 
         print(f"Criteria: {criteria.describe()}")
 
-        apply_to_existing(sessions, criteria, args, spec, folder.folder)
+        apply_to_existing(sessions, criteria, args, spec, folder)
 
     return 0
 

@@ -23,8 +23,13 @@ from types import SimpleNamespace
 import pytest
 from imapclient.exceptions import IMAPClientError
 
-from mxfilter import MxFilterError
-from mxfilter.cli import build_parser, prepare_folder, report_folder_creation
+from mxfilter import MxFilterError, engine
+from mxfilter.cli import (
+    build_parser,
+    prepare_folder,
+    render_event,
+    report_folder_creation,
+)
 from mxfilter.engine import Sessions
 from mxfilter.imap import FolderCreation, ImapSession
 
@@ -341,11 +346,10 @@ def test_ensure_folder_subscribes_and_reports_it(
     imap_session, imap_config, fake_imap, capsys
 ):
     """The default path, from the flags a user actually types."""
-    plan = prepare_folder(
-        Sessions(sieve_without_mailbox(), imap_session),
-        imap_config,
-        add_args(),
-    )
+    live = Sessions(sieve_without_mailbox(), imap_session)
+    plan = prepare_folder(live, imap_config, add_args())
+
+    engine.realize_folder(live, plan, render_event)
 
     assert plan.folder == NEW_FOLDER
     assert plan.use_create is False
@@ -357,11 +361,10 @@ def test_ensure_folder_subscribes_and_reports_it(
 def test_ensure_folder_honours_no_subscribe_and_says_what_it_cost(
     imap_session, imap_config, fake_imap, capsys
 ):
-    prepare_folder(
-        Sessions(sieve_without_mailbox(), imap_session),
-        imap_config,
-        add_args("--no-subscribe"),
-    )
+    live = Sessions(sieve_without_mailbox(), imap_session)
+    plan = prepare_folder(live, imap_config, add_args("--no-subscribe"))
+
+    engine.realize_folder(live, plan, render_event)
 
     assert "subscribe_folder" not in fake_imap.names()
     assert "will not appear in webmail" in capsys.readouterr().out
@@ -380,3 +383,21 @@ def test_ensure_folder_creates_nothing_on_a_dry_run(
 
     assert "create_folder" not in fake_imap.names()
     assert "subscribe_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_planning_a_real_run_creates_nothing_before_the_decision(
+    imap_session, imap_config, fake_imap, capsys
+):
+    """Show, then change: the folder is announced, not made, at plan time.
+
+    It used to be created here -- before the diff was shown, and so before
+    an abort, a rejected upload, or a failed merge could stop it -- which
+    left a stray folder behind whenever the change went no further.
+    """
+    live = Sessions(sieve_without_mailbox(), imap_session)
+
+    prepare_folder(live, imap_config, add_args())
+
+    assert "create_folder" not in fake_imap.names()
+    assert "will be created over IMAP" in capsys.readouterr().out
