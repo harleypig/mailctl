@@ -33,6 +33,7 @@ import socket
 import ssl
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from email.errors import HeaderParseError
 from email.header import decode_header, make_header
 
 from imapclient import IMAPClient
@@ -318,7 +319,9 @@ def decode_header_value(raw: str) -> str:
     try:
         return str(make_header(decode_header(raw)))
 
-    except (UnicodeDecodeError, LookupError, ValueError):
+    # HeaderParseError is not a ValueError: a bad base64 encoded word
+    # raises it, and one such header must not abort a whole listing.
+    except (UnicodeDecodeError, LookupError, ValueError, HeaderParseError):
         return raw
 
 

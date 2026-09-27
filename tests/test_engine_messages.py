@@ -242,6 +242,23 @@ def test_criteria_are_rechecked_against_the_headers(sessions, fake_imap):
 
 
 # ----------------------------------------------------------------------------
+def test_one_undecodable_subject_does_not_break_the_listing(
+    sessions, fake_imap
+):
+    fake_imap.messages = {
+        1: PLAIN,
+        2: rfc822("From: a@example.com", "Subject: =?utf-8?b?G=?=", body="x"),
+    }
+
+    listing = engine.list_messages(sessions, "INBOX")
+
+    assert [message.subject for message in listing.messages] == [
+        "=?utf-8?b?G=?=",
+        "Café plans",
+    ]
+
+
+# ----------------------------------------------------------------------------
 def test_a_raw_search_is_passed_through(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 

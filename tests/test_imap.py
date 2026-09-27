@@ -187,6 +187,14 @@ def test_decode_header_value_falls_back_to_the_raw_text():
 
 
 # ----------------------------------------------------------------------------
+def test_decode_header_value_survives_a_bad_base64_encoded_word():
+    """The stdlib raises HeaderParseError, which is not a ValueError."""
+    malformed = "=?utf-8?b?G=?="
+
+    assert decode_header_value(malformed) == malformed
+
+
+# ----------------------------------------------------------------------------
 def test_header_values_keeps_both_the_decoded_and_the_raw_form():
     """Broader candidates cost nothing; a missed match costs a lost mail.
 
