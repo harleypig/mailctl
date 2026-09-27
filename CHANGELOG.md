@@ -4,6 +4,15 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+ENHANCEMENTS:
+
+* **Clearer extension headings in `mailctl test`.** The server's raw Sieve
+  list is now headed `capability (as the server reports it):` instead of
+  `extensions:`, and the yes / not-advertised checklist is headed
+  `extensions mailctl checks:` instead of `advertised extensions (from this
+  server, not assumed):`. Both are still read from the server; only the
+  wording changed.
+
 ## 0.5.0
 
 BREAKING CHANGES:

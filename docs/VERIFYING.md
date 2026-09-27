@@ -49,8 +49,11 @@ writes nothing anywhere.
   `Password:` reads `set`, `set (via file)`, `set (via command)`,
   `set (via flag)`, or `unset` — it names the source, never the value.
   `unset` is fine — it means you will be prompted.
-* `ManageSieve: connected`, then a list of advertised extensions.
-* A table of named extensions with `yes` or `not advertised` beside each.
+* `ManageSieve: connected`, then `capability (as the server reports it):`
+  followed by every Sieve extension the server lists.
+* `extensions mailctl checks:`, a table of the extensions mailctl uses with
+  `yes` or `not advertised` beside each — also read from the server, not
+  assumed.
   **`fileinto` and `imap4flags` must say `yes`** — those are what an ordinary
   rule needs. `mailbox` saying `yes` means Sieve can create the target folder
   itself.

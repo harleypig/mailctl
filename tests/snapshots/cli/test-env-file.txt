@@ -10,9 +10,9 @@ Sieve:     mail.from-env-file.example:4192 (tls=ssl)  (port: flag --sieve-port, 
 Folder:    INBOX  (default)  -- read by apply, messages, view, from-message
 
 ManageSieve: connected
-  extensions: fileinto, imap4flags, mailbox, regex
+  capability (as the server reports it): fileinto, imap4flags, mailbox, regex
 
-  advertised extensions (from this server, not assumed):
+  extensions mailctl checks:
     fileinto     yes
     imap4flags   yes
     mailbox      yes

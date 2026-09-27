@@ -1206,15 +1206,17 @@ def cmd_test(args) -> int:
         extensions = ", ".join(sorted(sieve.capabilities)) or "(none)"
 
         print("\nManageSieve: connected")
-        print(f"  extensions: {extensions}")
+        print(f"  capability (as the server reports it): {extensions}")
 
-        # Every line below is read from this server's CAPABILITY response.
+        # The checklist below is also read from this server's CAPABILITY
+        # response, not assumed -- it only narrows it to the names mailctl
+        # uses.
         # Nothing here asserts what MXRoute does or does not enable -- only
         # 'redirect' is a documented MXRoute policy, and a policy is not a
         # capability, so it would not show up here at all.
         advertised = {name.lower() for name in sieve.capabilities}
 
-        print("\n  advertised extensions (from this server, not assumed):")
+        print("\n  extensions mailctl checks:")
 
         for name in REPORTABLE_EXTENSIONS:
             state = "yes" if name in advertised else "not advertised"
