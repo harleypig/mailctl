@@ -11,7 +11,7 @@ here, because a count nobody re-derives is only ever stale.
 The live tier is scaffolded (`tests/live/`) and skipped by default; it stays
 open until it has run against a real account, and the backup-and-restore
 fixture required before anything writes to one is still outstanding
-([#9](https://github.com/harleypig/mxroute-email-filters/issues/9)).
+([#9](https://github.com/harleypig/mailctl/issues/9)).
 
 ## Two tiers
 

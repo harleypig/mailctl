@@ -1,6 +1,6 @@
 # mailctl — Agent Guide
 
-Auto-loaded entry point for AI agents working in `mxroute-email-filters` — a
+Auto-loaded entry point for AI agents working in `mailctl` — a
 Python CLI (`mailctl`) that manages MXroute email filters end to end: it
 writes server-side Sieve rules over ManageSieve, and applies the same rule
 retroactively to mail already in the mailbox over IMAP. Repo conventions and

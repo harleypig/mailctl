@@ -17,4 +17,4 @@ the [issue tracker][issues], and deliberate "not now" deferrals in
 
 [madr]: https://adr.github.io/madr/
 
-[issues]: https://github.com/harleypig/mxroute-email-filters/issues
+[issues]: https://github.com/harleypig/mailctl/issues

@@ -82,14 +82,14 @@ per-provider backend seam has been asked for, and it is a real question that
 this ADR does not settle. The two are independent: this record governs *what
 language a component may be written in*, and a backend seam governs *how the
 core selects between implementations*. A backend seam would be Python either
-way. See [#26](https://github.com/harleypig/mxroute-email-filters/issues/26).
+way. See [#26](https://github.com/harleypig/mailctl/issues/26).
 
 ## Consequences
 
 - **Distribution gets harder, and that is the real cost.** A Python-only tool
   installs with `pip`. Add a Go binary and the answer becomes "which binary,
   for which platform, fetched how, verified how". A **Docker image** is the
-  obvious mitigation, tracked in [#27](https://github.com/harleypig/mxroute-email-filters/issues/27) — it is the thing that makes
+  obvious mitigation, tracked in [#27](https://github.com/harleypig/mailctl/issues/27) — it is the thing that makes
   polyglot practical rather than merely possible.
 - **The static-binary property matters more than the language.** Go compiles
   to a dependency-free binary that can be vendored or fetched; Perl needs an

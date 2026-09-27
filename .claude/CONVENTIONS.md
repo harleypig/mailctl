@@ -102,14 +102,14 @@ needs: an attachment is named, never saved or opened.
 
 **A worked example**, so this reads as a rule rather than a slogan. Four
 observations came out of the subscription work
-([#38](https://github.com/harleypig/mxroute-email-filters/issues/38)) and
+([#38](https://github.com/harleypig/mailctl/issues/38)) and
 were surfaced as open questions: no CLI way to subscribe an existing folder;
 `folders` and `test` silent about subscription; an unsubscribed folder left
 alone; a flag with no effect. Applying the rule, three are not questions at
 all — subscription is a setting, so exposing it is in scope by definition
-([#42](https://github.com/harleypig/mxroute-email-filters/issues/42)) — and
+([#42](https://github.com/harleypig/mailctl/issues/42)) — and
 the fourth is a plain bug
-([#43](https://github.com/harleypig/mxroute-email-filters/issues/43)).
+([#43](https://github.com/harleypig/mailctl/issues/43)).
 Asking was the error.
 
 Built on two libraries, both of which the code wraps rather than exposes:
@@ -653,7 +653,7 @@ will read it.
   `branch-protection.py` edit-time hook sit in front of it as earlier layers
   (`git.md` *Protecting the Default Branch*).
 - **Auto-merge is declared** (operator, 2026-09-27,
-  [#11](https://github.com/harleypig/mxroute-email-filters/issues/11)). The
+  [#11](https://github.com/harleypig/mailctl/issues/11)). The
   ruleset is the server-side guardrail the opt-in (`gh.md`) rests on, so
   invoking push-pr is consent through merge once the required checks are
   green. This is the agent workflow's opt-in, **not** GitHub's own auto-merge
@@ -697,8 +697,8 @@ will read it.
 [adr1]: ../adr/0001-standalone-cli-over-provider-resource.md
 [adr2]: ../adr/0002-non-destructive-script-merge.md
 [provider]: https://github.com/harleypig/terraform-provider-mxroute
-[i9]: https://github.com/harleypig/mxroute-email-filters/issues/9
+[i9]: https://github.com/harleypig/mailctl/issues/9
 [adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
-[i13]: https://github.com/harleypig/mxroute-email-filters/issues/13
-[i10]: https://github.com/harleypig/mxroute-email-filters/issues/10
+[i13]: https://github.com/harleypig/mailctl/issues/13
+[i10]: https://github.com/harleypig/mailctl/issues/10
 [da495]: https://github.com/harleypig/dotagents/issues/495

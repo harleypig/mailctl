@@ -299,7 +299,7 @@ Note this constraint is **format-independent** — it survives the YAML/Jsonnet
 question above landing either way, and it applies to whatever layer 1 turns
 out to be.
 
-[i31]: https://github.com/harleypig/mxroute-email-filters/issues/31
+[i31]: https://github.com/harleypig/mailctl/issues/31
 
 ### The acceptance case is already reserved
 
@@ -326,7 +326,7 @@ than leaving it to be discovered when someone's byte comparison goes red.
 It is format-agnostic: it tests the round trip whichever way the YAML/Jsonnet
 question above lands.
 
-[i21]: https://github.com/harleypig/mxroute-email-filters/issues/21
+[i21]: https://github.com/harleypig/mailctl/issues/21
 
 Prior art for the Sieve half exists
 too — [Transiever.SieveRuler][sieveruler] builds Sieve from provider-neutral
