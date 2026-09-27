@@ -1,0 +1,13 @@
+$ mxfilter unsubscribe Lists
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Unsubscribed from 'INBOX.Lists'. It still exists, keeps its mail, and still receives anything filed there, but webmail will not show it.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('unsubscribe_folder', 'INBOX.Lists')
+('logout',)

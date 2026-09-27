@@ -1,0 +1,9 @@
+$ mxfilter add --fileinto Lists
+exit: 1
+--- stdout
+
+--- stderr
+mxfilter: no criteria given -- use --from/--to/--cc/--subject/--list-id/--header
+
+--- sieve calls
+--- imap calls

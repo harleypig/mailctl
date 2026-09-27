@@ -494,6 +494,39 @@ def test_an_empty_password_file_is_refused_by_name(secret_file, contents):
 
 
 # ----------------------------------------------------------------------------
+def test_a_tilde_in_a_password_file_path_is_expanded(
+    secret_file, monkeypatch, tmp_path
+):
+    """#8: ``~/pw`` used to fail naming the literal ``~/pw``."""
+    secret_file(name="pw")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    assert Config(password_file="~/pw").password().reveal() == MARKER
+    assert Config(toml_password_file="~/pw").password().reveal() == MARKER
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("spelling", ["$SECRETS_DIR/pw", "${SECRETS_DIR}/pw"])
+def test_an_environment_variable_in_a_password_file_path_is_expanded(
+    spelling, secret_file, monkeypatch, tmp_path
+):
+    secret_file(name="pw")
+    monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
+
+    assert Config(password_file=spelling).password().reveal() == MARKER
+
+
+# ----------------------------------------------------------------------------
+def test_an_unset_variable_is_left_literal_and_named_in_the_error(
+    monkeypatch,
+):
+    monkeypatch.delenv("MXFILTER_NO_SUCH_DIR", raising=False)
+
+    with pytest.raises(MxFilterError, match=r"\$MXFILTER_NO_SUCH_DIR/pw"):
+        Config(password_file="$MXFILTER_NO_SUCH_DIR/pw").password()
+
+
+# ----------------------------------------------------------------------------
 def test_a_missing_password_file_names_the_path_and_the_reason(tmp_path):
     path = tmp_path / "no-such-file"
 

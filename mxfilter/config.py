@@ -268,7 +268,7 @@ class Config:
     def _resolve_source(self, kind: str, value: str) -> Secret:
         """Turn one ``(kind, value)`` source into a credential."""
         if kind == "file":
-            return read_password_file(Path(value))
+            return read_password_file(expand_path(value))
 
         if kind == "command":
             return run_password_command(value)
@@ -380,6 +380,18 @@ def check_password_file_mode(path: Path) -> None:
         f"password file {path} is readable by group/other (mode {mode:04o}); "
         f"mxfilter refuses to read it. Fix with: chmod 600 {path}"
     )
+
+
+# ----------------------------------------------------------------------------
+def expand_path(value: str) -> Path:
+    """Expand ``$VAR`` / ``${VAR}`` and a leading ``~`` in a path.
+
+    Both are ordinary things to write in a config file, and neither is
+    expanded by anything else there (nor by the shell in
+    ``--password-file=~/pw``). An unset variable is left as written, so
+    the "cannot read" error names the literal path and the cause shows.
+    """
+    return Path(os.path.expandvars(value)).expanduser()
 
 
 # ----------------------------------------------------------------------------

@@ -1,0 +1,13 @@
+$ mxfilter add --from noreply@github.com
+exit: 1
+--- stdout
+
+--- stderr
+mxfilter: no action requested -- use --fileinto, --discard, --mark-read, --flag, or --keep
+
+--- sieve calls
+('connect',)
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

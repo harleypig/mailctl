@@ -1,0 +1,52 @@
+$ mxfilter add --subject newsletter --fileinto Lists --name keep-boss --replace --first --dry-run
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+Rule 'keep-boss' on script 'managesieve':
+  when:  Subject contains 'newsletter'
+  then:  fileinto INBOX.Lists; stop
+
+This rule would come before:
+  ! 'bin-the-noise' never runs -- 'keep-boss' carries stop and its conditions cover every case 'bin-the-noise' tests for
+
+
+Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,9 +1,8 @@
+ require ["fileinto", "imap4flags"];
+ 
+ # rule:[keep-boss]
+-if header :contains "from" "boss@example.com" {
+-    fileinto "INBOX.Boss";
+-    setflag "\\Flagged";
++if anyof (header :contains "Subject" "newsletter") {
++    fileinto "INBOX.Lists";
+     stop;
+ }
+ # rule:[bin-the-noise]
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+Searching 'INBOX' for existing matches...
+No existing messages match.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['SUBJECT', 'newsletter']])
+('fetch', (1, 2, 3))
+('logout',)

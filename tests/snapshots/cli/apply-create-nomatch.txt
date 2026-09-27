@@ -1,0 +1,20 @@
+$ mxfilter apply --from nobody@x.y --fileinto Lists/GitHub --create-folder --yes
+exit: 0
+--- stdout
+Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
+Folder 'INBOX.Lists.GitHub' does not exist; it will be created over IMAP when the change is applied
+Criteria: From contains 'nobody@x.y'
+
+Searching 'INBOX' for existing matches...
+No existing messages match.
+Folder 'INBOX.Lists.GitHub' was not created: there is nothing to move into it.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'nobody@x.y']])
+('fetch', (1, 2, 3))
+('logout',)

@@ -1,0 +1,15 @@
+$ mxfilter folders
+exit: 0
+--- stdout
+Hierarchy delimiter: '.'
+3 folder(s), 2 subscribed (webmail shows only subscribed folders):
+  INBOX
+  INBOX.Lists
+  INBOX.spam   (not subscribed)
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

@@ -23,7 +23,8 @@ silently drops mail.
 import pytest
 
 from mxfilter import MxFilterError
-from mxfilter.cli import build_parser, reject_forbidden, sieve_actions
+from mxfilter.cli import actions_from_args, build_parser, reject_forbidden
+from mxfilter.engine import sieve_actions
 from mxfilter.sieve import MXROUTE_FORBIDDEN_ACTIONS, UNIMPLEMENTED_ACTIONS
 
 # ############################################################################
@@ -156,7 +157,9 @@ REFUSED_VERBS = {*MXROUTE_FORBIDDEN_ACTIONS, *UNIMPLEMENTED_ACTIONS}
 )
 def test_the_generated_actions_never_contain_a_refused_verb(extra):
     """Belt and braces behind the gate: the generator has no such branch."""
-    actions = sieve_actions(parse_add(*extra), "INBOX.Lists", False)
+    actions = sieve_actions(
+        actions_from_args(parse_add(*extra)), "INBOX.Lists", False
+    )
     verbs = {action[0] for action in actions}
 
     assert verbs.isdisjoint(REFUSED_VERBS)
@@ -168,7 +171,7 @@ def test_an_add_with_no_action_at_all_is_refused():
     args = build_parser().parse_args(["add", "--from", "boss@example.com"])
 
     with pytest.raises(MxFilterError, match="no action requested"):
-        sieve_actions(args, "", False)
+        sieve_actions(actions_from_args(args), "", False)
 
 
 # ----------------------------------------------------------------------------
@@ -180,7 +183,7 @@ def test_flags_are_emitted_before_fileinto_and_stop_comes_last():
     the same mail again.
     """
     args = parse_add("--mark-read")
-    actions = sieve_actions(args, "INBOX.Lists", False)
+    actions = sieve_actions(actions_from_args(args), "INBOX.Lists", False)
 
     assert [action[0] for action in actions] == ["addflag", "fileinto", "stop"]
     assert actions[0] == ("addflag", "\\\\Seen")

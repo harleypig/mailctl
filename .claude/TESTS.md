@@ -5,7 +5,9 @@ regression test per bug, a manual verification note per feature); `python.md`
 carries the layout convention (`tests/` at the repo root, mirroring the
 package). This file records what belongs here.
 
-**The offline tier is written and green** — 347 passing, 3 live-gated skips.
+**The offline tier is written and green** (`make test`); the only skips are
+the live-gated ones. `pytest -q` reports the current count; none is kept
+here, because a count nobody re-derives is only ever stale.
 The live tier is scaffolded (`tests/live/`) and skipped by default; it stays
 open until it has run against a real account, and the backup-and-restore
 fixture required before anything writes to one is still outstanding
@@ -31,6 +33,15 @@ fixture required before anything writes to one is still outstanding
      (`Lists/GitHub` ≡ `INBOX.Lists.GitHub`) against a reported delimiter.
    - `config` — the flag → env → file → default resolution order, and that a
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
+   - `engine` — every plan and execute step driven with plain inputs and
+     session fakes, as any front-end would call it (`test_engine.py`).
+   - **CLI snapshots** (`test_cli_snapshots.py`) — each subcommand run end to
+     end through `cli.main`, recording exit code, stdout, stderr, and every
+     server call into `tests/snapshots/cli/<name>.txt`. A behaviour change
+     shows up as a snapshot diff; regenerate with
+     `MXFILTER_UPDATE_SNAPSHOTS=1` and read the diff before committing.
+   - The **presentation guard** (`test_core_no_presentation.py`) — no core
+     module prints, prompts, or exits, and the engine imports no front-end.
 2. **Live tests** (`MXFILTER_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.

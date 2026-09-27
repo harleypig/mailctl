@@ -1,61 +1,44 @@
 """Command-line interface.
 
+This module is the CLI front-end and nothing else: it parses arguments,
+turns them into the engine's plain inputs, calls ``mxfilter.engine``, and
+renders what comes back. Every decision a person makes -- confirming,
+``--dry-run``, ``--yes`` -- is taken here, between the engine's plan and
+its execution.
+
 Every mutating subcommand follows the same shape: work out what would
 change, show it, and only then -- after a backup and the server's own
 validation -- change it. ``--dry-run`` stops after the "show it" step.
 """
 
 import argparse
-import email.utils
-import re
 import sys
 import traceback
-from contextlib import ExitStack
 
-from . import MxFilterError, __version__
+from . import MxFilterError, __version__, engine
 from .config import SIEVE_TLS_MODES, load_config
-from .criteria import COMPARE_OPS, MATCH_MODES, Criteria, escape_sieve_string
-from .imap import (
-    FolderCreation,
-    ImapSession,
-    decode_header_value,
-    normalize_folder,
-)
-from .rules import (
-    CERTAIN,
-    analyze_placement,
-    audit,
-    read_rules,
-    rule_from_criteria,
-)
+from .criteria import COMPARE_OPS, MATCH_MODES, Criteria
+from .engine import DEFAULT_MAX_MESSAGES, ActionSpec, RuleRequest
+from .imap import FolderCreation, decode_header_value
+from .rules import CERTAIN
 from .sieve import (
-    MXROUTE_FORBIDDEN_ACTIONS,
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
     REPORTABLE_EXTENSIONS,
-    UNIMPLEMENTED_ACTIONS,
     DisplayDiff,
     Placement,
-    SieveSession,
-    backup_script,
-    display_diff,
-    merge_rule,
-    parse_script,
-    remove_rule,
-    resolve_backup_target,
-    resolve_position,
-    rule_names,
-    write_backup,
 )
 
 __all__ = ["build_parser", "main"]
 
-DEFAULT_SCRIPT_NAME = "mxfilter"
 DEFAULT_MOVE_THRESHOLD = 25
-DEFAULT_MAX_MESSAGES = 500
 PREVIEW_LIMIT = 20
+
+# The action flags refused with an explanation rather than an argparse
+# "unrecognized arguments" error; see action_parser.
+REFUSED_ACTION_FLAGS = ("redirect", "notify", "vacation")
 
 # The headers a person recognises one of their own emails by, shown by
 # 'from-message' before it derives anything. List-Id earns its place
@@ -135,24 +118,45 @@ def clip(value: str, width: int) -> str:
     if len(value) <= width:
         return value
 
-    return value[: width - 1] + "\u2026"
+    return value[: width - 1] + "…"
 
 
 # ----------------------------------------------------------------------------
-def progress_for(args, label: str):
-    """Return a progress callback for the core modules, or None.
+def progress_from_args(args):
+    """Return the engine's progress callback, or None without --verbose.
 
-    The core modules report progress by calling back rather than printing,
-    so the decision to show it -- and the decoration around it -- is made
-    once, here.
+    The engine reports protocol progress by calling back rather than
+    printing, so the decision to show it -- and the decoration around it --
+    is made once, here.
     """
     if not args.verbose:
         return None
 
-    def emit(message: str) -> None:
-        print(f"[{label}] {message}")
+    def emit(channel: str, message: str) -> None:
+        print(f"[{channel}] {message}")
 
     return emit
+
+
+# ----------------------------------------------------------------------------
+def connect(config, args, *, sieve: bool = True, imap: bool = False):
+    """Open engine sessions with this invocation's progress reporting."""
+    return engine.connect(
+        config, sieve=sieve, imap=imap, progress=progress_from_args(args)
+    )
+
+
+# ----------------------------------------------------------------------------
+def render_event(event) -> None:
+    """Print one step of a change as the engine reports it."""
+    if isinstance(event, engine.ScriptBackedUp):
+        print(f"Backed up current script to {event.path}")
+
+    elif isinstance(event, engine.ScriptUploaded):
+        print(f"Uploaded and activated script {event.script!r}")
+
+    elif isinstance(event, engine.FolderCreated):
+        report_folder_creation(event.result)
 
 
 # ----------------------------------------------------------------------------
@@ -198,7 +202,7 @@ def warn_about_inline_password(args) -> None:
 
 
 # ############################################################################
-# Criteria and actions from parsed args
+# Engine inputs from parsed args
 # ############################################################################
 
 
@@ -228,6 +232,28 @@ def criteria_from_args(args) -> Criteria:
 
 
 # ----------------------------------------------------------------------------
+def actions_from_args(args) -> ActionSpec:
+    """Fold the action flags into the engine's ActionSpec.
+
+    ``--mark-read`` is ``\\Seen`` and comes first; ``--flag`` values follow
+    in the order given, without duplicates.
+    """
+    flags = ["\\Seen"] if args.mark_read else []
+
+    for flag in args.flag or []:
+        if flag not in flags:
+            flags.append(flag)
+
+    return ActionSpec(
+        fileinto=args.fileinto,
+        discard=args.discard,
+        flags=tuple(flags),
+        keep=args.keep,
+        stop=not args.no_stop,
+    )
+
+
+# ----------------------------------------------------------------------------
 def placement_from_args(args) -> Placement | None:
     """Fold the four placement flags into one value, or None if none given.
 
@@ -253,227 +279,80 @@ def placement_from_args(args) -> Placement | None:
 
 # ----------------------------------------------------------------------------
 def reject_forbidden(args) -> None:
-    """Refuse actions this tool will not generate, and say why.
-
-    Two different reasons, kept apart on purpose. ``redirect`` is refused
-    because MXRoute has publicly disabled it -- a policy, so the alternative
-    is named. The rest are simply not implemented here, and mxfilter has no
-    evidence either way about whether this server supports them; that
-    question belongs to ``mxfilter test``, which reads the answer off the
-    server instead of guessing.
-    """
-    for name, explanation in MXROUTE_FORBIDDEN_ACTIONS.items():
-        if getattr(args, name, None):
-            raise MxFilterError(explanation)
-
-    for name, label in UNIMPLEMENTED_ACTIONS.items():
-        if getattr(args, name, None):
-            raise MxFilterError(
-                f"mxfilter does not generate the Sieve '{label}' action. "
-                f"This is a conservative choice of ours, not a documented "
-                f"MXRoute restriction -- the MXRoute control panel is where "
-                f"this feature lives if you need it. To see whether the "
-                f"server advertises the extension at all, run "
-                f"'mxfilter test'."
-            )
-
-
-# ----------------------------------------------------------------------------
-def default_rule_name(criteria: Criteria) -> str:
-    """Derive a stable rule name from the first criterion."""
-    term = criteria.terms[0]
-
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", term.value).strip("-").lower()
-
-    return f"{term.header.lower()}-{slug}"[:60] or DEFAULT_SCRIPT_NAME
-
-
-# ----------------------------------------------------------------------------
-def sieve_actions(args, folder: str, use_create: bool) -> list[tuple]:
-    """Build the sievelib action tuples for the requested actions.
-
-    Flags are emitted before ``fileinto`` so the delivered copy carries
-    them, and ``stop`` last so later rules do not also fire.
-    """
-    actions: list[tuple] = []
-    flags = collect_flags(args)
-
-    for flag in flags:
-        actions.append(("addflag", escape_sieve_string(flag)))
-
-    if args.discard:
-        actions.append(("discard",))
-
-    elif folder:
-        if use_create:
-            actions.append(
-                ("fileinto", ":create", escape_sieve_string(folder))
-            )
-
-        else:
-            actions.append(("fileinto", escape_sieve_string(folder)))
-
-    if args.keep:
-        actions.append(("keep",))
-
-    if not actions:
-        raise MxFilterError(
-            "no action requested -- use --fileinto, --discard, --mark-read, "
-            "--flag, or --keep"
-        )
-
-    if not args.no_stop:
-        actions.append(("stop",))
-
-    return actions
-
-
-# ----------------------------------------------------------------------------
-def collect_flags(args) -> list[str]:
-    """Return the IMAP flags implied by ``--mark-read`` and ``--flag``."""
-    flags = []
-
-    if args.mark_read:
-        flags.append("\\Seen")
-
-    for flag in args.flag or []:
-        if flag not in flags:
-            flags.append(flag)
-
-    return flags
-
-
-# ----------------------------------------------------------------------------
-def required_extensions(args, use_create: bool) -> set[str]:
-    """Return the Sieve extensions the generated rule will need."""
-    needed = set()
-
-    if collect_flags(args):
-        needed.add("imap4flags")
-
-    if not args.discard and args.fileinto:
-        needed.add("fileinto")
-
-    if use_create:
-        needed.add("mailbox")
-
-    return needed
-
-
-# ############################################################################
-# Shared plumbing
-# ############################################################################
-
-
-# ----------------------------------------------------------------------------
-def open_sessions(config, args, need_imap: bool, stack: ExitStack):
-    """Open the sessions a command needs and return ``(sieve, imap)``."""
-    imap = None
-
-    if need_imap:
-        imap = stack.enter_context(
-            ImapSession(config, progress=progress_for(args, "imap"))
-        )
-
-    sieve = stack.enter_context(
-        SieveSession(config, progress=progress_for(args, "sieve"))
+    """Hand every refused action flag that was given to the engine."""
+    engine.reject_actions(
+        name for name in REFUSED_ACTION_FLAGS if getattr(args, name, None)
     )
 
-    return sieve, imap
+
+# ############################################################################
+# Rendering plans and results
+# ############################################################################
 
 
 # ----------------------------------------------------------------------------
-def fetch_active(sieve: SieveSession, args) -> tuple[str, str]:
-    """Return ``(script_name, source)`` for the script to edit.
+def show_folder_plan(plan: engine.FolderPlan) -> None:
+    """Say where filed mail goes, before anything is created."""
+    if plan.status == engine.FOLDER_NONE:
+        return
 
-    The name always comes from LISTSCRIPTS and is written back to. It is
-    never guessed: whatever the webmail's managesieve plugin calls its
-    script is a server-side config value (``managesieve_script_name``) that
-    nothing about the account exposes, so a guess would create a *second*
-    script and quietly leave the real one in charge. MXRoute has also said
-    it intends to move off DirectAdmin, Crossbox, and Roundcube, and is
-    mid-migration from Dovecot 2.3 to 2.4 -- what is discovered at runtime
-    survives that, and a hardcoded name would not.
-
-    ``DEFAULT_SCRIPT_NAME`` is used only when the account has no scripts at
-    all, which is a genuine first run with nothing to collide with.
-    """
-    requested = getattr(args, "script", None)
-    active = sieve.active_script_name()
-    name = requested or active or DEFAULT_SCRIPT_NAME
-
-    _active, others = sieve.list_scripts()
-
-    if name == active or name in others:
-        return (name, sieve.get_script(name))
-
-    return (name, "")
-
-
-# ----------------------------------------------------------------------------
-def resolve_folder(args, imap: ImapSession | None, config) -> str:
-    """Normalize the target folder and report what will happen to it."""
-    requested = args.fileinto or config.default_folder
-
-    if not requested:
-        return ""
-
-    if imap is None:
+    if plan.delimiter_assumed:
         # Without a folder list the Maildir++ heuristic is the best that
         # can be done; --no-imap is opt-in precisely for this trade.
-        delimiter = args.delimiter or "."
-        folder = normalize_folder(requested, delimiter, None)
         warn(
-            f"no IMAP connection: assuming delimiter {delimiter!r}, "
-            f"target folder {folder!r}"
+            f"no IMAP connection: assuming delimiter {plan.delimiter!r}, "
+            f"target folder {plan.folder!r}"
         )
 
-        return folder
-
-    folder = imap.normalize(requested)
-
-    if requested != folder:
+    elif plan.requested != plan.folder:
         print(
-            f"Folder {requested!r} resolves to {folder!r} "
-            f"(delimiter {imap.delimiter!r})"
+            f"Folder {plan.requested!r} resolves to {plan.folder!r} "
+            f"(delimiter {plan.delimiter!r})"
         )
-
-    return folder
 
 
 # ----------------------------------------------------------------------------
-def ensure_folder(
-    folder: str, args, imap: ImapSession | None, sieve: SieveSession
-) -> bool:
-    """Decide how the target folder gets to exist; return whether to
-    emit ``fileinto :create``.
+def prepare_folder(sessions, config, args) -> engine.FolderPlan:
+    """Plan the rule's target folder, say what it is, and settle it."""
+    plan = engine.plan_folder(
+        sessions,
+        config,
+        args.fileinto,
+        create=args.create_folder,
+        subscribe=not args.no_subscribe,
+        delimiter=args.delimiter,
+    )
 
-    ``:create`` is preferred when the server advertises ``mailbox``, since
-    then Sieve makes the folder at delivery time. Otherwise the folder is
-    made over IMAP now, and the rule stays a plain ``fileinto``.
+    show_folder_plan(plan)
+    settle_folder(sessions, plan, args)
+
+    return plan
+
+
+# ----------------------------------------------------------------------------
+def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
+    """Report how the target folder comes to exist, creating it if due.
+
+    Nothing is created here. A folder due for IMAP creation is announced
+    now and created by the engine's execute step, after the change has
+    been shown and decided on -- so a dry run, an abort, or a rejected
+    plan leaves no stray folder behind.
     """
-    if not folder:
-        return False
+    engine.check_folder(plan)
 
-    exists = imap.exists(folder) if imap else False
-
-    if exists:
-        return False
-
-    has_mailbox = not sieve.missing_extensions({"mailbox"})
-
-    if not args.create_folder:
+    if plan.status == engine.FOLDER_MISSING:
         warn(
-            f"target folder {folder!r} does not exist. Mail filed there may "
-            f"be lost; pass --create-folder to create it."
+            f"target folder {plan.folder!r} does not exist. Mail filed there "
+            f"may be lost; pass --create-folder to create it."
         )
 
-        return False
+    elif plan.status == engine.FOLDER_SIEVE_CREATES:
+        print(
+            f"Folder {plan.folder!r} will be created by Sieve "
+            f"(fileinto :create)"
+        )
 
-    if has_mailbox:
-        print(f"Folder {folder!r} will be created by Sieve (fileinto :create)")
-
-        if not args.no_subscribe:
+        if plan.subscribe:
             # Sieve creates the folder at delivery time, when mxfilter is
             # not running and cannot subscribe to it. Whether the server
             # does so itself is genuinely unknown -- RFC 5490 says :create
@@ -490,27 +369,25 @@ def ensure_folder(
             print(
                 "  Nothing promises Sieve will subscribe to a folder it "
                 "creates, so it may not appear in webmail until you "
-                "subscribe to it there."
+                f"subscribe to it: once the first message has created it, "
+                f"run 'mxfilter subscribe {plan.folder}'."
             )
 
-        return True
+    elif plan.status == engine.FOLDER_IMAP_CREATE:
+        announce_folder_creation(plan, args.dry_run)
 
-    if imap is None:
-        raise MxFilterError(
-            f"the server does not advertise the Sieve 'mailbox' extension "
-            f"and --no-imap was given, so {folder!r} cannot be created"
+
+# ----------------------------------------------------------------------------
+def announce_folder_creation(plan: engine.FolderPlan, dry_run: bool) -> None:
+    """Say that the target folder will be made over IMAP, before it is."""
+    if dry_run:
+        print(f"[dry-run] would create IMAP folder {plan.folder!r}")
+
+    else:
+        print(
+            f"Folder {plan.folder!r} does not exist; it will be created "
+            f"over IMAP when the change is applied"
         )
-
-    if args.dry_run:
-        print(f"[dry-run] would create IMAP folder {folder!r}")
-
-        return False
-
-    report_folder_creation(
-        imap.create_folder(folder, subscribe=not args.no_subscribe)
-    )
-
-    return False
 
 
 # ----------------------------------------------------------------------------
@@ -535,15 +412,15 @@ def report_folder_creation(result: FolderCreation) -> None:
             f"created folder {folder!r}, but subscribing to it failed: "
             f"{result.subscribe_error}. The folder exists and mail filed "
             f"there will arrive, but it will not appear in webmail until "
-            f"you subscribe to it in your mail client (Roundcube: "
-            f"Settings > Folders)."
+            f"you subscribe to it: run 'mxfilter subscribe {folder}'."
         )
 
         return
 
     print(
         f"Created IMAP folder {folder!r}; not subscribed (--no-subscribe), "
-        f"so it will not appear in webmail."
+        f"so it will not appear in webmail ('mxfilter subscribe {folder}' "
+        f"shows it later)."
     )
 
 
@@ -575,30 +452,25 @@ def print_script_diff(report: DisplayDiff) -> None:
 
 
 # ----------------------------------------------------------------------------
-def upload(
-    sieve: SieveSession, config, name: str, before: str, after: str, args
-) -> None:
-    """Back up, validate, upload, and activate a script."""
-    path = backup_script(before, name, config.backup_dir)
-    print(f"Backed up current script to {path}")
-
-    sieve.check_script(after)
-    sieve.put_script(name, after)
-    sieve.set_active(name)
-
-    print(f"Uploaded and activated script {name!r}")
-
-
-# ----------------------------------------------------------------------------
-def warn_missing_extensions(sieve: SieveSession, needed: set[str]) -> None:
+def warn_missing_extensions(missing: list[str]) -> None:
     """Warn about extensions the rule needs but the server does not list."""
-    missing = sieve.missing_extensions(needed)
-
     if missing:
         warn(
             f"the server does not advertise: {', '.join(missing)}. The "
             f"upload will be validated with CHECKSCRIPT and may be rejected."
         )
+
+
+# ----------------------------------------------------------------------------
+def print_placement(analysis) -> None:
+    """Warn when a rule about to be added would be dead, or would starve.
+
+    The engine judges the rule at the position it will actually occupy,
+    so inserting ahead of rules that already work -- the case that starves
+    them -- is reported rather than missed.
+    """
+    print_findings(analysis.dead_on_arrival, "\nBefore this rule is reached:")
+    print_findings(analysis.starves, "\nThis rule would come before:")
 
 
 # ############################################################################
@@ -608,39 +480,47 @@ def warn_missing_extensions(sieve: SieveSession, needed: set[str]) -> None:
 
 # ----------------------------------------------------------------------------
 def apply_to_existing(
-    imap: ImapSession, criteria: Criteria, args, folder: str
+    sessions, criteria: Criteria, args, spec: ActionSpec, folder
 ) -> int:
     """Plan the existing-mail pass, show it, and run it if allowed.
 
     Planning is read-only, so the plan is always built first and shown
     whatever the flags say. ``--dry-run`` is simply the path that stops
     after showing it -- the decision to execute lives here, in the
-    front-end, and never inside the IMAP layer.
+    front-end, and never inside the engine.
     """
-    print(f"\nSearching {args.folder!r} for existing matches...")
+    source = engine.source_folder(sessions, args.folder)
 
-    plan = imap.plan_actions(
-        criteria,
-        source=args.folder,
-        destination=folder,
-        flags=collect_flags(args),
-        discard=args.discard,
-    )
+    if engine.mail_pass_is_noop(spec, source, folder.folder):
+        print(
+            f"\nSkipping the existing-mail pass: the rule leaves matching "
+            f"mail in {source!r} as it is, so there is nothing to do."
+        )
+
+        return 0
+
+    print(f"\nSearching {source!r} for existing matches...")
+
+    plan = engine.plan_mail(sessions, criteria, spec, source, folder.folder)
 
     if plan.is_empty:
         print("No existing messages match.")
+
+        if not args.dry_run and engine.folder_pending(sessions, folder):
+            print(
+                f"Folder {folder.folder!r} was not created: there is "
+                f"nothing to move into it."
+            )
 
         return 0
 
     print(f"{plan.count} message(s) match:")
     print_preview(plan.messages)
 
-    over_cap = plan.count > args.max_messages
-
     if args.dry_run:
         describe_plan(plan, prefix="[dry-run] would ")
 
-        if over_cap:
+        if plan.count > args.max_messages:
             print(
                 f"[dry-run] note: {plan.count} matches exceed "
                 f"--max-messages {args.max_messages}; a real run would stop "
@@ -649,29 +529,16 @@ def apply_to_existing(
 
         return 0
 
-    if over_cap:
-        # Processing the first N and reporting success would read as "it
-        # handled everything". Refuse the whole batch instead, and say by
-        # how much, so the choice to proceed is explicit.
-        raise MxFilterError(
-            f"{plan.count} message(s) match but --max-messages is "
-            f"{args.max_messages}. NO existing message was touched -- a "
-            f"partial batch is never processed, because handling the first "
-            f"{args.max_messages} and reporting success would read as "
-            f"having handled them all. Re-run with --max-messages "
-            f"{plan.count} (or higher) to process every match. Note that "
-            f"--yes does NOT lift this cap: it skips the confirmation "
-            f"prompt, whereas the cap is a ceiling you set deliberately. "
-            f"Any Sieve rule in this command was already uploaded and "
-            f"applies to new mail regardless."
-        )
+    engine.check_message_cap(plan, args.max_messages)
 
     if not confirm(action_prompt(plan, args.move_threshold), args.yes):
         print("Aborted; no messages were touched.")
 
         return 0
 
-    result = imap.execute(plan)
+    result = engine.execute_mail(
+        sessions, plan, args.max_messages, folder, render_event
+    )
 
     report_result(result, plan)
 
@@ -753,8 +620,8 @@ def cmd_list(args) -> int:
     """List the account's Sieve scripts."""
     config = configure(args)
 
-    with SieveSession(config, progress=progress_for(args, "sieve")) as sieve:
-        active, others = sieve.list_scripts()
+    with connect(config, args) as sessions:
+        active, others = engine.list_scripts(sessions)
 
         if not active and not others:
             print("No Sieve scripts on the server.")
@@ -775,19 +642,14 @@ def cmd_show(args) -> int:
     """Print a script's source."""
     config = configure(args)
 
-    with SieveSession(config, progress=progress_for(args, "sieve")) as sieve:
-        name = args.name or sieve.active_script_name()
+    with connect(config, args) as sessions:
+        script = engine.read_script(sessions, args.name)
+        source = script.source
 
-        if not name:
-            raise MxFilterError("no active script; name one explicitly")
-
-        source = sieve.get_script(name)
-
-        print(f"# ---- {name} ----")
+        print(f"# ---- {script.name} ----")
         print(source, end="" if source.endswith("\n") else "\n")
 
-        filters = parse_script(source)
-        names = rule_names(filters)
+        names = script.rule_names()
 
         print(f"# ---- {len(names)} rule(s): {', '.join(names) or '(none)'}")
 
@@ -868,26 +730,18 @@ def cmd_rules(args) -> int:
     """Show the rules already in the active script, and audit their order."""
     config = configure(args)
 
-    with SieveSession(config, progress=progress_for(args, "sieve")) as sieve:
-        name = args.script or sieve.active_script_name()
+    with connect(config, args) as sessions:
+        report = engine.read_rules(sessions, args.script)
 
-        if not name:
-            raise MxFilterError(
-                "no active script on the server, so there are no rules to "
-                "show. 'mxfilter list' shows what the account has."
+        print(f"Script {report.script!r}:\n")
+        print_rules(report.rules)
+
+        if report.findings:
+            print_findings(
+                report.findings, "Rules that cannot fire where they are:"
             )
 
-        rules = read_rules(parse_script(sieve.get_script(name)))
-
-        print(f"Script {name!r}:\n")
-        print_rules(rules)
-
-        findings = audit(rules)
-
-        if findings:
-            print_findings(findings, "Rules that cannot fire where they are:")
-
-        elif rules:
+        elif report.rules:
             print("No rule is shadowed by an earlier one.")
 
     # Reading is the whole command, so a finding is information rather than
@@ -897,74 +751,17 @@ def cmd_rules(args) -> int:
 
 
 # ----------------------------------------------------------------------------
-def warn_about_placement(
-    before: str,
-    name: str,
-    criteria,
-    actions,
-    placement: Placement | None = None,
-) -> None:
-    """Warn when a rule about to be added would be dead, or would starve.
-
-    The analysis is run at the position the rule will actually occupy, not
-    at the end of the script. That distinction is the whole point once
-    ``--first`` and ``--before`` exist: inserting ahead of rules that
-    already work is precisely the case that starves them, and analysing an
-    append would report nothing at all.
-
-    A rule of the same name is dropped from the comparison set first. With
-    ``--replace`` the old copy is being overwritten, so leaving it in would
-    have the new rule shadowed by the version it replaces -- and would put
-    the indexes out by one, since ``resolve_position`` counts the other
-    rules only.
-    """
-    present = read_rules(parse_script(before))
-    rules = [entry for entry in present if entry.name != name]
-
-    stops = any(action[0] == "stop" for action in actions)
-    action_names = tuple(action[0] for action in actions)
-
-    candidate = rule_from_criteria(name, criteria, action_names, stops=stops)
-
-    # Resolved against every name in the script, including the one being
-    # replaced -- that is how "no flag, so leave it where it is" finds
-    # where it currently is. The index it returns counts the other rules,
-    # which is the list handed to the analysis.
-    #
-    # NOT rule_from_criteria's index=-1 default: analyze_placement clamps
-    # with max(0, at_index), so a -1 here would mean the FRONT of the
-    # script rather than the end of it.
-    at_index = resolve_position(
-        [entry.name for entry in present], placement, name
-    )
-
-    analysis = analyze_placement(rules, candidate, at_index=at_index)
-
-    print_findings(analysis.dead_on_arrival, "\nBefore this rule is reached:")
-    print_findings(analysis.starves, "\nThis rule would come before:")
-
-
-# ----------------------------------------------------------------------------
 def cmd_backup(args) -> int:
     """Save the active script to a file, exactly as the server has it."""
     config = configure(args)
 
-    with SieveSession(config, progress=progress_for(args, "sieve")) as sieve:
-        name = sieve.active_script_name()
-
-        if not name:
-            raise MxFilterError(
-                "no active script on the server, so there is nothing to back "
-                "up. 'mxfilter list' shows what the account has."
-            )
-
-        source = sieve.get_script(name)
-        target = resolve_backup_target(args.output, name, config.backup_dir)
+    with connect(config, args) as sessions:
+        plan = engine.plan_backup(sessions, config, args.output)
 
         if args.dry_run:
             print(
-                f"[dry-run] would write {rule_count_phrase(source)} to "
-                f"{target}"
+                f"[dry-run] would write {rule_count_phrase(plan.source)} to "
+                f"{plan.target}"
             )
 
             return 0
@@ -972,26 +769,64 @@ def cmd_backup(args) -> int:
         # Written before the script is parsed: counting its rules is a
         # nicety, and a script too broken to parse is exactly the one worth
         # having a copy of.
-        write_backup(source, target)
+        target = engine.execute_backup(plan)
 
-    print(f"wrote {rule_count_phrase(source)} to {target}")
+    print(f"wrote {rule_count_phrase(plan.source)} to {target}")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def cmd_restore(args) -> int:
+    """Replace the active script with a backup file, after showing it."""
+    config = configure(args)
+
+    with connect(config, args) as sessions:
+        plan = engine.plan_restore(sessions, args.file)
+
+        print(
+            f"Restore {plan.source} ({rule_count_phrase(plan.after)}) over "
+            f"script {plan.script!r} ({rule_count_phrase(plan.before)}):"
+        )
+
+        if not plan.changes:
+            print(
+                "\nThe file is identical to the script on the server; "
+                "nothing to restore."
+            )
+
+            return 0
+
+        print_script_diff(plan.diff)
+
+        if args.dry_run:
+            print("\n[dry-run] the script was NOT uploaded.")
+
+            return 0
+
+        if not confirm(
+            f"Replace script {plan.script!r} with {str(plan.source)!r}? The "
+            f"current script is backed up first",
+            args.yes,
+        ):
+            print("Aborted; nothing was changed.")
+
+            return 0
+
+        engine.execute_restore(sessions, config, plan, render_event)
 
     return 0
 
 
 # ----------------------------------------------------------------------------
 def rule_count_phrase(source: str) -> str:
-    """Describe how many rules a script holds, for the summary line.
+    """Describe how many rules a script holds, for the summary line."""
+    count = engine.count_rules(source)
 
-    A script that will not parse is still worth backing up -- it is the
-    case where a copy matters most -- so a parse failure is reported here
-    rather than raised, and only after the bytes are already on disk.
-    """
-    try:
-        return f"{len(rule_names(parse_script(source)))} rule(s)"
-
-    except MxFilterError:
+    if count is None:
         return "a script mxfilter could not parse"
+
+    return f"{count} rule(s)"
 
 
 # ----------------------------------------------------------------------------
@@ -999,12 +834,67 @@ def cmd_folders(args) -> int:
     """List IMAP folders and the detected hierarchy delimiter."""
     config = configure(args)
 
-    with ImapSession(config, progress=progress_for(args, "imap")) as imap:
-        print(f"Hierarchy delimiter: {imap.delimiter!r}")
-        print(f"{len(imap.folders)} folder(s):")
+    with connect(config, args, sieve=False, imap=True) as sessions:
+        listing = engine.list_folders(sessions)
 
-        for folder in sorted(imap.folders):
-            print(f"  {folder}")
+        print(f"Hierarchy delimiter: {listing.delimiter!r}")
+        print(
+            f"{len(listing.folders)} folder(s), "
+            f"{len(listing.folders) - len(listing.unsubscribed)} subscribed "
+            f"(webmail shows only subscribed folders):"
+        )
+
+        width = max((len(name) for name in listing.folders), default=0)
+
+        for folder in listing.folders:
+            if listing.is_subscribed(folder):
+                print(f"  {folder}")
+
+            else:
+                print(f"  {folder:<{width}}  (not subscribed)")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def cmd_subscribe(args) -> int:
+    """Subscribe to, or unsubscribe from, an existing folder."""
+    config = configure(args)
+    subscribe = args.command == "subscribe"
+
+    with connect(config, args, sieve=False, imap=True) as sessions:
+        plan = engine.plan_subscription(sessions, args.folder, subscribe)
+
+        if plan.requested != plan.folder:
+            print(
+                f"Folder {plan.requested!r} resolves to {plan.folder!r} "
+                f"(delimiter {plan.delimiter!r})"
+            )
+
+        if not plan.changes:
+            state = "subscribed" if subscribe else "not subscribed"
+            print(f"{plan.folder!r} is already {state}; nothing to change.")
+
+            return 0
+
+        verb = "subscribe to" if subscribe else "unsubscribe from"
+
+        if args.dry_run:
+            print(f"[dry-run] would {verb} {plan.folder!r}")
+
+            return 0
+
+        engine.execute_subscription(sessions, plan)
+
+    if subscribe:
+        print(f"Subscribed to {plan.folder!r}; webmail will show it.")
+
+    else:
+        print(
+            f"Unsubscribed from {plan.folder!r}. It still exists, keeps its "
+            f"mail, and still receives anything filed there, but webmail "
+            f"will not show it."
+        )
 
     return 0
 
@@ -1023,17 +913,19 @@ def cmd_test(args) -> int:
         f"(tls={config.sieve_tls})"
     )
 
-    with SieveSession(config, progress=progress_for(args, "sieve")) as sieve:
-        capabilities = sieve.capabilities()
+    with connect(config, args) as sessions:
+        sieve = engine.probe_sieve(sessions)
+
+        extensions = ", ".join(sorted(sieve.capabilities)) or "(none)"
 
         print("\nManageSieve: connected")
-        print(f"  extensions: {', '.join(sorted(capabilities)) or '(none)'}")
+        print(f"  extensions: {extensions}")
 
         # Every line below is read from this server's CAPABILITY response.
         # Nothing here asserts what MXRoute does or does not enable -- only
         # 'redirect' is a documented MXRoute policy, and a policy is not a
         # capability, so it would not show up here at all.
-        advertised = {name.lower() for name in capabilities}
+        advertised = {name.lower() for name in sieve.capabilities}
 
         print("\n  advertised extensions (from this server, not assumed):")
 
@@ -1041,27 +933,34 @@ def cmd_test(args) -> int:
             state = "yes" if name in advertised else "not advertised"
             print(f"    {name:<12} {state}")
 
-        active, others = sieve.list_scripts()
-        print(f"\n  active script: {active or '(none)'}")
-        print(f"  other scripts: {', '.join(others) or '(none)'}")
+        print(f"\n  active script: {sieve.active or '(none)'}")
+        print(f"  other scripts: {', '.join(sieve.others) or '(none)'}")
         print(
             "  (mxfilter always edits the ACTIVE script under its own "
             "name; it never guesses one.)"
         )
 
-    with ImapSession(config, progress=progress_for(args, "imap")) as imap:
-        capabilities = imap.capabilities()
+    with connect(config, args, sieve=False, imap=True) as sessions:
+        imap = engine.probe_imap(sessions)
 
         print("\nIMAP: connected")
         print(f"  delimiter: {imap.delimiter!r}")
-        print(f"  folders:   {len(imap.folders)}")
         print(
-            f"  MOVE:      "
-            f"{'yes' if 'MOVE' in capabilities else 'no (COPY+EXPUNGE)'}"
+            f"  folders:   {imap.folder_count} "
+            f"({imap.folder_count - len(imap.unsubscribed)} subscribed)"
         )
-        print(f"  UIDPLUS:   {'yes' if 'UIDPLUS' in capabilities else 'no'}")
 
-        report_filter_sieve(capabilities)
+        if imap.unsubscribed:
+            print(
+                f"  not subscribed (exist, but webmail will not show them): "
+                f"{', '.join(imap.unsubscribed)}"
+            )
+        print(
+            f"  MOVE:      {'yes' if imap.has_move else 'no (COPY+EXPUNGE)'}"
+        )
+        print(f"  UIDPLUS:   {'yes' if imap.has_uidplus else 'no'}")
+
+        report_filter_sieve(imap.has_filter_sieve)
 
     print(
         "\nNote: MXRoute disables the Sieve 'redirect' action as a matter "
@@ -1074,7 +973,7 @@ def cmd_test(args) -> int:
 
 
 # ----------------------------------------------------------------------------
-def report_filter_sieve(capabilities: list[str]) -> None:
+def report_filter_sieve(present: bool) -> None:
     """Report whether the server can run Sieve retroactively itself.
 
     Dovecot's Pigeonhole ``imap_filter_sieve`` plugin advertises
@@ -1083,13 +982,7 @@ def report_filter_sieve(capabilities: list[str]) -> None:
     done properly, server-side. It is experimental and off by default, so
     it is almost certainly absent here; one CAPABILITY line settles it
     either way, and an answer on the record beats an assumption.
-
-    Detection only. mxfilter has no FILTER=SIEVE code path.
     """
-    present = any(
-        item.upper().startswith("FILTER=SIEVE") for item in capabilities
-    )
-
     if present:
         print(
             "  FILTER=SIEVE: yes -- this server can apply a Sieve script "
@@ -1126,55 +1019,51 @@ def cmd_add(args) -> int:
 # ----------------------------------------------------------------------------
 def run_add(config, args, criteria: Criteria) -> int:
     """Shared body of ``add`` and ``from-message``."""
-    need_imap = not args.no_imap
+    spec = actions_from_args(args)
 
-    with ExitStack() as stack:
-        sieve, imap = open_sessions(config, args, need_imap, stack)
+    with connect(config, args, imap=not args.no_imap) as sessions:
+        folder = prepare_folder(sessions, config, args)
 
-        folder = resolve_folder(args, imap, config)
-        use_create = ensure_folder(folder, args, imap, sieve)
-
-        actions = sieve_actions(args, folder, use_create)
-        warn_missing_extensions(sieve, required_extensions(args, use_create))
-
-        name = args.name or default_rule_name(criteria)
-        script_name, before = fetch_active(sieve, args)
-        placement = placement_from_args(args)
-
-        after = merge_rule(
-            before,
-            name,
-            criteria.sieve_conditions(),
-            actions,
-            matchtype=criteria.sieve_matchtype(),
-            replace=args.replace,
-            placement=placement,
+        warn_missing_extensions(
+            engine.missing_extensions(sessions, spec, folder)
         )
 
-        print(f"\nRule {name!r} on script {script_name!r}:")
+        plan = engine.plan_rule(
+            sessions,
+            RuleRequest(
+                criteria=criteria,
+                actions=spec,
+                name=args.name,
+                script=args.script,
+                replace=args.replace,
+                placement=placement_from_args(args),
+            ),
+            folder,
+        )
+
+        print(f"\nRule {plan.name!r} on script {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
-        print(f"  then:  {describe_actions(actions)}")
+        print(f"  then:  {describe_actions(plan.actions)}")
 
-        # Read the rules that are already there before showing the diff. A
-        # diff shows what changes; it cannot show that the change lands
-        # after a rule whose stop means it will never be reached.
-        warn_about_placement(before, name, criteria, actions, placement)
-
-        print_script_diff(display_diff(before, after, script_name))
+        # The placement findings come before the diff. A diff shows what
+        # changes; it cannot show that the change lands after a rule whose
+        # stop means it will never be reached.
+        print_placement(plan.placement)
+        print_script_diff(plan.diff)
 
         if args.dry_run:
             print("\n[dry-run] the script was NOT uploaded.")
 
         else:
-            upload(sieve, config, script_name, before, after, args)
+            engine.execute_script_change(sessions, config, plan, render_event)
 
-        if imap is None or args.no_apply:
+        if sessions.imap is None or args.no_apply:
             if args.no_apply:
                 print("\nSkipping the existing-mail pass (--no-apply).")
 
             return 0
 
-        apply_to_existing(imap, criteria, args, folder)
+        apply_to_existing(sessions, criteria, args, spec, folder)
 
     return 0
 
@@ -1208,34 +1097,32 @@ def cmd_apply(args) -> int:
     config = configure(args)
     criteria = criteria_from_args(args)
     criteria.require_terms()
+    spec = actions_from_args(args)
 
-    with ImapSession(config, progress=progress_for(args, "imap")) as imap:
-        folder = resolve_folder(args, imap, config)
+    with connect(config, args, sieve=False, imap=True) as sessions:
+        folder = engine.plan_folder(
+            sessions,
+            config,
+            args.fileinto,
+            create=args.create_folder,
+            subscribe=not args.no_subscribe,
+        )
 
-        if not folder and not args.discard and not collect_flags(args):
+        show_folder_plan(folder)
+        engine.require_mail_action(folder, spec)
+
+        if folder.status == engine.FOLDER_MISSING:
             raise MxFilterError(
-                "nothing to do -- use --fileinto, --discard, --mark-read, "
-                "or --flag"
+                f"target folder {folder.folder!r} does not exist; pass "
+                f"--create-folder to create it"
             )
 
-        if folder and not imap.exists(folder):
-            if not args.create_folder:
-                raise MxFilterError(
-                    f"target folder {folder!r} does not exist; pass "
-                    f"--create-folder to create it"
-                )
-
-            if args.dry_run:
-                print(f"[dry-run] would create IMAP folder {folder!r}")
-
-            else:
-                report_folder_creation(
-                    imap.create_folder(folder, subscribe=not args.no_subscribe)
-                )
+        if folder.status == engine.FOLDER_IMAP_CREATE:
+            announce_folder_creation(folder, args.dry_run)
 
         print(f"Criteria: {criteria.describe()}")
 
-        apply_to_existing(imap, criteria, args, folder)
+        apply_to_existing(sessions, criteria, args, spec, folder)
 
     return 0
 
@@ -1245,15 +1132,10 @@ def cmd_remove_rule(args) -> int:
     """Remove a named rule from the active script and re-upload."""
     config = configure(args)
 
-    with SieveSession(config, progress=progress_for(args, "sieve")) as sieve:
-        script_name, before = fetch_active(sieve, args)
+    with connect(config, args) as sessions:
+        plan = engine.plan_removal(sessions, args.rule_name, args.script)
 
-        if not before.strip():
-            raise MxFilterError(f"script {script_name!r} is empty")
-
-        after = remove_rule(before, args.rule_name)
-
-        print_script_diff(display_diff(before, after, script_name))
+        print_script_diff(plan.diff)
 
         if args.dry_run:
             print("\n[dry-run] the script was NOT uploaded.")
@@ -1261,13 +1143,59 @@ def cmd_remove_rule(args) -> int:
             return 0
 
         if not confirm(
-            f"Remove rule {args.rule_name!r} from {script_name!r}?", args.yes
+            f"Remove rule {plan.rule!r} from {plan.script!r}?", args.yes
         ):
             print("Aborted; nothing was changed.")
 
             return 0
 
-        upload(sieve, config, script_name, before, after, args)
+        engine.execute_script_change(sessions, config, plan, render_event)
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def cmd_move_rule(args) -> int:
+    """Move a named rule to a new position, leaving it otherwise unchanged."""
+    config = configure(args)
+
+    with connect(config, args) as sessions:
+        plan = engine.plan_move(
+            sessions, args.rule_name, placement_from_args(args), args.script
+        )
+
+        if not plan.changes:
+            print(
+                f"Rule {plan.rule!r} is already at position "
+                f"{plan.to_index + 1} of {plan.count} in {plan.script!r}; "
+                f"nothing to change."
+            )
+
+            return 0
+
+        print(
+            f"Move rule {plan.rule!r} in script {plan.script!r}: position "
+            f"{plan.from_index + 1} -> {plan.to_index + 1} of {plan.count}"
+        )
+
+        print_placement(plan.placement)
+        print_script_diff(plan.diff)
+
+        if args.dry_run:
+            print("\n[dry-run] the script was NOT uploaded.")
+
+            return 0
+
+        if not confirm(
+            f"Move rule {plan.rule!r} to position {plan.to_index + 1} in "
+            f"{plan.script!r}?",
+            args.yes,
+        ):
+            print("Aborted; nothing was changed.")
+
+            return 0
+
+        engine.execute_script_change(sessions, config, plan, render_event)
 
     return 0
 
@@ -1309,93 +1237,36 @@ def cmd_from_message(args) -> int:
     if not args.uid and not args.search:
         raise MxFilterError("give either --uid N or --search EXPRESSION")
 
-    with ImapSession(config, progress=progress_for(args, "imap")) as imap:
-        uid = args.uid
+    with connect(config, args, sieve=False, imap=True) as sessions:
+        picked = engine.pick_message(
+            sessions, args.folder, uid=args.uid, search=args.search
+        )
 
-        if uid is None:
-            uids = imap.raw_search(args.folder, args.search)
-
-            if not uids:
-                raise MxFilterError(
-                    f"no message in {args.folder!r} matched {args.search!r}"
-                )
-
-            if len(uids) > 1:
-                warn(
-                    f"{len(uids)} messages matched; using the most recent "
-                    f"(uid {max(uids)})"
-                )
-
-            uid = max(uids)
-
-        message = imap.fetch_message_headers(args.folder, uid)
+        if picked.candidates > 1:
+            warn(
+                f"{picked.candidates} messages matched; using the most "
+                f"recent (uid {picked.uid})"
+            )
 
     # Shown before the criteria, and before anything is derived, because
     # this is the answer to "did I pick the right email?" -- the question
     # the criteria below cannot answer.
-    print_message(message, uid, args.folder)
+    print_message(picked.headers, picked.uid, args.folder)
 
-    criteria = derive_criteria(message, args)
+    derived = engine.derive_criteria(
+        picked.headers, args.derive, args.match, args.compare
+    )
+
+    for header in derived.skipped:
+        warn(f"message has no {header!r} header; skipping it")
+
+    criteria = derived.criteria
+    criteria.require_terms()
 
     print("\nDerived criteria:")
     print(f"  {criteria.describe()}")
 
     return run_add(config, args, criteria)
-
-
-# ----------------------------------------------------------------------------
-def derive_criteria(message, args) -> Criteria:
-    """Build criteria from a message's headers.
-
-    The default order is deliberate: a List-Id identifies a mailing list far
-    more reliably than a sender address does, so it wins when present.
-    """
-    criteria = Criteria(match=args.match, compare=args.compare)
-
-    wanted = [
-        item.strip().lower()
-        for item in (args.derive or "auto").split(",")
-        if item.strip()
-    ]
-
-    if wanted == ["auto"]:
-        wanted = ["list-id"] if message.get("List-Id") else ["from"]
-
-    for header in wanted:
-        raw = message.get(header)
-
-        if not raw:
-            warn(f"message has no {header!r} header; skipping it")
-            continue
-
-        criteria.add(header, extract_value(header, raw))
-
-    criteria.require_terms()
-
-    return criteria
-
-
-# ----------------------------------------------------------------------------
-def extract_value(header: str, raw: str) -> str:
-    """Reduce a header to the part worth matching on.
-
-    An address header keeps only the address, and a List-Id keeps only the
-    bracketed identifier -- the display name around either is cosmetic and
-    changes between messages.
-    """
-    value = decode_header_value(raw).strip()
-
-    if header in ("from", "to", "cc", "sender", "reply-to"):
-        address = email.utils.parseaddr(value)[1]
-
-        return address or value
-
-    if header == "list-id":
-        match = re.search(r"<([^>]+)>", value)
-
-        return match.group(1) if match else value
-
-    return value
 
 
 # ############################################################################
@@ -1685,10 +1556,8 @@ def build_parser() -> argparse.ArgumentParser:
         "as the server has it -- no banner lines, nothing reformatted "
         "(which is what 'mxfilter show' adds, and why it is not a backup). "
         "The file is written mode 0600, in a directory created 0700 if it "
-        "was not there. Nothing on the server is touched. NOTE: mxfilter "
-        "has no restore command; putting a backup back needs another "
-        "ManageSieve client, such as sieve-connect, or the panel's own "
-        "filter UI if it exposes a raw import.",
+        "was not there. Nothing on the server is touched. 'mxfilter "
+        "restore FILE' puts a backup back.",
     )
     backup.add_argument(
         "--output",
@@ -1708,10 +1577,52 @@ def build_parser() -> argparse.ArgumentParser:
     )
     backup.set_defaults(handler=cmd_backup)
 
+    restore = subparsers.add_parser(
+        "restore",
+        parents=[common, connection, safety],
+        help="upload a backup file over the active script",
+        description="Replace the active Sieve script with a backup file, "
+        "byte for byte. The difference between the file and what the "
+        "server has now is shown first, the current script is backed up "
+        "before anything is sent, the server validates the file "
+        "(CHECKSCRIPT), and you are asked to confirm. No other stored "
+        "script is touched. Unlike every other change mxfilter makes, "
+        "this REPLACES the script rather than merging into it -- any rule "
+        "added since the backup was taken is removed, which the diff "
+        "shows.",
+    )
+    restore.add_argument(
+        "file", metavar="FILE", help="a file written by 'mxfilter backup'"
+    )
+    restore.set_defaults(handler=cmd_restore)
+
     folders = subparsers.add_parser(
         "folders", parents=[common, connection], help="list IMAP folders"
     )
     folders.set_defaults(handler=cmd_folders)
+
+    for name, summary in (
+        ("subscribe", "show a folder in webmail (IMAP SUBSCRIBE)"),
+        ("unsubscribe", "hide a folder from webmail; it keeps its mail"),
+    ):
+        toggle = subparsers.add_parser(
+            name,
+            parents=[common, connection],
+            help=summary,
+            description=f"{summary[0].upper()}{summary[1:]}. Webmail draws "
+            "its folder tree from the subscription list (LSUB), so this is "
+            "what decides whether a folder is visible there. The folder "
+            "name is normalized like every other: 'Lists/GitHub' and "
+            "'INBOX.Lists.GitHub' name the same folder.",
+        )
+        toggle.add_argument("folder", metavar="FOLDER")
+        toggle.add_argument(
+            "--dry-run",
+            dest="dry_run",
+            action="store_true",
+            help="say what would change; change nothing",
+        )
+        toggle.set_defaults(handler=cmd_subscribe)
 
     test = subparsers.add_parser(
         "test",
@@ -1765,6 +1676,49 @@ def build_parser() -> argparse.ArgumentParser:
     remove.add_argument("rule_name", metavar="NAME")
     remove.add_argument("--script", help="script name; default active")
     remove.set_defaults(handler=cmd_remove_rule)
+
+    move = subparsers.add_parser(
+        "move-rule",
+        parents=[common, connection, safety],
+        help="move a named rule to a new position, unchanged",
+        description="Reorder one rule without restating it: only its "
+        "position changes. Sieve runs rules in order and 'stop' ends the "
+        "run, so the move is judged where the rule lands -- what would "
+        "stop it running, and what it would now stop -- before the diff "
+        "is shown. The script is backed up first and you are asked to "
+        "confirm.",
+    )
+    move.add_argument("rule_name", metavar="NAME")
+    move.add_argument("--script", help="script name; default active")
+
+    where = move.add_argument_group("position").add_mutually_exclusive_group(
+        required=True
+    )
+    where.add_argument(
+        "--first",
+        dest="place_first",
+        action="store_true",
+        help="before every other rule",
+    )
+    where.add_argument(
+        "--last",
+        dest="place_last",
+        action="store_true",
+        help="after every other rule",
+    )
+    where.add_argument(
+        "--before",
+        dest="place_before",
+        metavar="OTHER",
+        help="immediately before the rule named OTHER",
+    )
+    where.add_argument(
+        "--after",
+        dest="place_after",
+        metavar="OTHER",
+        help="immediately after the rule named OTHER",
+    )
+    move.set_defaults(handler=cmd_move_rule)
 
     return parser
 
@@ -1846,6 +1800,14 @@ def main(argv: list[str] | None = None) -> int:
     """Parse arguments, dispatch, and turn failures into diagnostics."""
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # --no-subscribe only shapes a folder this run creates. Accepting it
+    # alone would be a flag that looks like it took effect and did not.
+    if getattr(args, "no_subscribe", False) and not args.create_folder:
+        parser.error(
+            "--no-subscribe only applies with --create-folder; to hide a "
+            "folder that already exists, use 'mxfilter unsubscribe FOLDER'"
+        )
 
     if getattr(args, "no_imap", False):
         args.no_apply = True

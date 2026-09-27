@@ -1,0 +1,12 @@
+$ mxfilter unsubscribe spam
+exit: 0
+--- stdout
+Folder 'spam' resolves to 'INBOX.spam' (delimiter '.')
+'INBOX.spam' is already not subscribed; nothing to change.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

@@ -49,7 +49,9 @@ error names the `chmod` that fixes it. Keep that file on the Linux
 filesystem — anything under `/mnt/c` or another Windows mount (WSL) reports
 mode `0777` whatever you set, so it is always refused. Exactly one trailing
 newline is stripped from it, and nothing else, since a trailing space can be
-part of a password.
+part of a password. The path may start with `~` and may use `$VAR` or
+`${VAR}`, wherever it is given — `password_file = "~/.config/mail/pw"`
+works. An unset variable is left as written, so the error names it.
 
 `--password VALUE` exists and is the **least safe** option: the value is
 visible in the process list to every user on the machine and your shell
@@ -61,8 +63,12 @@ saves it to history. mxfilter warns when you use it.
 # Check both services and what they support. Changes nothing.
 mxfilter test
 
-# What does this server call its folders?
+# What does this server call its folders, and which does webmail show?
 mxfilter folders
+
+# Show a folder in webmail, or hide one (it keeps its mail either way).
+mxfilter subscribe Lists/News
+mxfilter unsubscribe Lists/Noisy --dry-run
 
 # See exactly what would change, without changing it.
 mxfilter add --from newsletter@example.com --fileinto Lists/News --dry-run
@@ -87,9 +93,17 @@ mxfilter list
 mxfilter show
 mxfilter remove-rule from-newsletter-example-com
 
+# Reorder a rule without restating it; reports what the move would starve.
+mxfilter move-rule from-newsletter-example-com --first --dry-run
+mxfilter move-rule from-newsletter-example-com --after keep-boss
+
 # Save the active script, byte for byte, before you touch anything.
 mxfilter backup
 mxfilter backup --output ~/mxfilter-before-first-run.sieve
+
+# Put a backup back over the active script: diff, back up, confirm.
+mxfilter restore ~/mxfilter-before-first-run.sieve --dry-run
+mxfilter restore ~/mxfilter-before-first-run.sieve
 ```
 
 **Before the first run against a real mailbox, work through
@@ -127,10 +141,14 @@ assumptions below get settled for your account.
   backup. `--backup-dir` and `MXROUTE_BACKUP_DIR` move it. The file is written
   mode `0600` in a directory created `0700`: a Sieve script is not a password,
   but it does say who you correspond with and how you sort it.
-* **mxfilter has no restore command.** The backup is the server's exact bytes
-  — no banner lines, nothing reformatted — and putting them back needs another
-  ManageSieve client, such as `sieve-connect`, or the panel's filter UI if it
-  exposes a raw import. See [docs/VERIFYING.md][verify].
+* **`mxfilter restore FILE` puts a backup back.** The backup is the server's
+  exact bytes — no banner lines, nothing reformatted — and restore uploads
+  them exactly, over the active script only. It shows the raw diff against
+  what the server has now, backs the current script up first, lets the
+  server validate the file, and asks before it replaces anything. It is the
+  one command that **replaces** rather than merges: a rule added since the
+  backup was taken is removed, and the diff shows it. It works even over a
+  script mxfilter cannot parse ([ADR 0005][adr5]).
 * Rules are merged into the parsed existing script, never appended blindly,
   so other rules survive. If the existing script cannot be parsed, mxfilter
   stops rather than overwrite it.
@@ -141,7 +159,13 @@ assumptions below get settled for your account.
   cannot be undone; a move says it can be reversed.
 * `--max-messages` (default 500) refuses the whole batch when more matches
   than that come back. It never processes a partial set: silent truncation
-  reads as "it handled everything" when it did not.
+  reads as "it handled everything" when it did not. Raising it is safe:
+  mxfilter talks to the server in batches of 250 regardless, so a large
+  pass never becomes one oversized IMAP command. If a batch fails part-way,
+  mxfilter says how many messages were fully handled. Re-running the same
+  command picks up the rest — except on a server without `MOVE`, where the
+  failed batch may already have been copied and a re-run copies it again;
+  mxfilter says so, and names the folder to check.
 * A `--fileinto` target that does not exist is a **warning, not an error**,
   unless you pass `--create-folder`. `add` will still write the rule, and
   mail filed there by the server later may be lost. `apply` refuses outright,
@@ -154,9 +178,17 @@ assumptions below get settled for your account.
   file a high-volume list that should leave the inbox without cluttering the
   sidebar — and mxfilter says so on the line where it creates the folder,
   because an invisible folder nobody was told about is the bug, not the
-  feature. If the subscription fails, the folder is **not** torn back down:
-  it exists and mail filed there will arrive, so mxfilter warns and tells
-  you to subscribe to it from your mail client.
+  feature. It is refused without `--create-folder`, where it would do
+  nothing; `mxfilter unsubscribe` hides a folder that already exists. If
+  the subscription fails, the folder is **not** torn back down: it exists
+  and mail filed there will arrive, so mxfilter warns and tells you to run
+  `mxfilter subscribe` on it.
+* The folder is **announced when the change is shown and created only when
+  it is applied** — for `add` and `from-message`, once the server has
+  accepted the new script and just before it is stored; for `apply`, after
+  you confirm the move. A
+  dry run, an abort, or a rejected script leaves no stray folder, and an
+  `apply` that matches nothing creates nothing and says so.
 
 ## MXRoute specifics
 
@@ -257,4 +289,5 @@ character class, so a bracketed subject is safe.
   apply criteria you give it to old mail; it cannot tell you which of your
   existing rules would have caught a message.
 
+[adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
 [verify]: docs/VERIFYING.md

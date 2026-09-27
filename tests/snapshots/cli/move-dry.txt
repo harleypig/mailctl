@@ -1,0 +1,43 @@
+$ mxfilter move-rule bin-the-noise --first --dry-run
+exit: 0
+--- stdout
+Move rule 'bin-the-noise' in script 'managesieve': position 2 -> 1 of 2
+
+Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,13 +1,13 @@
+ require ["fileinto", "imap4flags"];
+ 
++# rule:[bin-the-noise]
++if header :contains "subject" "newsletter" {
++    fileinto "INBOX.Noise";
++    stop;
++}
+ # rule:[keep-boss]
+ if header :contains "from" "boss@example.com" {
+     fileinto "INBOX.Boss";
+     setflag "\\Flagged";
+     stop;
+ }
+-# rule:[bin-the-noise]
+-if header :contains "subject" "newsletter" {
+-    fileinto "INBOX.Noise";
+-    stop;
+-}
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

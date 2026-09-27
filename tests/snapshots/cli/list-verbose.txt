@@ -1,0 +1,14 @@
+$ mxfilter list --verbose
+exit: 0
+--- stdout
+[sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
+[sieve] authenticated
+* managesieve   (active)
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls

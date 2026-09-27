@@ -4,7 +4,40 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **`mxfilter move-rule NAME` reorders a rule without restating it** (#36).
+  `--first`, `--last`, `--before OTHER`, or `--after OTHER`; only the
+  position changes. The move is judged where the rule lands — what would
+  stop it running, and what it would now stop — before the diff is shown,
+  and the script is backed up and the move confirmed (`--yes`, `--dry-run`)
+  like any other change. A move to where the rule already is sends nothing.
+
+* **`mxfilter restore FILE` puts a backup back** (#13). It uploads the file
+  byte for byte over the active script, and only that script. It shows the
+  raw diff against what the server has now, backs the current script up
+  first, has the server validate the file, and asks before replacing
+  anything (`--yes`, `--dry-run`). It works over a script mxfilter cannot
+  parse — the one deliberate exception to the merge-only rule, recorded in
+  [ADR 0005][adr5].
+
+* **Folder subscription is a setting you can see and change** (#42).
+  `mxfilter subscribe FOLDER` and `mxfilter unsubscribe FOLDER` show or hide
+  an existing folder in webmail, with the usual folder-name normalization
+  and `--dry-run`. `folders` marks the folders that exist but are not
+  subscribed, and `test` reports how many are subscribed and names the
+  rest. Nothing is judged: an unsubscribed folder may be exactly what you
+  wanted. Warnings that used to end "subscribe to it in your mail client"
+  now name the `mxfilter subscribe` command instead.
+
 ENHANCEMENTS:
+
+* **A password-file path expands `~` and environment variables** (#8).
+  `password_file = "~/pw"` used to fail naming the literal `~/pw`, which
+  read as a missing file. `~`, `$VAR`, and `${VAR}` now expand in every
+  place a password file can be named — the flag, `MXROUTE_PASSWORD_FILE`,
+  and the config file. An unset variable is left as written, so the error
+  names it.
 
 * **`from-message` shows the message before it derives anything.** Date,
   From, To, Subject, and List-Id when present, decoded. The UID is dug out
@@ -28,6 +61,53 @@ ENHANCEMENTS:
   either way ([ADR 0002](adr/0002-non-destructive-script-merge.md)), and
   neither the backup nor what is uploaded is affected — normalisation is a
   display concern only.
+
+BUG FIXES:
+
+* **Bulk IMAP operations are chunked** (#24). Every matched UID used to go
+  into a single MOVE, COPY, STORE, EXPUNGE, or header FETCH, so a large
+  pass was one command line tens of kilobytes long — which servers may
+  reject. Only the `--max-messages` default of 500 kept that from
+  happening, by accident, so raising the cap for a big cleanup removed a
+  protection nobody knew about. Work now goes out 250 UIDs at a time,
+  independent of the cap. A failure part-way reports how many messages
+  were fully processed, and whether re-running is safe: it is, except on a
+  server without `MOVE`, where the failed batch may already have been
+  copied and would be copied again.
+
+* **`--no-subscribe` without `--create-folder` is refused** (#43). It only
+  ever affected a folder the run created, so on its own it was accepted and
+  did nothing. It is now a usage error that points at `mxfilter
+  unsubscribe` for hiding a folder that already exists.
+
+* **`--create-folder` no longer creates the folder before showing the
+  change.** The folder was made over IMAP while the change was still being
+  worked out — before the diff, before any confirmation — so an abort, a
+  rejected script, or a failed merge left a stray folder behind. It is now
+  announced with the plan and created on execute: for `add` and
+  `from-message`, after CHECKSCRIPT accepts the script; for `apply`, after
+  you confirm. An `apply` with no
+  matching mail no longer creates the folder at all, and says so.
+
+* **A rule that leaves mail where it is no longer offers to change it.**
+  `add --keep` alone, or `--fileinto` naming the folder the mail is already
+  in, used to search existing mail and then ask "Flag N message(s)?" about a
+  pass that flagged nothing. The existing-mail pass is now skipped, with a
+  line saying why.
+
+* **The missing-extension warning covers a `default_folder` too.** A rule
+  filing into the config file's `default_folder` needs Sieve `fileinto`
+  exactly as one given `--fileinto` does, but only the flag was checked, so
+  a server without it gave no warning before the upload.
+
+NOTES:
+
+* **The work now lives in an engine, not the CLI.** Everything mxfilter
+  does moved out of `cli.py` into `mxfilter/engine.py`, which takes plain
+  values, never prints or prompts, and splits every change into a read-only
+  plan and a separate execute step. The CLI is now only argument parsing and
+  rendering, so a terminal UI or other front-end can drive the same engine.
+  No command, flag, message, or exit code changed.
 
 ## 0.1.0
 
@@ -222,3 +302,5 @@ NOTES:
 * CI runs `ruff check`, `ruff format --check`, and `pytest` on every pull
   request and on pushes to `master`; both checks are required by the branch
   ruleset.
+
+[adr5]: adr/0005-restore-may-replace-an-unparseable-script.md

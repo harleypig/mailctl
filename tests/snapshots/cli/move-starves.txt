@@ -1,0 +1,46 @@
+$ mxfilter move-rule all-lists --first --dry-run
+exit: 0
+--- stdout
+Move rule 'all-lists' in script 'managesieve': position 2 -> 1 of 2
+
+This rule would come before:
+  ! 'announce' never runs -- 'all-lists' carries stop and its conditions cover every case 'announce' tests for
+
+
+Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,12 +1,12 @@
+ require ["fileinto"];
+ 
++# rule:[all-lists]
++if header :contains "to" "@lists.example.com" {
++    fileinto "INBOX.Lists";
++    stop;
++}
+ # rule:[announce]
+ if header :contains "to" "announce@lists.example.com" {
+     fileinto "INBOX.Announce";
+     stop;
+ }
+-# rule:[all-lists]
+-if header :contains "to" "@lists.example.com" {
+-    fileinto "INBOX.Lists";
+-    stop;
+-}
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

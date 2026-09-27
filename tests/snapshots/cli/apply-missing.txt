@@ -1,0 +1,12 @@
+$ mxfilter apply --from noreply@github.com --fileinto Lists/GitHub
+exit: 1
+--- stdout
+Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
+
+--- stderr
+mxfilter: target folder 'INBOX.Lists.GitHub' does not exist; pass --create-folder to create it
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

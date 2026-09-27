@@ -1,0 +1,31 @@
+$ mxfilter restore <TMP>/restore.sieve --dry-run
+exit: 0
+--- stdout
+Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (2 rule(s)):
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -6,9 +6,3 @@
+ 	setflag "\\Flagged";
+ 	stop;
+ }
+-# rule:[bin-the-noise]
+-if header :contains "subject" "newsletter"
+-{
+-	fileinto "INBOX.Noise";
+-	stop;
+-}
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

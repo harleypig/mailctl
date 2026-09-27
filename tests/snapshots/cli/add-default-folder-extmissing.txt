@@ -1,0 +1,42 @@
+$ mxfilter add --from noreply@github.com --dry-run --no-apply
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+Rule 'from-noreply-github-com' on script 'managesieve':
+  when:  From contains 'noreply@github.com'
+  then:  fileinto INBOX.Lists; stop
+
+Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -11,3 +11,8 @@
+     fileinto "INBOX.Noise";
+     stop;
+ }
++# rule:[from-noreply-github-com]
++if anyof (header :contains "From" "noreply@github.com") {
++    fileinto "INBOX.Lists";
++    stop;
++}
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+Skipping the existing-mail pass (--no-apply).
+
+--- stderr
+warning: the server does not advertise: fileinto. The upload will be validated with CHECKSCRIPT and may be rejected.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

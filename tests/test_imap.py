@@ -15,9 +15,11 @@ from imapclient.exceptions import IMAPClientError, LoginError
 from mxfilter import MxFilterError
 from mxfilter.criteria import Criteria
 from mxfilter.imap import (
+    BULK_CHUNK,
     ImapSession,
     MailActionPlan,
     MessageSummary,
+    PartialExecution,
     decode_header_value,
     header_values,
     normalize_folder,
@@ -605,3 +607,164 @@ def test_an_empty_plan_reports_itself_as_empty():
     assert plan.is_empty is True
     assert plan.count == 0
     assert plan.uids == []
+
+
+# ############################################################################
+# Chunked bulk operations (#24)
+# ############################################################################
+
+MANY = 600  # three chunks: 250, 250, 100
+
+
+# ----------------------------------------------------------------------------
+def big_plan(**kwargs) -> MailActionPlan:
+    fields = {"source": "INBOX", "destination": "INBOX.Lists", "flags": []}
+    fields.update(kwargs)
+
+    return MailActionPlan(
+        discard=fields.pop("discard", False),
+        messages=[summary(uid) for uid in range(1, MANY + 1)],
+        **fields,
+    )
+
+
+# ----------------------------------------------------------------------------
+def chunk_sizes(fake_imap, name: str) -> list[int]:
+    return [len(call[1]) for call in fake_imap.calls if call[0] == name]
+
+
+# ----------------------------------------------------------------------------
+def test_the_chunk_stays_below_the_default_message_cap():
+    """Independent of --max-messages, so raising the cap is never a risk."""
+    from mxfilter.engine import DEFAULT_MAX_MESSAGES
+
+    assert BULK_CHUNK < DEFAULT_MAX_MESSAGES
+
+
+# ----------------------------------------------------------------------------
+def test_a_large_move_goes_out_in_chunks_each_flagged_first(
+    imap_session, fake_imap
+):
+    result = imap_session.execute(big_plan(flags=["\\Seen"]))
+
+    assert result.moved == MANY
+    assert result.flagged == MANY
+    assert chunk_sizes(fake_imap, "move") == [250, 250, 100]
+    assert chunk_sizes(fake_imap, "add_flags") == [250, 250, 100]
+
+    writes = [
+        name for name in fake_imap.names() if name in ("add_flags", "move")
+    ]
+
+    assert writes == ["add_flags", "move"] * 3
+
+
+# ----------------------------------------------------------------------------
+def test_a_large_delete_is_chunked_too(imap_session, fake_imap):
+    result = imap_session.execute(big_plan(discard=True, destination=""))
+
+    assert result.deleted == MANY
+    assert chunk_sizes(fake_imap, "uid_expunge") == [250, 250, 100]
+
+
+# ----------------------------------------------------------------------------
+def test_the_copy_fallback_is_chunked(imap_session, fake_imap):
+    fake_imap.caps = {"UIDPLUS"}
+
+    imap_session.execute(big_plan())
+
+    assert chunk_sizes(fake_imap, "copy") == [250, 250, 100]
+    assert chunk_sizes(fake_imap, "uid_expunge") == [250, 250, 100]
+
+
+# ----------------------------------------------------------------------------
+def test_the_header_fetch_for_a_broad_search_is_chunked(
+    imap_session, fake_imap
+):
+    fake_imap.messages = {
+        uid: message("list@example.com") for uid in range(1, MANY + 1)
+    }
+    criteria = Criteria()
+    criteria.add("From", "list@example.com")
+
+    found = imap_session.search(criteria, "INBOX")
+
+    assert len(found) == MANY
+    assert chunk_sizes(fake_imap, "fetch") == [250, 250, 100]
+
+
+# ----------------------------------------------------------------------------
+def fail_on_call(fake_imap, name: str, number: int):
+    """Make the ``number``th call to ``name`` raise, and only that one."""
+    original = getattr(fake_imap, name)
+    seen = []
+
+    def flaky(*args, **kwargs):
+        seen.append(1)
+
+        if len(seen) == number:
+            raise IMAPClientError("line too long")
+
+        return original(*args, **kwargs)
+
+    setattr(fake_imap, name, flaky)
+
+
+# ----------------------------------------------------------------------------
+def test_a_failure_part_way_reports_what_completed_and_stops(
+    imap_session, fake_imap
+):
+    fail_on_call(fake_imap, "move", 2)
+
+    with pytest.raises(PartialExecution) as caught:
+        imap_session.execute(big_plan())
+
+    assert caught.value.result.moved == 250
+    assert caught.value.total == MANY
+    assert chunk_sizes(fake_imap, "move") == [250]
+
+    message = str(caught.value)
+
+    assert "250 of 600" in message
+    assert "Re-running the same command is safe" in message
+    assert "not yet removed from the source" not in message
+
+
+# ----------------------------------------------------------------------------
+def test_a_failure_in_the_copy_fallback_warns_of_duplicates(
+    imap_session, fake_imap
+):
+    fake_imap.caps = {"UIDPLUS"}
+    fail_on_call(fake_imap, "copy", 2)
+
+    with pytest.raises(PartialExecution) as caught:
+        imap_session.execute(big_plan())
+
+    message = str(caught.value)
+
+    # Re-running copies the failed batch again, so "safe" would be false.
+    assert "not yet removed from the source" in message
+    assert "is safe" not in message
+    assert "copies them again" in message
+    assert "'INBOX.Lists'" in message
+
+
+# ----------------------------------------------------------------------------
+def test_a_partial_delete_says_re_running_is_safe(imap_session, fake_imap):
+    fail_on_call(fake_imap, "uid_expunge", 2)
+
+    with pytest.raises(PartialExecution, match="is safe"):
+        imap_session.execute(big_plan(discard=True, destination=""))
+
+
+# ----------------------------------------------------------------------------
+def test_a_failure_in_the_first_chunk_is_the_plain_error(
+    imap_session, fake_imap
+):
+    """Nothing completed, so there is no partial state to describe."""
+    fail_on_call(fake_imap, "move", 1)
+
+    with pytest.raises(MxFilterError) as caught:
+        imap_session.execute(big_plan())
+
+    assert not isinstance(caught.value, PartialExecution)

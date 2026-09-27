@@ -86,7 +86,16 @@ Built on two libraries, both of which the code wraps rather than exposes:
   script-editing helpers (parse / merge / render / diff / backup).
 - `mxfilter/imap.py` — the IMAP session wrapper (folders, search, move, flag)
   and folder-name normalization.
-- `mxfilter/cli.py` — argument parsing and the subcommand implementations.
+- `mxfilter/rules.py` — reads a parsed script into a flat rule model and
+  reports which rules cannot fire where they are (shadowing, in both
+  directions); offline.
+- `mxfilter/engine.py` — the engine: every piece of work the tool does
+  (open sessions, plan the target folder, merge a rule, back up and upload,
+  plan and run the existing-mail pass, derive criteria from a message), for
+  any front-end. It takes plain values (`ActionSpec`, `RuleRequest`,
+  `Criteria`, `Placement`, `Config`) and returns plans and results.
+- `mxfilter/cli.py` — the CLI front-end: argument parsing, turning flags into
+  engine inputs, and rendering and confirming what the engine returns.
 - `mxfilter/__main__.py` — `python -m mxfilter`.
 - `tests/` — pytest, mirroring the package layout ([TESTS.md](TESTS.md)).
 
@@ -97,16 +106,35 @@ live there.
 
 ## The core returns data; only the CLI prints
 
-**`config`, `criteria`, `sieve`, and `imap` return structured values and raise
-`MxFilterError`. Every piece of rendering, prompting, confirmation, and
-progress output lives in `cli.py`.** Two reasons, both cashing out now: the
-core stays testable without capturing stdout, and a future front-end can sit
-on the same core instead of requiring it to be torn apart first.
+**`config`, `criteria`, `sieve`, `imap`, `rules`, and the `engine` that
+drives them return structured values and raise `MxFilterError`. Every piece
+of rendering, prompting, confirmation, and progress output lives in
+`cli.py`.** Two reasons, both cashing out now: the core stays testable
+without capturing stdout, and a future front-end can sit on the same core
+instead of requiring it to be torn apart first.
 
-The one exception is deliberate and stays narrow: `SieveSession._log` and
-`ImapSession._log` emit `--verbose` protocol progress. It is confined to those
-two helpers and gated on a flag — do not let a second output path grow beside
-them, and do not add one to the offline helpers at all.
+**The engine does not know how it was called.** The operator's instruction,
+2026-09-27: *"the engine, the code that does the actual work, should not know
+nor care how the app was called (cli, tui, gui, web)"*. So it never takes an
+`argparse` namespace, never imports the CLI, and never reads the terminal or
+the environment; `tests/test_core_no_presentation.py` enforces all three.
+Every change is **plan → decide → execute**: a `plan_*` function is
+read-only and returns what would change (a diff, placement findings, a
+message preview, counts); the front-end renders it and makes the decision
+(`--dry-run`, `--yes`, a confirmation prompt); an execute-style call carries
+the plan out. New work goes into the engine first; `cli.py` should only gain
+parsing and rendering.
+
+**Nothing below the front-end writes to the terminal, progress included.**
+`--verbose` protocol chatter leaves `SieveSession` and `ImapSession` through
+a `progress` callback, and the steps of a change (backup written, script
+uploaded, folder created) leave the engine through an `on_event` callback;
+the CLI decides whether and how to show either. Do not add a second output
+path beside them.
+
+Safety policy lives in the engine, not the front-end: the backup before every
+upload, merge-never-overwrite, and the `--max-messages` ceiling (re-checked
+when a mail plan is executed) hold whichever front-end calls it.
 
 ## The protocols
 
@@ -247,9 +275,11 @@ about MXroute's configuration** is not.
   it was handed, with newline translation off, mode `0600` in a directory
   created `0700`. Nothing decorates it — `mxfilter show` adds banner lines for
   a reader and is therefore *not* a backup, which is exactly the trap
-  redirecting `show` to a file used to set. There is no restore path: putting
-  a file back needs another ManageSieve client, and building one is its own
-  change ([#13][i13]).
+  redirecting `show` to a file used to set. `mxfilter restore` puts one back
+  over the active script only: it shows a raw diff, asks for confirmation,
+  backs up the current script, and runs CHECKSCRIPT before sending. It is
+  the one write path that replaces instead of merging, and it may replace a
+  script mxfilter cannot parse ([ADR 0005][adr5], [#13][i13]).
 - **Show, then change.** Every mutating subcommand works out what would
   change, shows it (a diff for the script, a preview for the messages), and
   only then applies it. `--dry-run` stops after the "show it" step.
@@ -575,6 +605,7 @@ will read it.
 [adr2]: ../adr/0002-non-destructive-script-merge.md
 [provider]: https://github.com/harleypig/terraform-provider-mxroute
 [i9]: https://github.com/harleypig/mxroute-email-filters/issues/9
+[adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
 [i13]: https://github.com/harleypig/mxroute-email-filters/issues/13
 [i10]: https://github.com/harleypig/mxroute-email-filters/issues/10
 [da495]: https://github.com/harleypig/dotagents/issues/495

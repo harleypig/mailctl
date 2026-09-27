@@ -1,0 +1,12 @@
+$ mxfilter add --from noreply@github.com --fileinto X --no-imap --create-folder
+exit: 1
+--- stdout
+
+--- stderr
+warning: no IMAP connection: assuming delimiter '.', target folder 'INBOX.X'
+mxfilter: the server does not advertise the Sieve 'mailbox' extension and --no-imap was given, so 'INBOX.X' cannot be created
+
+--- sieve calls
+('connect',)
+('logout',)
+--- imap calls

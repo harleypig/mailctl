@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from mxfilter import cli
+from mxfilter import cli, engine
 from mxfilter import sieve as sieve_module
 from mxfilter.config import Config, default_backup_dir, load_config
 from mxfilter.sieve import backup_path, resolve_backup_target, write_backup
@@ -198,13 +198,12 @@ def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
         set_active=lambda name: uploaded.append(("active", name)),
     )
 
-    cli.upload(
+    engine.upload_script(
         session,
         load_config(SimpleNamespace()),
         "managesieve",
         CRLF_SCRIPT,
         'require ["fileinto"];\r\n',
-        SimpleNamespace(),
     )
 
     written = sorted((tmp_path / "cfg" / "mxfilter" / "backups").iterdir())
@@ -476,8 +475,8 @@ def test_backup_leaves_the_server_alone(fake_sieve, tmp_path):
 
 
 # ----------------------------------------------------------------------------
-def test_backup_help_names_the_missing_restore_command(capsys):
-    """The gap is more conspicuous now that ``backup`` is a verb."""
+def test_backup_help_names_the_restore_command(capsys):
+    """A backup is only as useful as the way back, so help names it."""
     with pytest.raises(SystemExit):
         cli.main(["backup", "--help"])
 
@@ -485,7 +484,7 @@ def test_backup_help_names_the_missing_restore_command(capsys):
     # phrase is matched against the text with its line breaks collapsed.
     helped = " ".join(capsys.readouterr().out.split())
 
-    assert "has no restore command" in helped
+    assert "mxfilter restore FILE" in helped
 
 
 # ----------------------------------------------------------------------------

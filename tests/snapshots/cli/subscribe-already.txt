@@ -1,0 +1,12 @@
+$ mxfilter subscribe Lists
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+'INBOX.Lists' is already subscribed; nothing to change.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

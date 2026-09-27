@@ -1,0 +1,40 @@
+$ mxfilter add --from noreply@github.com --fileinto Lists --no-apply
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+Rule 'from-noreply-github-com' on script 'mxfilter':
+  when:  From contains 'noreply@github.com'
+  then:  fileinto INBOX.Lists; stop
+
+--- sieve diff ---
+--- mxfilter (current)
++++ mxfilter (proposed)
+@@ -0,0 +1,7 @@
++require ["fileinto"];
++
++# rule:[from-noreply-github-com]
++if anyof (header :contains "From" "noreply@github.com") {
++    fileinto "INBOX.Lists";
++    stop;
++}
+
+--- end diff ---
+Backed up current script to <TMP>/config/mxfilter/backups/mxfilter-<STAMP>.sieve
+Uploaded and activated script 'mxfilter'
+
+Skipping the existing-mail pass (--no-apply).
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('checkscript',)
+('putscript', 'mxfilter', 'require ["fileinto"];\n\n# rule:[from-noreply-github-com]\nif anyof (header :contains "From" "noreply@github.com") {\n    fileinto "INBOX.Lists";\n    stop;\n}\n')
+('setactive', 'mxfilter')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)
