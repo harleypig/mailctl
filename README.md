@@ -179,9 +179,10 @@ assumptions below get settled for your account.
   sidebar — and mxfilter says so on the line where it creates the folder,
   because an invisible folder nobody was told about is the bug, not the
   feature. It is refused without `--create-folder`, where it would do
-  nothing; `mxfilter unsubscribe` hides a folder that already exists. If the subscription fails, the folder is **not** torn back down:
-  it exists and mail filed there will arrive, so mxfilter warns and tells
-  you to run `mxfilter subscribe` on it.
+  nothing; `mxfilter unsubscribe` hides a folder that already exists. If
+  the subscription fails, the folder is **not** torn back down: it exists
+  and mail filed there will arrive, so mxfilter warns and tells you to run
+  `mxfilter subscribe` on it.
 * The folder is **announced when the change is shown and created only when
   it is applied** — for `add`, once the server has accepted the new script
   and just before it is stored; for `apply`, after you confirm the move. A
