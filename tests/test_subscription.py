@@ -401,3 +401,20 @@ def test_planning_a_real_run_creates_nothing_before_the_decision(
 
     assert "create_folder" not in fake_imap.names()
     assert "will be created over IMAP" in capsys.readouterr().out
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("command", ["add", "apply", "from-message"])
+def test_no_subscribe_without_create_folder_is_refused(command, capsys):
+    """#43: a flag that does nothing must not be accepted silently."""
+    from mxfilter.cli import main
+
+    extra = (
+        ["--uid", "1"] if command == "from-message" else ["--from", "a@b.c"]
+    )
+
+    with pytest.raises(SystemExit) as exited:
+        main([command, *extra, "--fileinto", "Lists", "--no-subscribe"])
+
+    assert exited.value.code == 2
+    assert "only applies with --create-folder" in capsys.readouterr().err

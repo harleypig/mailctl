@@ -137,6 +137,10 @@ SCENARIOS = {
     "unsubscribe": (["unsubscribe", "Lists"], {}),
     "unsubscribe-already": (["unsubscribe", "spam"], {}),
     "unsubscribe-missing": (["unsubscribe", "Nowhere"], {}),
+    "add-nosubscribe-alone": (
+        ["add", *GITHUB, "--fileinto", "Lists", "--no-subscribe"],
+        {},
+    ),
     "add-dry-missing": (
         ["add", *GITHUB, "--fileinto", "Lists/GitHub", "--dry-run"],
         {},

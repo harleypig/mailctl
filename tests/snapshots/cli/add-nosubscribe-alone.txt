@@ -1,0 +1,12 @@
+$ mxfilter add --from noreply@github.com --fileinto Lists --no-subscribe
+exit: SystemExit(2)
+--- stdout
+
+--- stderr
+usage: mxfilter [-h] [--version] [--verbose] [--debug]
+                {list,show,rules,backup,folders,subscribe,unsubscribe,test,add,from-message,apply,remove-rule}
+                ...
+mxfilter: error: --no-subscribe only applies with --create-folder; to hide a folder that already exists, use 'mxfilter unsubscribe FOLDER'
+
+--- sieve calls
+--- imap calls

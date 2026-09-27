@@ -1653,6 +1653,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    # --no-subscribe only shapes a folder this run creates. Accepting it
+    # alone would be a flag that looks like it took effect and did not.
+    if getattr(args, "no_subscribe", False) and not args.create_folder:
+        parser.error(
+            "--no-subscribe only applies with --create-folder; to hide a "
+            "folder that already exists, use 'mxfilter unsubscribe FOLDER'"
+        )
+
     if getattr(args, "no_imap", False):
         args.no_apply = True
 

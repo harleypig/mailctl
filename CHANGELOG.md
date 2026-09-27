@@ -42,6 +42,11 @@ ENHANCEMENTS:
 
 BUG FIXES:
 
+* **`--no-subscribe` without `--create-folder` is refused** (#43). It only
+  ever affected a folder the run created, so on its own it was accepted and
+  did nothing. It is now a usage error that points at `mxfilter
+  unsubscribe` for hiding a folder that already exists.
+
 * **`--create-folder` no longer creates the folder before showing the
   change.** The folder was made over IMAP while the change was still being
   worked out — before the diff, before any confirmation — so an abort, a
