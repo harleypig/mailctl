@@ -3,9 +3,9 @@
 Resolution order for every setting, highest priority first:
 
 1. a CLI flag
-2. an ``MXROUTE_*`` line in the env file named by ``--env-file``
-3. an environment variable (``MXROUTE_*``)
-4. the TOML config file (``$XDG_CONFIG_HOME/mxfilter/config.toml``)
+2. a ``MAILCTL_*`` line in the env file named by ``--env-file``
+3. an environment variable (``MAILCTL_*``)
+4. the TOML config file (``$XDG_CONFIG_HOME/mailctl/config.toml``)
 5. a built-in default
 
 Where each setting came from is recorded on the Config as data
@@ -31,11 +31,14 @@ from . import MailctlError
 __all__ = [
     "Config",
     "EnvFile",
+    "LegacySetting",
     "Secret",
     "Source",
     "config_dir",
     "config_path",
     "default_backup_dir",
+    "legacy_config_dir",
+    "legacy_settings",
     "load_config",
     "read_env_file",
 ]
@@ -49,7 +52,30 @@ SIEVE_TLS_MODES = ("starttls", "ssl", "none")
 
 # The one prefix an env file is read for. Anything else in the file belongs
 # to some other program sharing it, and is ignored rather than refused.
-ENV_PREFIX = "MXROUTE_"
+ENV_PREFIX = "MAILCTL_"
+
+# Every setting the tool read under its old names, and the name it reads
+# now. Only these are detected: the old prefix is a vendor's name, and any
+# other MXROUTE_* variable belongs to something else -- the sibling
+# Terraform provider, say -- and is none of our business. The old names
+# are not read; they are recognised so their presence can be reported.
+LEGACY_ENV_NAMES = {
+    "MXROUTE_HOST": "MAILCTL_HOST",
+    "MXROUTE_USER": "MAILCTL_USER",
+    "MXROUTE_PASSWORD": "MAILCTL_PASSWORD",
+    "MXROUTE_PASSWORD_FILE": "MAILCTL_PASSWORD_FILE",
+    "MXROUTE_PASSWORD_CMD": "MAILCTL_PASSWORD_CMD",
+    "MXROUTE_IMAP_HOST": "MAILCTL_IMAP_HOST",
+    "MXROUTE_IMAP_PORT": "MAILCTL_IMAP_PORT",
+    "MXROUTE_SIEVE_PORT": "MAILCTL_SIEVE_PORT",
+    "MXROUTE_SIEVE_TLS": "MAILCTL_SIEVE_TLS",
+    "MXROUTE_BACKUP_DIR": "MAILCTL_BACKUP_DIR",
+    "MXROUTE_SOURCE_FOLDER": "MAILCTL_SOURCE_FOLDER",
+}
+
+# The directory the tool kept its config and backups in under its old
+# name. Never read; only looked for, so its contents can be moved.
+LEGACY_DIR_NAME = "mxfilter"
 
 # The kinds of place a setting can come from; ``Source.kind`` is one of these.
 FLAG = "flag"
@@ -64,8 +90,8 @@ PROMPT = "prompt"
 # sees this has just found out that none of them is in place.
 NO_PASSWORD_MESSAGE = (
     "no password available -- pass --password-file, --password-cmd, or "
-    "--password, set MXROUTE_PASSWORD_FILE, MXROUTE_PASSWORD_CMD, or "
-    "MXROUTE_PASSWORD, or put password_file / password_cmd in the config "
+    "--password, set MAILCTL_PASSWORD_FILE, MAILCTL_PASSWORD_CMD, or "
+    "MAILCTL_PASSWORD, or put password_file / password_cmd in the config "
     "file"
 )
 
@@ -165,16 +191,34 @@ class Source:
 
 @dataclass
 class EnvFile:
-    """The ``MXROUTE_*`` settings read from one env file.
+    """The ``MAILCTL_*`` settings read from one env file.
 
-    ``MXROUTE_PASSWORD`` is held apart, already wrapped, so that nothing
+    ``MAILCTL_PASSWORD`` is held apart, already wrapped, so that nothing
     holding this object -- a repr, a debug dump -- holds the credential as
     a plain string.
+
+    ``legacy_names`` holds the old ``MXROUTE_*`` names the file sets --
+    the names only. Their values are never kept, because one of them may
+    be a password and none of them is read.
     """
 
     path: Path
     values: dict[str, str] = field(default_factory=dict)
     password: Secret | None = None
+    legacy_names: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class LegacySetting:
+    """An old setting name that is present while its new name is not.
+
+    Carries names and a place, never a value: ``where`` is the environment
+    or the env file that set ``old``.
+    """
+
+    old: str
+    new: str
+    where: Source
 
 
 # ############################################################################
@@ -267,7 +311,7 @@ class Config:
 
         1. an explicit flag (``--password-file``, ``--password-cmd``,
            ``--password``; mutually exclusive, so only one can appear)
-        2. ``MXROUTE_PASSWORD_FILE``, ``_CMD``, then ``MXROUTE_PASSWORD``
+        2. ``MAILCTL_PASSWORD_FILE``, ``_CMD``, then ``MAILCTL_PASSWORD``
            from the ``--env-file`` file
         3. the same three from the environment, in the same order
         4. ``password_file`` from the config file
@@ -275,7 +319,7 @@ class Config:
 
         A flag outranks an ambient variable because it was typed for this
         run and the variable was not. The failure that ordering prevents
-        is not an inconvenience: with ``MXROUTE_PASSWORD`` exported for one
+        is not an inconvenience: with ``MAILCTL_PASSWORD`` exported for one
         account, a ``--password-cmd`` naming a *second* account used to be
         ignored, and the command authenticated as the first -- the wrong
         account, with no error anywhere. The env file was named for this
@@ -301,36 +345,36 @@ class Config:
             candidates += [
                 (
                     "file",
-                    values.get("MXROUTE_PASSWORD_FILE", ""),
-                    Source(ENV_FILE, "MXROUTE_PASSWORD_FILE", path),
+                    values.get("MAILCTL_PASSWORD_FILE", ""),
+                    Source(ENV_FILE, "MAILCTL_PASSWORD_FILE", path),
                 ),
                 (
                     "command",
-                    values.get("MXROUTE_PASSWORD_CMD", ""),
-                    Source(ENV_FILE, "MXROUTE_PASSWORD_CMD", path),
+                    values.get("MAILCTL_PASSWORD_CMD", ""),
+                    Source(ENV_FILE, "MAILCTL_PASSWORD_CMD", path),
                 ),
                 (
                     "env",
                     self.env_file.password or "",
-                    Source(ENV_FILE, "MXROUTE_PASSWORD", path),
+                    Source(ENV_FILE, "MAILCTL_PASSWORD", path),
                 ),
             ]
 
         candidates += [
             (
                 "file",
-                env.get("MXROUTE_PASSWORD_FILE", ""),
-                Source(ENVIRONMENT, "MXROUTE_PASSWORD_FILE"),
+                env.get("MAILCTL_PASSWORD_FILE", ""),
+                Source(ENVIRONMENT, "MAILCTL_PASSWORD_FILE"),
             ),
             (
                 "command",
-                env.get("MXROUTE_PASSWORD_CMD", ""),
-                Source(ENVIRONMENT, "MXROUTE_PASSWORD_CMD"),
+                env.get("MAILCTL_PASSWORD_CMD", ""),
+                Source(ENVIRONMENT, "MAILCTL_PASSWORD_CMD"),
             ),
             (
                 "env",
-                env.get("MXROUTE_PASSWORD", ""),
-                Source(ENVIRONMENT, "MXROUTE_PASSWORD"),
+                env.get("MAILCTL_PASSWORD", ""),
+                Source(ENVIRONMENT, "MAILCTL_PASSWORD"),
             ),
             (
                 "file",
@@ -440,6 +484,13 @@ class Config:
         return Secret(value)
 
     # ------------------------------------------------------------------------
+    def legacy_settings(self) -> list[LegacySetting]:
+        """Report old setting names this run would once have read."""
+        env = os.environ if self.environ is None else self.environ
+
+        return legacy_settings(env, self.env_file)
+
+    # ------------------------------------------------------------------------
     def require(self, *names: str) -> None:
         """Fail with a single actionable message if a setting is missing."""
         missing = [name for name in names if not getattr(self, name, None)]
@@ -451,7 +502,7 @@ class Config:
 
         raise MailctlError(
             f"missing required setting(s): {', '.join(missing)}. "
-            f"Set {hints}, the matching MXROUTE_* variable, or add it to "
+            f"Set {hints}, the matching MAILCTL_* variable, or add it to "
             f"{config_path()}"
         )
 
@@ -462,15 +513,25 @@ class Config:
 
 
 # ----------------------------------------------------------------------------
+def _config_home() -> Path:
+    """Return ``$XDG_CONFIG_HOME``, or ``~/.config`` where it is unset."""
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+
+
+# ----------------------------------------------------------------------------
 def config_dir() -> Path:
-    """Return mailctl's own directory, honouring ``XDG_CONFIG_HOME``.
+    """Return mailctl's own directory, honouring ``XDG_CONFIG_HOME``."""
+    return _config_home() / "mailctl"
 
-    Still named ``mxfilter``, the tool's old name, so an existing config
-    and its backups keep working; moving it is a separate migration (#45).
+
+# ----------------------------------------------------------------------------
+def legacy_config_dir() -> Path:
+    """Return the directory the tool used under its old name.
+
+    Nothing is read from it -- the rename was a clean break. It is named
+    here so that its presence can be reported and its contents moved.
     """
-    base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
-
-    return Path(base) / "mxfilter"
+    return _config_home() / LEGACY_DIR_NAME
 
 
 # ----------------------------------------------------------------------------
@@ -496,7 +557,7 @@ def default_backup_dir() -> Path:
     keeps ``mailctl backup`` and the automatic pre-upload backup in one
     place instead of two.
 
-    ``MXROUTE_BACKUP_DIR`` / ``backup_dir`` override it either way.
+    ``MAILCTL_BACKUP_DIR`` / ``backup_dir`` override it either way.
     """
     return config_dir() / "backups"
 
@@ -525,7 +586,7 @@ _EXPORT = re.compile(r"export\s+")
 
 # ----------------------------------------------------------------------------
 def read_env_file(path: Path) -> EnvFile:
-    """Read the ``MXROUTE_*`` settings from a dotenv-style file.
+    """Read the ``MAILCTL_*`` settings from a dotenv-style file.
 
     The accepted form is the plain one people write by hand: ``KEY=VALUE``
     lines, an optional leading ``export``, blank lines and ``#`` comment
@@ -537,7 +598,7 @@ def read_env_file(path: Path) -> EnvFile:
     A line that is none of those is an error naming the file and the line
     number and **never** the line, because the line may be a password.
 
-    A file that sets ``MXROUTE_PASSWORD`` is held to the password-file
+    A file that sets ``MAILCTL_PASSWORD`` is held to the password-file
     bar: any group or other permission bit and it is refused. The mode is
     taken from the open handle, so it is the mode of the file just read.
     """
@@ -566,10 +627,15 @@ def read_env_file(path: Path) -> EnvFile:
 
         key, value = _parse_env_line(line, path, number)
 
+        if key in LEGACY_ENV_NAMES:
+            env_file.legacy_names.add(key)
+
+            continue
+
         if not key.startswith(ENV_PREFIX):
             continue
 
-        if key == "MXROUTE_PASSWORD":
+        if key == "MAILCTL_PASSWORD":
             env_file.password = Secret(value)
 
         else:
@@ -577,13 +643,51 @@ def read_env_file(path: Path) -> EnvFile:
 
     if env_file.password is not None and mode & 0o077:
         raise MailctlError(
-            f"env file {path} sets MXROUTE_PASSWORD and is readable by "
+            f"env file {path} sets MAILCTL_PASSWORD and is readable by "
             f"group/other (mode {mode:04o});\n"
             "mailctl refuses to use it.\n"
             f"Fix with: chmod 600 {path}"
         )
 
     return env_file
+
+
+# ----------------------------------------------------------------------------
+def legacy_settings(
+    environ: Mapping[str, str], env_file: EnvFile | None = None
+) -> list[LegacySetting]:
+    """Find old ``MXROUTE_*`` settings whose new name is set nowhere.
+
+    Only names are looked at: a key's presence is tested with ``in``, and
+    no value is read, compared, or copied -- one of these is a password.
+    An old name whose new name is set in either place is left out, since
+    the new one is what the run reads and nothing was lost.
+    """
+    file_names: set[str] = set()
+    file_current: set[str] = set()
+
+    if env_file is not None:
+        file_names = env_file.legacy_names
+        file_current = set(env_file.values)
+
+        if env_file.password is not None:
+            file_current.add("MAILCTL_PASSWORD")
+
+    found = []
+
+    for old, new in LEGACY_ENV_NAMES.items():
+        if new in environ or new in file_current:
+            continue
+
+        if env_file is not None and old in file_names:
+            found.append(
+                LegacySetting(old, new, Source(ENV_FILE, old, env_file.path))
+            )
+
+        if old in environ:
+            found.append(LegacySetting(old, new, Source(ENVIRONMENT, old)))
+
+    return found
 
 
 # ----------------------------------------------------------------------------
@@ -779,7 +883,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
     ``args`` is the parsed argparse namespace; any of the connection
     attributes may be absent or None, which simply defers to the next
     source in the resolution order. ``args.env_file``, when set, names an
-    env file whose ``MXROUTE_*`` lines rank just below the flags.
+    env file whose ``MAILCTL_*`` lines rank just below the flags.
 
     ``environ`` is the ambient environment, ``os.environ`` when None. It
     is only read, never written: the env file's values are layered over it
@@ -848,7 +952,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
     imap_host = resolve(
         "imap_host",
         flag="imap_host",
-        var="MXROUTE_IMAP_HOST",
+        var="MAILCTL_IMAP_HOST",
         key="imap_host",
         default=(host, Source(DERIVED, "host")) if host else None,
     )
@@ -874,7 +978,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
     source_folder = resolve(
         "source_folder",
         flag="folder",
-        var="MXROUTE_SOURCE_FOLDER",
+        var="MAILCTL_SOURCE_FOLDER",
         key="source_folder",
         default=(DEFAULT_SOURCE_FOLDER, Source(DEFAULT)),
     )

@@ -106,12 +106,12 @@ def account_settings(monkeypatch, isolated_environment):
     """Give the CLI an account so nothing prompts for a credential.
 
     It depends on ``isolated_environment`` explicitly so that it runs
-    *after* the fixture that clears every ``MXROUTE_*`` variable, rather
+    *after* the fixture that clears every ``MAILCTL_*`` variable, rather
     than relying on autouse ordering to put them in that order.
     """
-    monkeypatch.setenv("MXROUTE_HOST", "mail.example.com")
-    monkeypatch.setenv("MXROUTE_USER", "user@example.com")
-    monkeypatch.setenv("MXROUTE_PASSWORD", "not-a-real-password")
+    monkeypatch.setenv("MAILCTL_HOST", "mail.example.com")
+    monkeypatch.setenv("MAILCTL_USER", "user@example.com")
+    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
 
 
 # ----------------------------------------------------------------------------
@@ -136,7 +136,7 @@ def test_the_default_backup_dir_is_under_xdg_config_home(
     """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
 
-    assert default_backup_dir() == tmp_path / "cfg" / "mxfilter" / "backups"
+    assert default_backup_dir() == tmp_path / "cfg" / "mailctl" / "backups"
 
 
 # ----------------------------------------------------------------------------
@@ -147,9 +147,7 @@ def test_the_default_backup_dir_falls_back_to_dot_config(
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
 
-    assert (
-        default_backup_dir() == tmp_path / ".config" / "mxfilter" / "backups"
-    )
+    assert default_backup_dir() == tmp_path / ".config" / "mailctl" / "backups"
 
 
 # ----------------------------------------------------------------------------
@@ -167,7 +165,7 @@ def test_a_config_with_no_backup_dir_takes_the_default(monkeypatch, tmp_path):
     """The dataclass default and ``load_config`` must not disagree."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
 
-    expected = tmp_path / "cfg" / "mxfilter" / "backups"
+    expected = tmp_path / "cfg" / "mailctl" / "backups"
 
     assert Config().backup_dir == expected
     assert load_config(SimpleNamespace()).backup_dir == expected
@@ -176,7 +174,7 @@ def test_a_config_with_no_backup_dir_takes_the_default(monkeypatch, tmp_path):
 # ----------------------------------------------------------------------------
 def test_mxroute_backup_dir_still_overrides_the_default(monkeypatch, tmp_path):
     """The override is unchanged by the move; only the default shifted."""
-    monkeypatch.setenv("MXROUTE_BACKUP_DIR", str(tmp_path / "elsewhere"))
+    monkeypatch.setenv("MAILCTL_BACKUP_DIR", str(tmp_path / "elsewhere"))
 
     assert load_config(SimpleNamespace()).backup_dir == tmp_path / "elsewhere"
 
@@ -184,25 +182,25 @@ def test_mxroute_backup_dir_still_overrides_the_default(monkeypatch, tmp_path):
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize("source", ["file", "env", "flag"])
 @pytest.mark.parametrize(
-    "spelled", ["~/bk", "$MXFILTER_TEST_DIR/bk", "${MXFILTER_TEST_DIR}/bk"]
+    "spelled", ["~/bk", "$MAILCTL_TEST_DIR/bk", "${MAILCTL_TEST_DIR}/bk"]
 )
 def test_backup_dir_expands_home_and_variables(
     source, spelled, monkeypatch, tmp_path
 ):
     """#50: a literal ``~`` would otherwise create a directory named ``~``."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MXFILTER_TEST_DIR", str(tmp_path))
+    monkeypatch.setenv("MAILCTL_TEST_DIR", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    monkeypatch.delenv("MXROUTE_BACKUP_DIR", raising=False)
+    monkeypatch.delenv("MAILCTL_BACKUP_DIR", raising=False)
     args = SimpleNamespace()
 
     if source == "file":
-        config_dir = tmp_path / "cfg" / "mxfilter"
+        config_dir = tmp_path / "cfg" / "mailctl"
         config_dir.mkdir(parents=True)
         (config_dir / "config.toml").write_text(f'backup_dir = "{spelled}"\n')
 
     elif source == "env":
-        monkeypatch.setenv("MXROUTE_BACKUP_DIR", spelled)
+        monkeypatch.setenv("MAILCTL_BACKUP_DIR", spelled)
 
     else:
         args.backup_dir = spelled
@@ -236,7 +234,7 @@ def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
         activate=True,
     )
 
-    written = sorted((tmp_path / "cfg" / "mxfilter" / "backups").iterdir())
+    written = sorted((tmp_path / "cfg" / "mailctl" / "backups").iterdir())
 
     assert len(written) == 1
     assert written[0].read_bytes() == CRLF_SCRIPT.encode("utf-8")
@@ -402,7 +400,7 @@ def test_backup_defaults_to_the_config_directory(
 
     assert cli.main(["backup"]) == 0
 
-    backups = tmp_path / "cfg" / "mxfilter" / "backups"
+    backups = tmp_path / "cfg" / "mailctl" / "backups"
     written = sorted(backups.iterdir())
 
     assert len(written) == 1
@@ -445,7 +443,7 @@ def test_backup_dry_run_writes_nothing(fake_sieve, tmp_path, capsys):
 
 # ----------------------------------------------------------------------------
 def test_backup_honours_the_backup_dir_flag(fake_sieve, tmp_path, capsys):
-    """``--backup-dir`` and ``MXROUTE_BACKUP_DIR`` steer it as before."""
+    """``--backup-dir`` and ``MAILCTL_BACKUP_DIR`` steer it as before."""
     assert cli.main(["backup", "--backup-dir", str(tmp_path / "chosen")]) == 0
 
     written = sorted((tmp_path / "chosen").iterdir())

@@ -7,7 +7,7 @@ mailctl's logic rather than its own mock.
 
 Two hazards this file exists to remove:
 
-* The real user's ``config.toml`` and ``MXROUTE_*`` variables would
+* The real user's ``config.toml`` and ``MAILCTL_*`` variables would
   otherwise leak into ``load_config`` and make the resolution-order tests
   depend on the machine they run on.
 * A test that forgot to patch ``IMAPClient`` would open a socket. The
@@ -29,19 +29,26 @@ from mailctl.config import Config, Secret
 # Environment isolation
 # ############################################################################
 
+# Variables that steer the test run rather than configure the tool. They
+# share the tool's prefix, so the scrubbing below has to step round them.
+TEST_CONTROLS = {"MAILCTL_LIVE", "MAILCTL_UPDATE_SNAPSHOTS"}
+
 
 # ----------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def isolated_environment(monkeypatch, tmp_path):
     """Detach every test from the developer's own account settings.
 
-    ``load_config`` reads ``$XDG_CONFIG_HOME/mxfilter/config.toml`` and the
-    ``MXROUTE_*`` variables. Without this the suite would pass or fail
-    depending on whose shell it ran in, and a real password could reach a
-    test's assertion output.
+    ``load_config`` reads ``$XDG_CONFIG_HOME/mailctl/config.toml`` and the
+    ``MAILCTL_*`` variables, and reports any old ``MXROUTE_*`` ones. Without
+    this the suite would pass or fail depending on whose shell it ran in,
+    and a real password could reach a test's assertion output.
     """
     for name in list(os.environ):
-        if name.startswith("MXROUTE_"):
+        if name in TEST_CONTROLS:
+            continue
+
+        if name.startswith(("MAILCTL_", "MXROUTE_")):
             monkeypatch.delenv(name, raising=False)
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))

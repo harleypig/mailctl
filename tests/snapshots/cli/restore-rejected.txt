@@ -18,7 +18,7 @@ Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (2 rule(s)):
 -}
 
 --- end diff ---
-Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
 
 --- stderr
 mailctl: the server rejected the generated script (CHECKSCRIPT returned failure); nothing was uploaded

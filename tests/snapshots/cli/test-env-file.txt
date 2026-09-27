@@ -1,12 +1,12 @@
 $ mailctl test --env-file --sieve-port 4192
 exit: 0
 --- stdout
-Sources:   env file .env, environment, config file <TMP>/config/mxfilter/config.toml
+Sources:   env file .env, environment, config file <TMP>/config/mailctl/config.toml
 Host:      mail.from-env-file.example  (env file .env)
 User:      user@example.com  (environment)
-Password:  set (via command)  (MXROUTE_PASSWORD_CMD, env file .env)
+Password:  set (via command)  (MAILCTL_PASSWORD_CMD, env file .env)
 IMAP:      mail.from-env-file.example:993  (host: same as host, port: default)
-Sieve:     mail.from-env-file.example:4192 (tls=ssl)  (port: flag --sieve-port, tls: config file <TMP>/config/mxfilter/config.toml)
+Sieve:     mail.from-env-file.example:4192 (tls=ssl)  (port: flag --sieve-port, tls: config file <TMP>/config/mailctl/config.toml)
 Folder:    INBOX  (default)  -- read by apply, messages, view, from-message
 
 ManageSieve: connected

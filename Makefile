@@ -27,11 +27,10 @@ test:
 	pytest
 
 # Live tests hit a REAL MXroute account and mutate real state. They need the
-# MXROUTE_* credentials in the environment. TESTARGS passes extra flags
+# MAILCTL_* credentials in the environment. TESTARGS passes extra flags
 # through to pytest, e.g. a run filter for a scoped pass:
 #   make testlive TESTARGS='-k sieve'
-# MXFILTER_LIVE keeps the tool's old name until the env migration (#45).
 testlive:
-	MXFILTER_LIVE=1 pytest -v $(TESTARGS)
+	MAILCTL_LIVE=1 pytest -v $(TESTARGS)
 
 .PHONY: default venv install fmt lint test testlive

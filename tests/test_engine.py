@@ -40,7 +40,13 @@ class FakeSieveSession:
     """Stands in for ``SieveSession``, recording what it was asked to do."""
 
     # ------------------------------------------------------------------------
-    def __init__(self, script="", active="managesieve", caps=FULL, others=()):
+    def __init__(
+        self,
+        script="",
+        active: str | None = "managesieve",
+        caps=FULL,
+        others=(),
+    ):
         self.script = script
         self.active = active
         self.others = list(others)
@@ -478,6 +484,38 @@ def test_on_an_empty_account_the_default_script_name_is_used(
 
     assert plan.script == engine.DEFAULT_SCRIPT_NAME
     assert plan.before == ""
+    assert plan.script == "mailctl"
+
+
+# ----------------------------------------------------------------------------
+def test_an_inactive_old_name_script_is_reused_not_duplicated(
+    imap_session, imap_config
+):
+    """A script mailctl wrote as 'mxfilter' is still ours: with nothing
+    active it is picked up again rather than a 'mailctl' made beside it."""
+    sieve = FakeSieveSession(
+        script="# rule:[old]\n", active=None, others=["mxfilter"]
+    )
+    live = Sessions(sieve, imap_session)
+    request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
+
+    plan = engine.plan_rule(live, request, folder_for(live, imap_config))
+
+    assert plan.script == "mxfilter"
+    assert plan.before == "# rule:[old]\n"
+    assert ("get_script", "mxfilter") in sieve.calls
+
+
+# ----------------------------------------------------------------------------
+def test_an_active_old_name_script_stays_the_one_edited(
+    imap_session, imap_config
+):
+    live = Sessions(FakeSieveSession(active="mxfilter"), imap_session)
+    request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
+
+    plan = engine.plan_rule(live, request, folder_for(live, imap_config))
+
+    assert plan.script == "mxfilter"
 
 
 # ----------------------------------------------------------------------------
@@ -1040,12 +1078,12 @@ def test_with_nothing_active_a_named_restore_uploads_and_activates(
 def test_a_backup_path_expands_home_and_variables(monkeypatch, tmp_path):
     (tmp_path / "b.sieve").write_text("x")
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MXFILTER_TEST_DIR", str(tmp_path))
+    monkeypatch.setenv("MAILCTL_TEST_DIR", str(tmp_path))
 
-    for spelled in ("~/b.sieve", "$MXFILTER_TEST_DIR/b.sieve"):
+    for spelled in ("~/b.sieve", "$MAILCTL_TEST_DIR/b.sieve"):
         assert engine.read_backup_file(spelled).path == tmp_path / "b.sieve"
 
-    assert engine.read_backup_file("${MXFILTER_TEST_DIR}/b.sieve").text == "x"
+    assert engine.read_backup_file("${MAILCTL_TEST_DIR}/b.sieve").text == "x"
 
 
 # ----------------------------------------------------------------------------

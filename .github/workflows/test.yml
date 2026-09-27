@@ -42,7 +42,7 @@ jobs:
         run: ruff format --check .
 
   # The offline unit tier. The live tier (tests/live/) is gated behind
-  # MXFILTER_LIVE and is deliberately NOT run here -- it needs credentials
+  # MAILCTL_LIVE and is deliberately NOT run here -- it needs credentials
   # for a real MXRoute account, and CI is the last place those belong.
   test:
     name: Test

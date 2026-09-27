@@ -3,13 +3,13 @@ exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'from-noreply-github-com' on script 'mxfilter':
+Rule 'from-noreply-github-com' on script 'mailctl':
   when:  From contains 'noreply@github.com'
   then:  fileinto INBOX.Lists; stop
 
 --- sieve diff ---
---- mxfilter (current)
-+++ mxfilter (proposed)
+--- mailctl (current)
++++ mailctl (proposed)
 @@ -0,0 +1,7 @@
 +require ["fileinto"];
 +
@@ -21,9 +21,9 @@ Rule 'from-noreply-github-com' on script 'mxfilter':
 
 --- end diff ---
 
-The account has no active script; 'mxfilter' will become the active script.
-Backed up current script to <TMP>/config/mxfilter/backups/mxfilter-<STAMP>.sieve
-Uploaded and activated script 'mxfilter'
+The account has no active script; 'mailctl' will become the active script.
+Backed up current script to <TMP>/config/mailctl/backups/mailctl-<STAMP>.sieve
+Uploaded and activated script 'mailctl'
 
 Skipping the existing-mail pass (--no-apply).
 
@@ -34,8 +34,8 @@ Skipping the existing-mail pass (--no-apply).
 ('listscripts',)
 ('listscripts',)
 ('checkscript',)
-('putscript', 'mxfilter', 'require ["fileinto"];\n\n# rule:[from-noreply-github-com]\nif anyof (header :contains "From" "noreply@github.com") {\n    fileinto "INBOX.Lists";\n    stop;\n}\n')
-('setactive', 'mxfilter')
+('putscript', 'mailctl', 'require ["fileinto"];\n\n# rule:[from-noreply-github-com]\nif anyof (header :contains "From" "noreply@github.com") {\n    fileinto "INBOX.Lists";\n    stop;\n}\n')
+('setactive', 'mailctl')
 ('logout',)
 --- imap calls
 ('login', 'user@example.com')

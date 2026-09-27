@@ -54,7 +54,7 @@ ACTIVATE_HELP = (
 )
 
 # --folder has no argparse default: one there would outrank
-# MXROUTE_SOURCE_FOLDER and source_folder in the config file (#63).
+# MAILCTL_SOURCE_FOLDER and source_folder in the config file (#63).
 FOLDER_DEFAULT_HELP = "default: source_folder from the config, else INBOX"
 
 # The action flags refused with an explanation rather than an argparse
@@ -292,9 +292,24 @@ def configure(args):
     config = load_config(args)
     config.prompter = getpass
 
+    warn_about_legacy_settings(engine.check_legacy_settings(config))
     warn_about_inline_password(args)
 
     return config
+
+
+# ----------------------------------------------------------------------------
+def warn_about_legacy_settings(found) -> None:
+    """Name each old setting this run ignored, and the name to use.
+
+    Names and places only. The old variable's value is never read, so it
+    cannot be shown -- one of them is a password.
+    """
+    for setting in found:
+        warn(
+            f"{setting.old} ({setting.where.describe()}) is no longer read; "
+            f"rename it to {setting.new}"
+        )
 
 
 # ----------------------------------------------------------------------------
@@ -316,7 +331,7 @@ def warn_about_inline_password(args) -> None:
         "a password given on the command line is visible in the process "
         "list to every user on this machine, and your shell has already "
         "saved it to history. Prefer --password-file or "
-        "MXROUTE_PASSWORD_FILE."
+        "MAILCTL_PASSWORD_FILE."
     )
 
 
@@ -974,6 +989,101 @@ def cmd_restore(args) -> int:
             return 0
 
         engine.execute_restore(sessions, config, plan, render_event)
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def warn_about_config_dir(pending) -> None:
+    """Say, loudly, that the config and backups were left behind."""
+    if pending is None:
+        return
+
+    lines = (
+        "*" * 72,
+        "mailctl's config directory moved when the tool was renamed.",
+        f"  old: {pending.old}  (still there, and NOT read)",
+        f"  new: {pending.new}  (does not exist yet)",
+        "Your config.toml and script backups are still in the old one.",
+        "Run 'mailctl migrate-config' to move them; --dry-run shows what",
+        "would move.",
+        "*" * 72,
+    )
+
+    for line in lines:
+        warn(line)
+
+
+# ----------------------------------------------------------------------------
+def render_migration_event(event) -> None:
+    """Print one step of a config migration as the engine reports it."""
+    if isinstance(event, engine.FileMoved):
+        print(f"Moved {event.source} -> {event.destination}")
+
+    elif isinstance(event, engine.ReferenceRewritten) and event.rewritten:
+        print(
+            f"Pointed {event.reference.key} in config.toml at "
+            f"{event.reference.replacement}"
+        )
+
+    elif isinstance(event, engine.ReferenceRewritten):
+        warn(
+            f"config.toml's {event.reference.key} still points inside the "
+            f"old directory and could not be changed as written; set it to "
+            f"{event.reference.replacement}"
+        )
+
+    elif isinstance(event, engine.OldDirRemoved):
+        print(f"Removed the now-empty {event.path}")
+
+
+# ----------------------------------------------------------------------------
+def cmd_migrate_config(args) -> int:
+    """Move the old-name config directory's contents to the new one."""
+    plan = engine.plan_config_migration()
+
+    if plan is None:
+        print("Nothing to migrate: there is no old config directory.")
+
+        return 0
+
+    print(f"Move the contents of {plan.old}\n  into {plan.new}:")
+
+    for entry in plan.entries:
+        suffix = "/" if entry.directory else ""
+        print(f"  {entry.mode:04o}  {entry.relative}{suffix}")
+
+    if not plan.entries:
+        print("  (nothing inside it; the empty directory is removed)")
+
+    for reference in plan.references:
+        print(
+            f"config.toml's {reference.key} points inside the old "
+            f"directory and becomes {reference.replacement}"
+        )
+
+    if plan.conflicts:
+        for path in plan.conflicts:
+            warn(f"already exists, and would be overwritten: {path}")
+
+        raise MailctlError(
+            "refusing to migrate: nothing at the destination is "
+            "overwritten. Move or remove what is listed above, then re-run."
+        )
+
+    if args.dry_run:
+        print("\n[dry-run] nothing was moved.")
+
+        return 0
+
+    count = len(plan.files)
+
+    if not confirm(f"Move {count} file(s) into {plan.new}?", args.yes):
+        print("Aborted; nothing was moved.")
+
+        return 0
+
+    engine.execute_config_migration(plan, render_migration_event)
 
     return 0
 
@@ -1726,10 +1836,10 @@ def connection_parser() -> argparse.ArgumentParser:
         nargs="?",
         const=".env",
         metavar="PATH",
-        help="read MXROUTE_* settings from a dotenv-style file (default "
+        help="read MAILCTL_* settings from a dotenv-style file (default "
         ".env in the current directory); they beat the environment and "
         "the config file, and lose to a flag. A file setting "
-        "MXROUTE_PASSWORD must be mode 0600 (or 0400)",
+        "MAILCTL_PASSWORD must be mode 0600 (or 0400)",
     )
     group.add_argument("--imap-host", dest="imap_host")
     group.add_argument("--imap-port", dest="imap_port", type=int)
@@ -1742,7 +1852,7 @@ def connection_parser() -> argparse.ArgumentParser:
         dest="backup_dir",
         help="where script backups are written, both the automatic "
         "pre-upload one and 'mailctl backup'; default "
-        "$XDG_CONFIG_HOME/mxfilter/backups",
+        "$XDG_CONFIG_HOME/mailctl/backups",
     )
 
     return parser
@@ -2173,6 +2283,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     move.set_defaults(handler=cmd_move_rule)
 
+    migrate = subparsers.add_parser(
+        "migrate-config",
+        parents=[common],
+        help="move config and backups from the old mxfilter directory",
+        description="Move everything in the config directory the tool used "
+        "under its old name ($XDG_CONFIG_HOME/mxfilter) into the one it "
+        "reads now ($XDG_CONFIG_HOME/mailctl): config.toml, the script "
+        "backups, and anything else there. Files are moved, not copied, so "
+        "each keeps its mode. Nothing already at the destination is "
+        "overwritten -- any clash and nothing moves. A password_file or "
+        "backup_dir in config.toml that points inside the old directory is "
+        "pointed at the new one. The server is not contacted.",
+    )
+    migrate.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="list what would move; move nothing",
+    )
+    migrate.add_argument(
+        "--yes", action="store_true", help="skip the confirmation prompt"
+    )
+    migrate.set_defaults(handler=cmd_migrate_config)
+
     return parser
 
 
@@ -2267,6 +2401,9 @@ def main(argv: list[str] | None = None) -> int:
         args.no_apply = True
 
     try:
+        if args.handler is not cmd_migrate_config:
+            warn_about_config_dir(engine.check_config_dir())
+
         return args.handler(args)
 
     except MailctlError as exc:

@@ -22,7 +22,7 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 +}
 
 --- end diff ---
-Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
 Uploaded and activated script 'managesieve'
 
 Skipping the existing-mail pass: the rule leaves matching mail in 'INBOX' as it is, so there is nothing to do.

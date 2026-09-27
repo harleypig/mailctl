@@ -117,9 +117,9 @@ def test_a_config_repr_reports_the_credential_state_not_the_credential():
     ("env", "password_cmd", "expected"),
     [
         pytest.param({}, "", "unset", id="nothing-configured"),
-        pytest.param({"MXROUTE_PASSWORD": MARKER}, "", "set", id="from-env"),
+        pytest.param({"MAILCTL_PASSWORD": MARKER}, "", "set", id="from-env"),
         pytest.param(
-            {"MXROUTE_PASSWORD_CMD": "echo x"},
+            {"MAILCTL_PASSWORD_CMD": "echo x"},
             "",
             "set (via command)",
             id="from-env-command",
@@ -146,7 +146,7 @@ def test_password_state_is_a_literal_never_a_value(
 
 # ----------------------------------------------------------------------------
 def test_the_environment_supplies_the_password(monkeypatch):
-    monkeypatch.setenv("MXROUTE_PASSWORD", MARKER)
+    monkeypatch.setenv("MAILCTL_PASSWORD", MARKER)
 
     assert Config().password().reveal() == MARKER
 
@@ -154,7 +154,7 @@ def test_the_environment_supplies_the_password(monkeypatch):
 # ----------------------------------------------------------------------------
 def test_a_password_command_beats_the_prompter(monkeypatch):
     """Keeping the value out of the environment is the preferred route."""
-    monkeypatch.setenv("MXROUTE_PASSWORD_CMD", f"printf {MARKER}")
+    monkeypatch.setenv("MAILCTL_PASSWORD_CMD", f"printf {MARKER}")
 
     config = Config(prompter=lambda _prompt: "prompted-value")
 
@@ -193,7 +193,7 @@ def test_the_resolved_password_is_cached():
 # ----------------------------------------------------------------------------
 def test_no_password_and_no_prompter_is_an_actionable_error():
     """A core module with nowhere to ask must fail, never block on stdin."""
-    with pytest.raises(MailctlError, match="MXROUTE_PASSWORD_CMD"):
+    with pytest.raises(MailctlError, match="MAILCTL_PASSWORD_CMD"):
         Config().password()
 
 
@@ -284,7 +284,7 @@ def test_a_flag_beats_the_environment_beats_the_file_beats_the_default(
     stripping one source at a time is what actually pins the precedence.
     """
     write_config_file('host = "from-file"\n')
-    monkeypatch.setenv("MXROUTE_HOST", "from-env")
+    monkeypatch.setenv("MAILCTL_HOST", "from-env")
 
     args = argparse.Namespace(host="from-flag")
     assert load_config(args).host == "from-flag"
@@ -292,7 +292,7 @@ def test_a_flag_beats_the_environment_beats_the_file_beats_the_default(
     args = argparse.Namespace(host=None)
     assert load_config(args).host == "from-env"
 
-    monkeypatch.delenv("MXROUTE_HOST")
+    monkeypatch.delenv("MAILCTL_HOST")
     assert load_config(args).host == "from-file"
 
     write_config_file("")
@@ -329,10 +329,10 @@ def test_the_source_folder_resolves_like_every_other_setting(
     exactly what a hand-built Namespace would not have caught."""
     parser = build_parser()
     env_file = tmp_path / ".env"
-    env_file.write_text("MXROUTE_SOURCE_FOLDER=from-env-file\n")
+    env_file.write_text("MAILCTL_SOURCE_FOLDER=from-env-file\n")
 
     write_config_file('source_folder = "from-file"\n')
-    monkeypatch.setenv("MXROUTE_SOURCE_FOLDER", "from-env")
+    monkeypatch.setenv("MAILCTL_SOURCE_FOLDER", "from-env")
 
     def resolved(*extra):
         config = load_config(parser.parse_args([*argv, *extra]))
@@ -343,7 +343,7 @@ def test_the_source_folder_resolves_like_every_other_setting(
     assert resolved(f"--env-file={env_file}") == ("from-env-file", ENV_FILE)
     assert resolved() == ("from-env", ENVIRONMENT)
 
-    monkeypatch.delenv("MXROUTE_SOURCE_FOLDER")
+    monkeypatch.delenv("MAILCTL_SOURCE_FOLDER")
     assert resolved() == ("from-file", CONFIG_FILE)
 
     write_config_file("")
@@ -392,7 +392,7 @@ def test_the_password_is_never_read_from_the_config_file():
     ],
 )
 def test_a_non_numeric_port_is_named(monkeypatch, port):
-    monkeypatch.setenv("MXROUTE_SIEVE_PORT", port)
+    monkeypatch.setenv("MAILCTL_SIEVE_PORT", port)
 
     if port == "":
         assert load_config(argparse.Namespace()).sieve_port == (
@@ -407,7 +407,7 @@ def test_a_non_numeric_port_is_named(monkeypatch, port):
 
 # ----------------------------------------------------------------------------
 def test_an_unknown_tls_mode_is_refused_with_the_valid_set(monkeypatch):
-    monkeypatch.setenv("MXROUTE_SIEVE_TLS", "maybe")
+    monkeypatch.setenv("MAILCTL_SIEVE_TLS", "maybe")
 
     with pytest.raises(MailctlError, match="starttls, ssl, none"):
         load_config(argparse.Namespace())
@@ -430,7 +430,7 @@ def test_invalid_toml_names_the_file():
 def test_config_path_honours_xdg_config_home(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "elsewhere"))
 
-    assert config_path() == tmp_path / "elsewhere/mxfilter/config.toml"
+    assert config_path() == tmp_path / "elsewhere/mailctl/config.toml"
 
 
 # ############################################################################
@@ -569,10 +569,10 @@ def test_an_environment_variable_in_a_password_file_path_is_expanded(
 def test_an_unset_variable_is_left_literal_and_named_in_the_error(
     monkeypatch,
 ):
-    monkeypatch.delenv("MXFILTER_NO_SUCH_DIR", raising=False)
+    monkeypatch.delenv("MAILCTL_NO_SUCH_DIR", raising=False)
 
-    with pytest.raises(MailctlError, match=r"\$MXFILTER_NO_SUCH_DIR/pw"):
-        Config(password_file="$MXFILTER_NO_SUCH_DIR/pw").password()
+    with pytest.raises(MailctlError, match=r"\$MAILCTL_NO_SUCH_DIR/pw"):
+        Config(password_file="$MAILCTL_NO_SUCH_DIR/pw").password()
 
 
 # ----------------------------------------------------------------------------
@@ -748,11 +748,11 @@ def arrange_password_source(
     """
     if level.startswith("dotenv-"):
         line = {
-            "dotenv-file": "MXROUTE_PASSWORD_FILE={}".format(
+            "dotenv-file": "MAILCTL_PASSWORD_FILE={}".format(
                 write_password_file(tmp_path / level, f"{value}\n")
             ),
-            "dotenv-cmd": f"MXROUTE_PASSWORD_CMD={printf_command(value)}",
-            "dotenv-literal": f"MXROUTE_PASSWORD={value}",
+            "dotenv-cmd": f"MAILCTL_PASSWORD_CMD={printf_command(value)}",
+            "dotenv-literal": f"MAILCTL_PASSWORD={value}",
         }[level]
 
         env_file = tmp_path / "ladder.env"
@@ -779,15 +779,15 @@ def arrange_password_source(
 
         case "env-file":
             monkeypatch.setenv(
-                "MXROUTE_PASSWORD_FILE",
+                "MAILCTL_PASSWORD_FILE",
                 str(write_password_file(tmp_path / level, f"{value}\n")),
             )
 
         case "env-cmd":
-            monkeypatch.setenv("MXROUTE_PASSWORD_CMD", printf_command(value))
+            monkeypatch.setenv("MAILCTL_PASSWORD_CMD", printf_command(value))
 
         case "env-literal":
-            monkeypatch.setenv("MXROUTE_PASSWORD", value)
+            monkeypatch.setenv("MAILCTL_PASSWORD", value)
 
         case "toml-file":
             toml["password_file"] = str(
@@ -856,12 +856,12 @@ def test_an_explicit_password_cmd_flag_beats_an_exported_password(
 ):
     """The regression: a flag typed for this run beats an ambient variable.
 
-    The failure it prevents is not cosmetic. With MXROUTE_PASSWORD
+    The failure it prevents is not cosmetic. With MAILCTL_PASSWORD
     exported for one account, a --password-cmd naming a *second* account
     used to be ignored, and the command authenticated as the first -- the
     wrong account, silently, with no error anywhere.
     """
-    monkeypatch.setenv("MXROUTE_PASSWORD", "from-env")
+    monkeypatch.setenv("MAILCTL_PASSWORD", "from-env")
 
     config = load_config(
         argparse.Namespace(password_cmd=printf_command("from-flag"))
@@ -988,31 +988,31 @@ def write_env_file(path: Path, text: str, mode: int = 0o600) -> Path:
 @pytest.mark.parametrize(
     ("line", "expected"),
     [
-        pytest.param("MXROUTE_HOST=h.example", "h.example", id="plain"),
+        pytest.param("MAILCTL_HOST=h.example", "h.example", id="plain"),
         pytest.param(
-            "export MXROUTE_HOST=h.example", "h.example", id="export"
+            "export MAILCTL_HOST=h.example", "h.example", id="export"
         ),
-        pytest.param("MXROUTE_HOST='h.example'", "h.example", id="single"),
-        pytest.param('MXROUTE_HOST="h.example"', "h.example", id="double"),
-        pytest.param("MXROUTE_HOST= h.example  ", "h.example", id="trimmed"),
-        pytest.param("MXROUTE_HOST=' a b '", " a b ", id="quoted-kept"),
-        pytest.param("MXROUTE_HOST=a=b", "a=b", id="equals-in-value"),
-        pytest.param("MXROUTE_HOST=$HOME", "$HOME", id="no-interpolation"),
-        pytest.param("MXROUTE_HOST=a # b", "a # b", id="no-inline-comment"),
-        pytest.param('MXROUTE_HOST="it\'s"', "it's", id="other-quote"),
-        pytest.param("MXROUTE_HOST=", "", id="empty"),
+        pytest.param("MAILCTL_HOST='h.example'", "h.example", id="single"),
+        pytest.param('MAILCTL_HOST="h.example"', "h.example", id="double"),
+        pytest.param("MAILCTL_HOST= h.example  ", "h.example", id="trimmed"),
+        pytest.param("MAILCTL_HOST=' a b '", " a b ", id="quoted-kept"),
+        pytest.param("MAILCTL_HOST=a=b", "a=b", id="equals-in-value"),
+        pytest.param("MAILCTL_HOST=$HOME", "$HOME", id="no-interpolation"),
+        pytest.param("MAILCTL_HOST=a # b", "a # b", id="no-inline-comment"),
+        pytest.param('MAILCTL_HOST="it\'s"', "it's", id="other-quote"),
+        pytest.param("MAILCTL_HOST=", "", id="empty"),
     ],
 )
 def test_an_env_file_line_is_read_the_plain_way(tmp_path, line, expected):
     """One pair of matching quotes goes; nothing is expanded or escaped."""
     env_file = read_env_file(write_env_file(tmp_path / ".env", f"{line}\n"))
 
-    assert env_file.values["MXROUTE_HOST"] == expected
+    assert env_file.values["MAILCTL_HOST"] == expected
 
 
 # ----------------------------------------------------------------------------
 def test_comments_blanks_and_other_programs_keys_are_skipped(tmp_path):
-    """A .env shared with another tool is read for MXROUTE_* only."""
+    """A .env shared with another tool is read for MAILCTL_* only."""
     path = write_env_file(
         tmp_path / ".env",
         "# a comment\n"
@@ -1021,10 +1021,10 @@ def test_comments_blanks_and_other_programs_keys_are_skipped(tmp_path):
         "  # an indented comment\n"
         "DATABASE_URL=postgres://elsewhere\n"
         "export PATH=/nope\n"
-        "MXROUTE_USER=me@example.com\n",
+        "MAILCTL_USER=me@example.com\n",
     )
 
-    assert read_env_file(path).values == {"MXROUTE_USER": "me@example.com"}
+    assert read_env_file(path).values == {"MAILCTL_USER": "me@example.com"}
 
 
 # ----------------------------------------------------------------------------
@@ -1037,12 +1037,12 @@ def test_comments_blanks_and_other_programs_keys_are_skipped(tmp_path):
         ),
         pytest.param(f"={MARKER}", "not a KEY=VALUE line", id="no-key"),
         pytest.param(
-            f"MXROUTE_PASSWORD='{MARKER}",
+            f"MAILCTL_PASSWORD='{MARKER}",
             "unterminated quote",
             id="open-quote",
         ),
         pytest.param(
-            f"MXROUTE_PASSWORD=\"{MARKER}'",
+            f"MAILCTL_PASSWORD=\"{MARKER}'",
             "unterminated quote",
             id="mismatch",
         ),
@@ -1078,7 +1078,7 @@ def test_a_missing_env_file_names_the_path(tmp_path):
 # ----------------------------------------------------------------------------
 def test_an_env_file_that_is_not_utf8_is_named(tmp_path):
     path = tmp_path / ".env"
-    path.write_bytes(b"MXROUTE_HOST=\xff\xfe\n")
+    path.write_bytes(b"MAILCTL_HOST=\xff\xfe\n")
 
     with pytest.raises(MailctlError, match="not valid UTF-8") as caught:
         read_env_file(path)
@@ -1093,7 +1093,7 @@ def test_an_env_file_with_a_password_and_a_shared_mode_is_refused(
 ):
     """The password-file bar, applied to the file that now holds one."""
     path = write_env_file(
-        tmp_path / ".env", f"MXROUTE_PASSWORD={MARKER}\n", mode
+        tmp_path / ".env", f"MAILCTL_PASSWORD={MARKER}\n", mode
     )
 
     with pytest.raises(MailctlError) as caught:
@@ -1107,7 +1107,7 @@ def test_an_env_file_with_a_password_and_a_shared_mode_is_refused(
     assert MARKER not in message
 
     assert message.splitlines() == [
-        f"env file {path} sets MXROUTE_PASSWORD and is readable by "
+        f"env file {path} sets MAILCTL_PASSWORD and is readable by "
         f"group/other (mode {mode:04o});",
         "mailctl refuses to use it.",
         f"Fix with: chmod 600 {path}",
@@ -1118,7 +1118,7 @@ def test_an_env_file_with_a_password_and_a_shared_mode_is_refused(
 @pytest.mark.parametrize("mode", [0o600, 0o400])
 def test_an_owner_only_env_file_may_hold_a_password(tmp_path, mode):
     path = write_env_file(
-        tmp_path / ".env", f"MXROUTE_PASSWORD={MARKER}\n", mode
+        tmp_path / ".env", f"MAILCTL_PASSWORD={MARKER}\n", mode
     )
 
     assert read_env_file(path).password.reveal() == MARKER
@@ -1129,21 +1129,21 @@ def test_a_shared_env_file_without_a_password_is_accepted(tmp_path):
     """Only a literal password raises the bar; a pointer to one does not."""
     path = write_env_file(
         tmp_path / ".env",
-        "MXROUTE_HOST=h.example\nMXROUTE_PASSWORD_FILE=/somewhere/pw\n",
+        "MAILCTL_HOST=h.example\nMAILCTL_PASSWORD_FILE=/somewhere/pw\n",
         0o644,
     )
 
-    assert read_env_file(path).values["MXROUTE_HOST"] == "h.example"
+    assert read_env_file(path).values["MAILCTL_HOST"] == "h.example"
 
 
 # ----------------------------------------------------------------------------
 def test_an_env_file_password_never_renders(tmp_path):
     """Held as a Secret from the moment it is parsed, not a plain str."""
-    path = write_env_file(tmp_path / ".env", f"MXROUTE_PASSWORD={MARKER}\n")
+    path = write_env_file(tmp_path / ".env", f"MAILCTL_PASSWORD={MARKER}\n")
     env_file = read_env_file(path)
 
     assert isinstance(env_file.password, Secret)
-    assert "MXROUTE_PASSWORD" not in env_file.values
+    assert "MAILCTL_PASSWORD" not in env_file.values
     assert MARKER not in repr(env_file)
 
     config = load_config(argparse.Namespace(env_file=str(path)))
@@ -1163,8 +1163,8 @@ def test_an_env_file_beats_the_environment_beats_the_file(
     the same reason a flag beats one.
     """
     write_config_file('host = "from-toml"\n')
-    monkeypatch.setenv("MXROUTE_HOST", "from-env")
-    path = write_env_file(tmp_path / ".env", "MXROUTE_HOST=from-env-file\n")
+    monkeypatch.setenv("MAILCTL_HOST", "from-env")
+    path = write_env_file(tmp_path / ".env", "MAILCTL_HOST=from-env-file\n")
 
     args = argparse.Namespace(host="from-flag", env_file=str(path))
     assert load_config(args).host == "from-flag"
@@ -1175,7 +1175,7 @@ def test_an_env_file_beats_the_environment_beats_the_file(
     args = argparse.Namespace(host=None, env_file=None)
     assert load_config(args).host == "from-env"
 
-    monkeypatch.delenv("MXROUTE_HOST")
+    monkeypatch.delenv("MAILCTL_HOST")
     assert load_config(args).host == "from-toml"
 
 
@@ -1183,13 +1183,13 @@ def test_an_env_file_beats_the_environment_beats_the_file(
 def test_every_setting_can_come_from_the_env_file(tmp_path):
     path = write_env_file(
         tmp_path / ".env",
-        "MXROUTE_HOST=h.example\n"
-        "MXROUTE_USER=me@example.com\n"
-        "MXROUTE_IMAP_HOST=imap.example\n"
-        "MXROUTE_IMAP_PORT=143\n"
-        "MXROUTE_SIEVE_PORT=4191\n"
-        "MXROUTE_SIEVE_TLS=ssl\n"
-        f"MXROUTE_BACKUP_DIR={tmp_path / 'b'}\n",
+        "MAILCTL_HOST=h.example\n"
+        "MAILCTL_USER=me@example.com\n"
+        "MAILCTL_IMAP_HOST=imap.example\n"
+        "MAILCTL_IMAP_PORT=143\n"
+        "MAILCTL_SIEVE_PORT=4191\n"
+        "MAILCTL_SIEVE_TLS=ssl\n"
+        f"MAILCTL_BACKUP_DIR={tmp_path / 'b'}\n",
     )
 
     config = load_config(argparse.Namespace(env_file=str(path)))
@@ -1208,8 +1208,8 @@ def test_every_setting_can_come_from_the_env_file(tmp_path):
 def test_the_env_file_does_not_touch_the_process_environment(
     tmp_path, monkeypatch
 ):
-    monkeypatch.delenv("MXROUTE_HOST", raising=False)
-    path = write_env_file(tmp_path / ".env", "MXROUTE_HOST=h.example\n")
+    monkeypatch.delenv("MAILCTL_HOST", raising=False)
+    path = write_env_file(tmp_path / ".env", "MAILCTL_HOST=h.example\n")
     before = dict(os.environ)
 
     load_config(argparse.Namespace(env_file=str(path)))
@@ -1219,9 +1219,9 @@ def test_the_env_file_does_not_touch_the_process_environment(
 
 # ----------------------------------------------------------------------------
 def test_an_explicit_environ_mapping_replaces_os_environ(monkeypatch):
-    monkeypatch.setenv("MXROUTE_HOST", "from-os")
+    monkeypatch.setenv("MAILCTL_HOST", "from-os")
 
-    config = load_config(argparse.Namespace(), {"MXROUTE_HOST": "from-map"})
+    config = load_config(argparse.Namespace(), {"MAILCTL_HOST": "from-map"})
 
     assert config.host == "from-map"
 
@@ -1244,7 +1244,7 @@ def test_the_env_file_flag_defaults_to_dot_env(argv, expected):
 def test_a_bare_env_file_flag_reads_dot_env_in_the_current_directory(
     tmp_path, monkeypatch
 ):
-    write_env_file(tmp_path / ".env", "MXROUTE_HOST=from-cwd\n")
+    write_env_file(tmp_path / ".env", "MAILCTL_HOST=from-cwd\n")
     monkeypatch.chdir(tmp_path)
 
     config = configure(build_parser().parse_args(["test", "--env-file"]))
@@ -1264,7 +1264,7 @@ def test_a_missing_env_file_named_by_the_flag_is_an_error(
 
 # ----------------------------------------------------------------------------
 def test_a_bad_sieve_tls_mode_names_where_it_came_from(tmp_path):
-    path = write_env_file(tmp_path / ".env", "MXROUTE_SIEVE_TLS=maybe\n")
+    path = write_env_file(tmp_path / ".env", "MAILCTL_SIEVE_TLS=maybe\n")
 
     with pytest.raises(MailctlError, match="not one of") as caught:
         load_config(argparse.Namespace(env_file=str(path)))
@@ -1290,10 +1290,10 @@ def test_each_rung_records_itself_as_the_source(rung, tmp_path, monkeypatch):
             args.host = "h"
         case "env file":
             args.env_file = str(
-                write_env_file(tmp_path / ".env", "MXROUTE_HOST=h\n")
+                write_env_file(tmp_path / ".env", "MAILCTL_HOST=h\n")
             )
         case "environment":
-            monkeypatch.setenv("MXROUTE_HOST", "h")
+            monkeypatch.setenv("MAILCTL_HOST", "h")
         case "config file":
             write_config_file('host = "h"\n')
 
@@ -1303,8 +1303,8 @@ def test_each_rung_records_itself_as_the_source(rung, tmp_path, monkeypatch):
 
     expected = {
         "flag": Source(FLAG, "--host"),
-        "env file": Source(ENV_FILE, "MXROUTE_HOST", tmp_path / ".env"),
-        "environment": Source(ENVIRONMENT, "MXROUTE_HOST"),
+        "env file": Source(ENV_FILE, "MAILCTL_HOST", tmp_path / ".env"),
+        "environment": Source(ENVIRONMENT, "MAILCTL_HOST"),
         "config file": Source(CONFIG_FILE, "host", config_path()),
         "default": Source(DEFAULT),
     }[rung]
@@ -1348,7 +1348,7 @@ def test_a_flag_typed_with_the_default_value_is_still_a_flag():
 
 # ----------------------------------------------------------------------------
 def test_the_consulted_sources_are_listed_highest_first(tmp_path):
-    path = write_env_file(tmp_path / ".env", "MXROUTE_HOST=h\n")
+    path = write_env_file(tmp_path / ".env", "MAILCTL_HOST=h\n")
 
     assert load_config(argparse.Namespace()).consulted == [Source(ENVIRONMENT)]
 
@@ -1409,8 +1409,8 @@ def test_the_prompt_is_the_password_origin_only_when_there_is_one():
     ("source", "expected"),
     [
         (Source(FLAG, "--host"), "flag --host"),
-        (Source(ENV_FILE, "MXROUTE_HOST", Path(".env")), "env file .env"),
-        (Source(ENVIRONMENT, "MXROUTE_HOST"), "environment"),
+        (Source(ENV_FILE, "MAILCTL_HOST", Path(".env")), "env file .env"),
+        (Source(ENVIRONMENT, "MAILCTL_HOST"), "environment"),
         (Source(CONFIG_FILE, "host", Path("/c.toml")), "config file /c.toml"),
         (Source(DEFAULT), "default"),
         (Source(DERIVED, "host"), "same as host"),

@@ -121,9 +121,9 @@ def mailbox(fake_imap, monkeypatch):
         3: SPOOFED,
         4: LATIN1_8BIT,
     }
-    monkeypatch.setenv("MXROUTE_HOST", "mail.example.com")
-    monkeypatch.setenv("MXROUTE_USER", "user@example.com")
-    monkeypatch.setenv("MXROUTE_PASSWORD", "not-a-real-password")
+    monkeypatch.setenv("MAILCTL_HOST", "mail.example.com")
+    monkeypatch.setenv("MAILCTL_USER", "user@example.com")
+    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
 
     return fake_imap
 

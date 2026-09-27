@@ -7,7 +7,7 @@ working out whether the gate is open all end the same way.
 
 The gate is deliberately narrow:
 
-* ``MXFILTER_LIVE`` must equal exactly ``"1"``. Not "set", not truthy --
+* ``MAILCTL_LIVE`` must equal exactly ``"1"``. Not "set", not truthy --
   ``true``, ``yes`` and ``0`` all skip. ``make testlive`` sets it to
   ``1``; nothing else should be doing so by accident.
 * The account settings must all be present. A half-configured run would
@@ -28,12 +28,11 @@ import os
 
 import pytest
 
-# Still the old name's prefix; renaming it is the env migration (#45).
-LIVE_FLAG = "MXFILTER_LIVE"
+LIVE_FLAG = "MAILCTL_LIVE"
 LIVE_VALUE = "1"
 
-REQUIRED_SETTINGS = ("MXROUTE_HOST", "MXROUTE_USER")
-PASSWORD_SETTINGS = ("MXROUTE_PASSWORD", "MXROUTE_PASSWORD_CMD")
+REQUIRED_SETTINGS = ("MAILCTL_HOST", "MAILCTL_USER")
+PASSWORD_SETTINGS = ("MAILCTL_PASSWORD", "MAILCTL_PASSWORD_CMD")
 
 
 # ############################################################################
@@ -95,7 +94,7 @@ def pytest_runtest_setup(item):
 def isolated_environment():
     """Override the offline tier's environment scrubbing.
 
-    ``tests/conftest.py`` clears every ``MXROUTE_*`` variable so the unit
+    ``tests/conftest.py`` clears every ``MAILCTL_*`` variable so the unit
     tests cannot depend on the developer's account. The live tier is the
     one place those variables are the input, so the scrubbing is
     disabled here rather than worked around inside each test.
