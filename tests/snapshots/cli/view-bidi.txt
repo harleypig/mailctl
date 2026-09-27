@@ -1,0 +1,20 @@
+$ mxfilter view 6
+exit: 0
+--- stdout
+Message uid 6 in 'INBOX' (312B; no flags):
+  From:    m@example.com
+  Subject: Pay \u202etoday
+
+see attached
+
+Attachments (1):
+  invoice_\u202efdp.exe  application/octet-stream  7B
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (6,))
+('logout',)
