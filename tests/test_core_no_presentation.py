@@ -1,8 +1,14 @@
 """The core returns data; only the CLI prints.
 
-``config``, ``criteria``, ``sieve``, and ``imap`` return structured values
-and raise ``MxFilterError``. Every piece of rendering, prompting, and
-progress output lives in ``cli.py`` (CONVENTIONS.md).
+``config``, ``criteria``, ``sieve``, ``imap``, and the ``engine`` that
+drives them return structured values and raise ``MxFilterError``. Every
+piece of rendering, prompting, and progress output lives in ``cli.py``
+(CONVENTIONS.md).
+
+The engine is held to one bar more: it must not know how it was called.
+So it may not import ``argparse`` or the CLI, and may not reach for the
+terminal or the environment -- a TUI, GUI, or web front-end has to be
+able to drive it unchanged.
 
 That split is worth a test rather than a convention alone for two reasons,
 and the second is the sharp one:
@@ -34,7 +40,14 @@ BANNED_NAMES = {"print", "input", "breakpoint"}
 # takes a `prompter` callback for exactly this reason).
 BANNED_ATTRIBUTES = {"getpass", "getpass_", "print_exc"}
 
-CORE_MODULES = ("config", "criteria", "sieve", "imap")
+CORE_MODULES = ("config", "criteria", "sieve", "imap", "engine")
+
+# What would tie the engine to one front-end. The CLI module is named both
+# ways a package-relative import can spell it.
+FRONT_END_MODULES = {"argparse", "cli", "mxfilter.cli"}
+
+# The terminal and the environment: the CLI's to read, never the engine's.
+FRONT_END_ATTRIBUTES = {"stdin", "stdout", "stderr", "environ", "getenv"}
 
 # ############################################################################
 # Helpers
@@ -73,6 +86,40 @@ def called_names(tree: ast.AST) -> list[str]:
     return names
 
 
+# ----------------------------------------------------------------------------
+def imported_modules(tree: ast.AST) -> set[str]:
+    """Return every module ``tree`` imports, and each name taken from a
+    relative import -- so ``from . import cli`` reports ``cli``."""
+    imported = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                imported.add(node.module)
+
+            if node.level:
+                imported.update(alias.name for alias in node.names)
+
+    return imported
+
+
+# ----------------------------------------------------------------------------
+def touched_attributes(tree: ast.AST) -> set[str]:
+    """Return every attribute name read anywhere in ``tree``."""
+    return {
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+    }
+
+
+# ----------------------------------------------------------------------------
+def module_tree(name: str) -> ast.AST:
+    """Parse one mxfilter module."""
+    return ast.parse(module_path(name).read_text(encoding="utf-8"))
+
+
 # ############################################################################
 # The guard
 # ############################################################################
@@ -97,17 +144,29 @@ def test_a_core_module_never_prints_or_prompts(name):
 @pytest.mark.parametrize("name", CORE_MODULES)
 def test_a_core_module_never_imports_a_prompting_module(name):
     """Importing ``getpass`` at all signals the split has been crossed."""
-    source = module_path(name).read_text(encoding="utf-8")
-    imported = set()
+    assert "getpass" not in imported_modules(module_tree(name))
 
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
 
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
+# ----------------------------------------------------------------------------
+def test_the_engine_does_not_import_a_front_end():
+    """Parsed arguments are the CLI's; the engine takes plain values."""
+    found = imported_modules(module_tree("engine")) & FRONT_END_MODULES
 
-    assert "getpass" not in imported
+    assert found == set(), (
+        f"mxfilter/engine.py imports {sorted(found)}; the engine must not "
+        f"know how it was called"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_engine_does_not_touch_the_terminal_or_environment():
+    """Whether stdin is a tty, and what is exported, are front-end facts."""
+    found = touched_attributes(module_tree("engine")) & FRONT_END_ATTRIBUTES
+
+    assert found == set(), (
+        f"mxfilter/engine.py reads {sorted(found)}; interaction belongs in "
+        f"the front-end"
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -132,6 +191,25 @@ def test_the_guard_would_actually_catch_a_violation():
     tree = ast.parse("import sys\ndef f(secret):\n    print(secret)\n")
 
     assert "print" in called_names(tree)
+
+
+# ----------------------------------------------------------------------------
+def test_the_engine_guards_would_actually_catch_a_violation():
+    """Each spelling a front-end dependency could take is seen."""
+    for source in (
+        "import argparse\n",
+        "from . import cli\n",
+        "from .cli import x\n",
+    ):
+        assert imported_modules(ast.parse(source)) & FRONT_END_MODULES, source
+
+    tree = ast.parse(
+        "import os, sys\n"
+        "def f():\n"
+        "    return sys.stdin.isatty() or os.environ.get('X')\n"
+    )
+
+    assert {"stdin", "environ"} <= touched_attributes(tree)
 
 
 # ----------------------------------------------------------------------------
