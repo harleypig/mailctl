@@ -4,6 +4,10 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.2.0
+
+Released 2026-09-27.
+
 FEATURES:
 
 * **`--env-file [PATH]` reads settings from a `.env` file.** Bare, it means
