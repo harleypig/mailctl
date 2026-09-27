@@ -1,4 +1,4 @@
-$ mxfilter move-rule all-lists --first --dry-run
+$ mailctl move-rule all-lists --first --dry-run
 exit: 0
 --- stdout
 Move rule 'all-lists' in script 'managesieve': position 2 -> 1 of 2
@@ -7,7 +7,7 @@ This rule would come before:
   ! 'announce' never runs -- 'all-lists' carries stop and its conditions cover every case 'announce' tests for
 
 
-Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
 --- sieve diff ---
 --- managesieve (current)

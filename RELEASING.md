@@ -1,11 +1,11 @@
 # Releasing
 
-How a version of `mxfilter` is cut — and, first, what "released" does and does
+How a version of `mailctl` is cut — and, first, what "released" does and does
 not mean here.
 
 ## Nothing is published
 
-`mxfilter` is **not on PyPI, not in any registry, and has no release
+`mailctl` is **not on PyPI, not in any registry, and has no release
 pipeline.** There is no publish workflow, no signing setup, and no packaging
 step beyond the `setuptools` metadata in `pyproject.toml`. It is installed
 from a checkout.
@@ -27,8 +27,8 @@ uv tool install .            # isolated, on PATH (the uv equivalent of pipx)
 pipx install .               # same, via pipx
 ```
 
-The console entry point is `mxfilter` (`mxfilter.cli:main`), and
-`python -m mxfilter` works from a checkout without installing anything.
+The console entry point is `mailctl` (`mailctl.cli:main`), and
+`python -m mailctl` works from a checkout without installing anything.
 
 ## Cutting a tag
 

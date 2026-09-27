@@ -26,7 +26,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import MxFilterError
+from . import MailctlError
 
 __all__ = [
     "Config",
@@ -71,7 +71,7 @@ NO_PASSWORD_MESSAGE = (
 
 # What password_state() reports for each kind of source. A literal from a
 # flag and one from the environment are the same kind of value and are
-# resolved identically; they are labelled apart only so `mxfilter test` can
+# resolved identically; they are labelled apart only so `mailctl test` can
 # say which one is in play. No label says anything about the value itself.
 PASSWORD_STATE_LABELS = {
     "file": "set (via file)",
@@ -418,10 +418,10 @@ class Config:
             self._password_origin = Source(PROMPT)
 
         else:
-            raise MxFilterError(NO_PASSWORD_MESSAGE)
+            raise MailctlError(NO_PASSWORD_MESSAGE)
 
         if not self._password:
-            raise MxFilterError(NO_PASSWORD_MESSAGE)
+            raise MailctlError(NO_PASSWORD_MESSAGE)
 
         return self._password
 
@@ -449,7 +449,7 @@ class Config:
 
         hints = ", ".join(f"--{name.replace('_', '-')}" for name in missing)
 
-        raise MxFilterError(
+        raise MailctlError(
             f"missing required setting(s): {', '.join(missing)}. "
             f"Set {hints}, the matching MXROUTE_* variable, or add it to "
             f"{config_path()}"
@@ -463,7 +463,11 @@ class Config:
 
 # ----------------------------------------------------------------------------
 def config_dir() -> Path:
-    """Return mxfilter's own directory, honouring ``XDG_CONFIG_HOME``."""
+    """Return mailctl's own directory, honouring ``XDG_CONFIG_HOME``.
+
+    Still named ``mxfilter``, the tool's old name, so an existing config
+    and its backups keep working; moving it is a separate migration (#45).
+    """
     base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
 
     return Path(base) / "mxfilter"
@@ -485,11 +489,11 @@ def default_backup_dir() -> Path:
     deliberate departure from that, not something XDG endorses.
 
     The reason is that a backup the user cannot find is not a backup. The
-    config directory is the one mxfilter path a user already knows, having
+    config directory is the one mailctl path a user already knows, having
     put ``config.toml`` there; ``~/.local/state`` is a path most people
     have never opened, and the moment it matters is the moment a script
     has just been mangled and nobody wants to go looking. Co-locating also
-    keeps ``mxfilter backup`` and the automatic pre-upload backup in one
+    keeps ``mailctl backup`` and the automatic pre-upload backup in one
     place instead of two.
 
     ``MXROUTE_BACKUP_DIR`` / ``backup_dir`` override it either way.
@@ -508,10 +512,10 @@ def read_config_file(path: Path) -> dict:
             return tomllib.load(handle)
 
     except tomllib.TOMLDecodeError as exc:
-        raise MxFilterError(f"{path}: invalid TOML -- {exc}") from exc
+        raise MailctlError(f"{path}: invalid TOML -- {exc}") from exc
 
     except OSError as exc:
-        raise MxFilterError(f"{path}: cannot read -- {exc}") from exc
+        raise MailctlError(f"{path}: cannot read -- {exc}") from exc
 
 
 # Anything a shell would take as a variable name.
@@ -543,12 +547,12 @@ def read_env_file(path: Path) -> EnvFile:
             lines = handle.read().splitlines()
 
     except OSError as exc:
-        raise MxFilterError(
+        raise MailctlError(
             f"env file {path}: cannot read -- {exc.strerror or exc}"
         ) from exc
 
     except UnicodeDecodeError as exc:
-        raise MxFilterError(
+        raise MailctlError(
             f"env file {path}: not valid UTF-8 -- {exc.reason}"
         ) from exc
 
@@ -572,10 +576,10 @@ def read_env_file(path: Path) -> EnvFile:
             env_file.values[key] = value
 
     if env_file.password is not None and mode & 0o077:
-        raise MxFilterError(
+        raise MailctlError(
             f"env file {path} sets MXROUTE_PASSWORD and is readable by "
             f"group/other (mode {mode:04o});\n"
-            "mxfilter refuses to use it.\n"
+            "mailctl refuses to use it.\n"
             f"Fix with: chmod 600 {path}"
         )
 
@@ -594,14 +598,14 @@ def _parse_env_line(line: str, path: Path, number: int) -> tuple[str, str]:
     key, value = key.strip(), value.strip()
 
     if not sep or not _ENV_KEY.fullmatch(key):
-        raise MxFilterError(
+        raise MailctlError(
             f"env file {path}, line {number}: not a KEY=VALUE line "
             f"(the line is not shown, as it may hold a password)"
         )
 
     if value[:1] in ("'", '"'):
         if len(value) < 2 or value[-1] != value[0]:
-            raise MxFilterError(
+            raise MailctlError(
                 f"env file {path}, line {number}: unterminated quote "
                 f"(values cannot span lines; the line is not shown, as it "
                 f"may hold a password)"
@@ -631,17 +635,17 @@ def check_password_file_mode(path: Path) -> None:
         mode = path.stat().st_mode & 0o777
 
     except OSError as exc:
-        raise MxFilterError(
+        raise MailctlError(
             f"{path}: cannot read password file -- {exc}"
         ) from exc
 
     if not mode & 0o077:
         return
 
-    raise MxFilterError(
+    raise MailctlError(
         f"password file {path} is readable by group/other "
         f"(mode {mode:04o});\n"
-        "mxfilter refuses to read it.\n"
+        "mailctl refuses to read it.\n"
         f"Fix with: chmod 600 {path}"
     )
 
@@ -680,19 +684,19 @@ def read_password_file(path: Path) -> Secret:
         raw = path.read_text(encoding="utf-8")
 
     except OSError as exc:
-        raise MxFilterError(
+        raise MailctlError(
             f"{path}: cannot read password file -- {exc}"
         ) from exc
 
     except UnicodeDecodeError as exc:
-        raise MxFilterError(
+        raise MailctlError(
             f"{path}: password file is not valid UTF-8 -- {exc.reason}"
         ) from exc
 
     value = strip_one_newline(raw)
 
     if not value.strip():
-        raise MxFilterError(f"{path}: password file is empty")
+        raise MailctlError(f"{path}: password file is empty")
 
     return Secret(value)
 
@@ -721,7 +725,7 @@ def run_password_command(command: str) -> Secret:
     argv = shlex.split(command)
 
     if not argv:
-        raise MxFilterError("password command is empty")
+        raise MailctlError("password command is empty")
 
     try:
         completed = subprocess.run(
@@ -729,12 +733,12 @@ def run_password_command(command: str) -> Secret:
         )
 
     except OSError as exc:
-        raise MxFilterError(
+        raise MailctlError(
             f"password command {argv[0]!r} could not be run -- {exc}"
         ) from exc
 
     if completed.returncode != 0:
-        raise MxFilterError(
+        raise MailctlError(
             f"password command {argv[0]!r} failed with exit "
             f"{completed.returncode} (its output is not shown, as it may "
             f"contain the credential)"
@@ -743,7 +747,7 @@ def run_password_command(command: str) -> Secret:
     value = completed.stdout.split("\n", 1)[0].strip()
 
     if not value:
-        raise MxFilterError(f"password command {argv[0]!r} produced no output")
+        raise MailctlError(f"password command {argv[0]!r} produced no output")
 
     return Secret(value)
 
@@ -765,9 +769,7 @@ def _as_port(value, label: str) -> int:
         return int(value)
 
     except (TypeError, ValueError) as exc:
-        raise MxFilterError(
-            f"{label}: {value!r} is not a port number"
-        ) from exc
+        raise MailctlError(f"{label}: {value!r} is not a port number") from exc
 
 
 # ----------------------------------------------------------------------------
@@ -858,7 +860,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
     sieve_tls = setting("sieve_tls", DEFAULT_SIEVE_TLS)
 
     if sieve_tls not in SIEVE_TLS_MODES:
-        raise MxFilterError(
+        raise MailctlError(
             f"sieve_tls: {sieve_tls!r} is not one of "
             f"{', '.join(SIEVE_TLS_MODES)} "
             f"(from {sources['sieve_tls'].describe()})"

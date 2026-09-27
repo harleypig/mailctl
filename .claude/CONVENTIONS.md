@@ -1,4 +1,4 @@
-# mxfilter Conventions
+# mailctl Conventions
 
 Repo-specific conventions. The global `~/.claude/` config carries everything
 generic (git/gh, code style, the Python toolchain via `python.md` +
@@ -7,7 +7,7 @@ generic (git/gh, code style, the Python toolchain via `python.md` +
 
 ## What this is
 
-`mxfilter` — an MIT-licensed Python CLI that manages MXroute email filters end
+`mailctl` — an MIT-licensed Python CLI that manages MXroute email filters end
 to end. It does two things, and the second is the reason it exists:
 
 1. **Creates server-side Sieve filters over ManageSieve**, merging the new
@@ -18,9 +18,16 @@ to end. It does two things, and the second is the reason it exists:
    Writing the Sieve rule alone leaves every message already delivered exactly
    where it was.
 
-Distribution name and package are both `mxfilter`; the console entry point is
-`mxfilter = "mxfilter.cli:main"`. It is **not published anywhere** — see
+Distribution name and package are both `mailctl`; the console entry point is
+`mailctl = "mailctl.cli:main"`. It is **not published anywhere** — see
 [RELEASING.md](../RELEASING.md).
+
+**The tool was `mxfilter` until the rename in #45**, which lands in two
+steps. The package, command, and `MailctlError` have moved; the config
+directory (`$XDG_CONFIG_HOME/mxfilter/`, backups included), the `MXROUTE_*`
+and `MXFILTER_*` environment variables, and the default script name
+(`engine.DEFAULT_SCRIPT_NAME`) still carry the old names on purpose, so an
+existing setup keeps working until the deliberate migration follows.
 
 ### The scoping rule
 
@@ -85,28 +92,28 @@ Built on two libraries, both of which the code wraps rather than exposes:
 
 ## Layout
 
-- `mxfilter/__init__.py` — the package docstring, `__version__`, and
-  `MxFilterError` (the one exception type every actionable failure raises).
-- `mxfilter/config.py` — endpoint and credential resolution, and the `Secret`
+- `mailctl/__init__.py` — the package docstring, `__version__`, and
+  `MailctlError` (the one exception type every actionable failure raises).
+- `mailctl/config.py` — endpoint and credential resolution, and the `Secret`
   wrapper (see *Credentials* below).
-- `mxfilter/criteria.py` — the shared criteria model, translated **both** to
+- `mailctl/criteria.py` — the shared criteria model, translated **both** to
   Sieve tests and to IMAP `SEARCH`. One model, two backends — this is what
   keeps the two halves in agreement.
-- `mxfilter/sieve.py` — the ManageSieve session wrapper plus the offline
+- `mailctl/sieve.py` — the ManageSieve session wrapper plus the offline
   script-editing helpers (parse / merge / render / diff / backup).
-- `mxfilter/imap.py` — the IMAP session wrapper (folders, search, move, flag)
+- `mailctl/imap.py` — the IMAP session wrapper (folders, search, move, flag)
   and folder-name normalization.
-- `mxfilter/rules.py` — reads a parsed script into a flat rule model and
+- `mailctl/rules.py` — reads a parsed script into a flat rule model and
   reports which rules cannot fire where they are (shadowing, in both
   directions); offline.
-- `mxfilter/engine.py` — the engine: every piece of work the tool does
+- `mailctl/engine.py` — the engine: every piece of work the tool does
   (open sessions, plan the target folder, merge a rule, back up and upload,
   plan and run the existing-mail pass, derive criteria from a message), for
   any front-end. It takes plain values (`ActionSpec`, `RuleRequest`,
   `Criteria`, `Placement`, `Config`) and returns plans and results.
-- `mxfilter/cli.py` — the CLI front-end: argument parsing, turning flags into
+- `mailctl/cli.py` — the CLI front-end: argument parsing, turning flags into
   engine inputs, and rendering and confirming what the engine returns.
-- `mxfilter/__main__.py` — `python -m mxfilter`.
+- `mailctl/__main__.py` — `python -m mailctl`.
 - `tests/` — pytest, mirroring the package layout ([TESTS.md](TESTS.md)).
 
 The split is deliberate: the **offline** logic (criteria translation, Sieve
@@ -117,7 +124,7 @@ live there.
 ## The core returns data; only the CLI prints
 
 **`config`, `criteria`, `sieve`, `imap`, `rules`, and the `engine` that
-drives them return structured values and raise `MxFilterError`. Every piece
+drives them return structured values and raise `MailctlError`. Every piece
 of rendering, prompting, confirmation, and progress output lives in
 `cli.py`.** Two reasons, both cashing out now: the core stays testable
 without capturing stdout, and a future front-end can sit on the same core
@@ -209,7 +216,7 @@ promote one tier to another.
     not Sieve rules. Do not read it as filter support and re-open the
     question.
 
-**Observed on one account — `mxfilter test`, 2026-08-14:**
+**Observed on one account — `mailctl test`, 2026-08-14:**
 
 A live read against a single MXroute server settled several of these. It is a
 **separate tier on purpose**: an observation is stronger than a guess and
@@ -235,7 +242,7 @@ about the same server next quarter, and nothing about anyone else's server.
 The script name in particular is a per-server configuration value
 (`managesieve_script_name`), so it is the **least** generalizable item here.
 
-**`vacation` being advertised changes the status of our refusal.** mxfilter
+**`vacation` being advertised changes the status of our refusal.** mailctl
 still refuses both `vacation` and `notify`, but they are no longer refusals of
 the same kind: `enotify` is **not advertised** on this server, while
 `vacation` **is** — so declining to emit it is a **deliberate choice of ours**
@@ -245,7 +252,7 @@ choice at all.
 
 The shared refusal message is still correct for both and needs no tailoring:
 it says the refusal is ours rather than a documented MXroute restriction, and
-points at `mxfilter test` to find out what this server actually advertises.
+points at `mailctl test` to find out what this server actually advertises.
 Distinguishing the two in the message would bake a per-server observation into
 a string, which is precisely what *Discover, don't hardcode* exists to
 prevent.
@@ -291,7 +298,7 @@ about MXroute's configuration** is not.
   hand-made filters. A parse failure is a **hard stop**, never a
   fall-back-to-overwrite. See [ADR 0002][adr2].
 - **Back up before every upload.** The previous script is written to the
-  backup directory before the new one is sent, and `mxfilter backup` takes the
+  backup directory before the new one is sent, and `mailctl backup` takes the
   same copy on demand. **One location, and it is the config directory** —
   `$XDG_CONFIG_HOME/mxfilter/backups`, beside `config.toml`
   (`config.default_backup_dir`), overridable by `--backup-dir` /
@@ -302,13 +309,13 @@ about MXroute's configuration** is not.
   directory that does not have their backup in it.
 - **A backup is the server's exact bytes.** `sieve.write_backup` writes what
   it was handed, with newline translation off, mode `0600` in a directory
-  created `0700`. Nothing decorates it — `mxfilter show` adds banner lines for
+  created `0700`. Nothing decorates it — `mailctl show` adds banner lines for
   a reader and is therefore *not* a backup, which is exactly the trap
-  redirecting `show` to a file used to set. `mxfilter restore` puts one back
+  redirecting `show` to a file used to set. `mailctl restore` puts one back
   over the active script only: it shows a raw diff, asks for confirmation,
   backs up the current script, and runs CHECKSCRIPT before sending. It is
   the one write path that replaces instead of merging, and it may replace a
-  script mxfilter cannot parse ([ADR 0005][adr5], [#13][i13]).
+  script mailctl cannot parse ([ADR 0005][adr5], [#13][i13]).
 - **Show, then change.** Every mutating subcommand works out what would
   change, shows it (a diff for the script, a preview for the messages), and
   only then applies it. `--dry-run` stops after the "show it" step.
@@ -399,7 +406,7 @@ not overlapping**, and the boundary is clean because the API draws it for us:
 | Repo | Owns |
 |------|------|
 | `terraform-provider-mxroute` | account/domain state as code — domains, mailboxes, **forwarders**, catch-all, spam lists, pointers |
-| `mxfilter` (here) | filter **rules** (Sieve) and retroactive mail sorting (IMAP) |
+| `mailctl` (here) | filter **rules** (Sieve) and retroactive mail sorting (IMAP) |
 
 Two practical consequences:
 

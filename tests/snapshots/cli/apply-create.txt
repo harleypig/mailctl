@@ -1,4 +1,4 @@
-$ mxfilter apply --from noreply@github.com --fileinto Lists/GitHub --create-folder --yes
+$ mailctl apply --from noreply@github.com --fileinto Lists/GitHub --create-folder --yes
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')

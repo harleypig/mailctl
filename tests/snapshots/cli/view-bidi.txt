@@ -1,4 +1,4 @@
-$ mxfilter view 6
+$ mailctl view 6
 exit: 0
 --- stdout
 Message uid 6 in 'INBOX' (312B; no flags):

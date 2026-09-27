@@ -1,4 +1,4 @@
-$ mxfilter restore <TMP>/restore.sieve --yes
+$ mailctl restore <TMP>/restore.sieve --yes
 exit: 0
 --- stdout
 Restore <TMP>/restore.sieve (2 rule(s)) over script 'managesieve' (2 rule(s)):

@@ -2,8 +2,8 @@
 
 Everything here is offline by construction. The IMAP double below stands in
 for ``IMAPClient`` at the module boundary -- it is never a stand-in for
-anything mxfilter owns, so a test that passes against it is still testing
-mxfilter's logic rather than its own mock.
+anything mailctl owns, so a test that passes against it is still testing
+mailctl's logic rather than its own mock.
 
 Two hazards this file exists to remove:
 
@@ -22,8 +22,8 @@ import socket
 import pytest
 from sievelib import parser
 
-from mxfilter import imap as imap_module
-from mxfilter.config import Config, Secret
+from mailctl import imap as imap_module
+from mailctl.config import Config, Secret
 
 # ############################################################################
 # Environment isolation
@@ -66,7 +66,7 @@ def no_network(monkeypatch):
     def refuse(*args, **kwargs):
         raise RuntimeError(
             "this test tried to open a network connection; the offline "
-            "tier must patch the client at mxfilter's import boundary "
+            "tier must patch the client at mailctl's import boundary "
             "(see the fake_imap fixture)"
         )
 
@@ -81,7 +81,7 @@ def no_network(monkeypatch):
 # A script in the shape Roundcube's managesieve plugin writes: tab-indented,
 # brace on its own line, and a `# rule:[name]` marker rather than sievelib's
 # own `# Filter:` comment. This is the script the merge must not destroy --
-# it is what an MXroute account actually has in it before mxfilter ever
+# it is what an MXroute account actually has in it before mailctl ever
 # runs (ADR 0002).
 ROUNDCUBE_SCRIPT = """require ["fileinto","imap4flags"];
 # rule:[keep-boss]
@@ -142,7 +142,7 @@ class FakeIMAPClient:
 
     Only the handful of methods ``ImapSession`` calls are implemented. It
     deliberately does not emulate IMAP semantics -- the point is to observe
-    the calls mxfilter makes and to feed it canned responses, not to
+    the calls mailctl makes and to feed it canned responses, not to
     reimplement a server.
     """
 
@@ -338,7 +338,7 @@ class FakeIMAPClient:
 # ----------------------------------------------------------------------------
 @pytest.fixture
 def fake_imap(monkeypatch) -> FakeIMAPClient:
-    """Patch ``IMAPClient`` at mxfilter's boundary and hand back the double."""
+    """Patch ``IMAPClient`` at mailctl's boundary and hand back the double."""
     client = FakeIMAPClient()
 
     def factory(host, port=None, ssl=True):

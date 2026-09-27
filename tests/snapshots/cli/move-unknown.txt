@@ -1,9 +1,9 @@
-$ mxfilter move-rule phantom --first
+$ mailctl move-rule phantom --first
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: no rule named 'phantom' in the active script. Known rules: keep-boss, bin-the-noise
+mailctl: no rule named 'phantom' in the active script. Known rules: keep-boss, bin-the-noise
 
 --- sieve calls
 ('connect',)

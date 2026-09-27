@@ -1,14 +1,15 @@
-# mxfilter configuration file.
+# mailctl configuration file.
 #
 # Copy to $XDG_CONFIG_HOME/mxfilter/config.toml -- that is
 # ~/.config/mxfilter/config.toml when XDG_CONFIG_HOME is unset -- and fill
 # it in. It is the TOML counterpart of .env.example: the same settings,
-# minus the password itself.
+# minus the password itself. The mxfilter/ directory is the tool's old name,
+# kept for now so an existing setup keeps working; its migration follows.
 #
 # The format is flat: plain `key = value` lines at the top level, no
-# [tables]. Strings are quoted, ports are bare numbers. A key mxfilter does
+# [tables]. Strings are quoted, ports are bare numbers. A key mailctl does
 # not know is ignored, so a misspelt one is silently ignored too --
-# `mxfilter test` shows where each setting came from, which is the way to
+# `mailctl test` shows where each setting came from, which is the way to
 # check it was picked up.
 #
 # This file is the lowest-priority source. Resolution order, highest first:
@@ -32,15 +33,15 @@ user = "you@yourdomain.com"
 # Only password_file and password_cmd are, and they rank below every flag
 # and every MXROUTE_PASSWORD* variable (see .env.example for the full
 # ladder). If this file sets both, password_file wins. Set neither and
-# nothing else supplies one, and mxfilter prompts on the terminal
+# nothing else supplies one, and mailctl prompts on the terminal
 # (getpass, no echo).
 #
-# 1. A command that prints the password on stdout. mxfilter splits it like
+# 1. A command that prints the password on stdout. mailctl splits it like
 #    a shell would but runs it without a shell, and never echoes its
 #    output, so the value need not sit in a file or the environment at all.
 password_cmd = "pass show email/you@yourdomain.com"
 
-# 2. A file holding the password. mxfilter REFUSES to read the file unless
+# 2. A file holding the password. mailctl REFUSES to read the file unless
 #    its mode is 0600 or 0400 -- no group or other bits at all -- and names
 #    the chmod that fixes it.
 #
@@ -63,7 +64,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 
 # You only need this if IMAP really lives on a different host from `host`.
 # On MXRoute it does not -- both are the same server -- and when this is
-# unset mxfilter uses `host` for IMAP.
+# unset mailctl uses `host` for IMAP.
 #imap_host = ""
 
 # IMAP over implicit TLS. Port 143 is also accepted and switches to
@@ -81,7 +82,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 # --- Behaviour ------------------------------------------------------------
 
 # Where script backups are written -- both the automatic pre-upload copy
-# and 'mxfilter backup'.
+# and 'mailctl backup'.
 #
 # Default: $XDG_CONFIG_HOME/mxfilter/backups, beside this file. XDG would
 # call a backup state rather than config; keeping it here is a deliberate

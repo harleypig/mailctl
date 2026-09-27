@@ -1,4 +1,4 @@
-$ mxfilter apply --from nobody@x.y --fileinto Lists --yes
+$ mailctl apply --from nobody@x.y --fileinto Lists --yes
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

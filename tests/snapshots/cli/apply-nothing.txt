@@ -1,9 +1,9 @@
-$ mxfilter apply --from noreply@github.com
+$ mailctl apply --from noreply@github.com
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: nothing to do -- use --fileinto, --discard, --mark-read, or --flag
+mailctl: nothing to do -- use --fileinto, --discard, --mark-read, or --flag
 
 --- sieve calls
 --- imap calls

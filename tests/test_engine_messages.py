@@ -11,10 +11,10 @@ raise on the malformed, mislabelled mail that real mailboxes hold.
 import pytest
 from imapclient.response_parser import parse_fetch_response
 
-from mxfilter import MxFilterError, engine
-from mxfilter.criteria import Criteria
-from mxfilter.engine import Sessions
-from mxfilter.imap import structure_has_attachment
+from mailctl import MailctlError, engine
+from mailctl.criteria import Criteria
+from mailctl.engine import Sessions
+from mailctl.imap import structure_has_attachment
 
 # ############################################################################
 # Messages
@@ -282,13 +282,13 @@ def test_criteria_and_a_raw_search_are_refused_together(sessions):
     criteria = Criteria()
     criteria.add("From", "x@example.com")
 
-    with pytest.raises(MxFilterError, match="not both"):
+    with pytest.raises(MailctlError, match="not both"):
         engine.list_messages(sessions, criteria=criteria, search="ALL")
 
 
 # ----------------------------------------------------------------------------
 def test_a_limit_below_one_is_refused(sessions):
-    with pytest.raises(MxFilterError, match="at least 1"):
+    with pytest.raises(MailctlError, match="at least 1"):
         engine.list_messages(sessions, limit=0)
 
 
@@ -351,13 +351,13 @@ def test_a_plain_message_is_decoded(sessions, fake_imap):
 def test_a_missing_uid_names_the_uid_and_folder(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 
-    with pytest.raises(MxFilterError, match="no message with uid 99 in"):
+    with pytest.raises(MailctlError, match="no message with uid 99 in"):
         engine.read_message(sessions, "INBOX", 99)
 
 
 # ----------------------------------------------------------------------------
 def test_a_uid_below_one_is_refused(sessions):
-    with pytest.raises(MxFilterError, match="start at 1"):
+    with pytest.raises(MailctlError, match="start at 1"):
         engine.read_message(sessions, "INBOX", 0)
 
 

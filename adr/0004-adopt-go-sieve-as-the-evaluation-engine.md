@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-14
+- Note: the tool is now `mailctl` (#45); this record keeps its old name.
 
 ## Context
 

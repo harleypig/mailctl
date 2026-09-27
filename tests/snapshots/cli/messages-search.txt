@@ -1,4 +1,4 @@
-$ mxfilter messages --search UNSEEN
+$ mailctl messages --search UNSEEN
 exit: 0
 --- stdout
 5 message(s) in 'INBOX', newest first:

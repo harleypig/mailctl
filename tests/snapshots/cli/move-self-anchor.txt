@@ -1,9 +1,9 @@
-$ mxfilter move-rule keep-boss --before keep-boss
+$ mailctl move-rule keep-boss --before keep-boss
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: --before 'keep-boss' names the rule being added, which has no position to be relative to. Name another rule, or use --first / --last.
+mailctl: --before 'keep-boss' names the rule being added, which has no position to be relative to. Name another rule, or use --first / --last.
 
 --- sieve calls
 ('connect',)

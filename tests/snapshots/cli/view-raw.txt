@@ -1,4 +1,4 @@
-$ mxfilter view 5 --raw
+$ mailctl view 5 --raw
 exit: 0
 --- stdout
 From: News <news@example.com>\r

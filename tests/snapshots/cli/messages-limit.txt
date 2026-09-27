@@ -1,4 +1,4 @@
-$ mxfilter messages --limit 2
+$ mailctl messages --limit 2
 exit: 0
 --- stdout
 2 message(s) in 'INBOX', newest first:

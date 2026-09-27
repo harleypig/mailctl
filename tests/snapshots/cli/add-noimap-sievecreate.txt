@@ -1,14 +1,14 @@
-$ mxfilter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap --yes
+$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap --yes
 exit: 0
 --- stdout
 Folder 'INBOX.Lists.GitHub' will be created by Sieve (fileinto :create)
-  Nothing promises Sieve will subscribe to a folder it creates, so it may not appear in webmail until you subscribe to it: once the first message has created it, run 'mxfilter subscribe INBOX.Lists.GitHub'.
+  Nothing promises Sieve will subscribe to a folder it creates, so it may not appear in webmail until you subscribe to it: once the first message has created it, run 'mailctl subscribe INBOX.Lists.GitHub'.
 
 Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'
   then:  fileinto :create INBOX.Lists.GitHub; stop
 
-Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
 --- sieve diff ---
 --- managesieve (current)

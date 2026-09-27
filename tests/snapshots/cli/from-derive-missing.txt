@@ -1,4 +1,4 @@
-$ mxfilter from-message --uid 2 --derive cc,list-id --fileinto Lists --dry-run
+$ mailctl from-message --uid 2 --derive cc,list-id --fileinto Lists --dry-run
 exit: 1
 --- stdout
 Message uid 2 in 'INBOX':
@@ -10,7 +10,7 @@ Message uid 2 in 'INBOX':
 --- stderr
 warning: message has no 'cc' header; skipping it
 warning: message has no 'list-id' header; skipping it
-mxfilter: no criteria given -- use --from/--to/--cc/--subject/--list-id/--header
+mailctl: no criteria given -- use --from/--to/--cc/--subject/--list-id/--header
 
 --- sieve calls
 --- imap calls

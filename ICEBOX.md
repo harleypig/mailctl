@@ -28,7 +28,7 @@ nobody has asked for. Revisit only when something concrete would consume it.
 vacation extension — **trigger: MXroute is confirmed to enable the `vacation`
 extension, *and* there is a real need for it.**
 
-**Half this trigger has now fired.** A live `mxfilter test` on 2026-08-14
+**Half this trigger has now fired.** A live `mailctl test` on 2026-08-14
 found `vacation` **advertised** by the server, so the availability question is
 answered for that account. The second half — a real need — has not, and the
 entry stays iceboxed on that alone.
@@ -120,7 +120,7 @@ here is the TUI itself.
 
 **Deferred, and deliberately not designed for.** No framework has been chosen
 and none should be until the feature is requested. The architecture a second
-front-end needs is **in place now**: `mxfilter/engine.py` does all the work
+front-end needs is **in place now**: `mailctl/engine.py` does all the work
 and knows nothing about how it was called, and every change is a read-only
 plan the front-end renders and decides on before asking the engine to execute
 it ([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *The core returns
@@ -174,22 +174,22 @@ is fine. A schema plus a documented quoting rule handles it.
 
 #### The two-layer escape hatch — how to get both
 
-The trap is assuming the format mxfilter *reads* must also be where shortcuts
+The trap is assuming the format mailctl *reads* must also be where shortcuts
 are written. It does not have to be, and separating the two dissolves the
 question:
 
-- **Layer 1 — what mxfilter reads: a plain list of rules.** Dumb data. No
-  variables, no functions, nothing clever. The only thing mxfilter ever has to
+- **Layer 1 — what mailctl reads: a plain list of rules.** Dumb data. No
+  variables, no functions, nothing clever. The only thing mailctl ever has to
   understand.
-- **Layer 2 — optional, and nothing to do with mxfilter: whatever produced
+- **Layer 2 — optional, and nothing to do with mailctl: whatever produced
   that list.** If writing twelve near-identical rules by hand gets annoying,
   write something that prints layer 1 and pipe it in:
 
   ```bash
-  jsonnet filters.jsonnet | mxfilter apply -f -
+  jsonnet filters.jsonnet | mailctl apply -f -
   ```
 
-  Jsonnet, Python, a template, `make` — mxfilter cannot tell the difference,
+  Jsonnet, Python, a template, `make` — mailctl cannot tell the difference,
   because all it ever sees is layer 1.
 
 So abstraction is available whenever it is wanted, without the tool growing a
@@ -355,7 +355,7 @@ exactly the ones worth keeping. Concretely, this needs:
   does.
 
 **Drift is the other half.** Once both modes exist, a rule added imperatively
-with `mxfilter add` is absent from the YAML, so the next `apply` deletes it —
+with `mailctl add` is absent from the YAML, so the next `apply` deletes it —
 the ordinary desired-state drift problem. Either the imperative commands learn
 to write back to the YAML, or declarative mode owns the account exclusively
 and says so. Decide that before building, not after.
@@ -378,7 +378,7 @@ the repo, for the same reason
 cleanup old mail, time limit, TTL, mailbox housekeeping — **trigger: requested
 directly.**
 
-Give a folder a maximum age and let mxfilter enforce it: `Github.Notifications`
+Give a folder a maximum age and let mailctl enforce it: `Github.Notifications`
 holds nothing older than seven days, `Github.Billing` keeps everything.
 
 **It is not filtering, and the difference is the point.** A Sieve rule decides
@@ -421,7 +421,7 @@ which nobody does. Design constraints follow from that:
 ### Open
 
 - **Where does the schedule live?** Retention only means anything if it runs
-  repeatedly, and mxfilter is a one-shot CLI. Cron or a systemd timer keeps
+  repeatedly, and mailctl is a one-shot CLI. Cron or a systemd timer keeps
   the tool a CLI; a daemon is a different product. Almost certainly the
   former, but
   it decides how the config and reporting are shaped.

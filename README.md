@@ -1,4 +1,4 @@
-# mxfilter
+# mailctl
 
 Manage MXRoute email filters from the command line: build a Sieve rule from
 criteria flags, merge it into the account's **active** script without
@@ -16,7 +16,7 @@ python3 -m venv .venv
 ## Configure
 
 Copy `.env.example` to `.env` and fill it in, then either export it
-(`set -a; . ./.env; set +a`) or point mxfilter at it with `--env-file`. Or
+(`set -a; . ./.env; set +a`) or point mailctl at it with `--env-file`. Or
 copy `config.toml.example` to `$XDG_CONFIG_HOME/mxfilter/config.toml` — flat
 top-level keys, every one explained in the file:
 
@@ -30,6 +30,11 @@ default_folder = "Lists"
 Resolution order is **CLI flag > env file > environment > config file >
 default**.
 
+The tool was called `mxfilter` until recently. Its config directory
+(`$XDG_CONFIG_HOME/mxfilter/`, backups included), the `MXROUTE_*`
+variables, and the default script name below still use the old names, so an
+existing setup keeps working; their migration is a separate change.
+
 `--env-file PATH` reads the `MXROUTE_*` lines of a dotenv-style file; given
 bare, `--env-file` means `.env` in the current directory. The file is read,
 not exported, and it outranks the environment because it was named for this
@@ -38,7 +43,7 @@ run. The format is the plain one: `KEY=VALUE`, an optional leading
 matching single or double quotes stripped. Nothing is interpolated, a `#`
 after a value is part of the value, and a value cannot span lines — quote a
 value whose leading or trailing spaces matter. Keys not starting `MXROUTE_`
-are ignored, so a `.env` shared with another tool is fine. A line mxfilter
+are ignored, so a `.env` shared with another tool is fine. A line mailctl
 cannot read is reported by line number, never quoted. Because it takes an
 optional value, put `--env-file` after any positional argument, or write
 `--env-file=PATH`.
@@ -47,7 +52,7 @@ optional value, put `--env-file` after any positional argument, or write
 `messages`, `view`), resolves the same way: `MXROUTE_SOURCE_FOLDER`, then
 `source_folder` in the config file, then `INBOX`.
 
-`mxfilter test` says where each setting came from — a flag, the env file,
+`mailctl test` says where each setting came from — a flag, the env file,
 the environment, the config file, or the default — and which of those
 sources it read.
 
@@ -85,70 +90,70 @@ it. One that only names a password file or command is not.
 
 `--password VALUE` exists and is the **least safe** option: the value is
 visible in the process list to every user on the machine and your shell
-saves it to history. mxfilter warns when you use it.
+saves it to history. mailctl warns when you use it.
 
 ## Use
 
 ```bash
 # Check both services and what they support. Changes nothing.
-mxfilter test
+mailctl test
 
 # The same, taking settings from ./.env rather than the environment.
-mxfilter test --env-file
+mailctl test --env-file
 
 # What does this server call its folders, and which does webmail show?
-mxfilter folders
+mailctl folders
 
 # Find a message: the newest 20 in a folder, UID first. Takes the same
 # criteria flags as add and apply, or a raw IMAP search.
-mxfilter messages
-mxfilter messages --folder Lists/News --from newsletter@example.com
-mxfilter messages --search 'UNSEEN SINCE 1-Sep-2026' --limit 50
+mailctl messages
+mailctl messages --folder Lists/News --from newsletter@example.com
+mailctl messages --search 'UNSEEN SINCE 1-Sep-2026' --limit 50
 
 # Read one by UID. It stays unread, and no attachment is saved.
-mxfilter view 4127
-mxfilter view 4127 --headers-only
-mxfilter view 4127 --raw
-mxfilter view 4127 --raw > message.eml   # the exact bytes, to keep
+mailctl view 4127
+mailctl view 4127 --headers-only
+mailctl view 4127 --raw
+mailctl view 4127 --raw > message.eml   # the exact bytes, to keep
 
 # Show a folder in webmail, or hide one (it keeps its mail either way).
-mxfilter subscribe Lists/News
-mxfilter unsubscribe Lists/Noisy --dry-run
+mailctl subscribe Lists/News
+mailctl unsubscribe Lists/Noisy --dry-run
 
 # See exactly what would change, without changing it.
-mxfilter add --from newsletter@example.com --fileinto Lists/News --dry-run
+mailctl add --from newsletter@example.com --fileinto Lists/News --dry-run
 
 # Do it: merge the rule, upload, activate, then file existing mail.
-mxfilter add --from newsletter@example.com --fileinto Lists/News
+mailctl add --from newsletter@example.com --fileinto Lists/News
 
 # Rule only; leave delivered mail alone.
-mxfilter add --list-id python-list.python.org --fileinto Lists/Python \
+mailctl add --list-id python-list.python.org --fileinto Lists/Python \
     --no-apply
 
 # Learn the criteria from a message you already have.
-mxfilter from-message --folder INBOX --search 'FROM newsletter@example.com' \
+mailctl from-message --folder INBOX --search 'FROM newsletter@example.com' \
     --fileinto Lists/News --dry-run
 
 # Existing mail only; no Sieve change. --create-folder because the target
 # may not exist yet.
-mxfilter apply --subject '[SPAM]' --fileinto Quarantine --create-folder \
+mailctl apply --subject '[SPAM]' --fileinto Quarantine --create-folder \
     --mark-read
 
-mxfilter list
-mxfilter show
-mxfilter remove-rule from-newsletter-example-com
+mailctl list
+mailctl show
+mailctl remove-rule from-newsletter-example-com
 
 # Reorder a rule without restating it; reports what the move would starve.
-mxfilter move-rule from-newsletter-example-com --first --dry-run
-mxfilter move-rule from-newsletter-example-com --after keep-boss
+mailctl move-rule from-newsletter-example-com --first --dry-run
+mailctl move-rule from-newsletter-example-com --after keep-boss
 
 # Save the active script, byte for byte, before you touch anything.
-mxfilter backup
-mxfilter backup --output ~/mxfilter-before-first-run.sieve
+mailctl backup
+mailctl backup --output ~/mailctl-before-first-run.sieve
 
 # Put a backup back over the active script: diff, back up, confirm.
-mxfilter restore ~/mxfilter-before-first-run.sieve --dry-run
-mxfilter restore ~/mxfilter-before-first-run.sieve
+mailctl restore ~/mailctl-before-first-run.sieve --dry-run
+mailctl restore ~/mailctl-before-first-run.sieve
 ```
 
 **Before the first run against a real mailbox, work through
@@ -185,21 +190,21 @@ assumptions below get settled for your account.
   `apply` show before they act get the same treatment.
 * `view --raw` **into a file or a pipe writes the message exactly as the
   server holds it**, byte for byte, with nothing escaped or re-encoded — so
-  `mxfilter view 4127 --raw > message.eml` saves a copy any mail program
+  `mailctl view 4127 --raw > message.eml` saves a copy any mail program
   can open. Only on a terminal is it escaped as above.
 * `view` shows the message's plain-text part. A message with only HTML is
   shown as a rough text conversion, and says so above the body; `--raw`
   shows the original. Attachments are listed by name, type, and size, and
   never written anywhere.
-* The Sieve diff is shown with **both sides in mxfilter's own formatting**.
+* The Sieve diff is shown with **both sides in mailctl's own formatting**.
   A merge re-renders the whole script, so a diff against the server's raw
   copy would report every re-indented line as a change — on a hand-written
   script that is most of the file, and it reads exactly like something
-  having gone wrong. The reformat is real, so mxfilter says so on a line
+  having gone wrong. The reformat is real, so mailctl says so on a line
   above the diff, and only while the server's copy is still in some other
   formatting. What gets uploaded and what gets backed up are unaffected.
 * The current active script is backed up to a timestamped file before any
-  upload, and the path is printed. `mxfilter backup` takes the same copy on
+  upload, and the path is printed. `mailctl backup` takes the same copy on
   demand, without changing anything on the server.
 * Backups land in `$XDG_CONFIG_HOME/mxfilter/backups` (usually
   `~/.config/mxfilter/backups`) — beside your `config.toml`, one file per
@@ -210,7 +215,7 @@ assumptions below get settled for your account.
   `config.toml` move it, with `~` and `$VAR` expanded in each. The file is
   written mode `0600` in a directory created `0700`: a Sieve script is not a
   password, but it does say who you correspond with and how you sort it.
-* **`mxfilter restore FILE` puts a backup back.** The backup is the server's
+* **`mailctl restore FILE` puts a backup back.** The backup is the server's
   exact bytes — no banner lines, nothing reformatted — and restore uploads
   them exactly, over the active script — or over the one `--script NAME`
   names, which stays inactive unless `--activate` is given. No other stored
@@ -218,14 +223,14 @@ assumptions below get settled for your account.
   backs the current script up first, lets the server validate the file, and
   asks before it replaces anything. It is the one command that **replaces**
   rather than merges: a rule added since the backup was taken is removed, and
-  the diff shows it. It works even over a script mxfilter cannot parse
+  the diff shows it. It works even over a script mailctl cannot parse
   ([ADR 0005][adr5]). An empty FILE would remove every rule, so it is refused
-  unless `--allow-empty` is given. FILE is read and checked before mxfilter
+  unless `--allow-empty` is given. FILE is read and checked before mailctl
   connects, and `~` and `$VAR` in it are expanded. If the account has no
   active script, restore refuses rather than guess, and `--script NAME` is
   the way back: NAME is restored and made active.
 * Rules are merged into the parsed existing script, never appended blindly,
-  so other rules survive. If the existing script cannot be parsed, mxfilter
+  so other rules survive. If the existing script cannot be parsed, mailctl
   stops rather than overwrite it.
 * `checkscript` runs on the server before `putscript`.
 * The existing-mail pass **always previews and always confirms** before it
@@ -235,12 +240,12 @@ assumptions below get settled for your account.
 * `--max-messages` (default 500) refuses the whole batch when more matches
   than that come back. It never processes a partial set: silent truncation
   reads as "it handled everything" when it did not. Raising it is safe:
-  mxfilter talks to the server in batches of 250 regardless, so a large
+  mailctl talks to the server in batches of 250 regardless, so a large
   pass never becomes one oversized IMAP command. If a batch fails part-way,
-  mxfilter says how many messages were fully handled. Re-running the same
+  mailctl says how many messages were fully handled. Re-running the same
   command picks up the rest — except on a server without `MOVE`, where the
   failed batch may already have been copied and a re-run copies it again;
-  mxfilter says so, and names the folder to check.
+  mailctl says so, and names the folder to check.
 * A `--fileinto` target that does not exist is a **warning, not an error**,
   unless you pass `--create-folder`. `add` will still write the rule, and
   mail filed there by the server later may be lost. `apply` refuses outright,
@@ -251,20 +256,20 @@ assumptions below get settled for your account.
   a folder that is created but never subscribed to receives mail and never
   appears. `--no-subscribe` skips the subscription on purpose — somewhere to
   file a high-volume list that should leave the inbox without cluttering the
-  sidebar — and mxfilter says so on the line where it creates the folder,
+  sidebar — and mailctl says so on the line where it creates the folder,
   because an invisible folder nobody was told about is the bug, not the
   feature. It is refused without `--create-folder`, where it would do
-  nothing; `mxfilter unsubscribe` hides a folder that already exists. If
+  nothing; `mailctl unsubscribe` hides a folder that already exists. If
   the subscription fails, the folder is **not** torn back down: it exists
-  and mail filed there will arrive, so mxfilter warns and tells you to run
-  `mxfilter subscribe` on it.
+  and mail filed there will arrive, so mailctl warns and tells you to run
+  `mailctl subscribe` on it.
 * On a server that advertises the Sieve `mailbox` extension, the rule says
   `fileinto :create` **as well**, so Sieve recreates the folder if it is
-  later deleted. mxfilter still creates and subscribes the folder over IMAP
+  later deleted. mailctl still creates and subscribes the folder over IMAP
   itself, because Sieve only creates it when the first message arrives,
-  when mxfilter is not running to subscribe to it. With `--no-imap`, Sieve
-  is the only thing that can create the folder, and mxfilter says it may
-  not appear in webmail until you run `mxfilter subscribe` on it.
+  when mailctl is not running to subscribe to it. With `--no-imap`, Sieve
+  is the only thing that can create the folder, and mailctl says it may
+  not appear in webmail until you run `mailctl subscribe` on it.
 * The folder is **announced when the change is shown and created only when
   it is applied** — for `add` and `from-message`, once the server has
   accepted the new script and just before it is stored; for `apply`, after
@@ -287,7 +292,7 @@ documentation read better.
 * The username is the **full email address**, on both IMAP and ManageSieve.
 * The hostname is **per-account** — the same as your primary MX record, shown
   on the panel's Email Clients page. There is deliberately no default.
-* IMAP is **993** (implicit TLS) or **143** (STARTTLS). mxfilter picks the
+* IMAP is **993** (implicit TLS) or **143** (STARTTLS). mailctl picks the
   mode from the port: anything other than 143 is treated as implicit TLS.
 * MXRoute's REST API exposes nothing for filters or Sieve, which is why this
   tool speaks ManageSieve rather than an API.
@@ -303,13 +308,13 @@ documentation read better.
 * Because of that, neither is assumed. The delimiter is **detected at
   runtime** from the server's folder list, and folder names are matched
   against that list — type `Lists/News` or `INBOX.Lists.News` and the
-  server's spelling is used for both the Sieve rule and the move. `mxfilter
+  server's spelling is used for both the Sieve rule and the move. `mailctl
   folders` is the authority for your account. The one exception is
   `--no-imap`, which has no folder list to consult and falls back to `.` (or
   `--delimiter`), and warns that it did.
 * Folder names are **case-sensitive**, except `INBOX` itself (RFC 3501), so
   `INBOX.Lists` and `INBOX.lists` are two folders. When the folder you name
-  does not exist but one differing only in case does, mxfilter warns and
+  does not exist but one differing only in case does, mailctl warns and
   names both — and with `--create-folder`, says a second folder will be
   created beside it.
 
@@ -321,28 +326,29 @@ documentation read better.
   verified MXRoute setting. `--sieve-port` and `--sieve-tls` exist because of
   that, and a connection failure says so rather than implying you mistyped.
 * **Whether `notify` and `vacation` are disabled.** No MXRoute source says
-  either way. mxfilter refuses both as **our own conservative default**, not
+  either way. mailctl refuses both as **our own conservative default**, not
   as a documented MXRoute limitation, and its error says so and points at the
-  control panel. `mxfilter test` prints what your server actually advertises.
+  control panel. `mailctl test` prints what your server actually advertises.
 * **ManageSieve script-size, script-count, and rate limits.** Unknown; there
   is no documented ceiling to design against.
 
 The active script's name is read from `LISTSCRIPTS` and written back to, and
 is never guessed — the webmail's script name is server-side config, and
 MXRoute is mid-migration on both its panel and Dovecot. `--script` overrides
-it; the name `mxfilter` is used only when the account has no scripts at all.
+it; the name `mxfilter` (the tool's old name, not yet migrated) is used only
+when the account has no scripts at all.
 
 The server runs one script, and editing a different one does not change
 which. `--script NAME` on a script that is not the active one stores the
-change and leaves NAME inactive, and mxfilter says so before it uploads;
+change and leaves NAME inactive, and mailctl says so before it uploads;
 `--activate` makes NAME the active script as well. When the account has no
-active script at all, the script mxfilter writes is activated, since
+active script at all, the script mailctl writes is activated, since
 otherwise nothing would run it.
 
-### A filtering stage mxfilter cannot see
+### A filtering stage mailctl cannot see
 
-mxfilter sees **Sieve only**. Mail may pass through an earlier filter first,
-and nothing mxfilter reports covers it.
+mailctl sees **Sieve only**. Mail may pass through an earlier filter first,
+and nothing mailctl reports covers it.
 
 DirectAdmin's **Email Filters** panel writes an Exim filter that runs after
 the mail server accepts a message and before it is delivered to the mailbox,
@@ -357,12 +363,12 @@ neither this filter nor Sieve, and is phasing DirectAdmin out — MXRoute has
 said that new customers already have no interaction with DirectAdmin — so
 whether accounts set up since then still carry the filter is unconfirmed.
 
-mxfilter cannot read or change that filter, and will not: DirectAdmin's
-filters need domain-owner credentials, and mxfilter logs in as a mailbox. So:
+mailctl cannot read or change that filter, and will not: DirectAdmin's
+filters need domain-owner credentials, and mailctl logs in as a mailbox. So:
 
-* `mxfilter test` reports the Sieve and IMAP side, not the whole path mail
+* `mailctl test` reports the Sieve and IMAP side, not the whole path mail
   takes.
-* `mxfilter rules` works out which rules can never fire from their order in
+* `mailctl rules` works out which rules can never fire from their order in
   the Sieve script. A message dropped before Sieve is outside that analysis.
 * A filter set in the panel is invisible here. If a rule never seems to fire,
   the mail may never have reached Sieve: check the panel's filters, if your
@@ -408,7 +414,7 @@ character class, so a bracketed subject is safe.
 * Merging round-trips the script through a parser. Rules that have no
   `# Filter:` name comment are renamed `Unnamed rule N`, and formatting is
   normalized. The diff shows this before anything is uploaded.
-* Nothing here evaluates the Sieve script you already have. mxfilter can
+* Nothing here evaluates the Sieve script you already have. mailctl can
   apply criteria you give it to old mail; it cannot tell you which of your
   existing rules would have caught a message.
 

@@ -26,9 +26,9 @@ import email
 
 import pytest
 
-from mxfilter.cli import print_message, print_script_diff
-from mxfilter.criteria import Criteria
-from mxfilter.sieve import (
+from mailctl.cli import print_message, print_script_diff
+from mailctl.criteria import Criteria
+from mailctl.sieve import (
     display_diff,
     merge_rule,
     remove_rule,
@@ -286,7 +286,7 @@ def test_the_reformat_is_reported_rather_than_only_hidden(roundcube_script):
 def test_an_already_normalised_script_reports_no_reformat(roundcube_script):
     """The note has to stop, and this is the merge after which it does.
 
-    Once mxfilter has uploaded once, the server's copy is already in this
+    Once mailctl has uploaded once, the server's copy is already in this
     formatting. A note that appeared every run would be read as
     boilerplate and stop being read at all -- so it is keyed on the real
     difference, not on the command.

@@ -1,4 +1,4 @@
-$ mxfilter add --from noreply@github.com --fileinto Lists --no-apply
+$ mailctl add --from noreply@github.com --fileinto Lists --no-apply
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

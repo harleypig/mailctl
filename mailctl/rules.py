@@ -27,7 +27,7 @@ ADR 0004, not here.
 
 from dataclasses import dataclass, field
 
-from . import MxFilterError
+from . import MailctlError
 from .criteria import Criteria, canonical_header
 
 __all__ = [
@@ -342,7 +342,7 @@ def read_rules(filters) -> list[Rule]:
     entries = getattr(filters, "filters", None)
 
     if entries is None:
-        raise MxFilterError(
+        raise MailctlError(
             "read_rules expects a parsed filter set from sieve.parse_script()"
         )
 

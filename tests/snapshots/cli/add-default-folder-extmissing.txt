@@ -1,4 +1,4 @@
-$ mxfilter add --from noreply@github.com --dry-run --no-apply
+$ mailctl add --from noreply@github.com --dry-run --no-apply
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
@@ -7,7 +7,7 @@ Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'
   then:  fileinto INBOX.Lists; stop
 
-Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
 --- sieve diff ---
 --- managesieve (current)

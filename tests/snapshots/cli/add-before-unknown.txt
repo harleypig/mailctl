@@ -1,10 +1,10 @@
-$ mxfilter add --from noreply@github.com --fileinto Lists --before phantom
+$ mailctl add --from noreply@github.com --fileinto Lists --before phantom
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 --- stderr
-mxfilter: no rule named 'phantom' in the active script, so --before has nothing to place this rule against. Known rules: keep-boss, bin-the-noise
+mailctl: no rule named 'phantom' in the active script, so --before has nothing to place this rule against. Known rules: keep-boss, bin-the-noise
 
 --- sieve calls
 ('connect',)

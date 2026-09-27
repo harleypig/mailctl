@@ -1,19 +1,19 @@
-$ mxfilter move-rule keep-boss
+$ mailctl move-rule keep-boss
 exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mxfilter move-rule [-h] [--verbose] [--debug] [--host HOST]
-                          [--user USER]
-                          [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
-                          [--env-file [PATH]] [--imap-host IMAP_HOST]
-                          [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
-                          [--sieve-tls {starttls,ssl,none}]
-                          [--backup-dir BACKUP_DIR] [--dry-run] [--yes]
-                          [--script SCRIPT] [--activate]
-                          (--first | --last | --before OTHER | --after OTHER)
-                          NAME
-mxfilter move-rule: error: one of the arguments --first --last --before --after is required
+usage: mailctl move-rule [-h] [--verbose] [--debug] [--host HOST]
+                         [--user USER]
+                         [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
+                         [--env-file [PATH]] [--imap-host IMAP_HOST]
+                         [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
+                         [--sieve-tls {starttls,ssl,none}]
+                         [--backup-dir BACKUP_DIR] [--dry-run] [--yes]
+                         [--script SCRIPT] [--activate]
+                         (--first | --last | --before OTHER | --after OTHER)
+                         NAME
+mailctl move-rule: error: one of the arguments --first --last --before --after is required
 
 --- sieve calls
 --- imap calls

@@ -12,11 +12,11 @@ import argparse
 
 import pytest
 
-from mxfilter import MxFilterError
-from mxfilter import sieve as sieve_module
-from mxfilter.config import Config, load_config
-from mxfilter.criteria import Criteria, escape_sieve_string
-from mxfilter.sieve import (
+from mailctl import MailctlError
+from mailctl import sieve as sieve_module
+from mailctl.config import Config, load_config
+from mailctl.criteria import Criteria, escape_sieve_string
+from mailctl.sieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
@@ -69,7 +69,7 @@ def merge_simple(existing: str, name: str, folder: str, **kwargs) -> str:
 def test_merge_keeps_every_pre_existing_rule(roundcube_script):
     """The single most important assertion in the suite.
 
-    A merge must carry through rules mxfilter did not write. The check is
+    A merge must carry through rules mailctl did not write. The check is
     on the rule *bodies* -- the conditions and the actions -- because that
     is what actually sorts the user's mail; a rule whose fileinto target
     survived is a rule that still works.
@@ -95,8 +95,8 @@ def test_merged_script_reparses_with_sievelib(roundcube_script, reparse):
     """Emitting text that sievelib cannot read back would strand the user.
 
     The next run parses the active script before merging into it, so an
-    unparseable emission turns every later ``mxfilter add`` into a hard
-    stop against a script only mxfilter could have written.
+    unparseable emission turns every later ``mailctl add`` into a hard
+    stop against a script only mailctl could have written.
     """
     merged = merge_simple(roundcube_script, "new-rule", "INBOX.New")
 
@@ -146,7 +146,7 @@ def test_merge_preserves_a_roundcube_rule_name(roundcube_script):
     """Rule *names* are part of what has to survive, not just bodies.
 
     Roundcube's UI keys on ``# rule:[name]``; after one merge the user's
-    filter list shows 'Unnamed rule 1'. Worse, the name is what mxfilter
+    filter list shows 'Unnamed rule 1'. Worse, the name is what mailctl
     itself uses for identity, so the rename also breaks --replace and
     remove-rule against that rule (see the next test).
     """
@@ -182,7 +182,7 @@ def test_replace_updates_a_roundcube_named_rule_in_place(roundcube_script):
 def test_render_writes_roundcube_name_markers(roundcube_script):
     """The panel is the other editor of this file, so it sets the dialect.
 
-    Emitting sievelib's ``# Filter:`` would leave every rule mxfilter writes
+    Emitting sievelib's ``# Filter:`` would leave every rule mailctl writes
     nameless in the webmail UI -- the same identity loss as the parse bug,
     pointed the other way.
     """
@@ -199,7 +199,7 @@ def test_names_do_not_drift_over_two_render_cycles(roundcube_script):
 
     Every run re-parses what the previous run rendered, so a name that
     shifts by one cycle -- gaining a bracket, losing a prefix -- diverges a
-    little further on each ``mxfilter add`` until identity is lost anyway.
+    little further on each ``mailctl add`` until identity is lost anyway.
     """
     first = render_script(parse_script(roundcube_script))
     second = render_script(parse_script(first))
@@ -212,14 +212,14 @@ def test_names_do_not_drift_over_two_render_cycles(roundcube_script):
 
 # ----------------------------------------------------------------------------
 def test_both_dialects_are_read_from_one_script(reparse):
-    """A script mxfilter and Roundcube have both edited carries both forms."""
+    """A script mailctl and Roundcube have both edited carries both forms."""
     script = (
         'require ["fileinto"];\n'
         "# rule:[from-the-panel]\n"
         'if header :contains "from" "a@example.com" {\n'
         '    fileinto "INBOX.A";\n'
         "}\n"
-        "# Filter: from-mxfilter\n"
+        "# Filter: from-mailctl\n"
         'if header :contains "from" "b@example.com" {\n'
         '    fileinto "INBOX.B";\n'
         "}\n"
@@ -229,7 +229,7 @@ def test_both_dialects_are_read_from_one_script(reparse):
 
     assert rule_names(parse_script(script)) == [
         "from-the-panel",
-        "from-mxfilter",
+        "from-mailctl",
     ]
 
 
@@ -372,7 +372,7 @@ def test_a_roundcube_name_collides_without_replace(roundcube_script):
     Before the name survived parsing this raised nothing and appended a
     second rule -- the silent failure, since the first one carries ``stop``.
     """
-    with pytest.raises(MxFilterError, match=r"already exists.*--replace"):
+    with pytest.raises(MailctlError, match=r"already exists.*--replace"):
         merge_simple(roundcube_script, "keep-boss", "INBOX.Elsewhere")
 
 
@@ -413,7 +413,7 @@ def test_a_misplaced_comment_offset_fails_loudly(
 
     monkeypatch.setattr(sieve_module.parser, "Lexer", DriftingLexer)
 
-    with pytest.raises(MxFilterError, match="version mismatch"):
+    with pytest.raises(MailctlError, match="version mismatch"):
         parse_script(roundcube_script)
 
 
@@ -464,7 +464,7 @@ def test_merge_refuses_an_unparseable_script(script):
     data loss the merge exists to prevent -- and does so precisely when the
     script is unusual, hand-written, and most valuable.
     """
-    with pytest.raises(MxFilterError, match="could not be parsed"):
+    with pytest.raises(MailctlError, match="could not be parsed"):
         merge_simple(script, "new-rule", "INBOX.New")
 
 
@@ -472,7 +472,7 @@ def test_merge_refuses_an_unparseable_script(script):
 @pytest.mark.parametrize("script", UNPARSEABLE)
 def test_remove_refuses_an_unparseable_script(script):
     """The same hard stop on the removal path, which also re-renders."""
-    with pytest.raises(MxFilterError, match="could not be parsed"):
+    with pytest.raises(MailctlError, match="could not be parsed"):
         remove_rule(script, "anything")
 
 
@@ -483,7 +483,7 @@ def test_the_parse_failure_names_the_reason():
     The message has to carry sievelib's own diagnostic, or the user is
     told their script is unparseable with no way to find out why.
     """
-    with pytest.raises(MxFilterError, match=r"line 1.*unknown command"):
+    with pytest.raises(MailctlError, match=r"line 1.*unknown command"):
         parse_script("garbage garbage;")
 
 
@@ -519,7 +519,7 @@ def test_merge_refuses_a_duplicate_name_without_replace():
     """Silently overwriting a rule the user named is a data loss too."""
     existing = merge_simple("", "shared", "INBOX.First")
 
-    with pytest.raises(MxFilterError, match=r"already exists.*--replace"):
+    with pytest.raises(MailctlError, match=r"already exists.*--replace"):
         merge_simple(existing, "shared", "INBOX.Second")
 
 
@@ -556,7 +556,7 @@ def three_rules() -> str:
 def test_no_placement_flag_still_appends(reparse):
     """The default is unchanged, and that is the point of pinning it.
 
-    Every mxfilter version before the placement flags appended, and the
+    Every mailctl version before the placement flags appended, and the
     flags were added to make position sayable rather than to change what
     happens when nobody says anything. A default that quietly moved would
     reorder scripts on accounts whose owner never asked for any of this.
@@ -661,7 +661,7 @@ def test_an_unknown_anchor_is_refused_and_the_known_names_listed(where):
     reason to name an anchor is that the user is holding a mental model of
     the script -- and a mismatch means that model is wrong somewhere.
     """
-    with pytest.raises(MxFilterError) as raised:
+    with pytest.raises(MailctlError) as raised:
         merge_simple(
             three_rules(),
             "new",
@@ -685,7 +685,7 @@ def test_a_rule_cannot_be_placed_relative_to_itself(where):
     to work out its position, and the realistic cause is a user who meant
     to name a different rule.
     """
-    with pytest.raises(MxFilterError, match="names the rule being added"):
+    with pytest.raises(MailctlError, match="names the rule being added"):
         merge_simple(
             three_rules(),
             "two",
@@ -998,16 +998,16 @@ def test_remove_an_unknown_rule_raises_and_lists_the_real_names():
     """The failure has to be actionable, since rule names are discovered."""
     existing = merge_simple("", "real-one", "INBOX.Real")
 
-    with pytest.raises(MxFilterError, match=r"no rule named 'ghost'"):
+    with pytest.raises(MailctlError, match=r"no rule named 'ghost'"):
         remove_rule(existing, "ghost")
 
-    with pytest.raises(MxFilterError, match=r"Known rules: real-one"):
+    with pytest.raises(MailctlError, match=r"Known rules: real-one"):
         remove_rule(existing, "ghost")
 
 
 # ----------------------------------------------------------------------------
 def test_remove_from_an_empty_script_says_none_are_known():
-    with pytest.raises(MxFilterError, match=r"Known rules: \(none\)"):
+    with pytest.raises(MailctlError, match=r"Known rules: \(none\)"):
         remove_rule("", "ghost")
 
 
@@ -1119,7 +1119,7 @@ def test_render_script_round_trips_through_parse():
 
 # ----------------------------------------------------------------------------
 def test_backup_writes_the_exact_bytes_the_server_had(tmp_path):
-    """Restoring must not need mxfilter, so the file is a plain copy."""
+    """Restoring must not need mailctl, so the file is a plain copy."""
     text = 'require ["fileinto"];\n# untouched\n'
 
     target = backup_script(text, "roundcube", tmp_path / "backups")
@@ -1149,7 +1149,7 @@ def test_backup_failure_raises_rather_than_losing_the_upload_guard(tmp_path):
     blocker = tmp_path / "blocker"
     blocker.write_text("not a directory")
 
-    with pytest.raises(MxFilterError, match="could not write backup"):
+    with pytest.raises(MailctlError, match="could not write backup"):
         backup_script("x", "active", blocker / "backups")
 
 

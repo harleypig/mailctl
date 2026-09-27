@@ -1,7 +1,7 @@
-$ mxfilter restore <TMP>/restore.sieve --script managesieve --yes
+$ mailctl restore <TMP>/restore.sieve --script managesieve --yes
 exit: 0
 --- stdout
-Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mxfilter could not parse):
+Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mailctl could not parse):
 
 --- sieve diff ---
 --- managesieve (current)

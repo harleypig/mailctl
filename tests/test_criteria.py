@@ -2,7 +2,7 @@
 
 One ``Criteria`` object produces the Sieve conditions for mail that has not
 arrived and the IMAP SEARCH key for mail that already has. If those two
-drift, ``mxfilter add`` files new mail one way and old mail another, and
+drift, ``mailctl add`` files new mail one way and old mail another, and
 nothing in the output says so -- which is why the agreement tests below
 assert both renderings of the *same* object rather than testing each side
 on its own.
@@ -10,8 +10,8 @@ on its own.
 
 import pytest
 
-from mxfilter import MxFilterError
-from mxfilter.criteria import (
+from mailctl import MailctlError
+from mailctl.criteria import (
     COMPARE_OPS,
     MATCH_MODES,
     Criteria,
@@ -55,25 +55,25 @@ def test_add_refuses_an_empty_value():
     """An empty value would widen the rule to every message with a header."""
     criteria = Criteria()
 
-    with pytest.raises(MxFilterError, match="has an empty value"):
+    with pytest.raises(MailctlError, match="has an empty value"):
         criteria.add("from", "")
 
 
 # ----------------------------------------------------------------------------
 def test_a_term_refuses_an_empty_header():
-    with pytest.raises(MxFilterError, match="needs a header name"):
+    with pytest.raises(MailctlError, match="needs a header name"):
         Term("", "value")
 
 
 # ----------------------------------------------------------------------------
 def test_an_unknown_match_mode_is_refused():
-    with pytest.raises(MxFilterError, match=r"--match must be one of"):
+    with pytest.raises(MailctlError, match=r"--match must be one of"):
         Criteria(match="either")
 
 
 # ----------------------------------------------------------------------------
 def test_an_unknown_compare_op_is_refused():
-    with pytest.raises(MxFilterError, match=r"--compare must be one of"):
+    with pytest.raises(MailctlError, match=r"--compare must be one of"):
         Criteria(compare="regex")
 
 
@@ -88,13 +88,13 @@ def test_no_criteria_is_refused_before_anything_is_generated():
 
     assert not criteria
 
-    with pytest.raises(MxFilterError, match="no criteria given"):
+    with pytest.raises(MailctlError, match="no criteria given"):
         criteria.require_terms()
 
-    with pytest.raises(MxFilterError, match="no criteria given"):
+    with pytest.raises(MailctlError, match="no criteria given"):
         criteria.sieve_conditions()
 
-    with pytest.raises(MxFilterError, match="no criteria given"):
+    with pytest.raises(MailctlError, match="no criteria given"):
         criteria.imap_search_key()
 
 

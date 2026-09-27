@@ -1,4 +1,4 @@
-$ mxfilter from-message --uid 3 --fileinto Lists --dry-run
+$ mailctl from-message --uid 3 --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Message uid 3 in 'INBOX':
@@ -16,7 +16,7 @@ Rule 'list-id-dev-lists-example-com' on script 'managesieve':
   when:  List-Id contains 'dev.lists.example.com'
   then:  fileinto INBOX.Lists; stop
 
-Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
 --- sieve diff ---
 --- managesieve (current)

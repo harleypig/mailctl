@@ -23,7 +23,7 @@ from sievelib import factory, parser
 from sievelib.managesieve import Client
 from sievelib.managesieve import Error as SieveProtocolError
 
-from . import MxFilterError
+from . import MailctlError
 from .config import DEFAULT, DEFAULT_SIEVE_PORT, DEFAULT_SIEVE_TLS, Config
 
 __all__ = [
@@ -77,7 +77,7 @@ MXROUTE_FORBIDDEN_ACTIONS = {
     ),
 }
 
-# NOT refused because MXroute disables them -- mxfilter simply does not
+# NOT refused because MXroute disables them -- mailctl simply does not
 # generate them. No MXroute *documentation* says anything either way, so
 # nothing here should claim they are unavailable.
 #
@@ -87,7 +87,7 @@ MXROUTE_FORBIDDEN_ACTIONS = {
 # accept is a choice of ours, where declining one it never advertised is
 # not. Neither is a documented MXroute restriction, which is the thing the
 # message must not imply. What a given server supports is a question its
-# CAPABILITY response answers; run 'mxfilter test'.
+# CAPABILITY response answers; run 'mailctl test'.
 UNIMPLEMENTED_ACTIONS = {
     "notify": "notify (enotify)",
     "vacation": "vacation",
@@ -112,9 +112,9 @@ REPORTABLE_EXTENSIONS = (
 # The name given to the in-memory filter set. It is not the script name and
 # it never reaches the server -- sievelib only uses it for its own
 # bookkeeping.
-FILTERSET_NAME = "mxfilter"
+FILTERSET_NAME = "mailctl"
 
-# Two dialects name a rule in a Sieve script, and mxfilter has to read both
+# Two dialects name a rule in a Sieve script, and mailctl has to read both
 # and write one.
 #
 # `# Filter: NAME` is sievelib's, and the only one its parser recognises.
@@ -128,7 +128,7 @@ FILTERSET_NAME = "mxfilter"
 # the rule I named" into "append a second rule that never fires".
 #
 # Write: `# rule:[NAME]`. Interoperating with the webmail on the host beats
-# matching the library's internal default: rules mxfilter writes stay
+# matching the library's internal default: rules mailctl writes stay
 # visible and editable in the panel's filter UI, and rules the user wrote
 # there keep their names through a merge.
 ROUNDCUBE_NAME_MARKER = re.compile(r"#\s*rule:\[(?P<name>.+)\]")
@@ -202,10 +202,10 @@ def _rewrite_hash_comments(
             start = lexer.pos
 
             if raw[start : start + len(value)] != value:
-                raise MxFilterError(
+                raise MailctlError(
                     "cannot locate a comment in the Sieve script safely, so "
                     "rule names cannot be translated without risking the "
-                    "script's contents; this is an mxfilter/sievelib "
+                    "script's contents; this is an mailctl/sievelib "
                     "version mismatch, not a problem with your script"
                 )
 
@@ -305,7 +305,7 @@ def parse_script(text: str) -> factory.FiltersSet:
     script_parser = parser.Parser()
 
     if not script_parser.parse(_to_sievelib_names(text)):
-        raise MxFilterError(
+        raise MailctlError(
             "the existing Sieve script could not be parsed, so merging into "
             "it would risk losing rules: "
             f"{getattr(script_parser, 'error', 'unknown parse error')}"
@@ -363,7 +363,7 @@ def resolve_position(
     # instead -- what a plain `!= name` filter does -- shortens that list
     # by one per surviving duplicate, and --last then lands the rule that
     # many slots short of the end while reporting success. It is reachable
-    # because a hand-edited script can hold two rules mxfilter reads as
+    # because a hand-edited script can hold two rules mailctl reads as
     # one name: `# rule:[Lists]` and `# rule:[Lists ]` both parse to
     # `Lists`. Do not simplify this back to a comprehension.
     others = list(names)
@@ -381,7 +381,7 @@ def resolve_position(
         return len(others)
 
     if placement.anchor == name:
-        raise MxFilterError(
+        raise MailctlError(
             f"--{placement.where} {placement.anchor!r} names the rule being "
             f"added, which has no position to be relative to. Name another "
             f"rule, or use --first / --last."
@@ -390,7 +390,7 @@ def resolve_position(
     if placement.anchor not in others:
         known = ", ".join(names) or "(none)"
 
-        raise MxFilterError(
+        raise MailctlError(
             f"no rule named {placement.anchor!r} in the active script, so "
             f"--{placement.where} has nothing to place this rule against. "
             f"Known rules: {known}"
@@ -457,7 +457,7 @@ def merge_rule(
     exists = filters.filter_exists(name)
 
     if exists and not replace:
-        raise MxFilterError(
+        raise MailctlError(
             f"a rule named {name!r} already exists in the active script. "
             f"Use --replace to overwrite it, or --name to pick another."
         )
@@ -485,7 +485,7 @@ def remove_rule(existing: str, name: str) -> str:
     if not filters.removefilter(name):
         known = ", ".join(rule_names(filters)) or "(none)"
 
-        raise MxFilterError(
+        raise MailctlError(
             f"no rule named {name!r} in the active script. Known rules: "
             f"{known}"
         )
@@ -507,7 +507,7 @@ def move_rule(existing: str, name: str, placement: Placement) -> str:
     if not filters.filter_exists(name):
         known = ", ".join(rule_names(filters)) or "(none)"
 
-        raise MxFilterError(
+        raise MailctlError(
             f"no rule named {name!r} in the active script. Known rules: "
             f"{known}"
         )
@@ -662,7 +662,7 @@ def write_backup(text: str, target: Path) -> Path:
         os.chmod(target, 0o600)
 
     except OSError as exc:
-        raise MxFilterError(
+        raise MailctlError(
             f"could not write backup to {target}: {exc}"
         ) from exc
 
@@ -677,7 +677,7 @@ def _make_private_dir(directory: Path) -> None:
     parent it creates gets the process umask instead -- so the directories
     that did not exist are collected first and chmod'ed afterwards.
     Directories that were already there are left exactly as the user set
-    them; this only decides the mode of what mxfilter itself creates.
+    them; this only decides the mode of what mailctl itself creates.
     """
     created = []
     probe = directory
@@ -696,8 +696,8 @@ def _make_private_dir(directory: Path) -> None:
 def backup_script(text: str, name: str, backup_dir: Path) -> Path:
     """Write the current script to a timestamped file and return its path.
 
-    Taken before every upload, and by ``mxfilter backup`` when no
-    ``--output`` says otherwise. Restoring is then a plain ``mxfilter``
+    Taken before every upload, and by ``mailctl backup`` when no
+    ``--output`` says otherwise. Restoring is then a plain ``mailctl``
     -free operation: the file is the exact bytes the server had.
     """
     return write_backup(text, backup_path(name, backup_dir))
@@ -773,26 +773,26 @@ class SieveSession:
             )
 
         except SieveProtocolError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"ManageSieve error talking to {config.host}:"
                 f"{config.sieve_port} -- {exc}. "
                 f"{_connection_hint(config)}"
             ) from exc
 
         except ssl.SSLError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"TLS failure against {config.host}:{config.sieve_port} -- "
                 f"{exc}. {_connection_hint(config)}"
             ) from exc
 
         except OSError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"cannot reach {config.host}:{config.sieve_port} -- {exc}. "
                 f"{_connection_hint(config)}"
             ) from exc
 
         if not authenticated:
-            raise MxFilterError(
+            raise MailctlError(
                 f"ManageSieve authentication failed for {config.user!r} "
                 f"(password {config.password_state()}). MXRoute expects the "
                 f"FULL email address as the username, e.g. "
@@ -817,7 +817,7 @@ class SieveSession:
     def _require_client(self) -> Client:
         """Return the live client or fail loudly."""
         if self.client is None:
-            raise MxFilterError("ManageSieve session is not open")
+            raise MailctlError("ManageSieve session is not open")
 
         return self.client
 
@@ -850,7 +850,7 @@ class SieveSession:
             result = client.listscripts()
 
         except SieveProtocolError as exc:
-            raise MxFilterError(f"LISTSCRIPTS failed -- {exc}") from exc
+            raise MailctlError(f"LISTSCRIPTS failed -- {exc}") from exc
 
         if result is None:
             return (None, [])
@@ -875,10 +875,10 @@ class SieveSession:
             content = client.getscript(name)
 
         except SieveProtocolError as exc:
-            raise MxFilterError(f"GETSCRIPT {name!r} failed -- {exc}") from exc
+            raise MailctlError(f"GETSCRIPT {name!r} failed -- {exc}") from exc
 
         if content is False or content is None:
-            raise MxFilterError(f"could not download script {name!r}")
+            raise MailctlError(f"could not download script {name!r}")
 
         return content
 
@@ -892,12 +892,12 @@ class SieveSession:
             accepted = client.checkscript(content)
 
         except SieveProtocolError as exc:
-            raise MxFilterError(
+            raise MailctlError(
                 f"the server rejected the generated script -- {exc}"
             ) from exc
 
         if not accepted:
-            raise MxFilterError(
+            raise MailctlError(
                 "the server rejected the generated script (CHECKSCRIPT "
                 "returned failure); nothing was uploaded"
             )
@@ -912,10 +912,10 @@ class SieveSession:
             stored = client.putscript(name, content)
 
         except SieveProtocolError as exc:
-            raise MxFilterError(f"PUTSCRIPT {name!r} failed -- {exc}") from exc
+            raise MailctlError(f"PUTSCRIPT {name!r} failed -- {exc}") from exc
 
         if not stored:
-            raise MxFilterError(f"PUTSCRIPT {name!r} failed")
+            raise MailctlError(f"PUTSCRIPT {name!r} failed")
 
     # ------------------------------------------------------------------------
     def set_active(self, name: str) -> None:
@@ -927,10 +927,10 @@ class SieveSession:
             activated = client.setactive(name)
 
         except SieveProtocolError as exc:
-            raise MxFilterError(f"SETACTIVE {name!r} failed -- {exc}") from exc
+            raise MailctlError(f"SETACTIVE {name!r} failed -- {exc}") from exc
 
         if not activated:
-            raise MxFilterError(f"SETACTIVE {name!r} failed")
+            raise MailctlError(f"SETACTIVE {name!r} failed")
 
 
 DEFAULT_PORT_AND_TLS = f"{DEFAULT_SIEVE_PORT} + {DEFAULT_SIEVE_TLS}"

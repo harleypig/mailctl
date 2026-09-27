@@ -1,8 +1,8 @@
 """Folder naming, the post-filtered search, and the plan/execute split.
 
-Nothing here opens a socket: ``IMAPClient`` is replaced at mxfilter's own
+Nothing here opens a socket: ``IMAPClient`` is replaced at mailctl's own
 import boundary by the ``fake_imap`` double, so what is under test is
-mxfilter's logic and never IMAPClient's.
+mailctl's logic and never IMAPClient's.
 
 Folder naming carries the most risk of anything offline in this tool.
 Getting the delimiter wrong does not fail -- it files mail into a folder
@@ -12,9 +12,9 @@ nobody opens, which looks exactly like the filter not running.
 import pytest
 from imapclient.exceptions import IMAPClientError, LoginError
 
-from mxfilter import MxFilterError
-from mxfilter.criteria import Criteria
-from mxfilter.imap import (
+from mailctl import MailctlError
+from mailctl.criteria import Criteria
+from mailctl.imap import (
     BULK_CHUNK,
     ImapSession,
     MailActionPlan,
@@ -185,13 +185,13 @@ def test_a_missing_folder_names_its_case_variant(imap_session, fake_imap):
     """Selecting a folder that exists only in another case says so."""
     fake_imap.failures["select_folder"] = IMAPClientError("no such mailbox")
 
-    with pytest.raises(MxFilterError, match=r"'INBOX\.Lists' exists"):
+    with pytest.raises(MailctlError, match=r"'INBOX\.Lists' exists"):
         imap_session._select("INBOX.lists")
 
 
 # ----------------------------------------------------------------------------
 def test_normalize_refuses_an_empty_folder_name():
-    with pytest.raises(MxFilterError, match="empty folder name"):
+    with pytest.raises(MailctlError, match="empty folder name"):
         normalize_folder("///", ".")
 
 
@@ -217,7 +217,7 @@ def test_split_path(name, delimiter, parts):
 
 # ----------------------------------------------------------------------------
 def test_decode_header_value_decodes_an_encoded_word():
-    """Sieve compares against the decoded value, so mxfilter must too."""
+    """Sieve compares against the decoded value, so mailctl must too."""
     assert decode_header_value("=?utf-8?q?caf=C3=A9?=") == "café"
 
 
@@ -287,12 +287,12 @@ def test_port_993_uses_implicit_tls_and_143_uses_starttls(
 # ----------------------------------------------------------------------------
 def test_a_missing_setting_is_named_before_anything_connects(fake_imap):
     """Failing on the settings is friendlier than failing on the socket."""
-    from mxfilter.config import Config, Secret
+    from mailctl.config import Config, Secret
 
     config = Config(user="user@example.com")
     config._password = Secret("x")
 
-    with pytest.raises(MxFilterError, match="imap_host"):
+    with pytest.raises(MailctlError, match="imap_host"):
         ImapSession(config).open()
 
     assert fake_imap.connected_to is None
@@ -309,7 +309,7 @@ def test_a_login_failure_names_the_full_address_convention(
     """
     fake_imap.failures["login"] = LoginError("no")
 
-    with pytest.raises(MxFilterError, match="FULL email address") as caught:
+    with pytest.raises(MailctlError, match="FULL email address") as caught:
         ImapSession(imap_config).open()
 
     assert "not-a-real-password" not in str(caught.value)
@@ -319,7 +319,7 @@ def test_a_login_failure_names_the_full_address_convention(
 def test_calling_a_method_before_open_fails_clearly(imap_config):
     session = ImapSession(imap_config)
 
-    with pytest.raises(MxFilterError, match="IMAP session is not open"):
+    with pytest.raises(MailctlError, match="IMAP session is not open"):
         session.search(Criteria(), "INBOX")
 
 
@@ -443,7 +443,7 @@ def test_a_search_failure_names_the_folder(imap_session, fake_imap):
     criteria = Criteria()
     criteria.add("from", "a@example.com")
 
-    with pytest.raises(MxFilterError, match=r"search in 'INBOX' failed"):
+    with pytest.raises(MailctlError, match=r"search in 'INBOX' failed"):
         imap_session.search(criteria, "INBOX")
 
 
@@ -457,7 +457,7 @@ def test_selecting_a_missing_folder_points_at_the_folders_command(
     criteria = Criteria()
     criteria.add("from", "a@example.com")
 
-    with pytest.raises(MxFilterError, match=r"Run 'mxfilter folders'"):
+    with pytest.raises(MailctlError, match=r"Run 'mailctl folders'"):
         imap_session.search(criteria, "INBOX.Nope")
 
 
@@ -592,7 +592,7 @@ def test_the_move_fallback_uses_a_plain_expunge_without_uidplus(
 def test_a_move_failure_names_the_destination(imap_session, fake_imap):
     fake_imap.failures["move"] = IMAPClientError("over quota")
 
-    with pytest.raises(MxFilterError, match=r"move messages to 'INBOX.Lists'"):
+    with pytest.raises(MailctlError, match=r"move messages to 'INBOX.Lists'"):
         imap_session.move([1], "INBOX.Lists")
 
 
@@ -687,7 +687,7 @@ def chunk_sizes(fake_imap, name: str) -> list[int]:
 # ----------------------------------------------------------------------------
 def test_the_chunk_stays_below_the_default_message_cap():
     """Independent of --max-messages, so raising the cap is never a risk."""
-    from mxfilter.engine import DEFAULT_MAX_MESSAGES
+    from mailctl.engine import DEFAULT_MAX_MESSAGES
 
     assert BULK_CHUNK < DEFAULT_MAX_MESSAGES
 
@@ -815,7 +815,7 @@ def test_a_failure_in_the_first_chunk_is_the_plain_error(
     """Nothing completed, so there is no partial state to describe."""
     fail_on_call(fake_imap, "move", 1)
 
-    with pytest.raises(MxFilterError) as caught:
+    with pytest.raises(MailctlError) as caught:
         imap_session.execute(big_plan())
 
     assert not isinstance(caught.value, PartialExecution)

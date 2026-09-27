@@ -4,6 +4,21 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BREAKING CHANGES:
+
+* **`mxfilter` is now `mailctl`** ([#45]). The command is `mailctl`
+  (`python -m mailctl`), the distribution and the Python package are
+  `mailctl`, and the exception every actionable failure raises is
+  `MailctlError` rather than `MxFilterError`. Nothing else changes: the
+  config directory (`$XDG_CONFIG_HOME/mxfilter/`, backups included), the
+  `MXROUTE_*` and `MXFILTER_*` environment variables, and the `mxfilter`
+  default script name are untouched, so an existing setup keeps working.
+  Reinstall to get the new command. An existing `mxfilter` install is a
+  different distribution and stays until removed (`uv tool uninstall
+  mxfilter`, `pipx uninstall mxfilter`, or `uv pip uninstall mxfilter` in a
+  venv). The config and environment migration follows as its own change,
+  with its own entry here.
+
 ## 0.4.0
 
 Released 2026-09-27.
@@ -474,3 +489,4 @@ NOTES:
 [#30]: https://github.com/harleypig/mxroute-email-filters/issues/30
 [#56]: https://github.com/harleypig/mxroute-email-filters/issues/56
 [#40]: https://github.com/harleypig/mxroute-email-filters/issues/40
+[#45]: https://github.com/harleypig/mxroute-email-filters/issues/45

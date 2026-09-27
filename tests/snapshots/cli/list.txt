@@ -1,4 +1,4 @@
-$ mxfilter list
+$ mailctl list
 exit: 0
 --- stdout
 * managesieve   (active)

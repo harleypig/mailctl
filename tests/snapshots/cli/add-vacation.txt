@@ -1,9 +1,9 @@
-$ mxfilter add --from noreply@github.com --vacation hi
+$ mailctl add --from noreply@github.com --vacation hi
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: mxfilter does not generate the Sieve 'vacation' action. This is a conservative choice of ours, not a documented MXRoute restriction -- the MXRoute control panel is where this feature lives if you need it. To see whether the server advertises the extension at all, run 'mxfilter test'.
+mailctl: mailctl does not generate the Sieve 'vacation' action. This is a conservative choice of ours, not a documented MXRoute restriction -- the MXRoute control panel is where this feature lives if you need it. To see whether the server advertises the extension at all, run 'mailctl test'.
 
 --- sieve calls
 --- imap calls

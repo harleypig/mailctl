@@ -1,9 +1,12 @@
-# mxfilter Test Layout
+# mailctl Test Layout
 
 The global `testing.md` carries the bar (success **and** failure paths, a
 regression test per bug, a manual verification note per feature); `python.md`
 carries the layout convention (`tests/` at the repo root, mirroring the
 package). This file records what belongs here.
+
+`MXFILTER_LIVE` and `MXFILTER_UPDATE_SNAPSHOTS` keep the tool's old name
+until the environment migration in #45 (see CONVENTIONS.md).
 
 **The offline tier is written and green** (`make test`); the only skips are
 the live-gated ones. `pytest -q` reports the current count; none is kept
@@ -84,7 +87,7 @@ written in the PR as the first draft of the user-facing docs
 (`testing.md` › *The manual verification bar*). This matters more than usual
 here: a filter that was written but silently does nothing looks identical, at
 the terminal, to one that works. "The rule was added" is not a success
-criterion; "`mxfilter list` shows the rule, and a new message matching it
+criterion; "`mailctl list` shows the rule, and a new message matching it
 lands in `Lists/GitHub`" is.
 
 ## Running

@@ -1,9 +1,9 @@
-$ mxfilter remove-rule keep-boss --yes
+$ mailctl remove-rule keep-boss --yes
 exit: 1
 --- stdout
 
 --- stderr
-mxfilter: script 'managesieve' is empty
+mailctl: script 'managesieve' is empty
 
 --- sieve calls
 ('connect',)

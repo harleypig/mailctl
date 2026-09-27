@@ -1,4 +1,4 @@
-$ mxfilter restore <TMP>/restore.sieve
+$ mailctl restore <TMP>/restore.sieve
 exit: 1
 --- stdout
 Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (2 rule(s)):
@@ -20,7 +20,7 @@ Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (2 rule(s)):
 --- end diff ---
 
 --- stderr
-mxfilter: Replace script 'managesieve' with '<TMP>/restore.sieve'? The current script is backed up first -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+mailctl: Replace script 'managesieve' with '<TMP>/restore.sieve'? The current script is backed up first -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
 
 --- sieve calls
 ('connect',)

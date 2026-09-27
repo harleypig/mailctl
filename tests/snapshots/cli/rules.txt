@@ -1,4 +1,4 @@
-$ mxfilter rules
+$ mailctl rules
 exit: 0
 --- stdout
 Script 'managesieve':

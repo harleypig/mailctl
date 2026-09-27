@@ -1,4 +1,4 @@
-$ mxfilter restore <TMP>/restore.sieve --allow-empty --dry-run
+$ mailctl restore <TMP>/restore.sieve --allow-empty --dry-run
 exit: 0
 --- stdout
 Restore <TMP>/restore.sieve (0 rule(s)) over script 'managesieve' (2 rule(s)):

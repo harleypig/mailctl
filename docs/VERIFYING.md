@@ -1,7 +1,7 @@
-# Verifying mxfilter against a real mailbox
+# Verifying mailctl against a real mailbox
 
 **Nothing below has ever been run against a live MXRoute server.** Every part
-of mxfilter is tested offline, against fixtures. This is a **first-run
+of mailctl is tested offline, against fixtures. This is a **first-run
 procedure**, not a regression checklist: you are finding out whether it works,
 not confirming that it still does.
 
@@ -29,10 +29,10 @@ Any one source will do for a first run: `MXROUTE_PASSWORD_CMD`, a
 mount reports `0777` and is refused), `MXROUTE_PASSWORD`, or nothing at all,
 which prompts.
 
-## 1. `mxfilter test` — touches nothing
+## 1. `mailctl test` — touches nothing
 
 ```bash
-mxfilter test
+mailctl test
 ```
 
 This connects to both services, reads what they advertise, and exits. It
@@ -50,18 +50,18 @@ writes nothing anywhere.
   rule needs. `mailbox` saying `yes` means Sieve can create the target folder
   itself.
 * `active script:` followed by a name, or `(none)`. Write the name down; that
-  is the script mxfilter will edit.
+  is the script mailctl will edit.
 * `IMAP: connected`, then the delimiter, the folder count, `MOVE`, `UIDPLUS`,
   and `FILTER=SIEVE`.
 * A closing note about `redirect`.
 
 **Expect `FILTER=SIEVE: no`.** That is the Dovecot plugin that would let the
 server apply a Sieve script to old mail itself. It is experimental and off by
-default, so its absence is normal and nothing is wrong. mxfilter does its own
+default, so its absence is normal and nothing is wrong. mailctl does its own
 client-side pass either way and has no code path that uses it.
 
 **Note what `MOVE` says.** `MOVE: yes` means moves are atomic. `MOVE: no
-(COPY+EXPUNGE)` means mxfilter copies, marks deleted, and expunges as three
+(COPY+EXPUNGE)` means mailctl copies, marks deleted, and expunges as three
 steps; if that sequence breaks partway you get duplicates, not lost mail, but
 it is worth knowing before step 6.
 
@@ -70,17 +70,17 @@ it is worth knowing before step 6.
 * You never reach `ManageSieve: connected`. ManageSieve is tried first, so a
   failure there means IMAP was never tested at all. The error names the port
   and TLS mode it used and says plainly that MXRoute documents neither. Try
-  `mxfilter test --sieve-tls ssl`, then `--sieve-port` with something else,
+  `mailctl test --sieve-tls ssl`, then `--sieve-port` with something else,
   then ask MXRoute support.
 * Authentication fails on either service. The username must be the **full
   email address**, not the part before the `@`.
 * `fileinto` says `not advertised`. Do not continue; a rule that files mail
   is the whole point, and the server would reject the script.
 
-## 2. `mxfilter folders` — read-only
+## 2. `mailctl folders` — read-only
 
 ```bash
-mxfilter folders
+mailctl folders
 ```
 
 **You should see** `Hierarchy delimiter: '<char>'`, a folder count, and every
@@ -103,16 +103,16 @@ account. Check both:
 in webmail. Something is wrong with the account or the connection, and every
 later step depends on this list being complete.
 
-## 3. `mxfilter list` and `mxfilter backup` — read-only, and save a copy
+## 3. `mailctl list` and `mailctl backup` — read-only, and save a copy
 
 **Do this before anything that writes.** Save the current active script:
 
 ```bash
-mxfilter list
-mxfilter backup
+mailctl list
+mailctl backup
 ```
 
-**You should see** `mxfilter list` print one line per script, with `*` and
+**You should see** `mailctl list` print one line per script, with `*` and
 `(active)` marking the active one, and then one line from `backup`:
 
 ```text
@@ -121,9 +121,10 @@ wrote 3 rule(s) to /home/you/.config/mxfilter/backups/managesieve-20260814T09565
 
 That file is the script **exactly as the server has it** — no banner lines,
 nothing reformatted, mode `0600`. It goes in `~/.config/mxfilter/backups`
-beside your `config.toml`; `--output PATH` puts it somewhere else, and a PATH
-ending in `/` (or naming a directory that exists) means "in here" while
-anything else is the exact file to write. Then read it:
+(the tool's old name; the directory has not moved yet) beside your
+`config.toml`; `--output PATH` puts it somewhere else, and a PATH ending in
+`/` (or naming a directory that exists) means "in here" while anything else
+is the exact file to write. Then read it:
 
 ```bash
 cat "$(ls -t ~/.config/mxfilter/backups/*.sieve | head -1)"
@@ -131,21 +132,22 @@ cat "$(ls -t ~/.config/mxfilter/backups/*.sieve | head -1)"
 
 **You should see** your existing filters as Sieve source and nothing else.
 
-**Use `backup`, not `mxfilter show > file`.** `show` wraps its output in two
+**Use `backup`, not `mailctl show > file`.** `show` wraps its output in two
 banner lines — `# ---- <name> ----` and `# ---- N rule(s): ...` — so a
 redirected `show` is a file that looks like a backup and is not one. `backup`
 exists for exactly this.
 
 **If you have filters in Roundcube, this file is them.** Roundcube's filter UI
-writes the same active script mxfilter is about to edit. This copy is what
+writes the same active script mailctl is about to edit. This copy is what
 protects them.
 
 **Stop if:**
 
-* `mxfilter list` prints `No Sieve scripts on the server.` That is not a
+* `mailctl list` prints `No Sieve scripts on the server.` That is not a
   failure — it means you have no filters yet, there is nothing to lose, and
-  mxfilter will create a script called `mxfilter` on first upload. `backup`
-  will say there is nothing to back up; carry on.
+  mailctl will create a script called `mxfilter` (its old name, not yet
+  migrated) on first upload. `backup` will say there is nothing to back up;
+  carry on.
 * The saved file is empty but `list` showed an active script. Do not continue;
   something is wrong with the download and you have no backup.
 
@@ -155,7 +157,7 @@ Pick a real sender you actually get mail from, and a folder that already
 exists (use the exact spelling from step 2).
 
 ```bash
-mxfilter add --from newsletter@example.com --fileinto Lists/News --dry-run
+mailctl add --from newsletter@example.com --fileinto Lists/News --dry-run
 ```
 
 **You should see**, in this order: a folder-resolution line if the name you
@@ -168,14 +170,14 @@ uploaded.`, and then the existing-mail preview.
 * **Every rule you recognise must still be there.** A `-` line removing a
   `# Filter: <name>` for a rule you did not name is a **stop**. The merge
   should only ever add.
-* **Reformatting is expected.** mxfilter parses the script and re-renders it,
+* **Reformatting is expected.** mailctl parses the script and re-renders it,
   so indentation, quoting, and line breaks may all change. That is normal.
 * **A rule renamed to `Unnamed rule N` is expected**, for any existing rule
   that had no `# Filter:` name comment. The rule itself is unchanged; only its
   label is invented. Check the conditions and actions on those lines match
   what was there before.
 * **The `require` line may gain entries** such as `fileinto` or `imap4flags`.
-  That is mxfilter keeping the header correct for the union of all rules.
+  That is mailctl keeping the header correct for the union of all rules.
 
 **Then scrutinize the message list.**
 
@@ -206,7 +208,7 @@ uploaded.`, and then the existing-mail preview.
 Same command as step 4, with `--dry-run` swapped for `--no-apply`:
 
 ```bash
-mxfilter add --from newsletter@example.com --fileinto Lists/News --no-apply
+mailctl add --from newsletter@example.com --fileinto Lists/News --no-apply
 ```
 
 This uploads the rule and touches **no existing mail**. Sieve applies only to
@@ -227,13 +229,13 @@ messages that arrive from now on.
    ```
 
    By default backups land in `~/.config/mxfilter/backups` — the same place
-   `mxfilter backup` writes to in step 3 — one file per upload, named
+   `mailctl backup` writes to in step 3 — one file per upload, named
    `<script>-<UTC timestamp>.sieve`.
 
 2. The server has your rule, and still has the others:
 
    ```bash
-   mxfilter show
+   mailctl show
    ```
 
    The last line reads `# ---- N rule(s): <names>`. **Your new rule name must
@@ -253,7 +255,7 @@ folder rather than INBOX.
 * `the server rejected the generated script (CHECKSCRIPT ...)`. Nothing was
   uploaded and nothing was changed — the check runs before the upload. If a
   warning about unadvertised extensions preceded it, that is your cause.
-* `mxfilter show` is missing a rule that was in your step 3 file, or Roundcube
+* `mailctl show` is missing a rule that was in your step 3 file, or Roundcube
   shows fewer filters than before. Do not run anything else. Go to
   [If something looks wrong](#if-something-looks-wrong).
 
@@ -267,7 +269,7 @@ run it. Send them to a scratch folder, never Trash, and never with
 `--discard`.
 
 ```bash
-mxfilter apply --subject 'Your invoice for March' --fileinto Scratch \
+mailctl apply --subject 'Your invoice for March' --fileinto Scratch \
     --create-folder --max-messages 5 --dry-run
 ```
 
@@ -275,12 +277,12 @@ Run it with `--dry-run` first and read the message list. Then run it for real
 by dropping that flag:
 
 ```bash
-mxfilter apply --subject 'Your invoice for March' --fileinto Scratch \
+mailctl apply --subject 'Your invoice for March' --fileinto Scratch \
     --create-folder --max-messages 5
 ```
 
 `--max-messages 5` is a deliberate safety belt: if more than five messages
-match, mxfilter refuses the **whole** batch and touches nothing, rather than
+match, mailctl refuses the **whole** batch and touches nothing, rather than
 processing part of it. Being stopped here is a success, not a failure — it
 means the criteria were broader than you thought.
 
@@ -291,7 +293,7 @@ means the criteria were broader than you thought.
   appear in webmail: a folder that was created but not subscribed to
   receives mail and stays invisible. If instead you see a warning that
   subscribing failed, the folder is still real and mail will still arrive
-  there — run `mxfilter subscribe Scratch` to make it visible.
+  there — run `mailctl subscribe Scratch` to make it visible.
 * `Criteria: Subject contains 'Your invoice for March'`.
 * `Searching 'INBOX' for existing matches...` then `N message(s) match:` and
   the preview.
@@ -308,12 +310,12 @@ just the headers.
 **To reverse it**, move them back from your mail client, or:
 
 ```bash
-mxfilter apply --folder INBOX.Scratch --subject 'Your invoice for March' \
+mailctl apply --folder INBOX.Scratch --subject 'Your invoice for March' \
     --fileinto INBOX
 ```
 
 `--folder` names the *source* and, unlike `--fileinto`, is passed to the
-server exactly as you type it. Use the spelling mxfilter printed when it
+server exactly as you type it. Use the spelling mailctl printed when it
 created the folder, not `Scratch`.
 
 **Stop if:**
@@ -339,23 +341,23 @@ Only now. Two habits worth keeping:
 **If you just added a rule you did not want**, remove it by name:
 
 ```bash
-mxfilter remove-rule <rule-name> --dry-run
-mxfilter remove-rule <rule-name>
+mailctl remove-rule <rule-name> --dry-run
+mailctl remove-rule <rule-name>
 ```
 
 Read the diff before confirming; the same merge round-trip applies.
 
 **If the whole script looks wrong** — rules missing, or mangled — the backup
-mxfilter printed in step 5 is the server's exact previous bytes, before that
+mailctl printed in step 5 is the server's exact previous bytes, before that
 upload. So is the copy you saved in step 3.
 
-**To put a backup back**, run `mxfilter restore FILE --dry-run` and read the
+**To put a backup back**, run `mailctl restore FILE --dry-run` and read the
 diff — it is the raw difference between the file and what the server has
 now, so anything added since the backup shows as removed. Then run it without
 `--dry-run` and confirm. The current script is backed up first, so a restore
-is itself reversible the same way. Once it is restored, run `mxfilter backup
+is itself reversible the same way. Once it is restored, run `mailctl backup
 --output ./after-restore.sieve` and `diff` it against the file you were
-putting back; `mxfilter show` is fine for reading, but its banner lines make
+putting back; `mailctl show` is fine for reading, but its banner lines make
 it the wrong thing to compare.
 
 If the backup and the current script differ in ways you did not expect, that

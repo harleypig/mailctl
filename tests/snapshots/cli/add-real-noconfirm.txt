@@ -1,4 +1,4 @@
-$ mxfilter add --from noreply@github.com --fileinto Lists
+$ mailctl add --from noreply@github.com --fileinto Lists
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
@@ -7,7 +7,7 @@ Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'
   then:  fileinto INBOX.Lists; stop
 
-Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
 --- sieve diff ---
 --- managesieve (current)
@@ -32,7 +32,7 @@ Searching 'INBOX' for existing matches...
   uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
 
 --- stderr
-mxfilter: Move 2 message(s) from 'INBOX' to 'INBOX.Lists'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+mailctl: Move 2 message(s) from 'INBOX' to 'INBOX.Lists'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
 
 --- sieve calls
 ('connect',)

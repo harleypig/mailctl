@@ -3,8 +3,8 @@
 One property carries this file: **a backup is the server's exact bytes**.
 Anything else -- a banner line, a re-render, a newline translated on the way
 out -- produces a file that looks like a backup, is kept like a backup, and
-cannot be put back. ``mxfilter show`` decorates its output for a reader;
-``mxfilter backup`` must not, and the byte-for-byte assertion below is the
+cannot be put back. ``mailctl show`` decorates its output for a reader;
+``mailctl backup`` must not, and the byte-for-byte assertion below is the
 test that says so.
 
 The rest is the handling around it: the file is the owner's to read
@@ -19,10 +19,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from mxfilter import cli, engine
-from mxfilter import sieve as sieve_module
-from mxfilter.config import Config, default_backup_dir, load_config
-from mxfilter.sieve import backup_path, resolve_backup_target, write_backup
+from mailctl import cli, engine
+from mailctl import sieve as sieve_module
+from mailctl.config import Config, default_backup_dir, load_config
+from mailctl.sieve import backup_path, resolve_backup_target, write_backup
 
 # A script whose bytes are awkward on purpose: CRLF endings, as the CRLF
 # protocol that fetched it produces, and no trailing newline. A text-mode
@@ -47,7 +47,7 @@ CRLF_SCRIPT = (
 class FakeSieveClient:
     """A stand-in for ``sievelib.managesieve.Client``.
 
-    Patched in at mxfilter's import boundary, the same way ``fake_imap``
+    Patched in at mailctl's import boundary, the same way ``fake_imap``
     stands in for ``IMAPClient`` -- so ``SieveSession`` and everything above
     it is the real code under test.
     """
@@ -157,7 +157,7 @@ def test_the_backup_dir_sits_beside_the_config_file(monkeypatch, tmp_path):
     """The whole point of the move: one directory, both files."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
 
-    from mxfilter.config import config_path
+    from mailctl.config import config_path
 
     assert default_backup_dir().parent == config_path().parent
 
@@ -212,7 +212,7 @@ def test_backup_dir_expands_home_and_variables(
 
 # ----------------------------------------------------------------------------
 def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
-    """The automatic backup and ``mxfilter backup`` agree on one place.
+    """The automatic backup and ``mailctl backup`` agree on one place.
 
     Two defaults for one kind of file is how a user ends up looking in the
     directory that does not have their backup in it.
@@ -275,7 +275,7 @@ def test_an_existing_directory_gets_the_default_filename(tmp_path):
 def test_a_trailing_separator_means_a_directory_that_need_not_exist(tmp_path):
     """The one case the two rules disagree about, settled by the slash.
 
-    Without it, a directory mxfilter is being asked to create would be
+    Without it, a directory mailctl is being asked to create would be
     indistinguishable from a filename, and the backup would land in a file
     named after the directory the user meant.
     """
@@ -333,7 +333,7 @@ def test_a_directory_mxfilter_creates_is_private(tmp_path):
 
 # ----------------------------------------------------------------------------
 def test_an_existing_directory_keeps_the_mode_the_user_gave_it(tmp_path):
-    """mxfilter decides the mode of what it creates, and nothing else."""
+    """mailctl decides the mode of what it creates, and nothing else."""
     existing = tmp_path / "existing"
     existing.mkdir(mode=0o755)
 
@@ -377,7 +377,7 @@ def test_backup_writes_the_script_verbatim_and_says_where(
 ):
     """The assertion this whole feature exists for.
 
-    ``mxfilter show`` prints the same script wrapped in ``# ---- name ----``
+    ``mailctl show`` prints the same script wrapped in ``# ---- name ----``
     and ``# ---- N rule(s): ...``. Those lines are why redirecting ``show``
     to a file is not a backup, and why this one has to be compared as
     bytes rather than eyeballed.
@@ -514,7 +514,7 @@ def test_backup_help_names_the_restore_command(capsys):
     # phrase is matched against the text with its line breaks collapsed.
     helped = " ".join(capsys.readouterr().out.split())
 
-    assert "mxfilter restore FILE" in helped
+    assert "mailctl restore FILE" in helped
 
 
 # ----------------------------------------------------------------------------

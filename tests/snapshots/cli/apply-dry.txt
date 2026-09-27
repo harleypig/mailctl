@@ -1,4 +1,4 @@
-$ mxfilter apply --from noreply@github.com --fileinto Lists --dry-run
+$ mailctl apply --from noreply@github.com --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

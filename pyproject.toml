@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mxfilter"
+name = "mailctl"
 version = "0.4.0"
 description = "Manage MXRoute email filters over ManageSieve and IMAP"
 readme = "README.md"
@@ -22,10 +22,10 @@ dev = [
 ]
 
 [project.scripts]
-mxfilter = "mxfilter.cli:main"
+mailctl = "mailctl.cli:main"
 
 [tool.setuptools]
-packages = ["mxfilter"]
+packages = ["mailctl"]
 
 [tool.ruff]
 line-length = 79
@@ -46,7 +46,7 @@ select = ["E4", "E7", "E9", "E501", "F", "I", "B", "C4", "SIM", "UP", "RUF"]
 # The tests are in scope: pytest is a dev dependency, so its imports resolve
 # from the same .venv, and a fixture typed wrong is a test checking the
 # wrong thing.
-include = ["mxfilter", "tests"]
+include = ["mailctl", "tests"]
 typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
