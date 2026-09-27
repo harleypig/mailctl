@@ -57,6 +57,54 @@ optional value, put `--env-file` after any positional argument, or write
 `messages`, `view`), resolves the same way: `MAILCTL_SOURCE_FOLDER`, then
 `source_folder` in the config file, then `INBOX`.
 
+### Turning off a Sieve extension
+
+`disabled_extensions` tells mailctl never to write a rule that needs a
+given Sieve extension, even when the server advertises it. You cannot turn
+on what the server lacks — this only narrows what mailctl writes. Set it as
+a list in the config file (`disabled_extensions = ["mailbox"]`), as
+`MAILCTL_DISABLED_EXTENSIONS=mailbox,imap4flags` (comma-separated, in the
+env file or the environment), or per run with `--disable-extension NAME`,
+repeated for more than one. It resolves like every other setting: the
+highest source that sets it **replaces** the lower ones rather than adding
+to them, so `--disable-extension copy` on one run means only `copy`, whatever
+the config file says. Names are case-insensitive.
+
+A disabled extension counts as not advertised:
+
+| Disabled | What mailctl does |
+|----------|-------------------|
+| `mailbox` | Writes plain `fileinto`, never `fileinto :create`, and creates a new folder over IMAP instead. With `--no-imap` a folder that needs creating is refused, as it is on a server without `mailbox`. |
+| `fileinto` | Refuses a rule that files mail into a folder. `--discard`, `--keep`, and flag-only rules still work. |
+| `imap4flags` | Refuses a rule that sets a flag (`--mark-read`, `--flag`). |
+| any other name `mailctl test` lists | Nothing today — mailctl writes none of them — but it holds if a later version does. |
+
+A refusal names the setting and where it came from. A name mailctl does not
+know is an error, naming it, before anything connects — a typo would
+otherwise switch off nothing without a word. Disabling an extension the
+server does not advertise anyway changes nothing and is not an error.
+`mailctl test` shows each extension as `yes`, `not advertised`, or `disabled
+by mailctl (...)` with the source.
+
+The names `mailctl test` reports, and what each one adds to Sieve:
+
+| Extension | Spec | Adds | mailctl writes it |
+|-----------|------|------|-------------------|
+| `fileinto` | RFC 5228 | `fileinto`: deliver into a named folder instead of INBOX | every rule that files mail |
+| `imap4flags` | RFC 5232 | `setflag` / `addflag` / `removeflag`, the `hasflag` test, and `:flags` | flag actions (`addflag`) |
+| `mailbox` | RFC 5490 | `fileinto :create`, and the `mailboxexists` test | `:create` |
+| `copy` | RFC 3894 | `:copy` on `fileinto` / `redirect`: file a copy and keep the message in INBOX too | no |
+| `envelope` | RFC 5228 | the `envelope` test: match the SMTP envelope rather than the headers | no |
+| `regex` | draft-ietf-sieve-regex, never an RFC | a `:regex` match type | no |
+| `enotify` | RFC 5435 | the `notify` action | no — refused |
+| `vacation` | RFC 5230 | the `vacation` autoresponder | no — refused |
+| `spamtest` | RFC 5235 | the `spamtest` test on the server's spam score (`virustest` is a separate extension) | no |
+| `extlists` | RFC 6134 | `:list` matching against external lists | no |
+
+It covers the rules mailctl writes, not what is already in the script: a
+rule you made in webmail that uses a disabled extension is left alone, and
+`mailctl restore` puts a backup back exactly as it was.
+
 `mailctl test` says where each setting came from — a flag, the env file,
 the environment, the config file, or the default — and which of those
 sources it read.

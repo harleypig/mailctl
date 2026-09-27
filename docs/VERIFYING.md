@@ -51,12 +51,16 @@ writes nothing anywhere.
   `unset` is fine — it means you will be prompted.
 * `ManageSieve: connected`, then `capability (as the server reports it):`
   followed by every Sieve extension the server lists.
-* `extensions mailctl checks:`, a table of the extensions mailctl uses with
-  `yes` or `not advertised` beside each — also read from the server, not
-  assumed.
+* `extensions mailctl uses (it writes rules that need them):`, a table of
+  the extensions mailctl's own rules can need, with `yes` or `not
+  advertised` beside each — also read from the server, not assumed. Then
+  `other extensions, for information (mailctl never uses):`, the same for
+  extensions mailctl only reports on.
   **`fileinto` and `imap4flags` must say `yes`** — those are what an ordinary
   rule needs. `mailbox` saying `yes` means Sieve can create the target folder
-  itself.
+  itself. An extension you turned off with `disabled_extensions` reads
+  `disabled by mailctl (...)`, naming where the setting came from; if you did
+  not mean to, that is where to look.
 * `active script:` followed by a name, or `(none)`. Write the name down; that
   is the script mailctl will edit.
 * `IMAP: connected`, then the delimiter, the folder count, `MOVE`, `UIDPLUS`,

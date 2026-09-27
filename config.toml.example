@@ -101,6 +101,16 @@ password_cmd = "pass show email/you@yourdomain.com"
 # Default: none.
 #default_folder = "Lists"
 
+# Sieve extensions mailctl must never write a rule that needs, even if the
+# server advertises them. This only narrows what mailctl writes -- it cannot
+# turn on anything the server lacks. With "mailbox" off, a new folder is
+# created over IMAP and the rule says plain `fileinto`; with "fileinto" or
+# "imap4flags" off, a rule that needs it is refused. Names are
+# case-insensitive; an unknown one is an error. MAILCTL_DISABLED_EXTENSIONS
+# and --disable-extension REPLACE this list rather than adding to it.
+# `mailctl test` lists the names. Default: none.
+#disabled_extensions = ["mailbox"]
+
 # The folder mail is read from when you give no --folder: the one `add`,
 # `apply`, and `from-message` search for existing mail, and the one
 # `messages` and `view` open. MAILCTL_SOURCE_FOLDER and --folder override
