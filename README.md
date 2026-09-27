@@ -43,6 +43,10 @@ cannot read is reported by line number, never quoted. Because it takes an
 optional value, put `--env-file` after any positional argument, or write
 `--env-file=PATH`.
 
+`--folder`, on the commands that read mail (`add`, `apply`, `from-message`,
+`messages`, `view`), resolves the same way: `MXROUTE_SOURCE_FOLDER`, then
+`source_folder` in the config file, then `INBOX`.
+
 `mxfilter test` says where each setting came from — a flag, the env file,
 the environment, the config file, or the default — and which of those
 sources it read.
@@ -291,11 +295,16 @@ documentation read better.
   so the folder may not exist on your account at all.
 * Because of that, neither is assumed. The delimiter is **detected at
   runtime** from the server's folder list, and folder names are matched
-  against that list case-insensitively — type `Lists/News` or
-  `INBOX.Lists.News` and whichever spelling the server reports is used for
-  both the Sieve rule and the move. `mxfilter folders` is the authority for
-  your account. The one exception is `--no-imap`, which has no folder list to
-  consult and falls back to `.` (or `--delimiter`), and warns that it did.
+  against that list — type `Lists/News` or `INBOX.Lists.News` and the
+  server's spelling is used for both the Sieve rule and the move. `mxfilter
+  folders` is the authority for your account. The one exception is
+  `--no-imap`, which has no folder list to consult and falls back to `.` (or
+  `--delimiter`), and warns that it did.
+* Folder names are **case-sensitive**, except `INBOX` itself (RFC 3501), so
+  `INBOX.Lists` and `INBOX.lists` are two folders. When the folder you name
+  does not exist but one differing only in case does, mxfilter warns and
+  names both — and with `--create-folder`, says a second folder will be
+  created beside it.
 
 ### Unconfirmed — do not read these as MXRoute facts
 
@@ -322,6 +331,35 @@ change and leaves NAME inactive, and mxfilter says so before it uploads;
 `--activate` makes NAME the active script as well. When the account has no
 active script at all, the script mxfilter writes is activated, since
 otherwise nothing would run it.
+
+### A filtering stage mxfilter cannot see
+
+mxfilter sees **Sieve only**. Mail may pass through an earlier filter first,
+and nothing mxfilter reports covers it.
+
+DirectAdmin's **Email Filters** panel writes an Exim filter that runs after
+the mail server accepts a message and before it is delivered to the mailbox,
+which is where Sieve runs. A message that filter matches is dropped (or sent
+to a spam folder) there, and Sieve never sees it. DirectAdmin's filter rules
+block by domain, address, word, or size; they do not file mail into folders.
+MXRoute has provisioned such a filter with `where=delete`, which discards
+high-scoring mail before Sieve.
+
+**What is not known** is whether your account has one. MXRoute documents
+neither this filter nor Sieve, and is phasing DirectAdmin out — MXRoute has
+said that new customers already have no interaction with DirectAdmin — so
+whether accounts set up since then still carry the filter is unconfirmed.
+
+mxfilter cannot read or change that filter, and will not: DirectAdmin's
+filters need domain-owner credentials, and mxfilter logs in as a mailbox. So:
+
+* `mxfilter test` reports the Sieve and IMAP side, not the whole path mail
+  takes.
+* `mxfilter rules` works out which rules can never fire from their order in
+  the Sieve script. A message dropped before Sieve is outside that analysis.
+* A filter set in the panel is invisible here. If a rule never seems to fire,
+  the mail may never have reached Sieve: check the panel's filters, if your
+  account has them.
 
 ## `--compare` tests the whole header value
 

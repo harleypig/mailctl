@@ -794,7 +794,8 @@ def test_the_folder_listing_says_which_folders_webmail_shows(sessions):
     listing = engine.list_folders(sessions)
 
     assert listing.unsubscribed == ["INBOX.spam"]
-    assert listing.is_subscribed("inbox.lists")
+    assert listing.is_subscribed("INBOX.Lists")
+    assert not listing.is_subscribed("INBOX.lists")  # #56: exact
     assert engine.probe_imap(sessions).unsubscribed == ["INBOX.spam"]
 
 
@@ -1258,6 +1259,36 @@ def test_only_inbox_compares_case_insensitively(source, destination, noop):
 
     assert engine.mail_pass_is_noop(spec, source, destination) is noop
     assert MailActionPlan(source, destination, [], False).moves is not noop
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("create", [False, True])
+def test_a_case_variant_is_reported_not_taken_for_the_folder(
+    sessions, imap_config, create
+):
+    """#56: 'lists' is not INBOX.Lists, and planning must say that one
+    exists rather than silently treat the name as absent -- above all
+    when --create-folder is about to make a second, differently cased
+    folder beside it."""
+    plan = engine.plan_folder(sessions, imap_config, "lists", create=create)
+
+    assert plan.folder == "INBOX.lists"
+    assert plan.status != engine.FOLDER_EXISTS
+    assert plan.case_variants == ("INBOX.Lists",)
+
+
+# ----------------------------------------------------------------------------
+def test_an_exact_folder_has_no_case_variants(sessions, imap_config):
+    plan = engine.plan_folder(sessions, imap_config, "Lists")
+
+    assert plan.status == engine.FOLDER_EXISTS
+    assert plan.case_variants == ()
+
+
+# ----------------------------------------------------------------------------
+def test_subscribing_a_case_variant_names_the_real_folder(sessions):
+    with pytest.raises(MxFilterError, match=r"'INBOX\.Lists' exists"):
+        engine.plan_subscription(sessions, "lists", subscribe=True)
 
 
 # ----------------------------------------------------------------------------

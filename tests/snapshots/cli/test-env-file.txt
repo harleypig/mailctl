@@ -7,6 +7,7 @@ User:      user@example.com  (environment)
 Password:  set (via command)  (MXROUTE_PASSWORD_CMD, env file .env)
 IMAP:      mail.from-env-file.example:993  (host: same as host, port: default)
 Sieve:     mail.from-env-file.example:4192 (tls=ssl)  (port: flag --sieve-port, tls: config file <TMP>/config/mxfilter/config.toml)
+Folder:    INBOX  (default)  -- read by apply, messages, view, from-message
 
 ManageSieve: connected
   extensions: fileinto, imap4flags, mailbox, regex
@@ -37,6 +38,8 @@ IMAP: connected
                 mxfilter's client-side search-and-move pass is the only option here.
 
 Note: MXRoute disables the Sieve 'redirect' action as a matter of policy (2024-03-21) -- use a panel forwarder, which handles SRS properly. That is the only MXRoute restriction mxfilter asserts; everything else above came from the server.
+
+Note: this covers the Sieve stage only. Mail may first pass a DirectAdmin panel filter (an Exim filter, run before Sieve) that mxfilter cannot see or change; a message it drops never reaches any Sieve rule. Whether your account has one is unconfirmed -- see 'A filtering stage mxfilter cannot see' in the README.
 
 --- stderr
 

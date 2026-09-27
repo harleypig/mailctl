@@ -18,6 +18,13 @@ ENHANCEMENTS:
 * **`mxfilter restore` refuses an empty FILE** unless `--allow-empty` is
   given ([#52]). Uploading one removes every rule, and an empty file is more
   often a truncated copy or the wrong path than a deliberate wipe.
+* **mxfilter says it sees the Sieve stage only** ([#30]). Mail may first
+  pass a DirectAdmin panel filter — an Exim filter that runs before Sieve
+  and can drop a message before any Sieve rule sees it. mxfilter logs in as
+  a mailbox and cannot read or change that filter. `mxfilter test` now says
+  so, and the README's *A filtering stage mxfilter cannot see* explains
+  what is known and what is not: whether accounts set up since MXRoute
+  began phasing out DirectAdmin still have one is unconfirmed.
 
 BUG FIXES:
 
@@ -48,6 +55,26 @@ BUG FIXES:
 * **`backup_dir` expands `~` and `$VAR` / `${VAR}`** ([#50]) — in
   `config.toml`, in `MXROUTE_BACKUP_DIR`, and in `--backup-dir`. It was taken
   literally, so `backup_dir = "~/backups"` created a directory named `~`.
+* **`source_folder` in `config.toml` takes effect** ([#63]). `--folder`
+  carried a built-in `INBOX` default that outranked the config file, so the
+  key was read and never used. `--folder` on `add`, `apply`,
+  `from-message`, `messages`, and `view` now falls back to
+  `MXROUTE_SOURCE_FOLDER` (new), then `source_folder`, then `INBOX`, and
+  `mxfilter test` shows which one is in play.
+* **`mxfilter test` reports the password as it turned out** ([#61]). It
+  printed `set (via file)` before reading the password, so a file then
+  refused for its mode was shown as set directly above the refusal. The
+  password is now read first: an unusable one shows as `not usable`, with
+  the reason below the settings, and an answered prompt shows as `set`
+  rather than the `unset` it was before asking.
+* **Folder names match exactly, except `INBOX`** ([#56]). Checking whether
+  a folder exists, resolving the name you typed, and checking subscriptions
+  all ignored case, so on a case-sensitive server `INBOX.lists` counted as
+  the existing `INBOX.Lists`. They now follow RFC 3501: `INBOX` in any
+  case, every other name exactly. When the folder you name is missing but
+  one differing only in case exists, mxfilter warns and names both — so
+  `--create-folder` no longer makes a second, differently cased folder
+  without saying so — and a subscribe or folder-open error names it too.
 
 ## 0.3.0
 
@@ -428,3 +455,7 @@ NOTES:
 [#52]: https://github.com/harleypig/mxroute-email-filters/issues/52
 [#54]: https://github.com/harleypig/mxroute-email-filters/issues/54
 [#50]: https://github.com/harleypig/mxroute-email-filters/issues/50
+[#63]: https://github.com/harleypig/mxroute-email-filters/issues/63
+[#61]: https://github.com/harleypig/mxroute-email-filters/issues/61
+[#30]: https://github.com/harleypig/mxroute-email-filters/issues/30
+[#56]: https://github.com/harleypig/mxroute-email-filters/issues/56

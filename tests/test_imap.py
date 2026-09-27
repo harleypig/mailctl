@@ -20,6 +20,7 @@ from mxfilter.imap import (
     MailActionPlan,
     MessageSummary,
     PartialExecution,
+    case_variants,
     decode_header_value,
     header_values,
     normalize_folder,
@@ -105,12 +106,22 @@ def summary(uid: int) -> MessageSummary:
             "INBOX.Lists.GitHub",
             id="existing-folder-looked-up",
         ),
+        # Only INBOX is case-insensitive (RFC 3501 section 5.1, #56): the
+        # rest of the name is taken as typed, never matched to a folder
+        # whose case differs.
         pytest.param(
             "inbox.lists.github",
             ".",
             ["INBOX.Lists.GitHub"],
+            "INBOX.lists.github",
+            id="only-inbox-case-is-folded",
+        ),
+        pytest.param(
+            "Inbox/Lists/GitHub",
+            ".",
+            ["INBOX.Lists.GitHub"],
             "INBOX.Lists.GitHub",
-            id="lookup-fixes-the-case",
+            id="inbox-in-any-case-finds-the-folder",
         ),
         pytest.param(
             "spam",
@@ -144,6 +155,38 @@ def test_normalize_prefers_an_existing_folder_over_the_guess():
 
     # No such folder: the guess is used, and it is a *new* folder name.
     assert normalize_folder("Junk", ".", ["INBOX.spam"]) == "INBOX.Junk"
+
+
+# ----------------------------------------------------------------------------
+def test_case_variants_are_the_folders_that_differ_only_in_case():
+    """#56: what exact matching would otherwise hide from the user."""
+    known = ["INBOX", "INBOX.Lists", "INBOX.LISTS", "INBOX.spam"]
+
+    assert case_variants("INBOX.lists", known) == [
+        "INBOX.Lists",
+        "INBOX.LISTS",
+    ]
+    assert case_variants("INBOX.Lists", known) == ["INBOX.LISTS"]
+    assert case_variants("inbox", known) == []
+    assert case_variants("INBOX.Junk", known) == []
+
+
+# ----------------------------------------------------------------------------
+def test_exists_is_exact_except_for_inbox(imap_session):
+    """#56: on Dovecot Maildir++ INBOX.Lists and INBOX.lists are two
+    folders, so one existing says nothing about the other."""
+    assert imap_session.exists("INBOX.Lists") is True
+    assert imap_session.exists("INBOX.lists") is False
+    assert imap_session.exists("inbox") is True
+
+
+# ----------------------------------------------------------------------------
+def test_a_missing_folder_names_its_case_variant(imap_session, fake_imap):
+    """Selecting a folder that exists only in another case says so."""
+    fake_imap.failures["select_folder"] = IMAPClientError("no such mailbox")
+
+    with pytest.raises(MxFilterError, match=r"'INBOX\.Lists' exists"):
+        imap_session._select("INBOX.lists")
 
 
 # ----------------------------------------------------------------------------

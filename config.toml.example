@@ -100,6 +100,9 @@ password_cmd = "pass show email/you@yourdomain.com"
 # Default: none.
 #default_folder = "Lists"
 
-# source_folder is read from this file but has no effect yet: the folder
-# the existing-mail pass searches is always --folder (default INBOX). It is
-# left out here until that is wired (issue #63).
+# The folder mail is read from when you give no --folder: the one `add`,
+# `apply`, and `from-message` search for existing mail, and the one
+# `messages` and `view` open. MXROUTE_SOURCE_FOLDER and --folder override
+# it. Either separator works, as for default_folder.
+# Default: INBOX.
+#source_folder = "INBOX"
