@@ -357,6 +357,16 @@ SCENARIOS = {
         {"file": ONE_RULE, "reject": True},
     ),
     "restore-missing-file": (["restore", "/nonexistent/x.sieve"], {}),
+    # #52: a named target, and an empty file refused unless asked for.
+    "restore-script": (
+        ["restore", "<FILE>", "--script", "spare", "--yes"],
+        {"file": ONE_RULE, "others": {"spare": "# nothing yet\n"}},
+    ),
+    "restore-empty": (["restore", "<FILE>", "--yes"], {"file": "\n"}),
+    "restore-empty-allowed": (
+        ["restore", "<FILE>", "--allow-empty", "--dry-run"],
+        {"file": ""},
+    ),
     "add-dry-missing": (
         ["add", *GITHUB, "--fileinto", "Lists/GitHub", "--dry-run"],
         {},

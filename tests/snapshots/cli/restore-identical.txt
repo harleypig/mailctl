@@ -10,6 +10,7 @@ The file is identical to the script on the server; nothing to restore.
 --- sieve calls
 ('connect',)
 ('listscripts',)
+('listscripts',)
 ('getscript', 'managesieve')
 ('logout',)
 --- imap calls

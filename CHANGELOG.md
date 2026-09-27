@@ -12,6 +12,13 @@ ENHANCEMENTS:
   anything undecodable replaced, and escaped. On a terminal, `--raw` is
   escaped as before.
 
+* **`mxfilter restore --script NAME` restores over a named script** rather
+  than always the active one ([#52]). It follows the same activation rule
+  as every other change, and takes `--activate` too.
+* **`mxfilter restore` refuses an empty FILE** unless `--allow-empty` is
+  given ([#52]). Uploading one removes every rule, and an empty file is more
+  often a truncated copy or the wrong path than a deliberate wipe.
+
 BUG FIXES:
 
 * **Unicode direction overrides no longer disguise what a message says.**
@@ -407,3 +414,4 @@ NOTES:
 
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
 [#53]: https://github.com/harleypig/mxroute-email-filters/issues/53
+[#52]: https://github.com/harleypig/mxroute-email-filters/issues/52

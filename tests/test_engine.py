@@ -945,6 +945,43 @@ def test_a_restore_needs_a_readable_file_and_an_active_script(tmp_path):
 
 
 # ----------------------------------------------------------------------------
+def test_a_restore_targets_the_named_script_and_leaves_it_inactive(
+    imap_config, tmp_path
+):
+    imap_config.backup_dir = tmp_path / "backups"
+    backup = tmp_path / "b.sieve"
+    backup.write_text("new\n")
+    fake = FakeSieveSession(script="old\n", others=["spare"])
+    live = Sessions(sieve=fake)
+
+    plan = engine.plan_restore(live, backup, script="spare")
+
+    assert (plan.script, plan.activate) == ("spare", False)
+    assert fake.calls == [("get_script", "spare")]
+
+    engine.execute_restore(live, imap_config, plan)
+
+    assert fake.calls[-1] == ("put_script", "spare", "new\n")
+    assert "set_active" not in fake.names()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("content", ["", "\n", "  \r\n\t"])
+def test_an_empty_backup_is_refused_unless_allowed(content, tmp_path):
+    backup = tmp_path / "empty.sieve"
+    backup.write_bytes(content.encode())
+    live = Sessions(sieve=FakeSieveSession(script="old\n"))
+
+    with pytest.raises(MxFilterError, match="--allow-empty"):
+        engine.plan_restore(live, backup)
+
+    plan = engine.plan_restore(live, backup, allow_empty=True)
+
+    assert plan.after == content
+    assert plan.changes
+
+
+# ----------------------------------------------------------------------------
 def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
     imap_config, tmp_path
 ):

@@ -207,12 +207,15 @@ assumptions below get settled for your account.
   but it does say who you correspond with and how you sort it.
 * **`mxfilter restore FILE` puts a backup back.** The backup is the server's
   exact bytes — no banner lines, nothing reformatted — and restore uploads
-  them exactly, over the active script only. It shows the raw diff against
-  what the server has now, backs the current script up first, lets the
-  server validate the file, and asks before it replaces anything. It is the
-  one command that **replaces** rather than merges: a rule added since the
-  backup was taken is removed, and the diff shows it. It works even over a
-  script mxfilter cannot parse ([ADR 0005][adr5]).
+  them exactly, over the active script — or over the one `--script NAME`
+  names, which stays inactive unless `--activate` is given. No other stored
+  script is touched. It shows the raw diff against what the server has now,
+  backs the current script up first, lets the server validate the file, and
+  asks before it replaces anything. It is the one command that **replaces**
+  rather than merges: a rule added since the backup was taken is removed, and
+  the diff shows it. It works even over a script mxfilter cannot parse
+  ([ADR 0005][adr5]). An empty FILE would remove every rule, so it is refused
+  unless `--allow-empty` is given.
 * Rules are merged into the parsed existing script, never appended blindly,
   so other rules survive. If the existing script cannot be parsed, mxfilter
   stops rather than overwrite it.

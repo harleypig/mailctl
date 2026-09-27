@@ -897,11 +897,17 @@ def cmd_backup(args) -> int:
 
 # ----------------------------------------------------------------------------
 def cmd_restore(args) -> int:
-    """Replace the active script with a backup file, after showing it."""
+    """Replace a script with a backup file, after showing it."""
     config = configure(args)
 
     with connect(config, args) as sessions:
-        plan = engine.plan_restore(sessions, args.file)
+        plan = engine.plan_restore(
+            sessions,
+            args.file,
+            args.script,
+            args.activate,
+            args.allow_empty,
+        )
 
         print(
             f"Restore {plan.source} ({rule_count_phrase(plan.after)}) over "
@@ -917,6 +923,7 @@ def cmd_restore(args) -> int:
             return 0
 
         print_script_diff(plan.diff)
+        print_activation(plan)
 
         if args.dry_run:
             print("\n[dry-run] the script was NOT uploaded.")
@@ -1893,8 +1900,9 @@ def build_parser() -> argparse.ArgumentParser:
     restore = subparsers.add_parser(
         "restore",
         parents=[common, connection, safety],
-        help="upload a backup file over the active script",
-        description="Replace the active Sieve script with a backup file, "
+        help="upload a backup file over the active script, or --script",
+        description="Replace the active Sieve script -- or the one --script "
+        "names -- with a backup file, "
         "byte for byte. The difference between the file and what the "
         "server has now is shown first, the current script is backed up "
         "before anything is sent, the server validates the file "
@@ -1906,6 +1914,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     restore.add_argument(
         "file", metavar="FILE", help="a file written by 'mxfilter backup'"
+    )
+    restore.add_argument("--script", help="script name; default active")
+    restore.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
+    restore.add_argument(
+        "--allow-empty",
+        dest="allow_empty",
+        action="store_true",
+        help="restore a FILE that is empty, which removes every rule; "
+        "refused without this",
     )
     restore.set_defaults(handler=cmd_restore)
 

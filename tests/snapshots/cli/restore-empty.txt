@@ -1,0 +1,11 @@
+$ mxfilter restore <TMP>/restore.sieve --yes
+exit: 1
+--- stdout
+
+--- stderr
+mxfilter: backup <TMP>/restore.sieve is empty; restoring it would remove every rule from the script. Pass --allow-empty if that is what you want.
+
+--- sieve calls
+('connect',)
+('logout',)
+--- imap calls

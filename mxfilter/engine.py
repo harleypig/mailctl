@@ -503,7 +503,7 @@ def count_rules(source: str) -> int | None:
 
 @dataclass(frozen=True)
 class RestorePlan:
-    """A backup file to be uploaded, whole, over the active script.
+    """A backup file to be uploaded, whole, over a stored script.
 
     ``diff`` is a raw diff, not the normalized one a merge shows: restore
     uploads the file's exact bytes, so any difference -- formatting
@@ -515,6 +515,8 @@ class RestorePlan:
     before: str
     after: str
     diff: DisplayDiff
+    active: str | None
+    activate: bool
 
     # ------------------------------------------------------------------------
     @property
@@ -523,40 +525,63 @@ class RestorePlan:
 
 
 # ----------------------------------------------------------------------------
-def read_backup_file(path: str | Path) -> tuple[Path, str]:
-    """Read a backup file exactly as written, newline translation off."""
+def read_backup_file(
+    path: str | Path, allow_empty: bool = False
+) -> tuple[Path, str]:
+    """Read a backup file exactly as written, newline translation off.
+
+    A file holding nothing but whitespace is refused unless
+    ``allow_empty``: uploading it removes every rule, and an empty file is
+    as likely to be a truncated copy or the wrong path as a deliberate
+    wipe.
+    """
     source = Path(path).expanduser()
 
     try:
         with source.open(encoding="utf-8", newline="") as handle:
-            return source, handle.read()
+            text = handle.read()
 
     except (OSError, UnicodeDecodeError) as exc:
         raise MxFilterError(
             f"could not read backup {source} -- {exc}"
         ) from exc
 
+    if not text.strip() and not allow_empty:
+        raise MxFilterError(
+            f"backup {source} is empty; restoring it would remove every "
+            f"rule from the script. Pass --allow-empty if that is what you "
+            f"want."
+        )
+
+    return source, text
+
 
 # ----------------------------------------------------------------------------
-def plan_restore(sessions: Sessions, path: str | Path) -> RestorePlan:
-    """Work out replacing the active script with a backup, without doing it.
+def plan_restore(
+    sessions: Sessions,
+    path: str | Path,
+    script: str | None = None,
+    activate: bool = False,
+    allow_empty: bool = False,
+) -> RestorePlan:
+    """Work out replacing a script with a backup, without doing it.
 
-    Only the active script is ever the target, so no other stored script is
-    touched. The current script may be one mxfilter cannot parse: restore
-    does not merge, and the current bytes are backed up before anything is
-    sent, so overwriting it loses nothing (ADR 0005).
+    The target is ``script``, or the active script when none is named; no
+    other stored script is touched, and whether the target ends up active
+    follows the same rule as every other upload (``activates``). The
+    current script may be one mxfilter cannot parse: restore does not
+    merge, and the current bytes are backed up before anything is sent,
+    so overwriting it loses nothing (ADR 0005).
     """
-    source, after = read_backup_file(path)
-    sieve = _sieve(sessions)
-    name = sieve.active_script_name()
+    source, after = read_backup_file(path, allow_empty)
 
-    if not name:
+    name, before, active = fetch_active(sessions, script)
+
+    if script is None and active is None:
         raise MxFilterError(
             "no active script on the server to restore over. 'mxfilter "
             "list' shows what the account has."
         )
-
-    before = sieve.get_script(name)
 
     return RestorePlan(
         source=source,
@@ -564,6 +589,8 @@ def plan_restore(sessions: Sessions, path: str | Path) -> RestorePlan:
         before=before,
         after=after,
         diff=DisplayDiff(script_diff(before, after, name), reformats=False),
+        active=active,
+        activate=activates(name, active, activate),
     )
 
 
@@ -589,7 +616,7 @@ def execute_restore(
         plan.before,
         plan.after,
         on_event,
-        activate=True,
+        activate=plan.activate,
     )
 
 

@@ -26,6 +26,7 @@ Uploaded and activated script 'managesieve'
 --- sieve calls
 ('connect',)
 ('listscripts',)
+('listscripts',)
 ('getscript', 'managesieve')
 ('checkscript',)
 ('putscript', 'managesieve', 'require ["fileinto","imap4flags"];\n# rule:[keep-boss]\nif header :contains "from" "boss@example.com"\n{\n\tfileinto "INBOX.Boss";\n\tsetflag "\\\\Flagged";\n\tstop;\n}\n')
