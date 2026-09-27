@@ -1629,7 +1629,9 @@ def _decoded_text(part) -> str:
     try:
         text = payload.decode(charset, errors="replace")
 
-    except LookupError:
+    # LookupError for an unknown name; ValueError for one no lookup can
+    # take at all, such as a name containing NUL.
+    except (LookupError, ValueError):
         text = payload.decode("utf-8", errors="replace")
 
     return text.replace("\r\n", "\n")

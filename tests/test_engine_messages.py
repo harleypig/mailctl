@@ -92,6 +92,15 @@ BOGUS_CHARSET = rfc822(
     body="Caf\xe9\r\n",
 )
 
+# A charset name no codec lookup can even attempt: str.decode raises
+# ValueError for the NUL, not LookupError.
+NUL_CHARSET = rfc822(
+    "From: odd@example.com",
+    "Subject: nul",
+    'Content-Type: text/plain; charset="utf\x00x"',
+    body="body\r\n",
+)
+
 EIGHT_BIT_HEADER = rfc822(
     "From: Jos\xe9 <jose@example.com>",
     "Subject: raw 8-bit",
@@ -380,6 +389,15 @@ def test_an_unknown_charset_falls_back_without_raising(sessions, fake_imap):
     content = engine.read_message(sessions, "INBOX", 1)
 
     assert content.body == "Caf�\n"
+
+
+# ----------------------------------------------------------------------------
+def test_a_charset_with_a_nul_falls_back_without_raising(sessions, fake_imap):
+    fake_imap.messages = {1: NUL_CHARSET}
+
+    content = engine.read_message(sessions, "INBOX", 1)
+
+    assert content.body == "body\n"
 
 
 # ----------------------------------------------------------------------------
