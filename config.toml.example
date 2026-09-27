@@ -1,10 +1,10 @@
 # mailctl configuration file.
 #
-# Copy to $XDG_CONFIG_HOME/mxfilter/config.toml -- that is
-# ~/.config/mxfilter/config.toml when XDG_CONFIG_HOME is unset -- and fill
+# Copy to $XDG_CONFIG_HOME/mailctl/config.toml -- that is
+# ~/.config/mailctl/config.toml when XDG_CONFIG_HOME is unset -- and fill
 # it in. It is the TOML counterpart of .env.example: the same settings,
-# minus the password itself. The mxfilter/ directory is the tool's old name,
-# kept for now so an existing setup keeps working; its migration follows.
+# minus the password itself. Before the rename this lived in
+# $XDG_CONFIG_HOME/mxfilter/; `mailctl migrate-config` moves it across.
 #
 # The format is flat: plain `key = value` lines at the top level, no
 # [tables]. Strings are quoted, ports are bare numbers. A key mailctl does
@@ -13,8 +13,8 @@
 # check it was picked up.
 #
 # This file is the lowest-priority source. Resolution order, highest first:
-# a CLI flag > the --env-file file > an exported MXROUTE_* variable > this
-# file > the built-in default. So an exported MXROUTE_HOST overrides
+# a CLI flag > the --env-file file > an exported MAILCTL_* variable > this
+# file > the built-in default. So an exported MAILCTL_HOST overrides
 # `host` here without complaint.
 
 # The MXRoute server your account lives on. It is per-account -- the same
@@ -31,7 +31,7 @@ user = "you@yourdomain.com"
 #
 # This file NEVER holds the password itself: a `password` key is not read.
 # Only password_file and password_cmd are, and they rank below every flag
-# and every MXROUTE_PASSWORD* variable (see .env.example for the full
+# and every MAILCTL_PASSWORD* variable (see .env.example for the full
 # ladder). If this file sets both, password_file wins. Set neither and
 # nothing else supplies one, and mailctl prompts on the terminal
 # (getpass, no echo).
@@ -53,7 +53,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 #    trailing space can be part of a password. The path may start with ~
 #    and may use $VAR or ${VAR}; an unset variable is left as written, so
 #    the error names it.
-#password_file = "~/.config/mxfilter/password"
+#password_file = "~/.config/mailctl/password"
 
 # There is also --password VALUE on the command line, the LEAST safe
 # option, which warns when used: an argument is visible in the process
@@ -84,13 +84,13 @@ password_cmd = "pass show email/you@yourdomain.com"
 # Where script backups are written -- both the automatic pre-upload copy
 # and 'mailctl backup'.
 #
-# Default: $XDG_CONFIG_HOME/mxfilter/backups, beside this file. XDG would
+# Default: $XDG_CONFIG_HOME/mailctl/backups, beside this file. XDG would
 # call a backup state rather than config; keeping it here is a deliberate
 # departure from that, not something XDG endorses, because a backup you
 # cannot find is not a backup.
 #
 # Like password_file, the path may start with ~ and may use $VAR or
-# ${VAR}; the same expansion applies to MXROUTE_BACKUP_DIR and
+# ${VAR}; the same expansion applies to MAILCTL_BACKUP_DIR and
 # --backup-dir.
 #backup_dir = "~/mail-backups"
 
@@ -103,7 +103,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 
 # The folder mail is read from when you give no --folder: the one `add`,
 # `apply`, and `from-message` search for existing mail, and the one
-# `messages` and `view` open. MXROUTE_SOURCE_FOLDER and --folder override
+# `messages` and `view` open. MAILCTL_SOURCE_FOLDER and --folder override
 # it. Either separator works, as for default_folder.
 # Default: INBOX.
 #source_folder = "INBOX"

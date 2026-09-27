@@ -55,5 +55,5 @@ venv = ".venv"
 testpaths = ["tests"]
 addopts = "-ra"
 markers = [
-  "live: hits a real MXroute account and mutates real state; also gated on MXFILTER_LIVE=1",
+  "live: hits a real MXroute account and mutates real state; also gated on MAILCTL_LIVE=1",
 ]

@@ -43,6 +43,10 @@ short:
   MXroute REST API's major; this tool speaks ManageSieve and IMAP, which have
   no vendor version to track. Do not import that policy.
 - The `0 → 1` jump is a deliberate decision of its own, and is not near.
+  **One gate on it is recorded:** the rename (`mxfilter` → `mailctl`, and
+  `MXROUTE_*` → `MAILCTL_*`) had to land before v1, because a name is part
+  of the compatibility promise v1 makes and renaming afterwards costs a
+  major version. It has landed (#45), so that gate is met.
 
 Steps:
 

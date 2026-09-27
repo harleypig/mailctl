@@ -5,9 +5,6 @@ regression test per bug, a manual verification note per feature); `python.md`
 carries the layout convention (`tests/` at the repo root, mirroring the
 package). This file records what belongs here.
 
-`MXFILTER_LIVE` and `MXFILTER_UPDATE_SNAPSHOTS` keep the tool's old name
-until the environment migration in #45 (see CONVENTIONS.md).
-
 **The offline tier is written and green** (`make test`); the only skips are
 the live-gated ones. `pytest -q` reports the current count; none is kept
 here, because a count nobody re-derives is only ever stale.
@@ -38,14 +35,20 @@ fixture required before anything writes to one is still outstanding
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - `engine` — every plan and execute step driven with plain inputs and
      session fakes, as any front-end would call it (`test_engine.py`).
+   - **The old name** (`test_migration.py`) — `migrate-config` moving the
+     old config directory (modes kept, a clash refused, `--dry-run` inert),
+     the old-directory warning and when it stays silent, and old
+     `MXROUTE_*` names reported by name — checked against a sentinel value
+     that must never appear in any output. The `mxfilter` script's reuse is
+     in `test_engine.py`.
    - **CLI snapshots** (`test_cli_snapshots.py`) — each subcommand run end to
      end through `cli.main`, recording exit code, stdout, stderr, and every
      server call into `tests/snapshots/cli/<name>.txt`. A behaviour change
      shows up as a snapshot diff; regenerate with
-     `MXFILTER_UPDATE_SNAPSHOTS=1` and read the diff before committing.
+     `MAILCTL_UPDATE_SNAPSHOTS=1` and read the diff before committing.
    - The **presentation guard** (`test_core_no_presentation.py`) — no core
      module prints, prompts, or exits, and the engine imports no front-end.
-2. **Live tests** (`MXFILTER_LIVE=1`) — stand up **real** Sieve scripts and
+2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
 
@@ -58,9 +61,9 @@ it actually work against MXroute".
 
 Live tests touch a real mailbox, so the guards are not optional:
 
-- **Credentials come from the environment** — the `MXROUTE_*` variables
-  (`config.py`), with the password via `MXROUTE_PASSWORD_CMD` in preference to
-  `MXROUTE_PASSWORD`. `MXFILTER_LIVE=1` is required, so a plain `pytest` can
+- **Credentials come from the environment** — the `MAILCTL_*` variables
+  (`config.py`), with the password via `MAILCTL_PASSWORD_CMD` in preference to
+  `MAILCTL_PASSWORD`. `MAILCTL_LIVE=1` is required, so a plain `pytest` can
   never touch the account.
 - **The password stays out of every artifact.** A live test's output, a
   captured log, and a failure traceback are all places a credential could
@@ -95,7 +98,7 @@ lands in `Lists/GitHub`" is.
 ```sh
 pytest                 # unit (offline, credential-free)
 make test              # the same, via the Makefile
-make testlive          # live (MXFILTER_LIVE=1; needs MXROUTE_* in the env)
+make testlive          # live (MAILCTL_LIVE=1; needs MAILCTL_* in the env)
 ```
 
 `TESTARGS` passes extra flags through, e.g. a run filter for a scoped live

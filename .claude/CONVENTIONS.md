@@ -22,12 +22,40 @@ Distribution name and package are both `mailctl`; the console entry point is
 `mailctl = "mailctl.cli:main"`. It is **not published anywhere** — see
 [RELEASING.md](../RELEASING.md).
 
-**The tool was `mxfilter` until the rename in #45**, which lands in two
-steps. The package, command, and `MailctlError` have moved; the config
-directory (`$XDG_CONFIG_HOME/mxfilter/`, backups included), the `MXROUTE_*`
-and `MXFILTER_*` environment variables, and the default script name
-(`engine.DEFAULT_SCRIPT_NAME`) still carry the old names on purpose, so an
-existing setup keeps working until the deliberate migration follows.
+### The old name
+
+**The tool was `mxfilter` until #45, and the rename is a clean break.** The
+old config directory (`$XDG_CONFIG_HOME/mxfilter/`) and the old `MXROUTE_*`
+setting names are **not read** — no dual-reading period, no fallback. What
+stops the break stranding anybody silently is detection plus a switch, not
+compatibility:
+
+- **The old directory is a finding.** While it exists and the new one does
+  not, `engine.check_config_dir` returns `ConfigDirPending` and the CLI
+  warns loudly on stderr before every command, naming `mailctl
+  migrate-config`. That command is the switch the scoping rule asks for: a
+  plan/execute pair in the engine (`plan_config_migration` /
+  `execute_config_migration`) that lists what moves, honours `--dry-run` and
+  `--yes`, moves by rename so every file keeps its mode, merges into a new
+  directory that already exists, refuses outright if anything at the
+  destination would be overwritten, points a `config.toml` `password_file` /
+  `backup_dir` that named the old directory at the new one, and removes the
+  old directory once empty.
+- **An old setting name is a finding, by name only.**
+  `config.LEGACY_ENV_NAMES` is the table of every old name and its new one.
+  An old name present — in the environment or the env file — without its new
+  one comes back as a `LegacySetting` (old, new, where), and the CLI warns
+  with exactly that. **No value is read, compared, printed, or kept:**
+  presence is tested with `in`, and the env-file parser records the old key
+  and drops its value, because one of these is the password. An old
+  `MXROUTE_PASSWORD` is therefore also never held to the env-file mode
+  check — it is never used.
+- **The script created under the old name is still ours.** A new account
+  gets a script called `mailctl` (`engine.DEFAULT_SCRIPT_NAME`); with nothing
+  active, an existing `mxfilter` script (`engine.LEGACY_SCRIPT_NAME`) is
+  reused rather than a second one created beside it.
+- **`MXROUTE_FORBIDDEN_ACTIONS` keeps its vendor name.** It is a fact about
+  MXroute, not a setting of this tool (*Rule conventions*).
 
 ### The scoping rule
 
@@ -181,9 +209,9 @@ There is no vendor API here — the tool speaks two standard protocols.
   (MXroute's panel gives it as "the same as your primary MX record"), so it is
   always configuration and never a built-in default.
 
-Every setting resolves highest-priority-first: a CLI flag → an `MXROUTE_*`
-line in the `--env-file` file → an `MXROUTE_*` environment variable → the
-TOML config file (`$XDG_CONFIG_HOME/mxfilter/config.toml`) → a built-in
+Every setting resolves highest-priority-first: a CLI flag → a `MAILCTL_*`
+line in the `--env-file` file → a `MAILCTL_*` environment variable → the
+TOML config file (`$XDG_CONFIG_HOME/mailctl/config.toml`) → a built-in
 default. The env file is read, never exported: `load_config` takes the
 environment as a mapping and layers the file over it, so `os.environ` is
 never written. Where each setting came from is recorded on the resolved
@@ -300,9 +328,9 @@ about MXroute's configuration** is not.
 - **Back up before every upload.** The previous script is written to the
   backup directory before the new one is sent, and `mailctl backup` takes the
   same copy on demand. **One location, and it is the config directory** —
-  `$XDG_CONFIG_HOME/mxfilter/backups`, beside `config.toml`
+  `$XDG_CONFIG_HOME/mailctl/backups`, beside `config.toml`
   (`config.default_backup_dir`), overridable by `--backup-dir` /
-  `MXROUTE_BACKUP_DIR`. XDG would call a backup *state*; co-locating it with
+  `MAILCTL_BACKUP_DIR`. XDG would call a backup *state*; co-locating it with
   the config is a deliberate departure from XDG, not an XDG-endorsed reading,
   and the reason is that a backup the user cannot find is not a backup. Two
   defaults for one kind of file is how somebody ends up looking in the
@@ -355,20 +383,20 @@ and it is enforced by construction rather than by care:
   to a connection method — never to display, log, or format it.
 - The password resolves through its own ladder, highest first: **an explicit
   flag** (`--password-file`, `--password-cmd`, `--password` — argparse makes
-  them mutually exclusive) → the `--env-file` file's `MXROUTE_PASSWORD_FILE`
-  → `MXROUTE_PASSWORD_CMD` → `MXROUTE_PASSWORD` → the same three from the
+  them mutually exclusive) → the `--env-file` file's `MAILCTL_PASSWORD_FILE`
+  → `MAILCTL_PASSWORD_CMD` → `MAILCTL_PASSWORD` → the same three from the
   environment → `password_file` → `password_cmd` (config file) → an
   interactive `getpass` prompt. Two rules produce that order, and both are
   load-bearing:
   - **A flag beats an ambient variable.** It was typed for *this* run; the
     variable merely happens to be exported. The inverse — which is what the
     code did until the ladder was fixed — silently authenticates as the
-    wrong account when `MXROUTE_PASSWORD` is exported for one mailbox and
+    wrong account when `MAILCTL_PASSWORD` is exported for one mailbox and
     `--password-cmd` names another. An env file was named for this run too,
     so **all three** of its rungs sit above all three ambient ones rather
     than interleaving by variable — otherwise an exported
-    `MXROUTE_PASSWORD_FILE` for one mailbox would beat the file's
-    `MXROUTE_PASSWORD` for another.
+    `MAILCTL_PASSWORD_FILE` for one mailbox would beat the file's
+    `MAILCTL_PASSWORD` for another.
   - **A literal value never beats an instruction about where to fetch one.**
 - The **literal password is never read from the TOML config file** — only
   `password_file` and `password_cmd` are. That is unchanged.
@@ -381,7 +409,7 @@ and it is enforced by construction rather than by care:
   WSL: a file on a Windows mount reports
   `0777` regardless of intent, so the file has to live on the Linux
   filesystem — do **not** add a filesystem exception to the check.
-- **An env file that sets `MXROUTE_PASSWORD` is held to the password-file
+- **An env file that sets `MAILCTL_PASSWORD` is held to the password-file
   bar** — any bit in `0o077` is a refusal naming the path, the mode, and the
   `chmod`. The mode is taken from the open handle, so it is the mode of the
   file actually read. The password is wrapped in `Secret` as it is parsed
@@ -492,7 +520,7 @@ Full dimension status:
 | 5. Security | **Active (secrets only)** — `gitleaks`, `detect-private-key`. SAST is **Off**: the attack surface is two outbound TLS client sessions and no untrusted input parsing beyond the user's own Sieve script |
 | 6. Tests | **Active** — the offline tier is green (`make test` / `pytest`); see [TESTS.md](TESTS.md) |
 | 7. UI/UX & accessibility | **N/A** — a CLI with no UI. Terminal output legibility is covered by the *show, then change* convention |
-| 8. End-to-end | **Scaffolded, gated** — `tests/live/` exists and skips unless `MXFILTER_LIVE=1`; it has never written to a real account ([#9][i9]) |
+| 8. End-to-end | **Scaffolded, gated** — `tests/live/` exists and skips unless `MAILCTL_LIVE=1`; it has never written to a real account ([#9][i9]) |
 | 9. Compatibility | **N/A** — single target (CPython ≥ 3.11); no external contract we publish |
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
@@ -649,6 +677,14 @@ will read it.
   expected** and the `y.z` split is deliberately loose: bump `y` for a
   meaningful addition, `z` for a smaller change, and do not agonize over
   which. The `0 → 1` jump is a decision in its own right and is not near.
+- **The rename gates `0 → 1`, and it has landed.** `v1.0.0` is where the
+  version becomes a compatibility promise, and a name — the command, the
+  config directory, the environment variables — is part of what it covers;
+  renaming after v1 would cost a `v2.0.0` for nothing but a name already
+  known to be wrong. So the rename had to come first, and with #45 it has:
+  `mxfilter` → `mailctl`, `MXROUTE_*` → `MAILCTL_*`, and the config directory
+  with them. The gate is recorded here and in
+  [RELEASING.md](../RELEASING.md) so it is read at the moment it applies.
 - **No API-major alignment.** The sibling provider aligns its MAJOR to the
   MXroute REST API's major, because it is a client of a versioned API. That
   does **not** carry over: this tool speaks ManageSieve (RFC 5804) and IMAP,

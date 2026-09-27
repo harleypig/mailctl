@@ -24,9 +24,14 @@ Set `host`, `user`, and a password source, per [Configure][config] in the
 README. Have your webmail open in a browser tab; several steps ask you to
 confirm something there.
 
-Any one source will do for a first run: `MXROUTE_PASSWORD_CMD`, a
+**Coming from `mxfilter`?** Run `mailctl migrate-config --dry-run`, then
+`mailctl migrate-config`, and rename any `MXROUTE_*` variable to
+`MAILCTL_*` first. The old names are not read, and every command below warns
+until the move is done.
+
+Any one source will do for a first run: `MAILCTL_PASSWORD_CMD`, a
 `--password-file` whose mode is `0600` (on the Linux filesystem — a Windows
-mount reports `0777` and is refused), `MXROUTE_PASSWORD`, or nothing at all,
+mount reports `0777` and is refused), `MAILCTL_PASSWORD`, or nothing at all,
 which prompts.
 
 ## 1. `mailctl test` — touches nothing
@@ -116,18 +121,17 @@ mailctl backup
 `(active)` marking the active one, and then one line from `backup`:
 
 ```text
-wrote 3 rule(s) to /home/you/.config/mxfilter/backups/managesieve-20260814T095659Z.sieve
+wrote 3 rule(s) to /home/you/.config/mailctl/backups/managesieve-20260814T095659Z.sieve
 ```
 
 That file is the script **exactly as the server has it** — no banner lines,
-nothing reformatted, mode `0600`. It goes in `~/.config/mxfilter/backups`
-(the tool's old name; the directory has not moved yet) beside your
-`config.toml`; `--output PATH` puts it somewhere else, and a PATH ending in
+nothing reformatted, mode `0600`. It goes in `~/.config/mailctl/backups`
+beside your `config.toml`; `--output PATH` puts it somewhere else, and a PATH ending in
 `/` (or naming a directory that exists) means "in here" while anything else
 is the exact file to write. Then read it:
 
 ```bash
-cat "$(ls -t ~/.config/mxfilter/backups/*.sieve | head -1)"
+cat "$(ls -t ~/.config/mailctl/backups/*.sieve | head -1)"
 ```
 
 **You should see** your existing filters as Sieve source and nothing else.
@@ -145,9 +149,8 @@ protects them.
 
 * `mailctl list` prints `No Sieve scripts on the server.` That is not a
   failure — it means you have no filters yet, there is nothing to lose, and
-  mailctl will create a script called `mxfilter` (its old name, not yet
-  migrated) on first upload. `backup` will say there is nothing to back up;
-  carry on.
+  mailctl will create a script called `mailctl` on first upload. `backup`
+  will say there is nothing to back up; carry on.
 * The saved file is empty but `list` showed an active script. Do not continue;
   something is wrong with the download and you have no backup.
 
@@ -228,7 +231,7 @@ messages that arrive from now on.
    ls -l <the path it printed>
    ```
 
-   By default backups land in `~/.config/mxfilter/backups` — the same place
+   By default backups land in `~/.config/mailctl/backups` — the same place
    `mailctl backup` writes to in step 3 — one file per upload, named
    `<script>-<UTC timestamp>.sieve`.
 

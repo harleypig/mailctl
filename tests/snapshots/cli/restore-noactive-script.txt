@@ -20,7 +20,7 @@ Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mail
 --- end diff ---
 
 The account has no active script; 'managesieve' will become the active script.
-Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
 Uploaded and activated script 'managesieve'
 
 --- stderr

@@ -25,7 +25,7 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 +}
 
 --- end diff ---
-Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
 Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
 Uploaded and activated script 'managesieve'
 

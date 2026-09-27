@@ -11,10 +11,9 @@ behaviour change shows up as a reviewable snapshot diff in the same commit.
 
 Regenerate after an intended change with::
 
-    MXFILTER_UPDATE_SNAPSHOTS=1 pytest tests/test_cli_snapshots.py
+    MAILCTL_UPDATE_SNAPSHOTS=1 pytest tests/test_cli_snapshots.py
 
-and read the diff before committing it. The variable keeps the tool's old
-name until the environment migration (#45).
+and read the diff before committing it.
 """
 
 import io
@@ -39,12 +38,12 @@ def update_requested(environ) -> bool:
     with itself passes whatever the output is, so a CI job inheriting the
     variable would stop checking anything while staying green.
     """
-    if environ.get("MXFILTER_UPDATE_SNAPSHOTS") != "1":
+    if environ.get("MAILCTL_UPDATE_SNAPSHOTS") != "1":
         return False
 
     if environ.get("CI"):
         pytest.fail(
-            "MXFILTER_UPDATE_SNAPSHOTS=1 under CI would rewrite every "
+            "MAILCTL_UPDATE_SNAPSHOTS=1 under CI would rewrite every "
             "snapshot and pass unconditionally; unset it",
             pytrace=False,
         )
@@ -149,13 +148,13 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # runs in), and mail / flags
 # (extra messages and their IMAP flags, by UID).
 
-# Host from the env file over the exported MXROUTE_HOST, port from a flag
+# Host from the env file over the exported MAILCTL_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
 # indirectly -- one rung each, so the report has to tell them apart.
 ENV_FILE = """# written by hand
-export MXROUTE_HOST=mail.from-env-file.example
-MXROUTE_SIEVE_PORT='4191'
-MXROUTE_PASSWORD_CMD="printf %s not-a-real-password"
+export MAILCTL_HOST=mail.from-env-file.example
+MAILCTL_SIEVE_PORT='4191'
+MAILCTL_PASSWORD_CMD="printf %s not-a-real-password"
 OTHER_TOOL=ignored
 """
 
@@ -804,13 +803,13 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         monkeypatch.chdir(tmp_path)
 
     if "config" in options:
-        config_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "mxfilter"
+        config_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "mailctl"
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / "config.toml").write_text(options["config"])
 
-    monkeypatch.setenv("MXROUTE_HOST", "mail.example.com")
-    monkeypatch.setenv("MXROUTE_USER", "user@example.com")
-    monkeypatch.setenv("MXROUTE_PASSWORD", "not-a-real-password")
+    monkeypatch.setenv("MAILCTL_HOST", "mail.example.com")
+    monkeypatch.setenv("MAILCTL_USER", "user@example.com")
+    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
 
     out, err = Stdout(tty=options.get("tty", False)), io.StringIO()
@@ -867,7 +866,7 @@ def test_cli_output_matches_its_snapshot(
         snapshot.write_text(actual, encoding="utf-8")
 
     assert snapshot.exists(), (
-        f"no snapshot for {name!r}; run with MXFILTER_UPDATE_SNAPSHOTS=1"
+        f"no snapshot for {name!r}; run with MAILCTL_UPDATE_SNAPSHOTS=1"
     )
     assert actual == snapshot.read_text(encoding="utf-8")
 
@@ -906,7 +905,7 @@ def test_every_snapshot_belongs_to_a_scenario():
     [
         pytest.param({}, False, id="unset"),
         pytest.param({"CI": "true"}, False, id="ci-checking"),
-        pytest.param({"MXFILTER_UPDATE_SNAPSHOTS": "1"}, True, id="local"),
+        pytest.param({"MAILCTL_UPDATE_SNAPSHOTS": "1"}, True, id="local"),
     ],
 )
 def test_snapshot_rewriting_is_opt_in(environ, expected):
@@ -916,7 +915,7 @@ def test_snapshot_rewriting_is_opt_in(environ, expected):
 # ----------------------------------------------------------------------------
 def test_snapshot_rewriting_is_refused_under_ci():
     """#55: CI inheriting the variable would turn the tier into a no-op."""
-    environ = {"MXFILTER_UPDATE_SNAPSHOTS": "1", "CI": "true"}
+    environ = {"MAILCTL_UPDATE_SNAPSHOTS": "1", "CI": "true"}
 
     with pytest.raises(pytest.fail.Exception, match="under CI"):
         update_requested(environ)
