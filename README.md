@@ -94,6 +94,10 @@ mxfilter remove-rule from-newsletter-example-com
 # Save the active script, byte for byte, before you touch anything.
 mxfilter backup
 mxfilter backup --output ~/mxfilter-before-first-run.sieve
+
+# Put a backup back over the active script: diff, back up, confirm.
+mxfilter restore ~/mxfilter-before-first-run.sieve --dry-run
+mxfilter restore ~/mxfilter-before-first-run.sieve
 ```
 
 **Before the first run against a real mailbox, work through
@@ -131,10 +135,14 @@ assumptions below get settled for your account.
   backup. `--backup-dir` and `MXROUTE_BACKUP_DIR` move it. The file is written
   mode `0600` in a directory created `0700`: a Sieve script is not a password,
   but it does say who you correspond with and how you sort it.
-* **mxfilter has no restore command.** The backup is the server's exact bytes
-  — no banner lines, nothing reformatted — and putting them back needs another
-  ManageSieve client, such as `sieve-connect`, or the panel's filter UI if it
-  exposes a raw import. See [docs/VERIFYING.md][verify].
+* **`mxfilter restore FILE` puts a backup back.** The backup is the server's
+  exact bytes — no banner lines, nothing reformatted — and restore uploads
+  them exactly, over the active script only. It shows the raw diff against
+  what the server has now, backs the current script up first, lets the
+  server validate the file, and asks before it replaces anything. It is the
+  one command that **replaces** rather than merges: a rule added since the
+  backup was taken is removed, and the diff shows it. It works even over a
+  script mxfilter cannot parse ([ADR 0005][adr5]).
 * Rules are merged into the parsed existing script, never appended blindly,
   so other rules survive. If the existing script cannot be parsed, mxfilter
   stops rather than overwrite it.
@@ -267,4 +275,5 @@ character class, so a bracketed subject is safe.
   apply criteria you give it to old mail; it cannot tell you which of your
   existing rules would have caught a message.
 
+[adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
 [verify]: docs/VERIFYING.md

@@ -272,9 +272,11 @@ about MXroute's configuration** is not.
   it was handed, with newline translation off, mode `0600` in a directory
   created `0700`. Nothing decorates it — `mxfilter show` adds banner lines for
   a reader and is therefore *not* a backup, which is exactly the trap
-  redirecting `show` to a file used to set. There is no restore path: putting
-  a file back needs another ManageSieve client, and building one is its own
-  change ([#13][i13]).
+  redirecting `show` to a file used to set. `mxfilter restore` puts one back
+  over the active script only: raw diff, backup of the current script,
+  CHECKSCRIPT, confirmation. It is the one write path that replaces instead
+  of merging, and it may replace a script mxfilter cannot parse
+  ([ADR 0005][adr5], [#13][i13]).
 - **Show, then change.** Every mutating subcommand works out what would
   change, shows it (a diff for the script, a preview for the messages), and
   only then applies it. `--dry-run` stops after the "show it" step.
@@ -600,6 +602,7 @@ will read it.
 [adr2]: ../adr/0002-non-destructive-script-merge.md
 [provider]: https://github.com/harleypig/terraform-provider-mxroute
 [i9]: https://github.com/harleypig/mxroute-email-filters/issues/9
+[adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
 [i13]: https://github.com/harleypig/mxroute-email-filters/issues/13
 [i10]: https://github.com/harleypig/mxroute-email-filters/issues/10
 [da495]: https://github.com/harleypig/dotagents/issues/495

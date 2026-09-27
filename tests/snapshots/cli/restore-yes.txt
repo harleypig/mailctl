@@ -1,0 +1,34 @@
+$ mxfilter restore <TMP>/restore.sieve --yes
+exit: 0
+--- stdout
+Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (2 rule(s)):
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -6,9 +6,3 @@
+ 	setflag "\\Flagged";
+ 	stop;
+ }
+-# rule:[bin-the-noise]
+-if header :contains "subject" "newsletter"
+-{
+-	fileinto "INBOX.Noise";
+-	stop;
+-}
+
+--- end diff ---
+Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+Uploaded and activated script 'managesieve'
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('checkscript',)
+('putscript', 'managesieve', 'require ["fileinto","imap4flags"];\n# rule:[keep-boss]\nif header :contains "from" "boss@example.com"\n{\n\tfileinto "INBOX.Boss";\n\tsetflag "\\\\Flagged";\n\tstop;\n}\n')
+('setactive', 'managesieve')
+('logout',)
+--- imap calls

@@ -118,8 +118,21 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # Scenarios
 # ############################################################################
 
-# name -> (argv, options). Options: caps, active, script, reject, and
-# config -- the text of config.toml.
+# name -> (argv, options). Options: caps, active, script, reject, config
+# (the text of config.toml), and file (the text of a file that "<FILE>" in
+# argv is replaced with the path of).
+
+# The Roundcube script with its second rule gone -- a backup taken before
+# that rule was added.
+ONE_RULE = """require ["fileinto","imap4flags"];
+# rule:[keep-boss]
+if header :contains "from" "boss@example.com"
+{
+\tfileinto "INBOX.Boss";
+\tsetflag "\\\\Flagged";
+\tstop;
+}
+"""
 SCENARIOS = {
     "list": (["list"], {}),
     "list-verbose": (["list", "--verbose"], {}),
@@ -141,6 +154,19 @@ SCENARIOS = {
         ["add", *GITHUB, "--fileinto", "Lists", "--no-subscribe"],
         {},
     ),
+    "restore-dry": (["restore", "<FILE>", "--dry-run"], {"file": ONE_RULE}),
+    "restore-yes": (["restore", "<FILE>", "--yes"], {"file": ONE_RULE}),
+    "restore-notty": (["restore", "<FILE>"], {"file": ONE_RULE}),
+    "restore-identical": (["restore", "<FILE>", "--yes"], {"file": "SAME"}),
+    "restore-over-unparseable": (
+        ["restore", "<FILE>", "--yes"],
+        {"file": ONE_RULE, "script": "if {{{ broken\n"},
+    ),
+    "restore-rejected": (
+        ["restore", "<FILE>", "--yes"],
+        {"file": ONE_RULE, "reject": True},
+    ),
+    "restore-missing-file": (["restore", "/nonexistent/x.sieve"], {}),
     "add-dry-missing": (
         ["add", *GITHUB, "--fileinto", "Lists/GitHub", "--dry-run"],
         {},
@@ -434,6 +460,12 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     }
 
     monkeypatch.setattr(sieve_module, "Client", lambda *a, **k: sieve)
+    if "file" in options:
+        restore_file = tmp_path / "restore.sieve"
+        text = script if options["file"] == "SAME" else options["file"]
+        restore_file.write_text(text, encoding="utf-8")
+        argv = [str(restore_file) if arg == "<FILE>" else arg for arg in argv]
+
     if "config" in options:
         config_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "mxfilter"
         config_dir.mkdir(parents=True, exist_ok=True)
@@ -462,7 +494,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         return re.sub(r"\d{8}T\d{6}(\.\d+)?Z?", "<STAMP>", text)
 
     sections = [
-        f"$ mxfilter {' '.join(argv)}",
+        scrub(f"$ mxfilter {' '.join(argv)}"),
         f"exit: {code}",
         "--- stdout",
         scrub(out.getvalue()),

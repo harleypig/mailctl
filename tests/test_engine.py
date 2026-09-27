@@ -854,3 +854,102 @@ def test_a_subscribe_the_server_ignores_is_an_error(sessions, fake_imap):
 
     with pytest.raises(MxFilterError, match="still does not list it"):
         engine.execute_subscription(sessions, plan)
+
+
+# ############################################################################
+# Restore
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_restore_is_planned_then_backs_up_and_uploads_exact_bytes(
+    imap_config, tmp_path
+):
+    imap_config.backup_dir = tmp_path / "backups"
+    backup = tmp_path / "old.sieve"
+    backup.write_bytes(b'require "fileinto";\r\n# rule:[a]\r\n')
+    fake = FakeSieveSession(script="current\n")
+    live = Sessions(sieve=fake)
+
+    plan = engine.plan_restore(live, backup)
+
+    assert plan.changes
+    assert plan.after == 'require "fileinto";\r\n# rule:[a]\r\n'
+    assert "-current" in plan.diff.text
+    assert fake.names() == ["get_script"]
+
+    events = []
+    path = engine.execute_restore(live, imap_config, plan, events.append)
+
+    assert path.read_text() == "current\n"
+    assert fake.calls[-2] == ("put_script", "managesieve", plan.after)
+    assert [type(event) for event in events] == [
+        engine.ScriptBackedUp,
+        engine.ScriptUploaded,
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_restore_over_an_unparseable_script_is_allowed(
+    imap_config, tmp_path, roundcube_script
+):
+    """ADR 0005: the backup, not a refusal, is what protects it."""
+    imap_config.backup_dir = tmp_path / "backups"
+    backup = tmp_path / "good.sieve"
+    backup.write_text(roundcube_script)
+    live = Sessions(sieve=FakeSieveSession(script="if {{{ broken"))
+
+    engine.execute_restore(
+        live, imap_config, engine.plan_restore(live, backup)
+    )
+
+    assert "put_script" in live.sieve.names()
+
+
+# ----------------------------------------------------------------------------
+def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
+    backup = tmp_path / "same.sieve"
+    backup.write_text("same\n")
+    live = Sessions(sieve=FakeSieveSession(script="same\n"))
+
+    plan = engine.plan_restore(live, backup)
+
+    assert not plan.changes
+    assert engine.execute_restore(live, imap_config, plan) is None
+    assert "put_script" not in live.sieve.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_restore_needs_a_readable_file_and_an_active_script(tmp_path):
+    with pytest.raises(MxFilterError, match="could not read backup"):
+        engine.plan_restore(
+            Sessions(sieve=FakeSieveSession()), tmp_path / "no"
+        )
+
+    backup = tmp_path / "b.sieve"
+    backup.write_text("x")
+
+    with pytest.raises(MxFilterError, match="no active script"):
+        engine.plan_restore(
+            Sessions(sieve=FakeSieveSession(active=None)), backup
+        )
+
+
+# ----------------------------------------------------------------------------
+def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
+    imap_config, tmp_path
+):
+    imap_config.backup_dir = tmp_path / "backups"
+    backup = tmp_path / "b.sieve"
+    backup.write_text("new\n")
+    fake = FakeSieveSession(script="old\n")
+    fake.reject = True
+    live = Sessions(sieve=fake)
+
+    with pytest.raises(MxFilterError, match="rejected"):
+        engine.execute_restore(
+            live, imap_config, engine.plan_restore(live, backup)
+        )
+
+    assert "put_script" not in fake.names()
+    assert len(list((tmp_path / "backups").iterdir())) == 1

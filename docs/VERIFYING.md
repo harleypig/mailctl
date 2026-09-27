@@ -349,15 +349,14 @@ Read the diff before confirming; the same merge round-trip applies.
 mxfilter printed in step 5 is the server's exact previous bytes, before that
 upload. So is the copy you saved in step 3.
 
-**mxfilter has no restore command.** `mxfilter backup` makes the copy; nothing
-here puts one back. It can only ever merge into whatever is currently on the
-server. To restore you need another ManageSieve client: a command-line one
-such as `sieve-connect`, or Roundcube's filter UI if the panel exposes its raw
-filter-set edit or import view — whether it does is a server-side setting
-nobody has checked here. Once it is restored, run `mxfilter backup --output
-./after-restore.sieve` and `diff` it against the file you were putting back;
-`mxfilter show` is fine for reading, but its banner lines make it the wrong
-thing to compare.
+**To put a backup back**, run `mxfilter restore FILE --dry-run` and read the
+diff — it is the raw difference between the file and what the server has
+now, so anything added since the backup shows as removed. Then run it without
+`--dry-run` and confirm. The current script is backed up first, so a restore
+is itself reversible the same way. Once it is restored, run `mxfilter backup
+--output ./after-restore.sieve` and `diff` it against the file you were
+putting back; `mxfilter show` is fine for reading, but its banner lines make
+it the wrong thing to compare.
 
 If the backup and the current script differ in ways you did not expect, that
 is worth reporting with both files in hand — they are the whole evidence of

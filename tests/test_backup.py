@@ -475,8 +475,8 @@ def test_backup_leaves_the_server_alone(fake_sieve, tmp_path):
 
 
 # ----------------------------------------------------------------------------
-def test_backup_help_names_the_missing_restore_command(capsys):
-    """The gap is more conspicuous now that ``backup`` is a verb."""
+def test_backup_help_names_the_restore_command(capsys):
+    """A backup is only as useful as the way back, so help names it."""
     with pytest.raises(SystemExit):
         cli.main(["backup", "--help"])
 
@@ -484,7 +484,7 @@ def test_backup_help_names_the_missing_restore_command(capsys):
     # phrase is matched against the text with its line breaks collapsed.
     helped = " ".join(capsys.readouterr().out.split())
 
-    assert "has no restore command" in helped
+    assert "mxfilter restore FILE" in helped
 
 
 # ----------------------------------------------------------------------------

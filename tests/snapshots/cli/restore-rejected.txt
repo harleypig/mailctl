@@ -1,0 +1,32 @@
+$ mxfilter restore <TMP>/restore.sieve --yes
+exit: 1
+--- stdout
+Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (2 rule(s)):
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -6,9 +6,3 @@
+ 	setflag "\\Flagged";
+ 	stop;
+ }
+-# rule:[bin-the-noise]
+-if header :contains "subject" "newsletter"
+-{
+-	fileinto "INBOX.Noise";
+-	stop;
+-}
+
+--- end diff ---
+Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+
+--- stderr
+mxfilter: the server rejected the generated script (CHECKSCRIPT returned failure); nothing was uploaded
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('checkscript',)
+('logout',)
+--- imap calls

@@ -1,0 +1,15 @@
+$ mxfilter restore <TMP>/restore.sieve --yes
+exit: 0
+--- stdout
+Restore <TMP>/restore.sieve (2 rule(s)) over script 'managesieve' (2 rule(s)):
+
+The file is identical to the script on the server; nothing to restore.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

@@ -6,6 +6,14 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 
 FEATURES:
 
+* **`mxfilter restore FILE` puts a backup back** (#13). It uploads the file
+  byte for byte over the active script, and only that script. It shows the
+  raw diff against what the server has now, backs the current script up
+  first, has the server validate the file, and asks before replacing
+  anything (`--yes`, `--dry-run`). It works over a script mxfilter cannot
+  parse — the one deliberate exception to the merge-only rule, recorded in
+  ADR 0005.
+
 * **Folder subscription is a setting you can see and change** (#42).
   `mxfilter subscribe FOLDER` and `mxfilter unsubscribe FOLDER` show or hide
   an existing folder in webmail, with the usual folder-name normalization

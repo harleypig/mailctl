@@ -777,6 +777,48 @@ def cmd_backup(args) -> int:
 
 
 # ----------------------------------------------------------------------------
+def cmd_restore(args) -> int:
+    """Replace the active script with a backup file, after showing it."""
+    config = configure(args)
+
+    with connect(config, args) as sessions:
+        plan = engine.plan_restore(sessions, args.file)
+
+        print(
+            f"Restore {plan.source} ({rule_count_phrase(plan.after)}) over "
+            f"script {plan.script!r} ({rule_count_phrase(plan.before)}):"
+        )
+
+        if not plan.changes:
+            print(
+                "\nThe file is identical to the script on the server; "
+                "nothing to restore."
+            )
+
+            return 0
+
+        print_script_diff(plan.diff)
+
+        if args.dry_run:
+            print("\n[dry-run] the script was NOT uploaded.")
+
+            return 0
+
+        if not confirm(
+            f"Replace script {plan.script!r} with {str(plan.source)!r}? The "
+            f"current script is backed up first",
+            args.yes,
+        ):
+            print("Aborted; nothing was changed.")
+
+            return 0
+
+        engine.execute_restore(sessions, config, plan, render_event)
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
 def rule_count_phrase(source: str) -> str:
     """Describe how many rules a script holds, for the summary line."""
     count = engine.count_rules(source)
@@ -1468,10 +1510,8 @@ def build_parser() -> argparse.ArgumentParser:
         "as the server has it -- no banner lines, nothing reformatted "
         "(which is what 'mxfilter show' adds, and why it is not a backup). "
         "The file is written mode 0600, in a directory created 0700 if it "
-        "was not there. Nothing on the server is touched. NOTE: mxfilter "
-        "has no restore command; putting a backup back needs another "
-        "ManageSieve client, such as sieve-connect, or the panel's own "
-        "filter UI if it exposes a raw import.",
+        "was not there. Nothing on the server is touched. 'mxfilter "
+        "restore FILE' puts a backup back.",
     )
     backup.add_argument(
         "--output",
@@ -1490,6 +1530,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="report the file that would be written; write nothing",
     )
     backup.set_defaults(handler=cmd_backup)
+
+    restore = subparsers.add_parser(
+        "restore",
+        parents=[common, connection, safety],
+        help="upload a backup file over the active script",
+        description="Replace the active Sieve script with a backup file, "
+        "byte for byte. The difference between the file and what the "
+        "server has now is shown first, the current script is backed up "
+        "before anything is sent, the server validates the file "
+        "(CHECKSCRIPT), and you are asked to confirm. No other stored "
+        "script is touched. Unlike every other change mxfilter makes, "
+        "this REPLACES the script rather than merging into it -- any rule "
+        "added since the backup was taken is removed, which the diff "
+        "shows.",
+    )
+    restore.add_argument(
+        "file", metavar="FILE", help="a file written by 'mxfilter backup'"
+    )
+    restore.set_defaults(handler=cmd_restore)
 
     folders = subparsers.add_parser(
         "folders", parents=[common, connection], help="list IMAP folders"

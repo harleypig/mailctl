@@ -1,0 +1,30 @@
+$ mxfilter restore <TMP>/restore.sieve
+exit: 1
+--- stdout
+Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (2 rule(s)):
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -6,9 +6,3 @@
+ 	setflag "\\Flagged";
+ 	stop;
+ }
+-# rule:[bin-the-noise]
+-if header :contains "subject" "newsletter"
+-{
+-	fileinto "INBOX.Noise";
+-	stop;
+-}
+
+--- end diff ---
+
+--- stderr
+mxfilter: Replace script 'managesieve' with '<TMP>/restore.sieve'? The current script is backed up first -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

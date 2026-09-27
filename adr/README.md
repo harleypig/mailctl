@@ -13,6 +13,7 @@ the [issue tracker][issues], and deliberate "not now" deferrals in
 | [0002](0002-non-destructive-script-merge.md) | Merge into the active Sieve script; never overwrite it |
 | [0003](0003-python-core-with-per-component-language-choice.md) | Python is the core; another language is allowed per component |
 | [0004](0004-adopt-go-sieve-as-the-evaluation-engine.md) | Adopt `migadu/go-sieve` as the Sieve evaluation engine |
+| [0005](0005-restore-may-replace-an-unparseable-script.md) | `restore` may replace a script mxfilter cannot parse |
 
 [madr]: https://adr.github.io/madr/
 
