@@ -1,0 +1,17 @@
+$ mxfilter view 5 --raw
+exit: 0
+--- stdout
+From: News <news@example.com>\r
+Subject: Weekly\r
+Content-Type: text/html; charset=utf-8\r
+\r
+<h1>This week</h1><p>One &amp; two.</p>\r
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (5,))
+('logout',)

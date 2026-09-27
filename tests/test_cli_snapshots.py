@@ -226,6 +226,25 @@ NEWSLETTER = (
 
 MAIL = {"mail": {4: REPORT, 5: NEWSLETTER}, "flags": {1: (b"\\Seen",)}}
 
+# A bidi override reversing the tail of a Subject and an attachment name.
+SPOOFED = (
+    b"From: m@example.com\r\n"
+    b"Subject: Pay =?utf-8?q?=E2=80=AEtoday?=\r\n"
+    b'Content-Type: multipart/mixed; boundary="b"\r\n'
+    b"\r\n"
+    b"--b\r\n"
+    b"Content-Type: text/plain; charset=utf-8\r\n"
+    b"\r\n"
+    b"see attached\r\n"
+    b"--b\r\n"
+    b"Content-Type: application/octet-stream\r\n"
+    b"Content-Disposition: attachment;\r\n"
+    b" filename*=utf-8''invoice_%E2%80%AEfdp.exe\r\n"
+    b"\r\n"
+    b"payload\r\n"
+    b"--b--\r\n"
+)
+
 # Message- and script-derived text carrying terminal escapes: an OSC title
 # change in a Subject that 'from-message --derive subject' copies into the
 # rule, and colour sequences in a stored script's rule name, test, and
@@ -276,7 +295,9 @@ SCENARIOS = {
     "view": (["view", "4"], MAIL),
     "view-html": (["view", "5"], MAIL),
     "view-headers": (["view", "4", "--headers-only"], MAIL),
-    "view-raw": (["view", "5", "--raw"], MAIL),
+    "view-raw": (["view", "5", "--raw"], {**MAIL, "tty": True}),
+    "view-raw-pipe": (["view", "5", "--raw"], MAIL),
+    "view-bidi": (["view", "6"], {"mail": {6: SPOOFED}}),
     "view-missing": (["view", "99"], MAIL),
     "list": (["list"], {}),
     "list-verbose": (["list", "--verbose"], {}),
@@ -618,6 +639,27 @@ SCENARIOS = {
 
 
 # ----------------------------------------------------------------------------
+class Stdout(io.TextIOWrapper):
+    """A captured stdout that is a terminal or a pipe, as asked.
+
+    Backed by bytes, as a real one is, so a command writing to
+    ``sys.stdout.buffer`` is recorded in order with its text output.
+    """
+
+    def __init__(self, tty: bool):
+        super().__init__(io.BytesIO(), encoding="utf-8", newline="")
+        self._tty = tty
+
+    def isatty(self) -> bool:
+        return self._tty
+
+    def text(self) -> str:
+        self.flush()
+
+        return self.buffer.getvalue().decode("utf-8")
+
+
+# ----------------------------------------------------------------------------
 def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     """Run one invocation and render everything observable as text.
 
@@ -663,7 +705,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     monkeypatch.setenv("MXROUTE_PASSWORD", "not-a-real-password")
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
 
-    out, err = io.StringIO(), io.StringIO()
+    out, err = Stdout(tty=options.get("tty", False)), io.StringIO()
     monkeypatch.setattr(sys, "stdout", out)
     monkeypatch.setattr(sys, "stderr", err)
 
@@ -688,7 +730,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         scrub(f"$ mxfilter {' '.join(argv)}"),
         f"exit: {code}",
         "--- stdout",
-        scrub(out.getvalue()),
+        scrub(out.text()),
         "--- stderr",
         scrub(err.getvalue()),
         "--- sieve calls",

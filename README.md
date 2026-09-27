@@ -105,6 +105,7 @@ mxfilter messages --search 'UNSEEN SINCE 1-Sep-2026' --limit 50
 mxfilter view 4127
 mxfilter view 4127 --headers-only
 mxfilter view 4127 --raw
+mxfilter view 4127 --raw > message.eml   # the exact bytes, to keep
 
 # Show a folder in webmail, or hide one (it keeps its mail either way).
 mxfilter subscribe Lists/News
@@ -170,12 +171,18 @@ assumptions below get settled for your account.
   sender controls every header, the body, and the attachment names, and
   escape sequences in them can recolour your terminal, retitle it, or plant
   a link whose text lies about where it goes. So `messages` and `view` —
-  `--raw` included — print every control character as a visible `\xNN`
-  escape instead of sending it to the terminal, and headers are kept to one
-  line so a decoded line break cannot forge another header. Everything
-  printable, tabs and line breaks included, comes through as it is. The
-  headers `from-message` and `apply` show before they act get the same
-  treatment.
+  `--raw` on a terminal included — print every control character as a
+  visible `\xNN` escape instead of sending it to the terminal, and headers
+  are kept to one line so a decoded line break cannot forge another
+  header. Unicode direction overrides and isolates, which can make
+  `invoice_fdp.exe` read as `invoice_exe.pdf`, print as a visible
+  `\u202e`-style escape the same way. Everything printable, tabs and line
+  breaks included, comes through as it is. The headers `from-message` and
+  `apply` show before they act get the same treatment.
+* `view --raw` **into a file or a pipe writes the message exactly as the
+  server holds it**, byte for byte, with nothing escaped or re-encoded — so
+  `mxfilter view 4127 --raw > message.eml` saves a copy any mail program
+  can open. Only on a terminal is it escaped as above.
 * `view` shows the message's plain-text part. A message with only HTML is
   shown as a rough text conversion, and says so above the body; `--raw`
   shows the original. Attachments are listed by name, type, and size, and

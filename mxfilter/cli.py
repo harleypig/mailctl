@@ -73,8 +73,15 @@ VIEW_HEADERS = ("Date", "From", "To", "Cc", "Subject", "List-Id")
 # sequence, is among them, so escaping it leaves the rest of a sequence as
 # inert visible text. A carriage return passes only as half of a CRLF --
 # alone it rewinds the line so later text can overprint it.
+#
+# Also the bidi embeddings, overrides, and isolates (U+202A-U+202E,
+# U+2066-U+2069): not terminal controls, but they reorder what is drawn,
+# so 'invoice_<RLO>fdp.exe' displays as 'invoice_exe.pdf'. The marks
+# U+200E, U+200F, and U+061C pass: they cannot reorder strong characters,
+# and RTL mail uses them legitimately.
 UNSAFE_CHARACTERS = re.compile(
-    r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]|\r(?!\n)"
+    r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]"
+    r"|\r(?!\n)"
 )
 
 # IMAP flag -> the mark the listing shows for it. Unread is the absence of
@@ -155,16 +162,22 @@ def safe_text(value: str) -> str:
     """Neutralize untrusted text -- mail content -- for a terminal.
 
     Every control character is replaced by its visible ``\\xNN`` escape,
-    so a message cannot recolour, retitle, hyperlink, or overprint the
-    terminal it is shown in. Printable text, tabs, and newlines pass
+    and every bidi override or isolate by its ``\\uNNNN`` escape, so a
+    message cannot recolour, retitle, hyperlink, overprint, or reorder
+    the terminal it is shown in. Printable text, tabs, and newlines pass
     as they are. Lone surrogates become U+FFFD, since no stream can
     encode them.
     """
     value = engine.LONE_SURROGATES.sub("\ufffd", value)
 
-    return UNSAFE_CHARACTERS.sub(
-        lambda match: f"\\x{ord(match.group()):02x}", value
-    )
+    return UNSAFE_CHARACTERS.sub(_escape_character, value)
+
+
+# ----------------------------------------------------------------------------
+def _escape_character(match: re.Match) -> str:
+    code = ord(match.group())
+
+    return f"\\x{code:02x}" if code <= 0xFF else f"\\u{code:04x}"
 
 
 # ----------------------------------------------------------------------------
@@ -1452,6 +1465,15 @@ def cmd_view(args) -> int:
     with connect(config, args, sieve=False, imap=True) as sessions:
         content = engine.read_message(sessions, args.folder, args.uid)
 
+    if args.raw and not sys.stdout.isatty():
+        # Nothing draws a pipe or a file, so hand over the exact bytes:
+        # 'view N --raw > msg.eml' is the message, 8-bit parts included.
+        sys.stdout.flush()
+        sys.stdout.buffer.write(content.source)
+        sys.stdout.buffer.flush()
+
+        return 0
+
     if args.raw:
         source = safe_text(content.source.decode("utf-8", errors="replace"))
 
@@ -1952,7 +1974,8 @@ def build_parser() -> argparse.ArgumentParser:
     shape.add_argument(
         "--raw",
         action="store_true",
-        help="print the full RFC 822 source (control characters escaped)",
+        help="print the full RFC 822 source: escaped on a terminal, the "
+        "exact bytes into a pipe or file ('--raw > msg.eml')",
     )
     view.set_defaults(handler=cmd_view)
 

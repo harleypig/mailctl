@@ -4,6 +4,25 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+ENHANCEMENTS:
+
+* **`view --raw` into a file or a pipe is byte-exact.** `mxfilter view N
+  --raw > msg.eml` now saves the message exactly as the server holds it,
+  8-bit and non-UTF-8 mail included; it used to be decoded as UTF-8, with
+  anything undecodable replaced, and escaped. On a terminal, `--raw` is
+  escaped as before.
+
+BUG FIXES:
+
+* **Unicode direction overrides no longer disguise what a message says.**
+  A sender could put an override or isolate (U+202A–U+202E,
+  U+2066–U+2069) in a Subject, a From, or an attachment name to make
+  `invoice_fdp.exe` display as `invoice_exe.pdf`. `messages`, `view`, and
+  every other place that escapes control characters now print these as a
+  visible `\u202e`-style escape too. The direction marks U+200E, U+200F,
+  and U+061C still pass, since they cannot reorder text and right-to-left
+  mail uses them.
+
 ## 0.3.0
 
 Released 2026-09-27.
