@@ -342,7 +342,7 @@ Two names in here are already known to be wrong and are expected to change:
 the distribution is called `mxfilter` and the repo `mxroute-email-filters`,
 while the tool now manages settings as well as filters and is being pointed
 at providers other than MXroute. Tracked as
-[#45](https://github.com/harleypig/mxroute-email-filters/issues/45). Nothing
+[#45](https://github.com/harleypig/mailctl/issues/45). Nothing
 being published is what keeps that cheap.
 
 FEATURES:
@@ -432,7 +432,7 @@ ENHANCEMENTS:
 * **Still no restore command.** The file is the server's exact bytes, and
   putting one back needs another ManageSieve client (`sieve-connect`, or a
   panel filter UI that exposes a raw import). `backup --help` says so, and a
-  `restore` subcommand is tracked in [#13](https://github.com/harleypig/mxroute-email-filters/issues/13): it is a write path
+  `restore` subcommand is tracked in [#13](https://github.com/harleypig/mailctl/issues/13): it is a write path
   against a live account and deserves its own confirmation flow and tests.
 * **A password file source.** `--password-file PATH`,
   `MXROUTE_PASSWORD_FILE`, and `password_file` in the config file read the
@@ -523,13 +523,13 @@ NOTES:
   ruleset.
 
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
-[#53]: https://github.com/harleypig/mxroute-email-filters/issues/53
-[#52]: https://github.com/harleypig/mxroute-email-filters/issues/52
-[#54]: https://github.com/harleypig/mxroute-email-filters/issues/54
-[#50]: https://github.com/harleypig/mxroute-email-filters/issues/50
-[#63]: https://github.com/harleypig/mxroute-email-filters/issues/63
-[#61]: https://github.com/harleypig/mxroute-email-filters/issues/61
-[#30]: https://github.com/harleypig/mxroute-email-filters/issues/30
-[#56]: https://github.com/harleypig/mxroute-email-filters/issues/56
-[#40]: https://github.com/harleypig/mxroute-email-filters/issues/40
-[#45]: https://github.com/harleypig/mxroute-email-filters/issues/45
+[#53]: https://github.com/harleypig/mailctl/issues/53
+[#52]: https://github.com/harleypig/mailctl/issues/52
+[#54]: https://github.com/harleypig/mailctl/issues/54
+[#50]: https://github.com/harleypig/mailctl/issues/50
+[#63]: https://github.com/harleypig/mailctl/issues/63
+[#61]: https://github.com/harleypig/mailctl/issues/61
+[#30]: https://github.com/harleypig/mailctl/issues/30
+[#56]: https://github.com/harleypig/mailctl/issues/56
+[#40]: https://github.com/harleypig/mailctl/issues/40
+[#45]: https://github.com/harleypig/mailctl/issues/45
