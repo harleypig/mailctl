@@ -8,11 +8,12 @@ The package is deliberately split so the offline logic (criteria
 translation, Sieve generation, folder-name normalization) can be exercised
 without a server:
 
-``config``    credential and endpoint resolution
-``criteria``  the shared criteria model, to Sieve *and* to IMAP SEARCH
-``sieve``     the ManageSieve client wrapper and script merge helpers
-``imap``      the IMAP client wrapper (folders, search, move, flag)
-``cli``       argument parsing and the subcommand implementations
+``config``       credential and endpoint resolution
+``criteria``     the shared criteria model, to Sieve *and* to IMAP SEARCH
+``components``   one library per protocol: ``managesieve`` and ``imap``
+``providers``    how one host uses them: ``mxroute``
+``engine``       the work itself, for any front-end
+``cli``          argument parsing and the subcommand implementations
 """
 
 __all__ = ["MailctlError", "__version__"]

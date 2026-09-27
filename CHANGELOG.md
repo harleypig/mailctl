@@ -6,6 +6,15 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 
 BUG FIXES:
 
+* **A non-ASCII search value no longer crashes the existing-mail pass**
+  ([#89]). `--subject café`, a non-ASCII `--from` address, or a non-ASCII
+  `--list-id` stopped the IMAP half with a Python traceback. They now
+  search in UTF-8, whether alone or combined with `--match any`. A
+  message whose header carries raw UTF-8, which is how a non-ASCII address
+  arrives, is now also recognised when mailctl double-checks the server's
+  matches. A value that is not valid text, or a non-ASCII raw `--search`
+  expression, is refused with a message saying what to do instead. A
+  search that is plain ASCII is sent exactly as before.
 * **A backup is the server's exact bytes again** ([#90]). sievelib's
   GETSCRIPT reader turned CRLF line endings into LF and dropped the final
   line ending, so `mailctl backup`, the backup taken before every upload,
@@ -28,6 +37,14 @@ NOTES:
   `OWNER`, `UNAUTHENTICATE`, which sievelib drops), makes the read timeout
   a parameter, and makes sievelib's password-printing debug mode
   impossible to enable. No command's behaviour changes.
+* **IMAP is now a layer-1 component** ([#92], [ADR 0006]). The IMAP
+  session and the folder and message handling moved from `mailctl/imap.py`
+  into `mailctl/components/imap/`, which knows the protocol and nothing
+  about MXroute. MXroute's login advice and the mapping from mailctl's
+  settings to a session are in `mailctl/providers/mxroute/` until the
+  provider interface lands. The component can tell which server software
+  it is talking to from the IMAP `ID` response; nothing depends on the
+  answer yet. No command's behaviour changes.
 * **The runtime dependencies are bounded on their next major** ([#91]).
   `IMAPClient>=4.1,<5` (the suite passes on 4.1) and `sievelib>=1.5.0,<2`,
   so a new major of either no longer lands on a fresh install unreviewed;
@@ -584,6 +601,7 @@ NOTES:
 [#40]: https://github.com/harleypig/mailctl/issues/40
 [#45]: https://github.com/harleypig/mailctl/issues/45
 [#82]: https://github.com/harleypig/mailctl/issues/82
+[#89]: https://github.com/harleypig/mailctl/issues/89
 [#90]: https://github.com/harleypig/mailctl/issues/90
 [#91]: https://github.com/harleypig/mailctl/issues/91
 [#92]: https://github.com/harleypig/mailctl/issues/92
