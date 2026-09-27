@@ -258,6 +258,13 @@ assumptions below get settled for your account.
   the subscription fails, the folder is **not** torn back down: it exists
   and mail filed there will arrive, so mxfilter warns and tells you to run
   `mxfilter subscribe` on it.
+* On a server that advertises the Sieve `mailbox` extension, the rule says
+  `fileinto :create` **as well**, so Sieve recreates the folder if it is
+  later deleted. mxfilter still creates and subscribes the folder over IMAP
+  itself, because Sieve only creates it when the first message arrives,
+  when mxfilter is not running to subscribe to it. With `--no-imap`, Sieve
+  is the only thing that can create the folder, and mxfilter says it may
+  not appear in webmail until you run `mxfilter subscribe` on it.
 * The folder is **announced when the change is shown and created only when
   it is applied** — for `add` and `from-message`, once the server has
   accepted the new script and just before it is stored; for `apply`, after

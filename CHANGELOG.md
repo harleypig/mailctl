@@ -75,6 +75,16 @@ BUG FIXES:
   one differing only in case exists, mxfilter warns and names both — so
   `--create-folder` no longer makes a second, differently cased folder
   without saying so — and a subscribe or folder-open error names it too.
+* **`--create-folder` subscribes to the folder on the usual path too**
+  ([#40]). When the server advertises the Sieve `mailbox` extension — as
+  MXroute does — the rule used `fileinto :create` and nothing else, so the
+  folder appeared only when the first message arrived, and nothing
+  subscribed to it. Now mxfilter also creates the folder over IMAP and
+  subscribes to it when the change is applied (`--no-subscribe` still
+  skips the subscription), and keeps `:create` in the rule so Sieve
+  recreates the folder if it is deleted later. With `--no-imap`, nothing
+  changes. The plan now also says whether a folder it will create is to be
+  subscribed to.
 
 ## 0.3.0
 
@@ -459,3 +469,4 @@ NOTES:
 [#61]: https://github.com/harleypig/mxroute-email-filters/issues/61
 [#30]: https://github.com/harleypig/mxroute-email-filters/issues/30
 [#56]: https://github.com/harleypig/mxroute-email-filters/issues/56
+[#40]: https://github.com/harleypig/mxroute-email-filters/issues/40

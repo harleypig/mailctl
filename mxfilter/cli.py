@@ -488,19 +488,18 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
         )
 
         if plan.subscribe:
-            # Sieve creates the folder at delivery time, when mxfilter is
-            # not running and cannot subscribe to it. Whether the server
-            # does so itself is genuinely unknown -- RFC 5490 says :create
-            # creates the mailbox and says nothing about subscription, and
-            # this account has never been observed doing it either way.
+            # Only reached under --no-imap: with an IMAP session the folder
+            # is created and subscribed over IMAP as well (#40). Here Sieve
+            # creates it at delivery time, when mxfilter is not running and
+            # cannot subscribe to it. Whether the server does so itself is
+            # genuinely unknown -- RFC 5490 says :create creates the mailbox
+            # and says nothing about subscription, and this account has
+            # never been observed doing it either way.
             #
             # So the wording claims only the absence of a promise, not that
             # it will not happen. Asserting the stronger version would be
             # inventing a fact about the server, which is the failure
-            # CONVENTIONS.md 'Confidence' exists to prevent. Issue #40 is
-            # where that gets settled; when it does, replace this line with
-            # the real behaviour rather than leaving a caution that never
-            # resolves.
+            # CONVENTIONS.md 'Confidence' exists to prevent.
             print(
                 "  Nothing promises Sieve will subscribe to a folder it "
                 "creates, so it may not appear in webmail until you "
@@ -511,17 +510,35 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
     elif plan.status == engine.FOLDER_IMAP_CREATE:
         announce_folder_creation(plan, args.dry_run)
 
+    elif plan.status == engine.FOLDER_BOTH_CREATE:
+        announce_folder_creation(plan, args.dry_run)
+
+        print(
+            "  The rule also says 'fileinto :create', so Sieve recreates "
+            "the folder if it is ever deleted."
+        )
+
 
 # ----------------------------------------------------------------------------
 def announce_folder_creation(plan: engine.FolderPlan, dry_run: bool) -> None:
     """Say that the target folder will be made over IMAP, before it is."""
     if dry_run:
-        print(f"[dry-run] would create IMAP folder {plan.folder!r}")
+        then = (
+            " and subscribe to it"
+            if plan.subscribe
+            else ", not subscribed (--no-subscribe)"
+        )
+        print(f"[dry-run] would create IMAP folder {plan.folder!r}{then}")
 
     else:
+        then = (
+            " and subscribed to"
+            if plan.subscribe
+            else ", not subscribed (--no-subscribe),"
+        )
         print(
             f"Folder {plan.folder!r} does not exist; it will be created "
-            f"over IMAP when the change is applied"
+            f"over IMAP{then} when the change is applied"
         )
 
 

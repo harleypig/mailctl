@@ -1,0 +1,50 @@
+$ mxfilter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap --yes
+exit: 0
+--- stdout
+Folder 'INBOX.Lists.GitHub' will be created by Sieve (fileinto :create)
+  Nothing promises Sieve will subscribe to a folder it creates, so it may not appear in webmail until you subscribe to it: once the first message has created it, run 'mxfilter subscribe INBOX.Lists.GitHub'.
+
+Rule 'from-noreply-github-com' on script 'managesieve':
+  when:  From contains 'noreply@github.com'
+  then:  fileinto :create INBOX.Lists.GitHub; stop
+
+Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,4 +1,4 @@
+-require ["fileinto", "imap4flags"];
++require ["fileinto", "imap4flags", "mailbox"];
+ 
+ # rule:[keep-boss]
+ if header :contains "from" "boss@example.com" {
+@@ -11,3 +11,8 @@
+     fileinto "INBOX.Noise";
+     stop;
+ }
++# rule:[from-noreply-github-com]
++if anyof (header :contains "From" "noreply@github.com") {
++    fileinto :create "INBOX.Lists.GitHub";
++    stop;
++}
+
+--- end diff ---
+Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+Uploaded and activated script 'managesieve'
+
+Skipping the existing-mail pass (--no-apply).
+
+--- stderr
+warning: no IMAP connection: assuming delimiter '.', target folder 'INBOX.Lists.GitHub'
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('checkscript',)
+('putscript', 'managesieve', 'require ["fileinto", "imap4flags", "mailbox"];\n\n# rule:[keep-boss]\nif header :contains "from" "boss@example.com" {\n    fileinto "INBOX.Boss";\n    setflag "\\\\Flagged";\n    stop;\n}\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter" {\n    fileinto "INBOX.Noise";\n    stop;\n}\n# rule:[from-noreply-github-com]\nif anyof (header :contains "From" "noreply@github.com") {\n    fileinto :create "INBOX.Lists.GitHub";\n    stop;\n}\n')
+('setactive', 'managesieve')
+('logout',)
+--- imap calls

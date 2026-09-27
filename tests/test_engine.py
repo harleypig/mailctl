@@ -349,13 +349,28 @@ def test_a_missing_folder_is_reported_not_created(
 
 
 # ----------------------------------------------------------------------------
-def test_sieve_creates_the_folder_when_the_server_has_mailbox(
-    sessions, imap_config
+def test_with_mailbox_and_imap_the_folder_is_made_both_ways(
+    sessions, imap_config, fake_imap
 ):
+    """Sieve's :create stays as the fallback; IMAP makes it visible now."""
     plan = engine.plan_folder(sessions, imap_config, "New", create=True)
+
+    assert plan.status == engine.FOLDER_BOTH_CREATE
+    assert plan.use_create
+    assert engine.folder_pending(sessions, plan)
+    assert "create_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_without_imap_only_sieve_creates_the_folder(fake_sieve, imap_config):
+    """--no-imap: nothing can create or subscribe it now (#40)."""
+    live = Sessions(sieve=fake_sieve, imap=None)
+
+    plan = engine.plan_folder(live, imap_config, "New", create=True)
 
     assert plan.status == engine.FOLDER_SIEVE_CREATES
     assert plan.use_create
+    assert not engine.folder_pending(live, plan)
 
 
 # ----------------------------------------------------------------------------
@@ -743,6 +758,55 @@ def test_a_rejected_script_leaves_no_folder_behind(
 
     with pytest.raises(MxFilterError, match="rejected"):
         engine.execute_script_change(live, imap_config, plan)
+
+    assert "create_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("subscribe", "expected"), [(True, True), (False, False)]
+)
+def test_a_sieve_create_rule_also_creates_and_subscribes_on_execute(
+    sessions, imap_config, fake_imap, tmp_path, subscribe, expected
+):
+    """The :create path is the default one here, so it has to subscribe
+    too, not only the IMAP-creation path (#40)."""
+    imap_config.backup_dir = tmp_path
+    folder = engine.plan_folder(
+        sessions, imap_config, "New", create=True, subscribe=subscribe
+    )
+    plan = engine.plan_rule(
+        sessions, RuleRequest(criteria(), ActionSpec(fileinto="New")), folder
+    )
+
+    assert 'fileinto :create "INBOX.New"' in plan.after
+    assert "create_folder" not in fake_imap.names()
+
+    events = []
+    engine.execute_script_change(sessions, imap_config, plan, events.append)
+
+    assert ("create_folder", "INBOX.New") in fake_imap.calls
+    assert (("subscribe_folder", "INBOX.New") in fake_imap.calls) is expected
+    assert [type(event) for event in events] == [
+        engine.ScriptBackedUp,
+        engine.FolderCreated,
+        engine.ScriptUploaded,
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_rejected_sieve_create_rule_leaves_no_folder_behind(
+    sessions, imap_config, fake_imap, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    folder = engine.plan_folder(sessions, imap_config, "New", create=True)
+    plan = engine.plan_rule(
+        sessions, RuleRequest(criteria(), ActionSpec(fileinto="New")), folder
+    )
+    sessions.sieve.reject = True
+
+    with pytest.raises(MxFilterError, match="rejected"):
+        engine.execute_script_change(sessions, imap_config, plan)
 
     assert "create_folder" not in fake_imap.names()
 
