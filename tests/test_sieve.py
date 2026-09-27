@@ -13,22 +13,25 @@ import argparse
 import pytest
 
 from mailctl import MailctlError
-from mailctl import sieve as sieve_module
-from mailctl.config import Config, load_config
-from mailctl.criteria import Criteria, escape_sieve_string
-from mailctl.sieve import (
+from mailctl.components.managesieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
     Placement,
     backup_script,
+    rule_names,
+    script_diff,
+)
+from mailctl.components.managesieve import script as script_module
+from mailctl.config import Config, load_config
+from mailctl.criteria import Criteria, escape_sieve_string
+from mailctl.providers.mxroute import sieve as mxroute_sieve
+from mailctl.providers.mxroute.sieve import (
     merge_rule,
     parse_script,
     remove_rule,
     render_script,
-    rule_names,
-    script_diff,
 )
 
 # ############################################################################
@@ -411,7 +414,7 @@ def test_a_misplaced_comment_offset_fails_loudly(
 
             yield ("hash_comment", b"# rule:[somewhere-else]")
 
-    monkeypatch.setattr(sieve_module.parser, "Lexer", DriftingLexer)
+    monkeypatch.setattr(script_module.parser, "Lexer", DriftingLexer)
 
     with pytest.raises(MailctlError, match="version mismatch"):
         parse_script(roundcube_script)
@@ -1161,7 +1164,7 @@ def test_backup_failure_raises_rather_than_losing_the_upload_guard(tmp_path):
 # ----------------------------------------------------------------------------
 def test_the_hint_calls_the_port_the_default_only_when_it_is():
     """4190 + starttls from the built-in default is described as such."""
-    hint = sieve_module._connection_hint(load_config(argparse.Namespace()))
+    hint = mxroute_sieve._connection_hint(load_config(argparse.Namespace()))
 
     assert "4190 + starttls is the RFC 5804 / Dovecot default" in hint
 
@@ -1170,7 +1173,7 @@ def test_the_hint_calls_the_port_the_default_only_when_it_is():
 def test_the_hint_names_where_a_typed_port_and_mode_came_from():
     """#55: typed values were reported as "the RFC 5804 / Dovecot default"."""
     config = load_config(argparse.Namespace(sieve_port=1, sieve_tls="none"))
-    hint = sieve_module._connection_hint(config)
+    hint = mxroute_sieve._connection_hint(config)
 
     assert "is the RFC 5804 / Dovecot default" not in hint
     assert "port 1 (flag --sieve-port)" in hint
@@ -1181,7 +1184,7 @@ def test_the_hint_names_where_a_typed_port_and_mode_came_from():
 # ----------------------------------------------------------------------------
 def test_the_hint_does_not_guess_for_a_config_built_by_hand():
     """No recorded source is not the same as a default one."""
-    hint = sieve_module._connection_hint(
+    hint = mxroute_sieve._connection_hint(
         Config(sieve_port=1, sieve_tls="none")
     )
 

@@ -20,9 +20,13 @@ from types import SimpleNamespace
 import pytest
 
 from mailctl import cli, engine
-from mailctl import sieve as sieve_module
+from mailctl.components.managesieve import (
+    backup_path,
+    resolve_backup_target,
+    write_backup,
+)
+from mailctl.components.managesieve import client as sieve_client
 from mailctl.config import Config, default_backup_dir, load_config
-from mailctl.sieve import backup_path, resolve_backup_target, write_backup
 
 # A script whose bytes are awkward on purpose: CRLF endings, as the CRLF
 # protocol that fetched it produces, and no trailing newline. A text-mode
@@ -95,7 +99,7 @@ def fake_sieve(monkeypatch) -> FakeSieveClient:
     def factory(host, port, debug=False):
         return client
 
-    monkeypatch.setattr(sieve_module, "Client", factory)
+    monkeypatch.setattr(sieve_client, "Client", factory)
 
     return client
 

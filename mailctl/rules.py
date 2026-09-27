@@ -1,11 +1,12 @@
 """Reading the rules that are already there, and reasoning about them.
 
-``sieve.parse_script`` gives back a ``sievelib`` filter set, which is the
-right shape for *editing* a script and the wrong shape for *thinking about*
-one: the tests are command objects whose arguments are still quoted Sieve
-source. This module reduces a parsed script to a flat, comparable model --
-one :class:`Rule` per filter, in evaluation order, each carrying its tests,
-its actions, and whether it ends with ``stop``.
+``parse_script`` (``mailctl.components.managesieve``) gives back a
+``sievelib`` filter set, which is the right shape for *editing* a script
+and the wrong shape for *thinking about* one: the tests are command objects
+whose arguments are still quoted Sieve source. This module reduces a parsed
+script to a flat, comparable model -- one :class:`Rule` per filter, in
+evaluation order, each carrying its tests, its actions, and whether it ends
+with ``stop``.
 
 Everything here is offline and returns data. Nothing prints; see
 CONVENTIONS.md.
@@ -335,7 +336,7 @@ def _read_actions(children) -> tuple[list[str], bool]:
 def read_rules(filters) -> list[Rule]:
     """Reduce a parsed filter set to Rules, in evaluation order.
 
-    ``filters`` is whatever ``sieve.parse_script`` returned. The index is
+    ``filters`` is whatever ``parse_script`` returned. The index is
     the rule's position in the script, which is the only thing that decides
     which of two overlapping rules wins.
     """
@@ -343,7 +344,7 @@ def read_rules(filters) -> list[Rule]:
 
     if entries is None:
         raise MailctlError(
-            "read_rules expects a parsed filter set from sieve.parse_script()"
+            "read_rules expects a parsed filter set from parse_script()"
         )
 
     rules = []

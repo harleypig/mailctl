@@ -18,7 +18,7 @@ restore fixture the safety contract in ``conftest.py`` describes first.
 import pytest
 
 from mailctl.imap import ImapSession
-from mailctl.sieve import SieveSession
+from mailctl.providers.mxroute.sieve import sieve_session
 
 pytestmark = pytest.mark.live
 
@@ -36,7 +36,7 @@ def test_the_sieve_port_and_tls_mode_actually_connect(live_config):
     combination that works, recorded in CONVENTIONS.md -- not a change to
     the tool's defaults.
     """
-    with SieveSession(live_config) as session:
+    with sieve_session(live_config) as session:
         capabilities = session.capabilities()
 
     assert capabilities, "server advertised no Sieve extensions at all"
@@ -49,7 +49,7 @@ def test_the_active_script_can_be_read_back(live_config):
     An account with no active script yet is a valid state, so only the
     download is asserted -- not that a script exists.
     """
-    with SieveSession(live_config) as session:
+    with sieve_session(live_config) as session:
         active = session.active_script_name()
 
         if active is None:

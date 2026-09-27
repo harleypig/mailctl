@@ -27,6 +27,18 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from . import MailctlError
+from .components.managesieve import (
+    UNIMPLEMENTED_ACTIONS,
+    DisplayDiff,
+    Placement,
+    SieveSession,
+    backup_script,
+    resolve_backup_target,
+    resolve_position,
+    rule_names,
+    script_diff,
+    write_backup,
+)
 from .config import (
     DEFAULT,
     Config,
@@ -48,6 +60,15 @@ from .imap import (
     normalize_folder,
     same_folder,
 )
+from .providers.mxroute.sieve import (
+    MXROUTE_FORBIDDEN_ACTIONS,
+    display_diff,
+    merge_rule,
+    move_rule,
+    parse_script,
+    remove_rule,
+    sieve_session,
+)
 from .rules import (
     Analysis,
     Rule,
@@ -57,24 +78,6 @@ from .rules import (
     rule_from_criteria,
 )
 from .rules import read_rules as read_rule_list
-from .sieve import (
-    MXROUTE_FORBIDDEN_ACTIONS,
-    UNIMPLEMENTED_ACTIONS,
-    DisplayDiff,
-    Placement,
-    SieveSession,
-    backup_script,
-    display_diff,
-    merge_rule,
-    move_rule,
-    parse_script,
-    remove_rule,
-    resolve_backup_target,
-    resolve_position,
-    rule_names,
-    script_diff,
-    write_backup,
-)
 
 DEFAULT_SCRIPT_NAME = "mailctl"
 
@@ -250,7 +253,7 @@ def connect(
 
         if sieve:
             sessions.sieve = stack.enter_context(
-                SieveSession(config, progress=channel("sieve"))
+                sieve_session(config, progress=channel("sieve"))
             )
 
         yield sessions

@@ -27,12 +27,12 @@ import email
 import pytest
 
 from mailctl.cli import print_message, print_script_diff
+from mailctl.components.managesieve import script_diff
 from mailctl.criteria import Criteria
-from mailctl.sieve import (
+from mailctl.providers.mxroute.sieve import (
     display_diff,
     merge_rule,
     remove_rule,
-    script_diff,
 )
 
 # ############################################################################

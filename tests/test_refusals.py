@@ -24,8 +24,9 @@ import pytest
 
 from mailctl import MailctlError
 from mailctl.cli import actions_from_args, build_parser, reject_forbidden
+from mailctl.components.managesieve import UNIMPLEMENTED_ACTIONS
 from mailctl.engine import sieve_actions
-from mailctl.sieve import MXROUTE_FORBIDDEN_ACTIONS, UNIMPLEMENTED_ACTIONS
+from mailctl.providers.mxroute.sieve import MXROUTE_FORBIDDEN_ACTIONS
 
 # ############################################################################
 # Helpers

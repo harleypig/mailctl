@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from mailctl import cli
-from mailctl import sieve as sieve_module
+from mailctl.components.managesieve import client as sieve_client
 
 SNAPSHOTS = Path(__file__).parent / "snapshots" / "cli"
 
@@ -849,7 +849,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     }
     imap.flags = options.get("flags", {})
 
-    monkeypatch.setattr(sieve_module, "Client", lambda *a, **k: sieve)
+    monkeypatch.setattr(sieve_client, "Client", lambda *a, **k: sieve)
     if "file" in options:
         restore_file = tmp_path / "restore.sieve"
         text = script if options["file"] == "SAME" else options["file"]

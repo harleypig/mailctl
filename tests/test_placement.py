@@ -18,21 +18,21 @@ import pytest
 
 from mailctl import MailctlError
 from mailctl.cli import build_parser, placement_from_args
-from mailctl.criteria import Criteria
-from mailctl.rules import (
-    CERTAIN,
-    analyze_placement,
-    read_rules,
-    rule_from_criteria,
-)
-from mailctl.sieve import (
+from mailctl.components.managesieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
     Placement,
-    parse_script,
     resolve_position,
+)
+from mailctl.criteria import Criteria
+from mailctl.providers.mxroute.sieve import parse_script
+from mailctl.rules import (
+    CERTAIN,
+    analyze_placement,
+    read_rules,
+    rule_from_criteria,
 )
 
 NAMES = ["one", "two", "three"]
