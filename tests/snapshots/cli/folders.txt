@@ -1,0 +1,15 @@
+$ mxfilter folders
+exit: 0
+--- stdout
+Hierarchy delimiter: '.'
+3 folder(s):
+  INBOX
+  INBOX.Lists
+  INBOX.spam
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

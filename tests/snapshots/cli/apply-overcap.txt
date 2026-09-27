@@ -1,0 +1,21 @@
+$ mxfilter apply --from noreply@github.com --fileinto Lists --max-messages 1 --yes
+exit: 1
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Criteria: From contains 'noreply@github.com'
+
+Searching 'INBOX' for existing matches...
+2 message(s) match:
+  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
+  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+
+--- stderr
+mxfilter: 2 message(s) match but --max-messages is 1. NO existing message was touched -- a partial batch is never processed, because handling the first 1 and reporting success would read as having handled them all. Re-run with --max-messages 2 (or higher) to process every match. Note that --yes does NOT lift this cap: it skips the confirmation prompt, whereas the cap is a ceiling you set deliberately. Any Sieve rule in this command was already uploaded and applies to new mail regardless.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (1, 2, 3))
+('logout',)

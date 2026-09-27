@@ -1,0 +1,12 @@
+$ mxfilter backup
+exit: 1
+--- stdout
+
+--- stderr
+mxfilter: no active script on the server, so there is nothing to back up. 'mxfilter list' shows what the account has.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls

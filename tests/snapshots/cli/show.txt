@@ -1,0 +1,28 @@
+$ mxfilter show
+exit: 0
+--- stdout
+# ---- managesieve ----
+require ["fileinto","imap4flags"];
+# rule:[keep-boss]
+if header :contains "from" "boss@example.com"
+{
+	fileinto "INBOX.Boss";
+	setflag "\\Flagged";
+	stop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter"
+{
+	fileinto "INBOX.Noise";
+	stop;
+}
+# ---- 2 rule(s): keep-boss, bin-the-noise
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

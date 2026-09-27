@@ -1,0 +1,47 @@
+$ mxfilter test
+exit: 0
+--- stdout
+Host:      mail.example.com
+User:      user@example.com
+Password:  set
+IMAP:      mail.example.com:993
+Sieve:     mail.example.com:4190 (tls=starttls)
+
+ManageSieve: connected
+  extensions: fileinto, imap4flags, mailbox, regex
+
+  advertised extensions (from this server, not assumed):
+    fileinto     yes
+    imap4flags   yes
+    mailbox      yes
+    copy         not advertised
+    envelope     not advertised
+    enotify      not advertised
+    vacation     not advertised
+    regex        yes
+    spamtest     not advertised
+    extlists     not advertised
+
+  active script: managesieve
+  other scripts: (none)
+  (mxfilter always edits the ACTIVE script under its own name; it never guesses one.)
+
+IMAP: connected
+  delimiter: '.'
+  folders:   3
+  MOVE:      yes
+  UIDPLUS:   yes
+  FILTER=SIEVE: no -- no server-side retroactive filtering (Dovecot imap_filter_sieve is not enabled).
+                mxfilter's client-side search-and-move pass is the only option here.
+
+Note: MXRoute disables the Sieve 'redirect' action as a matter of policy (2024-03-21) -- use a panel forwarder, which handles SRS properly. That is the only MXRoute restriction mxfilter asserts; everything else above came from the server.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

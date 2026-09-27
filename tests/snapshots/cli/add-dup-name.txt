@@ -1,0 +1,17 @@
+$ mxfilter add --from noreply@github.com --fileinto Lists --name keep-boss
+exit: 1
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+--- stderr
+mxfilter: a rule named 'keep-boss' already exists in the active script. Use --replace to overwrite it, or --name to pick another.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

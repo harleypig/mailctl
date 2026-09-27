@@ -1,0 +1,14 @@
+$ mxfilter remove-rule keep-boss --yes
+exit: 1
+--- stdout
+
+--- stderr
+mxfilter: script 'managesieve' is empty
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

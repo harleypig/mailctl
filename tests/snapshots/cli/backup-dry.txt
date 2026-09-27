@@ -1,0 +1,13 @@
+$ mxfilter backup --dry-run
+exit: 0
+--- stdout
+[dry-run] would write 2 rule(s) to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

@@ -1,0 +1,49 @@
+$ mxfilter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --dry-run
+exit: 0
+--- stdout
+Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
+[dry-run] would create IMAP folder 'INBOX.Lists.GitHub'
+
+Rule 'from-noreply-github-com' on script 'managesieve':
+  when:  From contains 'noreply@github.com'
+  then:  fileinto INBOX.Lists.GitHub; stop
+
+Note: the script on the server is not in mxfilter's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -11,3 +11,8 @@
+     fileinto "INBOX.Noise";
+     stop;
+ }
++# rule:[from-noreply-github-com]
++if anyof (header :contains "From" "noreply@github.com") {
++    fileinto "INBOX.Lists.GitHub";
++    stop;
++}
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+Searching 'INBOX' for existing matches...
+2 message(s) match:
+  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
+  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+[dry-run] would move 2 message(s) to 'INBOX.Lists.GitHub'
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (1, 2, 3))
+('logout',)

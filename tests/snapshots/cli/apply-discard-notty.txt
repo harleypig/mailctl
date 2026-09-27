@@ -1,0 +1,20 @@
+$ mxfilter apply --from noreply@github.com --discard
+exit: 1
+--- stdout
+Criteria: From contains 'noreply@github.com'
+
+Searching 'INBOX' for existing matches...
+2 message(s) match:
+  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
+  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+
+--- stderr
+mxfilter: PERMANENTLY DELETE 2 message(s) from 'INBOX'? This cannot be undone -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (1, 2, 3))
+('logout',)

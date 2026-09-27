@@ -1,0 +1,21 @@
+$ mxfilter apply --from noreply@github.com --fileinto Lists --dry-run
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Criteria: From contains 'noreply@github.com'
+
+Searching 'INBOX' for existing matches...
+2 message(s) match:
+  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
+  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+[dry-run] would move 2 message(s) to 'INBOX.Lists'
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (1, 2, 3))
+('logout',)

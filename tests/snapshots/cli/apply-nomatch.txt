@@ -1,0 +1,18 @@
+$ mxfilter apply --from nobody@x.y --fileinto Lists --yes
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Criteria: From contains 'nobody@x.y'
+
+Searching 'INBOX' for existing matches...
+No existing messages match.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'nobody@x.y']])
+('fetch', (1, 2, 3))
+('logout',)
