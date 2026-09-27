@@ -22,8 +22,9 @@ fixture required before anything writes to one is still outstanding
    - `criteria` — a criteria set translated to Sieve **and** to IMAP `SEARCH`,
      including the cases where the two differ and the client-side re-check
      closes the gap.
-   - `sieve` — parse an existing script, merge a rule into it, render it back,
-     and confirm rules the tool did not write survive verbatim. The
+   - `sieve` (`test_sieve.py`, through the MXroute dialect) — parse an
+     existing script, merge a rule into it, render it back, and confirm
+     rules the tool did not write survive verbatim. The
      overwrite-would-have-destroyed-it case is the one that matters
      ([ADR 0002](../adr/0002-non-destructive-script-merge.md)); it deserves a
      test with a hand-written Roundcube-shaped script as its fixture.
@@ -51,8 +52,18 @@ fixture required before anything writes to one is still outstanding
      server call into `tests/snapshots/cli/<name>.txt`. A behaviour change
      shows up as a snapshot diff; regenerate with
      `MAILCTL_UPDATE_SNAPSHOTS=1` and read the diff before committing.
+   - **The ManageSieve wrapper** (`test_managesieve_client.py`) — the real
+     `SieveClient` against a scripted socket that replays a server's bytes:
+     GETSCRIPT byte-exact whatever the script ends with ([#90][i90]), the
+     whole CAPABILITY response kept, the read timeout honoured, and nothing
+     printed even with sievelib's debug flag forced on. Its server-module
+     selection and capability parsing are `test_managesieve_servers.py`.
    - The **presentation guard** (`test_core_no_presentation.py`) — no core
      module prints, prompts, or exits, and the engine imports no front-end.
+     `components/` and `providers/` are walked, not listed.
+   - The **layer-purity guard** (`test_layer_purity.py`) — a module under
+     `components/` imports only the stdlib, the library it wraps, other
+     components, and `MailctlError` ([ADR 0006][adr6]).
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
@@ -108,3 +119,6 @@ make testlive          # live (MAILCTL_LIVE=1; needs MAILCTL_* in the env)
 
 `TESTARGS` passes extra flags through, e.g. a run filter for a scoped live
 pass: `make testlive TESTARGS='-k sieve'`.
+
+[i90]: https://github.com/harleypig/mailctl/issues/90
+[adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md

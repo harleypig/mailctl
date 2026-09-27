@@ -127,8 +127,29 @@ Built on two libraries, both of which the code wraps rather than exposes:
 - `mailctl/criteria.py` — the shared criteria model, translated **both** to
   Sieve tests and to IMAP `SEARCH`. One model, two backends — this is what
   keeps the two halves in agreement.
-- `mailctl/sieve.py` — the ManageSieve session wrapper plus the offline
-  script-editing helpers (parse / merge / render / diff / backup).
+- `mailctl/components/` — **layer 1** ([ADR 0006][adr6]): one library per
+  protocol, knowing nothing about any host. It imports only the stdlib, the
+  library it wraps, other components, and `MailctlError` — never `config`,
+  the engine, the CLI, or a provider (`tests/test_layer_purity.py`).
+  - `managesieve/client.py` — `SieveClient`, sievelib's client with ADR
+    0006's gaps S1/S4/S5/S8 closed (byte-exact GETSCRIPT, the whole
+    CAPABILITY response, a configurable read timeout, debug output
+    impossible), and `SieveSession` on it, taking plain connection
+    parameters.
+  - `managesieve/capabilities.py` — the CAPABILITY response as data.
+  - `managesieve/script.py` — the offline script handling (parse / merge /
+    move / remove / render / diff), rule names through a `NameDialect`, and
+    `UNIMPLEMENTED_ACTIONS`.
+  - `managesieve/backup.py` — the backup path and the byte-exact writer.
+  - `managesieve/servers/` — one module per server software, chosen by the
+    `IMPLEMENTATION` capability, with a plain-protocol fallback;
+    `pigeonhole.py` carries no quirks yet.
+- `mailctl/providers/mxroute/sieve.py` — **transitional** home of what is
+  MXroute's rather than the protocol's: `MXROUTE_FORBIDDEN_ACTIONS`, the
+  Roundcube `# rule:[NAME]` dialect and the script functions bound to it,
+  the connection and login advice, and `sieve_session()`, which maps
+  `Config` onto a `SieveSession`. Epic #92's step 4 turns it into the
+  `mxroute` provider.
 - `mailctl/imap.py` — the IMAP session wrapper (folders, search, move, flag)
   and folder-name normalization.
 - `mailctl/rules.py` — reads a parsed script into a flat rule model and
@@ -151,12 +172,12 @@ live there.
 
 ## The core returns data; only the CLI prints
 
-**`config`, `criteria`, `sieve`, `imap`, `rules`, and the `engine` that
-drives them return structured values and raise `MailctlError`. Every piece
-of rendering, prompting, confirmation, and progress output lives in
-`cli.py`.** Two reasons, both cashing out now: the core stays testable
-without capturing stdout, and a future front-end can sit on the same core
-instead of requiring it to be torn apart first.
+**`config`, `criteria`, `imap`, `rules`, `components/`, `providers/`, and
+the `engine` that drives them return structured values and raise
+`MailctlError`. Every piece of rendering, prompting, confirmation, and
+progress output lives in `cli.py`.** Two reasons, both cashing out now: the
+core stays testable without capturing stdout, and a future front-end can
+sit on the same core instead of requiring it to be torn apart first.
 
 **The engine does not know how it was called.** The operator's instruction,
 2026-09-27: *"the engine, the code that does the actual work, should not know
@@ -335,8 +356,10 @@ about MXroute's configuration** is not.
   and the reason is that a backup the user cannot find is not a backup. Two
   defaults for one kind of file is how somebody ends up looking in the
   directory that does not have their backup in it.
-- **A backup is the server's exact bytes.** `sieve.write_backup` writes what
-  it was handed, with newline translation off, mode `0600` in a directory
+- **A backup is the server's exact bytes.** `SieveSession` reads GETSCRIPT
+  by the literal's declared length, CRLF and final newline included
+  ([#90][i90]), and `write_backup` writes what it was handed, with newline
+  translation off, mode `0600` in a directory
   created `0700`. Nothing decorates it — `mailctl show` adds banner lines for
   a reader and is therefore *not* a backup, which is exactly the trap
   redirecting `show` to a file used to set. `mailctl restore` puts one back
@@ -350,14 +373,15 @@ about MXroute's configuration** is not.
 - **Refuse the actions we will not emit, with a pointer** — and keep the two
   reasons for refusing apart, because the distinction is exactly the
   confidence tiering above:
-  - `sieve.MXROUTE_FORBIDDEN_ACTIONS` holds **`redirect` alone**. It is the
-    only action refused because MXroute is *confirmed* to disable it, and its
-    message points at forwarders (the panel, or the `mxroute_forwarder`
-    Terraform resource).
-  - `sieve.UNIMPLEMENTED_ACTIONS` holds **`notify` and `vacation`**. These are
-    refused because *we* do not generate them, and their message says so
-    explicitly rather than implying an MXroute restriction — no source
-    confirms or refutes their availability.
+  - `MXROUTE_FORBIDDEN_ACTIONS` (`providers/mxroute/sieve.py`) holds
+    **`redirect` alone**. It is the only action refused because MXroute is
+    *confirmed* to disable it, and its message points at forwarders (the
+    panel, or the `mxroute_forwarder` Terraform resource).
+  - `UNIMPLEMENTED_ACTIONS` (`components/managesieve/script.py`) holds
+    **`notify` and `vacation`**. These are refused because *we* do not
+    generate them, and their message says so explicitly rather than implying
+    an MXroute restriction — no source confirms or refutes their
+    availability.
 
   Collapsing the two would restate an unverified assumption as a server fact,
   which is the failure this repo's *Confidence* discipline exists to prevent.
@@ -713,6 +737,8 @@ will read it.
 [provider]: https://github.com/harleypig/terraform-provider-mxroute
 [i9]: https://github.com/harleypig/mailctl/issues/9
 [adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
+[adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
+[i90]: https://github.com/harleypig/mailctl/issues/90
 [i13]: https://github.com/harleypig/mailctl/issues/13
 [i10]: https://github.com/harleypig/mailctl/issues/10
 [da495]: https://github.com/harleypig/dotagents/issues/495
