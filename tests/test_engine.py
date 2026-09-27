@@ -275,12 +275,28 @@ def test_nothing_refused_when_nothing_refused_was_asked_for():
 def test_required_extensions_follow_the_actions():
     spec = ActionSpec(fileinto="Lists", flags=("\\Seen",))
 
-    assert engine.required_extensions(spec, use_create=True) == {
+    assert engine.required_extensions(spec, "INBOX.Lists", True) == {
         "fileinto",
         "imap4flags",
         "mailbox",
     }
-    assert engine.required_extensions(ActionSpec(discard=True), False) == set()
+    assert (
+        engine.required_extensions(ActionSpec(discard=True), "", False)
+        == set()
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_default_folder_needs_fileinto_like_an_explicit_one(imap_config):
+    """The folder can come from config; the rule still files into it."""
+    imap_config.default_folder = "Lists"
+    live = Sessions(sieve=FakeSieveSession(caps=["imap4flags"]))
+
+    folder = engine.plan_folder(live, imap_config, None)
+
+    assert engine.missing_extensions(live, ActionSpec(), folder) == [
+        "fileinto"
+    ]
 
 
 # ----------------------------------------------------------------------------

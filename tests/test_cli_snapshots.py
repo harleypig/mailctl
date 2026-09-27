@@ -118,7 +118,8 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # Scenarios
 # ############################################################################
 
-# name -> (argv, options). Options: caps, active, script, reject.
+# name -> (argv, options). Options: caps, active, script, reject, and
+# config -- the text of config.toml.
 SCENARIOS = {
     "list": (["list"], {}),
     "list-verbose": (["list", "--verbose"], {}),
@@ -246,6 +247,10 @@ SCENARIOS = {
     "add-discard-yes": (["add", *GITHUB, "--discard", "--yes"], {}),
     "add-flag-only": (["add", *GITHUB, "--flag", "\\Flagged", "--yes"], {}),
     "add-keep-only": (["add", *GITHUB, "--keep", "--yes"], {}),
+    "add-default-folder-extmissing": (
+        ["add", *GITHUB, "--dry-run", "--no-apply"],
+        {"caps": ["imap4flags"], "config": 'default_folder = "Lists"\n'},
+    ),
     "add-fileinto-source": (
         ["add", *GITHUB, "--fileinto", "INBOX", "--yes"],
         {},
@@ -418,6 +423,11 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     }
 
     monkeypatch.setattr(sieve_module, "Client", lambda *a, **k: sieve)
+    if "config" in options:
+        config_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "mxfilter"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / "config.toml").write_text(options["config"])
+
     monkeypatch.setenv("MXROUTE_HOST", "mail.example.com")
     monkeypatch.setenv("MXROUTE_USER", "user@example.com")
     monkeypatch.setenv("MXROUTE_PASSWORD", "not-a-real-password")

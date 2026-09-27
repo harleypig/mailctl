@@ -464,14 +464,20 @@ def sieve_actions(spec: ActionSpec, folder: str, use_create: bool) -> list:
 
 
 # ----------------------------------------------------------------------------
-def required_extensions(spec: ActionSpec, use_create: bool) -> set[str]:
-    """Return the Sieve extensions the generated rule will need."""
+def required_extensions(
+    spec: ActionSpec, folder: str, use_create: bool
+) -> set[str]:
+    """Return the Sieve extensions the generated rule will need.
+
+    ``folder`` is the resolved target, so a folder that came from
+    ``Config.default_folder`` rather than ``spec.fileinto`` counts too.
+    """
     needed = set()
 
     if spec.flags:
         needed.add("imap4flags")
 
-    if not spec.discard and spec.fileinto:
+    if not spec.discard and folder:
         needed.add("fileinto")
 
     if use_create:
@@ -697,7 +703,7 @@ def missing_extensions(
     sessions: Sessions, spec: ActionSpec, folder: FolderPlan
 ) -> list[str]:
     """Return the extensions the rule needs that the server does not list."""
-    needed = required_extensions(spec, folder.use_create)
+    needed = required_extensions(spec, folder.folder, folder.use_create)
 
     return _sieve(sessions).missing_extensions(needed)
 

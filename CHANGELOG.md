@@ -45,6 +45,11 @@ BUG FIXES:
   pass that flagged nothing. The existing-mail pass is now skipped, with a
   line saying why.
 
+* **The missing-extension warning covers a `default_folder` too.** A rule
+  filing into the config file's `default_folder` needs Sieve `fileinto`
+  exactly as one given `--fileinto` does, but only the flag was checked, so
+  a server without it gave no warning before the upload.
+
 NOTES:
 
 * **The work now lives in an engine, not the CLI.** Everything mxfilter
