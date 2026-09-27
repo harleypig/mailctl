@@ -1,9 +1,10 @@
 """The core returns data; only the CLI prints.
 
-``config``, ``criteria``, ``sieve``, ``imap``, ``rules``, and the
-``engine`` that drives them return structured values and raise
-``MailctlError``. Every piece of rendering, prompting, and progress output
-lives in ``cli.py`` (CONVENTIONS.md).
+``config``, ``criteria``, ``imap``, ``rules``, every module under
+``components/`` and ``providers/``, and the ``engine`` that drives them
+return structured values and raise ``MailctlError``. Every piece of
+rendering, prompting, and progress output lives in ``cli.py``
+(CONVENTIONS.md).
 
 The engine is held to one bar more: it must not know how it was called.
 So it may not import ``argparse`` or the CLI, and may not reach for the
@@ -40,7 +41,24 @@ BANNED_NAMES = {"print", "input", "breakpoint"}
 # takes a `prompter` callback for exactly this reason).
 BANNED_ATTRIBUTES = {"getpass", "getpass_", "print_exc"}
 
-CORE_MODULES = ("config", "criteria", "sieve", "imap", "rules", "engine")
+PACKAGE = Path(mailctl.__file__).parent
+
+# The layered packages are walked rather than listed, so a module added to
+# one is guarded the day it lands instead of the day somebody remembers.
+LAYERED_PACKAGES = ("components", "providers")
+
+CORE_MODULES = (
+    "config",
+    "criteria",
+    "imap",
+    "rules",
+    "engine",
+    *sorted(
+        path.relative_to(PACKAGE).with_suffix("").as_posix()
+        for package in LAYERED_PACKAGES
+        for path in (PACKAGE / package).rglob("*.py")
+    ),
+)
 
 # What would tie the engine to one front-end. The CLI module is named both
 # ways a package-relative import can spell it.
@@ -57,7 +75,7 @@ FRONT_END_ATTRIBUTES = {"stdin", "stdout", "stderr", "environ", "getenv"}
 # ----------------------------------------------------------------------------
 def module_path(name: str) -> Path:
     """Return the source file of one mailctl module."""
-    return Path(mailctl.__file__).parent / f"{name}.py"
+    return PACKAGE / f"{name}.py"
 
 
 # ----------------------------------------------------------------------------
@@ -186,6 +204,14 @@ def test_a_core_module_never_exits_the_process(name):
 
 
 # ----------------------------------------------------------------------------
+def test_the_walk_reaches_the_layered_packages():
+    """A walk that found nothing would pass every guard above vacuously."""
+    assert "components/managesieve/client" in CORE_MODULES
+    assert "components/managesieve/script" in CORE_MODULES
+    assert "providers/mxroute/sieve" in CORE_MODULES
+
+
+# ----------------------------------------------------------------------------
 def test_the_guard_would_actually_catch_a_violation():
     """A guard nobody has seen fail is a guard nobody should trust."""
     tree = ast.parse("import sys\ndef f(secret):\n    print(secret)\n")
@@ -229,7 +255,7 @@ def test_reveal_is_called_only_where_a_credential_is_handed_to_a_client():
         if count:
             sites[name] = count
 
-    assert sites == {"sieve": 1, "imap": 1}, (
+    assert sites == {"components/managesieve/client": 1, "imap": 1}, (
         f"Secret.reveal() call sites changed: {sites}. Each one hands the "
         f"password to a connection method and nothing else; review the "
         f"new one against CONVENTIONS.md > Credentials."

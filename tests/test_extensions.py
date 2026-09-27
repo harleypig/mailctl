@@ -17,10 +17,11 @@ from typing import cast
 import pytest
 
 from mailctl import MailctlError, engine
+from mailctl.components.managesieve import SieveSession
 from mailctl.config import FLAG, Source
 from mailctl.criteria import COMPARE_OPS, MATCH_MODES, Criteria
 from mailctl.engine import ActionSpec, RuleRequest, Sessions
-from mailctl.sieve import SieveSession, merge_rule
+from mailctl.providers.mxroute.sieve import merge_rule
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
 NO_MAILBOX = ["fileinto", "imap4flags"]

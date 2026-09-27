@@ -15,18 +15,18 @@ import email
 import pytest
 
 from mailctl import MailctlError, engine
-from mailctl import sieve as sieve_module
-from mailctl.criteria import Criteria
-from mailctl.engine import ActionSpec, RuleRequest, Sessions
-from mailctl.imap import MailActionPlan
-from mailctl.sieve import (
+from mailctl.components.managesieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
     Placement,
-    parse_script,
     rule_names,
 )
+from mailctl.components.managesieve import client as sieve_client
+from mailctl.criteria import Criteria
+from mailctl.engine import ActionSpec, RuleRequest, Sessions
+from mailctl.imap import MailActionPlan
+from mailctl.providers.mxroute.sieve import parse_script
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
 NO_MAILBOX = ["fileinto", "imap4flags"]
@@ -145,7 +145,7 @@ def test_connect_opens_only_what_was_asked_for_and_tags_progress(
 ):
     opened = []
     monkeypatch.setattr(
-        sieve_module, "Client", lambda *a, **k: opened.append("sieve")
+        sieve_client, "SieveClient", lambda *a, **k: opened.append("sieve")
     )
 
     seen = []

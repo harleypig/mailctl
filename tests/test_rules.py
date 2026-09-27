@@ -12,6 +12,7 @@ weaker answer.
 import pytest
 
 from mailctl.criteria import Criteria
+from mailctl.providers.mxroute.sieve import parse_script
 from mailctl.rules import (
     CERTAIN,
     POSSIBLE,
@@ -20,7 +21,6 @@ from mailctl.rules import (
     read_rules,
     rule_from_criteria,
 )
-from mailctl.sieve import parse_script
 
 # ############################################################################
 # Fixtures

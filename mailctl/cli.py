@@ -17,6 +17,14 @@ import sys
 import traceback
 
 from . import MailctlError, __version__, engine
+from .components.managesieve import (
+    PLACE_AFTER,
+    PLACE_BEFORE,
+    PLACE_FIRST,
+    PLACE_LAST,
+    DisplayDiff,
+    Placement,
+)
 from .config import (
     CONFIG_FILE,
     ENV_FILE,
@@ -33,14 +41,6 @@ from .engine import (
 )
 from .imap import FolderCreation, decode_header_value
 from .rules import CERTAIN
-from .sieve import (
-    PLACE_AFTER,
-    PLACE_BEFORE,
-    PLACE_FIRST,
-    PLACE_LAST,
-    DisplayDiff,
-    Placement,
-)
 
 __all__ = ["build_parser", "main"]
 

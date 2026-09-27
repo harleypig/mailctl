@@ -4,8 +4,30 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BUG FIXES:
+
+* **A backup is the server's exact bytes again** ([#90]). sievelib's
+  GETSCRIPT reader turned CRLF line endings into LF and dropped the final
+  line ending, so `mailctl backup`, the backup taken before every upload,
+  and `mailctl restore`'s source were not byte-identical to the script on
+  the server. mailctl now reads the script by its declared length. As a
+  side effect, the note that the server's script "is not in mailctl's
+  formatting" stops appearing once mailctl has uploaded the script: the
+  dropped final newline had made mailctl's own output look reformatted on
+  every later run.
+
 NOTES:
 
+* **ManageSieve is now a layer-1 component** ([#92], [ADR 0006]). The
+  ManageSieve session and the Sieve script handling moved from
+  `mailctl/sieve.py` into `mailctl/components/managesieve/`, which knows
+  the protocol and nothing about MXroute; MXroute's refusal of `redirect`,
+  the Roundcube rule-name dialect, and its connection advice sit in
+  `mailctl/providers/mxroute/` until the provider interface lands. The
+  wrapper also keeps the whole CAPABILITY response (`MAXREDIRECTS`,
+  `OWNER`, `UNAUTHENTICATE`, which sievelib drops), makes the read timeout
+  a parameter, and makes sievelib's password-printing debug mode
+  impossible to enable. No command's behaviour changes.
 * **The runtime dependencies are bounded on their next major** ([#91]).
   `IMAPClient>=4.1,<5` (the suite passes on 4.1) and `sievelib>=1.5.0,<2`,
   so a new major of either no longer lands on a fresh install unreviewed;
@@ -562,4 +584,7 @@ NOTES:
 [#40]: https://github.com/harleypig/mailctl/issues/40
 [#45]: https://github.com/harleypig/mailctl/issues/45
 [#82]: https://github.com/harleypig/mailctl/issues/82
+[#90]: https://github.com/harleypig/mailctl/issues/90
 [#91]: https://github.com/harleypig/mailctl/issues/91
+[#92]: https://github.com/harleypig/mailctl/issues/92
+[ADR 0006]: adr/0006-two-layer-component-and-provider-architecture.md

@@ -1,0 +1,509 @@
+"""Offline Sieve script handling: parse, merge, move, remove, render, diff.
+
+Nothing here touches the network. A script comes in as text, is parsed
+into a ``sievelib`` filter set, edited, and rendered back -- and every rule
+the edit did not name survives it (mailctl ADR 0002: merge, never
+overwrite).
+
+How a rule's *name* is written in a script is not part of Sieve. sievelib
+reads and writes ``# Filter: NAME``; a webmail may use another form. So the
+functions that parse or render take a :class:`NameDialect`, and the default
+is sievelib's own. A host whose scripts use another form supplies its own
+dialect; this module knows none of them.
+"""
+
+import difflib
+import io
+from collections.abc import Callable
+from dataclasses import dataclass
+
+from sievelib import factory, parser
+
+from ... import MailctlError
+
+__all__ = [
+    "FILTERSET_NAME",
+    "PLACE_AFTER",
+    "PLACE_BEFORE",
+    "PLACE_FIRST",
+    "PLACE_LAST",
+    "SIEVELIB_DIALECT",
+    "SIEVELIB_NAME_MARKER",
+    "UNIMPLEMENTED_ACTIONS",
+    "DisplayDiff",
+    "NameDialect",
+    "Placement",
+    "display_diff",
+    "merge_rule",
+    "move_rule",
+    "parse_script",
+    "remove_rule",
+    "render_script",
+    "resolve_position",
+    "rewrite_hash_comments",
+    "rule_names",
+    "script_diff",
+]
+
+# NOT refused because a host disables them -- mailctl simply does not
+# generate them. No host *documentation* says anything either way, so
+# nothing here should claim they are unavailable.
+#
+# A live read on one account (2026-08-14) found `vacation` ADVERTISED and
+# `enotify` absent, which makes these two refusals different in kind even
+# though they share a message: declining to emit an action the server would
+# accept is a choice of ours, where declining one it never advertised is
+# not. Neither is a documented host restriction, which is the thing the
+# message must not imply. What a given server supports is a question its
+# CAPABILITY response answers; run 'mailctl test'.
+UNIMPLEMENTED_ACTIONS = {
+    "notify": "notify (enotify)",
+    "vacation": "vacation",
+}
+
+# The name given to the in-memory filter set. It is not the script name and
+# it never reaches the server -- sievelib only uses it for its own
+# bookkeeping.
+FILTERSET_NAME = "mailctl"
+
+# The only rule-name form sievelib's parser recognises, and the one its
+# renderer writes.
+SIEVELIB_NAME_MARKER = "# Filter: "
+
+# Where a rule goes, as the four CLI flags spell it. Sieve evaluates rules in
+# order and `stop` ends evaluation, so position is part of what a rule
+# *means* -- appending is a choice, not a neutral default, and these are the
+# vocabulary for saying so.
+PLACE_FIRST = "first"
+PLACE_LAST = "last"
+PLACE_BEFORE = "before"
+PLACE_AFTER = "after"
+
+
+@dataclass(frozen=True)
+class Placement:
+    """A request to put a rule somewhere, resolved against a real script.
+
+    ``anchor`` names the existing rule that ``before`` and ``after`` are
+    relative to, and is unused by ``first`` and ``last``. Carrying the pair
+    as one value rather than as two parallel parameters is what stops a
+    caller passing an anchor with nowhere for it to apply.
+    """
+
+    where: str
+    anchor: str | None = None
+
+
+@dataclass(frozen=True)
+class NameDialect:
+    """How rule names are spelled in a script, translated at the edges.
+
+    ``read`` rewrites a script's own name markers into sievelib's
+    ``# Filter: NAME`` before parsing, so each rule arrives with its real
+    name rather than as "Unnamed rule N". ``write`` rewrites sievelib's
+    markers into the script's form after rendering. Both must preserve line
+    count, so a parse error still reports the line the user sees.
+    """
+
+    read: Callable[[str], str]
+    write: Callable[[str], str]
+
+
+# ----------------------------------------------------------------------------
+def _unchanged(text: str) -> str:
+    """Return ``text`` as it is."""
+    return text
+
+
+SIEVELIB_DIALECT = NameDialect(read=_unchanged, write=_unchanged)
+
+
+# ----------------------------------------------------------------------------
+def rewrite_hash_comments(
+    text: str,
+    translate: Callable[[str], str | None],
+) -> str:
+    """Rewrite the script's hash comments, leaving everything else alone.
+
+    ``translate`` is handed each comment's text and returns a replacement,
+    or None to leave it untouched.
+
+    Tokenising with sievelib's own lexer -- rather than scanning lines -- is
+    what makes this safe. A ``# rule:[x]`` sequence inside a quoted string,
+    a ``/* ... */`` bracket comment, or a ``text:`` multi-line block is a
+    different token to that lexer, so it can never be mistaken for a name
+    marker. A hand-rolled line scan would have to re-derive Sieve's lexical
+    rules and would disagree with the parser the moment it got one wrong.
+
+    The work is done on the utf-8 bytes because that is what the lexer
+    reports offsets in; splicing at character offsets would slide out of
+    alignment on the first non-ASCII rule name.
+    """
+    raw = text.encode("utf-8")
+    lexer = parser.Lexer(parser.Parser.lrules)
+    edits: list[tuple[int, int, bytes]] = []
+
+    try:
+        for token_type, value in lexer.scan(raw):
+            if token_type != "hash_comment":
+                continue
+
+            # The generator is suspended at its yield, so the lexer has not
+            # advanced past the token yet and its position is the token's
+            # start offset. Confirm that before splicing at it: a lexer
+            # change that moved the offset would otherwise rewrite the
+            # wrong bytes of the user's script, which is the one outcome
+            # worse than not translating the name at all (ADR 0002).
+            start = lexer.pos
+
+            if raw[start : start + len(value)] != value:
+                raise MailctlError(
+                    "cannot locate a comment in the Sieve script safely, so "
+                    "rule names cannot be translated without risking the "
+                    "script's contents; this is an mailctl/sievelib "
+                    "version mismatch, not a problem with your script"
+                )
+
+            comment = value.decode("utf-8")
+
+            # ManageSieve is a CRLF protocol and the lexer's `#.*$` takes
+            # the carriage return with the comment. Translate the text
+            # without it, then put it back, so line endings survive.
+            carriage = "\r" if comment.endswith("\r") else ""
+            replacement = translate(comment[: len(comment) - len(carriage)])
+
+            if replacement is None:
+                continue
+
+            edits.append(
+                (
+                    start,
+                    start + len(value),
+                    (replacement + carriage).encode("utf-8"),
+                )
+            )
+
+    except parser.ParseError:
+        # Not this function's error to report. The caller parses the same
+        # text next and fails with sievelib's own diagnostic, which is the
+        # hard stop ADR 0002 requires and says far more than a comment
+        # rewrite could.
+        return text
+
+    if not edits:
+        return text
+
+    pieces = []
+    cursor = 0
+
+    for start, end, replacement in edits:
+        pieces.append(raw[cursor:start])
+        pieces.append(replacement)
+        cursor = end
+
+    pieces.append(raw[cursor:])
+
+    return b"".join(pieces).decode("utf-8")
+
+
+# ----------------------------------------------------------------------------
+def parse_script(
+    text: str, dialect: NameDialect = SIEVELIB_DIALECT
+) -> factory.FiltersSet:
+    """Parse Sieve source into an editable filter set.
+
+    An empty or missing script is a normal starting state, not an error --
+    it just yields an empty set. A script that will not parse is a hard
+    stop: merging into it would risk losing rules.
+    """
+    filters = factory.FiltersSet(FILTERSET_NAME)
+
+    if not text or not text.strip():
+        return filters
+
+    script_parser = parser.Parser()
+
+    if not script_parser.parse(dialect.read(text)):
+        raise MailctlError(
+            "the existing Sieve script could not be parsed, so merging into "
+            "it would risk losing rules: "
+            f"{getattr(script_parser, 'error', 'unknown parse error')}"
+        )
+
+    filters.from_parser_result(script_parser)
+
+    return filters
+
+
+# ----------------------------------------------------------------------------
+def render_script(
+    filters: factory.FiltersSet, dialect: NameDialect = SIEVELIB_DIALECT
+) -> str:
+    """Render a filter set back to Sieve source, names in ``dialect``."""
+    buffer = io.StringIO()
+    filters.tosieve(buffer)
+
+    return dialect.write(buffer.getvalue())
+
+
+# ----------------------------------------------------------------------------
+def rule_names(filters: factory.FiltersSet) -> list[str]:
+    """Return the names of the rules in a filter set, in order."""
+    return [entry["name"] for entry in filters.filters]
+
+
+# ----------------------------------------------------------------------------
+def resolve_position(
+    names: list[str], placement: Placement | None, name: str
+) -> int:
+    """Return the index ``name`` should end up at, counting other rules only.
+
+    ``names`` is the script's rules in order, before the merge. The answer
+    is an index into that list **with the one copy of ``name`` being
+    placed taken out of it**, because the rule being placed cannot be its
+    own reference point -- for a ``--replace`` the old copy is on its way
+    out, and for a new rule it was never there.
+
+    ``placement`` of None is what every caller got before the flags existed,
+    and it keeps that behaviour exactly: a new rule is appended, and an
+    existing one stays at the index it already has.
+
+    Failing here rather than at render time is deliberate. A named anchor
+    that does not exist is almost always a typo, and quietly appending
+    instead would be the same silent-success this whole check exists to
+    remove.
+    """
+    # Exactly ONE copy comes out, because exactly one goes back in:
+    # updatefilter rewrites the FIRST rule of that name and _move_rule
+    # pops that same first one, so the list this index is measured against
+    # is the list it is inserted into. Dropping every same-named rule
+    # instead -- what a plain `!= name` filter does -- shortens that list
+    # by one per surviving duplicate, and --last then lands the rule that
+    # many slots short of the end while reporting success. It is reachable
+    # because a hand-edited script can hold two rules mailctl reads as
+    # one name: `# rule:[Lists]` and `# rule:[Lists ]` both parse to
+    # `Lists`. Do not simplify this back to a comprehension.
+    others = list(names)
+
+    if name in others:
+        others.remove(name)
+
+    if placement is None:
+        return names.index(name) if name in names else len(others)
+
+    if placement.where == PLACE_FIRST:
+        return 0
+
+    if placement.where == PLACE_LAST:
+        return len(others)
+
+    if placement.anchor == name:
+        raise MailctlError(
+            f"--{placement.where} {placement.anchor!r} names the rule being "
+            f"added, which has no position to be relative to. Name another "
+            f"rule, or use --first / --last."
+        )
+
+    if placement.anchor not in others:
+        known = ", ".join(names) or "(none)"
+
+        raise MailctlError(
+            f"no rule named {placement.anchor!r} in the active script, so "
+            f"--{placement.where} has nothing to place this rule against. "
+            f"Known rules: {known}"
+        )
+
+    index = others.index(placement.anchor)
+
+    return index if placement.where == PLACE_BEFORE else index + 1
+
+
+# ----------------------------------------------------------------------------
+def _move_rule(filters: factory.FiltersSet, name: str, position: int) -> None:
+    """Move ``name`` to ``position``, which counts the other rules only.
+
+    sievelib has no insert-at API: ``addfilter`` appends, and
+    ``updatefilter`` deliberately leaves a rule where it was. Its filters
+    are a plain list, though, so placement is a reorder of that list.
+
+    Pulling the entry out before putting it back is what makes ``position``
+    mean the same thing here as in :func:`resolve_position` -- after the
+    pop, the list is exactly the list the position was measured against.
+
+    That equality rests on both ends agreeing about *which* entry leaves,
+    and the agreement is that it is the **first** of that name: the one
+    ``updatefilter`` rewrites, the one popped below, and the one
+    :func:`resolve_position` leaves out. A script with a duplicated name
+    is where the three could disagree, and where they once did.
+    """
+    entries = filters.filters
+
+    for index, entry in enumerate(entries):
+        if entry["name"] == name:
+            entries.insert(position, entries.pop(index))
+
+            return
+
+
+# ----------------------------------------------------------------------------
+def merge_rule(
+    existing: str,
+    name: str,
+    conditions: list[tuple],
+    actions: list[tuple],
+    matchtype: str = "anyof",
+    replace: bool = False,
+    placement: Placement | None = None,
+    dialect: NameDialect = SIEVELIB_DIALECT,
+) -> str:
+    """Merge one rule into an existing script and return the new source.
+
+    The script is parsed and re-rendered rather than appended to, so the
+    ``require`` line stays correct for the union of all rules. Every rule
+    already present is carried through untouched, and in its original order
+    -- the only rule that moves is the one being placed.
+
+    ``placement`` and ``replace`` interact in the one way that is not
+    obvious: replacing a rule **with** a placement flag *moves* it, and
+    replacing it **without** one leaves it exactly where it was. An
+    explicit placement is an instruction, so honouring it for a new rule and
+    ignoring it for an existing one would be a command that reports success
+    and changes nothing -- which is the failure mode this argument was added
+    to remove, not one to reintroduce at a different address.
+    """
+    filters = parse_script(existing, dialect)
+    exists = filters.filter_exists(name)
+
+    if exists and not replace:
+        raise MailctlError(
+            f"a rule named {name!r} already exists in the active script. "
+            f"Use --replace to overwrite it, or --name to pick another."
+        )
+
+    # Resolved against the script as it stands, before the merge changes
+    # what the names are.
+    position = resolve_position(rule_names(filters), placement, name)
+
+    if exists:
+        filters.updatefilter(name, name, conditions, actions, matchtype)
+
+    else:
+        filters.addfilter(name, conditions, actions, matchtype)
+
+    _move_rule(filters, name, position)
+
+    return render_script(filters, dialect)
+
+
+# ----------------------------------------------------------------------------
+def remove_rule(
+    existing: str, name: str, dialect: NameDialect = SIEVELIB_DIALECT
+) -> str:
+    """Remove a named rule and return the new script source."""
+    filters = parse_script(existing, dialect)
+
+    if not filters.removefilter(name):
+        known = ", ".join(rule_names(filters)) or "(none)"
+
+        raise MailctlError(
+            f"no rule named {name!r} in the active script. Known rules: "
+            f"{known}"
+        )
+
+    return render_script(filters, dialect)
+
+
+# ----------------------------------------------------------------------------
+def move_rule(
+    existing: str,
+    name: str,
+    placement: Placement,
+    dialect: NameDialect = SIEVELIB_DIALECT,
+) -> str:
+    """Move a named rule, unchanged, and return the new script source.
+
+    Only the position changes. The index comes from
+    :func:`resolve_position`, measured against the script with the moved
+    rule taken out, so an unknown or self-naming anchor raises the same way
+    it does for ``add``.
+    """
+    filters = parse_script(existing, dialect)
+
+    if not filters.filter_exists(name):
+        known = ", ".join(rule_names(filters)) or "(none)"
+
+        raise MailctlError(
+            f"no rule named {name!r} in the active script. Known rules: "
+            f"{known}"
+        )
+
+    position = resolve_position(rule_names(filters), placement, name)
+    _move_rule(filters, name, position)
+
+    return render_script(filters, dialect)
+
+
+# ----------------------------------------------------------------------------
+def script_diff(before: str, after: str, name: str = "sieve") -> str:
+    """Return a unified diff between two script versions."""
+    lines = difflib.unified_diff(
+        before.splitlines(keepends=True),
+        after.splitlines(keepends=True),
+        fromfile=f"{name} (current)",
+        tofile=f"{name} (proposed)",
+        n=3,
+    )
+
+    return "".join(lines)
+
+
+@dataclass(frozen=True)
+class DisplayDiff:
+    """A diff meant for a person, and the one thing it deliberately hides.
+
+    ``reformats`` is true when the script the server holds is not already
+    in the formatting :func:`render_script` produces -- brace placement,
+    indentation, the blank line after ``require``. The upload really does
+    rewrite all of that, so a reader shown only ``text`` has been told
+    less than the whole truth. Carrying the flag beside the diff is what
+    lets the front-end say so; dropping it would turn hiding the noise
+    into hiding the fact.
+    """
+
+    text: str
+    reformats: bool
+
+
+# ----------------------------------------------------------------------------
+def display_diff(
+    before: str,
+    after: str,
+    name: str = "sieve",
+    dialect: NameDialect = SIEVELIB_DIALECT,
+) -> DisplayDiff:
+    """Diff two script versions with both sides in the same formatting.
+
+    Every merge re-renders the whole script through sievelib, so a diff
+    taken against the *raw* previous source reports the renderer's own
+    layout -- tabs to spaces, the brace pulled up onto the ``if`` line --
+    as though it were the change being proposed. Measured against a
+    Roundcube-authored script, a no-op round trip moves 29 lines of 25.
+    At a glance that is indistinguishable from something having gone badly
+    wrong, which defeats the whole point of showing a diff before
+    changing anything.
+
+    Rendering ``before`` the same way ``after`` was produced leaves only
+    the real change. It is a *display* concern and nothing more: what gets
+    uploaded and what gets backed up are untouched, and the backup stays
+    the server's exact bytes.
+
+    A script that will not parse never reaches here -- ``merge_rule`` and
+    ``remove_rule`` both parse first, and both stop rather than risk
+    losing rules.
+    """
+    normalized = render_script(parse_script(before, dialect), dialect)
+
+    return DisplayDiff(
+        text=script_diff(normalized, after, name),
+        reformats=normalized != before,
+    )

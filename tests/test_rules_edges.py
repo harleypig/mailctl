@@ -26,6 +26,7 @@ So the tests here fall into two kinds, and both are the point:
 import pytest
 
 from mailctl.criteria import Criteria
+from mailctl.providers.mxroute.sieve import merge_rule, parse_script
 from mailctl.rules import (
     CERTAIN,
     POSSIBLE,
@@ -34,7 +35,6 @@ from mailctl.rules import (
     read_rules,
     rule_from_criteria,
 )
-from mailctl.sieve import merge_rule, parse_script
 
 # ############################################################################
 # Fixtures

@@ -30,21 +30,23 @@ import pytest
 
 from mailctl import MailctlError
 from mailctl.cli import build_parser, print_placement
-from mailctl.criteria import Criteria
-from mailctl.engine import placement_analysis
-from mailctl.rules import analyze_placement, read_rules, rule_from_criteria
-from mailctl.sieve import (
+from mailctl.components.managesieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
     Placement,
-    merge_rule,
-    parse_script,
-    render_script,
     resolve_position,
     rule_names,
 )
+from mailctl.criteria import Criteria
+from mailctl.engine import placement_analysis
+from mailctl.providers.mxroute.sieve import (
+    merge_rule,
+    parse_script,
+    render_script,
+)
+from mailctl.rules import analyze_placement, read_rules, rule_from_criteria
 
 # A script in the state an MXroute account is actually in: written by two
 # different tools, in two different name dialects, with four structurally

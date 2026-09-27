@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from mailctl import cli
-from mailctl import sieve as sieve_module
+from mailctl.components.managesieve import client as sieve_client
 
 SNAPSHOTS = Path(__file__).parent / "snapshots" / "cli"
 
@@ -61,7 +61,7 @@ GITHUB = ["--from", "noreply@github.com"]
 
 
 class FakeSieveClient:
-    """A stand-in for ``sievelib.managesieve.Client`` with a script store."""
+    """A stand-in for ``SieveClient`` with a script store."""
 
     # ------------------------------------------------------------------------
     def __init__(self, caps, active, script, reject, others=None):
@@ -91,14 +91,17 @@ class FakeSieveClient:
         return (self.active, others)
 
     # ------------------------------------------------------------------------
-    def getscript(self, name):
+    def getscript_bytes(self, name):
         self.calls.append(("getscript", name))
 
-        return self.scripts.get(name)
+        script = self.scripts.get(name)
+
+        return None if script is None else script.encode("utf-8")
 
     # ------------------------------------------------------------------------
-    def get_sieve_capabilities(self):
-        return list(self.caps)
+    @property
+    def capability_response(self) -> bytes:
+        return b'"SIEVE" "%s"\r\n' % " ".join(self.caps).encode()
 
     # ------------------------------------------------------------------------
     def checkscript(self, content):
@@ -849,7 +852,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     }
     imap.flags = options.get("flags", {})
 
-    monkeypatch.setattr(sieve_module, "Client", lambda *a, **k: sieve)
+    monkeypatch.setattr(sieve_client, "SieveClient", lambda *a, **k: sieve)
     if "file" in options:
         restore_file = tmp_path / "restore.sieve"
         text = script if options["file"] == "SAME" else options["file"]
