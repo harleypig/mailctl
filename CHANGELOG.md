@@ -15,20 +15,13 @@ FEATURES:
   says plain `fileinto` and the folder is created over IMAP; a rule needing
   `fileinto` or `imap4flags` while it is off is refused, naming the setting.
   Disabling one the server lacks anyway changes nothing, and an unknown name
-  is an error naming it. `mailctl test` shows each extension as `yes`, `not
-  listed by server`, or `disabled by mailctl (<source>)`.
-* **`mailctl test` splits its extension checklist in two** ([#82]):
-  `extensions mailctl uses (it writes rules that need them):`, now derived
-  from what mailctl actually writes rather than a hand-kept list, then `other
-  extensions, for information (mailctl never uses):`.
-
-ENHANCEMENTS:
-
-* **Clearer extension headings in `mailctl test`.** The server's raw Sieve
-  list is now headed `capability (as the server reports it):` instead of
-  `extensions:`. The yes / not-advertised checklist below it, briefly headed
-  `extensions mailctl checks:`, is now two blocks — see FEATURES above. Both
-  are still read from the server.
+  is an error naming it.
+* **`mailctl test` shows one table of Sieve extensions** ([#82]), replacing
+  the raw capability line and the checklist below it. A row per extension
+  the server lists or mailctl knows, in alphabetical order: `available` or
+  `unavailable`, then — only for an available one — `enabled` or `disabled
+  (<source>)`. A `*` marks the extensions mailctl's own rules can need,
+  derived from what mailctl actually writes rather than a hand-kept list.
 
 ## 0.5.0
 

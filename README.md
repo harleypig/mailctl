@@ -77,16 +77,20 @@ A disabled extension counts as not advertised:
 | `mailbox` | Writes plain `fileinto`, never `fileinto :create`, and creates a new folder over IMAP instead. With `--no-imap` a folder that needs creating is refused, as it is on a server without `mailbox`. |
 | `fileinto` | Refuses a rule that files mail into a folder. `--discard`, `--keep`, and flag-only rules still work. |
 | `imap4flags` | Refuses a rule that sets a flag (`--mark-read`, `--flag`). |
-| any other name `mailctl test` lists | Nothing today — mailctl writes none of them — but it holds if a later version does. |
+| any other name in the table below | Nothing today — mailctl writes none of them — but it holds if a later version does. |
 
 A refusal names the setting and where it came from. A name mailctl does not
 know is an error, naming it, before anything connects — a typo would
 otherwise switch off nothing without a word. Disabling an extension the
 server does not advertise anyway changes nothing and is not an error.
-`mailctl test` shows each extension as `yes`, `not listed by server`, or
-`disabled by mailctl (...)` with the source.
+`mailctl test` shows one table of Sieve extensions — every name the server
+lists and every name below — each `available` or `unavailable`, and an
+available one `enabled` or `disabled (...)` with the source. An unavailable
+one shows nothing more, disabled or not, since there is nothing to turn
+off. A `*` marks the ones mailctl's own rules can need.
 
-The names `mailctl test` reports, and what each one adds to Sieve:
+The names mailctl knows — `mailctl test` always lists these, plus whatever
+else the server advertises — and what each one adds to Sieve:
 
 | Extension | Spec | Adds | mailctl writes it |
 |-----------|------|------|-------------------|

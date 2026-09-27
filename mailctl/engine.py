@@ -135,9 +135,10 @@ INFORMATIONAL_EXTENSIONS = (
     "extlists",
 )
 
-# The names disabled_extensions accepts: the ones 'test' reports. Disabling
-# an informational one changes nothing mailctl emits today, and keeps
-# holding if a later feature starts emitting it.
+# The names disabled_extensions accepts: the ones 'test' always reports,
+# whatever the server lists. Disabling an informational one changes nothing
+# mailctl emits today, and keeps holding if a later feature starts emitting
+# it.
 KNOWN_EXTENSIONS = REQUIRED_EXTENSIONS + INFORMATIONAL_EXTENSIONS
 
 
@@ -438,29 +439,30 @@ def probe_imap(sessions: Sessions) -> ImapProbe:
 
 @dataclass(frozen=True)
 class ExtensionState:
-    """One extension as a run of mailctl sees it.
+    """One Sieve extension as a run of mailctl sees it.
 
-    ``disabled_by`` is where ``disabled_extensions`` came from when the
-    name is in it, else None. Disabled wins over advertised: it is a
-    narrowing of what mailctl emits, never a claim about the server.
+    ``advertised`` is whether the server lists it; ``required`` is whether
+    mailctl's own rules can need it. ``disabled_by`` is where
+    ``disabled_extensions`` came from when the name is in it, else None.
     """
 
     name: str
     advertised: bool
+    required: bool = False
     disabled_by: Source | None = None
 
     # ------------------------------------------------------------------------
     @property
-    def usable(self) -> bool:
-        return self.advertised and self.disabled_by is None
+    def enabled(self) -> bool | None:
+        """Whether mailctl may use it; None when the server lacks it.
 
+        Disabling is a narrowing of what mailctl emits, never a claim about
+        the server, so for an unadvertised name it decides nothing.
+        """
+        if not self.advertised:
+            return None
 
-@dataclass(frozen=True)
-class ExtensionReport:
-    """The extensions mailctl emits, then the ones it only reports."""
-
-    required: list[ExtensionState]
-    informational: list[ExtensionState]
+        return self.disabled_by is None
 
 
 # ----------------------------------------------------------------------------
@@ -537,22 +539,26 @@ def emitted_extensions(
 
 
 # ----------------------------------------------------------------------------
-def report_extensions(probe: SieveProbe, config: Config) -> ExtensionReport:
-    """Say, per extension, whether it is advertised and whether disabled."""
+def report_extensions(
+    probe: SieveProbe, config: Config
+) -> list[ExtensionState]:
+    """One state per extension mailctl knows or the server lists, by name.
+
+    A server-listed name mailctl does not know is never disabled:
+    ``check_disabled_extensions`` refuses such a name before this runs.
+    """
     advertised = {name.lower() for name in probe.capabilities}
     origin = disabled_source(config)
 
-    def state(name: str) -> ExtensionState:
-        return ExtensionState(
+    return [
+        ExtensionState(
             name,
             name in advertised,
+            name in REQUIRED_EXTENSIONS,
             origin if name in config.disabled_extensions else None,
         )
-
-    return ExtensionReport(
-        [state(name) for name in REQUIRED_EXTENSIONS],
-        [state(name) for name in INFORMATIONAL_EXTENSIONS],
-    )
+        for name in sorted(advertised | set(KNOWN_EXTENSIONS))
+    ]
 
 
 # ############################################################################

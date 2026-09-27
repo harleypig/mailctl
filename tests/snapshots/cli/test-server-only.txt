@@ -1,7 +1,7 @@
 $ mailctl test
 exit: 0
 --- stdout
-Sources:   environment, config file <TMP>/config/mailctl/config.toml
+Sources:   environment
 Host:      mail.example.com  (environment)
 User:      user@example.com  (environment)
 Password:  set  (MAILCTL_PASSWORD, environment)
@@ -11,14 +11,15 @@ Folder:    INBOX  (default)  -- read by apply, messages, view, from-message
 
 ManageSieve: connected
   Sieve extensions (* = mailctl's own rules can need it):
+      body        available    enabled
       copy        unavailable
       enotify     unavailable
       envelope    unavailable
       extlists    unavailable
     * fileinto    available    enabled
-    * imap4flags  available    disabled (config file <TMP>/config/mailctl/config.toml)
-    * mailbox     available    enabled
-      regex       available    enabled
+    * imap4flags  available    enabled
+    * mailbox     unavailable
+      regex       unavailable
       spamtest    unavailable
       vacation    unavailable
 

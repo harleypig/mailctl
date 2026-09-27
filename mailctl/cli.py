@@ -1209,25 +1209,14 @@ def cmd_test(args) -> int:
     with connect(config, args) as sessions:
         sieve = engine.probe_sieve(sessions)
 
-        extensions = ", ".join(sorted(sieve.capabilities)) or "(none)"
-
         print("\nManageSieve: connected")
-        print(f"  capability (as the server reports it): {extensions}")
 
-        # The checklist below is also read from this server's CAPABILITY
-        # response, not assumed -- it only narrows it to the names mailctl
-        # uses.
-        # Nothing here asserts what MXRoute does or does not enable -- only
-        # 'redirect' is a documented MXRoute policy, and a policy is not a
-        # capability, so it would not show up here at all.
-        report = engine.report_extensions(sieve, config)
-
-        print("\n  extensions mailctl uses (it writes rules that need them):")
-        print_extension_states(report.required)
-
-        print("\n  other extensions, for information (mailctl never uses):")
-        print_extension_states(report.informational)
-
+        # Every row is read from this server's CAPABILITY response, not
+        # assumed. Nothing here asserts what MXRoute does or does not
+        # enable -- only 'redirect' is a documented MXRoute policy, and a
+        # policy is not a capability, so it would not show up here at all.
+        print("  Sieve extensions (* = mailctl's own rules can need it):")
+        print_extension_table(engine.report_extensions(sieve, config))
         print(f"\n  active script: {sieve.active or '(none)'}")
         print(f"  other scripts: {', '.join(sieve.others) or '(none)'}")
         print(
@@ -1275,22 +1264,26 @@ def cmd_test(args) -> int:
 
 
 # ----------------------------------------------------------------------------
-def print_extension_states(states) -> None:
-    """One line per extension: advertised, and whether mailctl disabled it."""
-    for state in states:
-        if state.disabled_by is None:
-            shown = "yes" if state.advertised else "not listed by server"
+def print_extension_table(states) -> None:
+    """Name, available or not, and enabled or disabled where available."""
+    width = max(len(state.name) for state in states)
 
-        elif state.advertised:
-            shown = f"disabled by mailctl ({state.disabled_by.describe()})"
+    for state in states:
+        marker = "*" if state.required else " "
+        available = "available" if state.advertised else "unavailable"
+
+        if state.enabled is None:
+            shown = ""
+
+        elif state.enabled:
+            shown = "enabled"
 
         else:
-            shown = (
-                f"not listed by server; disabled by mailctl too "
-                f"({state.disabled_by.describe()})"
-            )
+            shown = f"disabled ({state.disabled_by.describe()})"
 
-        print(f"    {state.name:<12} {shown}")
+        line = f"    {marker} {state.name:<{width}}  {available:<11}  {shown}"
+
+        print(line.rstrip())
 
 
 # ----------------------------------------------------------------------------

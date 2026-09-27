@@ -392,24 +392,72 @@ def test_disabling_an_extension_the_server_lacks_changes_nothing(
 
 
 # ----------------------------------------------------------------------------
-def test_the_report_splits_required_from_informational(imap_config):
-    probe = engine.SieveProbe(["FileInto", "mailbox", "regex"], None, [])
-    disable(imap_config, "mailbox", "imap4flags")
+def report(caps, config):
+    """The report as a name -> state mapping, checking its order on the way."""
+    states = engine.report_extensions(
+        engine.SieveProbe(caps, None, []), config
+    )
+    names = [state.name for state in states]
 
-    report = engine.report_extensions(probe, imap_config)
+    assert names == sorted(set(names))
 
-    assert [state.name for state in report.required] == list(
+    return {state.name: state for state in states}
+
+
+# ----------------------------------------------------------------------------
+def test_the_report_is_one_row_per_known_or_listed_extension(imap_config):
+    """Rows are the union of mailctl's names and the server's, folded."""
+    rows = report(["FileInto", "fileinto", "Body", "regex"], imap_config)
+
+    assert set(rows) == {*engine.KNOWN_EXTENSIONS, "body"}
+    assert {name for name, row in rows.items() if row.required} == set(
         engine.REQUIRED_EXTENSIONS
     )
-    assert [state.name for state in report.informational] == list(
-        engine.INFORMATIONAL_EXTENSIONS
-    )
 
-    by_name = {state.name: state for state in report.required}
 
-    assert by_name["fileinto"].usable
-    assert by_name["mailbox"].advertised
-    assert by_name["mailbox"].disabled_by == FLAG_SOURCE
-    assert not by_name["mailbox"].usable
-    assert not by_name["imap4flags"].advertised
-    assert by_name["imap4flags"].disabled_by == FLAG_SOURCE
+# ----------------------------------------------------------------------------
+def test_a_server_only_name_is_available_and_enabled(imap_config):
+    """mailctl never blocks a name it does not know, so it is enabled."""
+    body = report(["Body"], imap_config)["body"]
+
+    assert body.advertised
+    assert not body.required
+    assert body.disabled_by is None
+    assert body.enabled is True
+
+
+# ----------------------------------------------------------------------------
+def test_available_and_disabled_says_disabled_and_where(imap_config):
+    disable(imap_config, "mailbox")
+
+    rows = report(["fileinto", "mailbox"], imap_config)
+
+    assert rows["mailbox"].advertised
+    assert rows["mailbox"].disabled_by == FLAG_SOURCE
+    assert rows["mailbox"].enabled is False
+    assert rows["fileinto"].enabled is True
+
+
+# ----------------------------------------------------------------------------
+def test_unavailable_and_disabled_is_neither_enabled_nor_disabled(
+    imap_config,
+):
+    """Disabling what the server lacks changes nothing, so it says nothing."""
+    disable(imap_config, "imap4flags")
+
+    flags = report(["fileinto"], imap_config)["imap4flags"]
+
+    assert not flags.advertised
+    assert flags.disabled_by == FLAG_SOURCE
+    assert flags.enabled is None
+
+
+# ----------------------------------------------------------------------------
+def test_an_empty_capability_list_leaves_every_known_name_unavailable(
+    imap_config,
+):
+    rows = report([], imap_config)
+
+    assert set(rows) == set(engine.KNOWN_EXTENSIONS)
+    assert not any(row.advertised for row in rows.values())
+    assert all(row.enabled is None for row in rows.values())
