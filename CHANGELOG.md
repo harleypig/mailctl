@@ -4,6 +4,13 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+NOTES:
+
+* **The runtime dependencies are bounded on their next major** ([#91]).
+  `IMAPClient>=4.1,<5` (the suite passes on 4.1) and `sievelib>=1.5.0,<2`,
+  so a new major of either no longer lands on a fresh install unreviewed;
+  raising a bound is a deliberate, tested change.
+
 ## 0.6.0
 
 FEATURES:
@@ -555,3 +562,4 @@ NOTES:
 [#40]: https://github.com/harleypig/mailctl/issues/40
 [#45]: https://github.com/harleypig/mailctl/issues/45
 [#82]: https://github.com/harleypig/mailctl/issues/82
+[#91]: https://github.com/harleypig/mailctl/issues/91
