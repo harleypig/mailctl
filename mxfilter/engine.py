@@ -32,6 +32,7 @@ from .imap import (
     MailActionPlan,
     MailActionResult,
     MessageSummary,
+    case_variant_hint,
     decode_header_value,
     normalize_folder,
     same_folder,
@@ -247,9 +248,7 @@ class FolderListing:
 
     # ------------------------------------------------------------------------
     def is_subscribed(self, folder: str) -> bool:
-        return folder.casefold() in {
-            name.casefold() for name in self.subscribed
-        }
+        return any(same_folder(name, folder) for name in self.subscribed)
 
     # ------------------------------------------------------------------------
     @property
@@ -406,16 +405,18 @@ def plan_subscription(
     folder = imap.normalize(name)
     subscribed_now = imap.is_subscribed(folder)
 
+    hint = case_variant_hint(folder, imap.folders)
+
     if subscribe and not imap.exists(folder):
         raise MxFilterError(
             f"no folder named {folder!r} on the server, so there is nothing "
-            f"to subscribe to. 'mxfilter folders' lists what exists."
+            f"to subscribe to. {hint}'mxfilter folders' lists what exists."
         )
 
     if not subscribe and not subscribed_now and not imap.exists(folder):
         raise MxFilterError(
             f"no folder or subscription named {folder!r} on the server. "
-            f"'mxfilter folders' lists what exists."
+            f"{hint}'mxfilter folders' lists what exists."
         )
 
     return SubscriptionPlan(
@@ -749,6 +750,11 @@ class FolderPlan:
 
     ``delimiter_assumed`` is true when there was no IMAP session to read
     the delimiter from, so the Maildir++ heuristic was used instead.
+
+    ``case_variants`` holds existing folders that differ from ``folder``
+    only in case. Folder names are case-sensitive, so none of them is the
+    target -- but a missing or to-be-created folder with one beside it is
+    most likely a typo, and the front-end should say so (#56).
     """
 
     requested: str
@@ -757,6 +763,7 @@ class FolderPlan:
     delimiter_assumed: bool
     status: str
     subscribe: bool
+    case_variants: tuple[str, ...] = ()
 
     # ------------------------------------------------------------------------
     @property
@@ -811,6 +818,9 @@ def plan_folder(
 
     if imap is not None and imap.exists(folder):
         return FolderPlan(status=FOLDER_EXISTS, **shape)
+
+    if imap is not None:
+        shape["case_variants"] = tuple(imap.case_variants(folder))
 
     has_mailbox = sessions.sieve is not None and not (
         sessions.sieve.missing_extensions({"mailbox"})

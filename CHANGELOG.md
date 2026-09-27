@@ -67,6 +67,14 @@ BUG FIXES:
   password is now read first: an unusable one shows as `not usable`, with
   the reason below the settings, and an answered prompt shows as `set`
   rather than the `unset` it was before asking.
+* **Folder names match exactly, except `INBOX`** ([#56]). Checking whether
+  a folder exists, resolving the name you typed, and checking subscriptions
+  all ignored case, so on a case-sensitive server `INBOX.lists` counted as
+  the existing `INBOX.Lists`. They now follow RFC 3501: `INBOX` in any
+  case, every other name exactly. When the folder you name is missing but
+  one differing only in case exists, mxfilter warns and names both — so
+  `--create-folder` no longer makes a second, differently cased folder
+  without saying so — and a subscribe or folder-open error names it too.
 
 ## 0.3.0
 
@@ -450,3 +458,4 @@ NOTES:
 [#63]: https://github.com/harleypig/mxroute-email-filters/issues/63
 [#61]: https://github.com/harleypig/mxroute-email-filters/issues/61
 [#30]: https://github.com/harleypig/mxroute-email-filters/issues/30
+[#56]: https://github.com/harleypig/mxroute-email-filters/issues/56

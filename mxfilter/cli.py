@@ -429,6 +429,22 @@ def show_folder_plan(plan: engine.FolderPlan) -> None:
             f"(delimiter {plan.delimiter!r})"
         )
 
+    if plan.case_variants:
+        # Exact matching is right (#56), but a folder beside the target
+        # that differs only in case is almost always the one meant, and a
+        # create would otherwise make a second one without a word.
+        variants = ", ".join(repr(name) for name in plan.case_variants)
+        effect = (
+            "a second folder will be created beside it"
+            if plan.status != engine.FOLDER_MISSING
+            else "it does not count"
+        )
+
+        warn(
+            f"no folder {plan.folder!r}, but {variants} differs only in "
+            f"case; folder names are case-sensitive, so {effect}"
+        )
+
 
 # ----------------------------------------------------------------------------
 def prepare_folder(sessions, config, args) -> engine.FolderPlan:

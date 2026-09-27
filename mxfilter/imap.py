@@ -72,6 +72,8 @@ __all__ = [
     "MailActionResult",
     "MessageSummary",
     "PartialExecution",
+    "case_variant_hint",
+    "case_variants",
     "decode_header_value",
     "normalize_folder",
     "same_folder",
@@ -120,16 +122,54 @@ def same_folder(left: str, right: str) -> bool:
 
 
 # ----------------------------------------------------------------------------
+def case_variants(name: str, known: list[str]) -> list[str]:
+    """The known folders that differ from ``name`` only in case.
+
+    Name matching is exact (``same_folder``), which makes these the
+    folders a user most likely meant: ones the lookup does not resolve to,
+    and ones a create would put a second folder beside.
+    """
+    return [
+        folder
+        for folder in known
+        if folder.casefold() == name.casefold()
+        and not same_folder(folder, name)
+    ]
+
+
+# ----------------------------------------------------------------------------
+def case_variant_hint(name: str, known: list[str]) -> str:
+    """A sentence naming the case variants of ``name``, or nothing.
+
+    For an error about a folder that is missing: the likeliest reason is
+    that the one meant is spelled with different case.
+    """
+    variants = case_variants(name, known)
+
+    if not variants:
+        return ""
+
+    listed = ", ".join(repr(folder) for folder in variants)
+
+    return (
+        f"{listed} {'exists' if len(variants) == 1 else 'exist'}, but "
+        f"folder names are case-sensitive. "
+    )
+
+
+# ----------------------------------------------------------------------------
 def normalize_folder(
     name: str, delimiter: str, known: list[str] | None = None
 ) -> str:
     """Return the server's spelling of a user-supplied folder name.
 
     When the folder list is available the answer is looked up rather than
-    guessed, which also matches an existing folder whose case differs. The
-    fallback only kicks in for a folder that does not exist yet: on a
-    Maildir++ server (delimiter ``.``) a new folder belongs under ``INBOX``,
-    while a ``/``-delimited server keeps it as a top-level sibling.
+    guessed. The lookup is exact except for ``INBOX`` (``same_folder``),
+    so a folder whose case differs is not a match -- ``case_variants``
+    finds those. The fallback only kicks in for a folder that does not
+    exist yet: on a Maildir++ server (delimiter ``.``) a new folder belongs
+    under ``INBOX``, while a ``/``-delimited server keeps it as a top-level
+    sibling.
     """
     components = split_path(name, delimiter)
 
@@ -141,14 +181,10 @@ def normalize_folder(
     if components[0].upper() == "INBOX":
         candidate = delimiter.join(["INBOX", *components[1:]])
 
-    if known:
-        lookup = {folder.casefold(): folder for folder in known}
-
-        for option in (candidate, f"INBOX{delimiter}{candidate}"):
-            match = lookup.get(option.casefold())
-
-            if match:
-                return match
+    for option in (candidate, f"INBOX{delimiter}{candidate}"):
+        for folder in known or ():
+            if same_folder(folder, option):
+                return folder
 
     if delimiter == "." and components[0].upper() != "INBOX":
         return delimiter.join(["INBOX", *components])
@@ -642,11 +678,16 @@ class ImapSession:
 
     # ------------------------------------------------------------------------
     def exists(self, folder: str) -> bool:
-        """Whether a (already normalized) folder exists."""
+        """Whether a (already normalized) folder exists, matched exactly
+        except for ``INBOX`` (``same_folder``)."""
         return any(
-            candidate.casefold() == folder.casefold()
-            for candidate in self._folders
+            same_folder(candidate, folder) for candidate in self._folders
         )
+
+    # ------------------------------------------------------------------------
+    def case_variants(self, folder: str) -> list[str]:
+        """Existing folders that differ from ``folder`` only in case."""
+        return case_variants(folder, self._folders)
 
     # ------------------------------------------------------------------------
     def is_subscribed(self, folder: str) -> bool:
@@ -656,8 +697,7 @@ class ImapSession:
         and being drawn in a mail client is what this reports.
         """
         return any(
-            candidate.casefold() == folder.casefold()
-            for candidate in self._subscribed
+            same_folder(candidate, folder) for candidate in self._subscribed
         )
 
     # ------------------------------------------------------------------------
@@ -992,7 +1032,8 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MxFilterError(
-                f"cannot open folder {folder!r} -- {exc}. Run 'mxfilter "
+                f"cannot open folder {folder!r} -- {exc}. "
+                f"{case_variant_hint(folder, self._folders)}Run 'mxfilter "
                 f"folders' to see the exact names this server uses."
             ) from exc
 

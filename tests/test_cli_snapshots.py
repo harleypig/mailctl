@@ -581,6 +581,20 @@ SCENARIOS = {
     "apply-yes": (["apply", *GITHUB, "--fileinto", "Lists", "--yes"], {}),
     "apply-dry": (["apply", *GITHUB, "--fileinto", "Lists", "--dry-run"], {}),
     "apply-missing": (["apply", *GITHUB, "--fileinto", "Lists/GitHub"], {}),
+    # #56: 'lists' is not INBOX.Lists; the near miss is named, missing or
+    # about to be created beside it.
+    "apply-case-variant": (["apply", *GITHUB, "--fileinto", "lists"], {}),
+    "add-dry-create-case-variant": (
+        [
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "lists",
+            "--create-folder",
+            "--dry-run",
+        ],
+        {},
+    ),
     "apply-create": (
         [
             "apply",

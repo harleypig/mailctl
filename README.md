@@ -295,11 +295,16 @@ documentation read better.
   so the folder may not exist on your account at all.
 * Because of that, neither is assumed. The delimiter is **detected at
   runtime** from the server's folder list, and folder names are matched
-  against that list case-insensitively — type `Lists/News` or
-  `INBOX.Lists.News` and whichever spelling the server reports is used for
-  both the Sieve rule and the move. `mxfilter folders` is the authority for
-  your account. The one exception is `--no-imap`, which has no folder list to
-  consult and falls back to `.` (or `--delimiter`), and warns that it did.
+  against that list — type `Lists/News` or `INBOX.Lists.News` and the
+  server's spelling is used for both the Sieve rule and the move. `mxfilter
+  folders` is the authority for your account. The one exception is
+  `--no-imap`, which has no folder list to consult and falls back to `.` (or
+  `--delimiter`), and warns that it did.
+* Folder names are **case-sensitive**, except `INBOX` itself (RFC 3501), so
+  `INBOX.Lists` and `INBOX.lists` are two folders. When the folder you name
+  does not exist but one differing only in case does, mxfilter warns and
+  names both — and with `--create-folder`, says a second folder will be
+  created beside it.
 
 ### Unconfirmed — do not read these as MXRoute facts
 

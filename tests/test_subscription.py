@@ -89,9 +89,22 @@ def test_the_subscribed_set_is_read_and_is_not_the_folder_list(imap_session):
 
 
 # ----------------------------------------------------------------------------
-def test_the_subscription_check_matches_case_insensitively(imap_session):
-    """Folder names are matched the way ``exists`` matches them."""
-    assert imap_session.is_subscribed("inbox.lists") is True
+def test_the_subscription_check_is_exact_except_for_inbox(imap_session):
+    """Folder names are matched the way ``exists`` matches them (#56)."""
+    assert imap_session.is_subscribed("INBOX.Lists") is True
+    assert imap_session.is_subscribed("INBOX.lists") is False
+    assert imap_session.is_subscribed("inbox") is True
+
+
+# ----------------------------------------------------------------------------
+def test_the_listing_subscription_check_is_exact_except_for_inbox():
+    """``folders`` and ``test`` report through FolderListing, not the
+    session, and must not merge two differently cased folders (#56)."""
+    listing = engine.FolderListing(
+        ".", ["INBOX", "INBOX.Lists", "INBOX.lists"], ["inbox", "INBOX.Lists"]
+    )
+
+    assert listing.unsubscribed == ["INBOX.lists"]
 
 
 # ----------------------------------------------------------------------------
