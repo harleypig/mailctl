@@ -49,7 +49,9 @@ error names the `chmod` that fixes it. Keep that file on the Linux
 filesystem — anything under `/mnt/c` or another Windows mount (WSL) reports
 mode `0777` whatever you set, so it is always refused. Exactly one trailing
 newline is stripped from it, and nothing else, since a trailing space can be
-part of a password.
+part of a password. The path may start with `~` and may use `$VAR` or
+`${VAR}`, wherever it is given — `password_file = "~/.config/mail/pw"`
+works. An unset variable is left as written, so the error names it.
 
 `--password VALUE` exists and is the **least safe** option: the value is
 visible in the process list to every user on the machine and your shell

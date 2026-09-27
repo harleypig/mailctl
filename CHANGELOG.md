@@ -25,6 +25,13 @@ FEATURES:
 
 ENHANCEMENTS:
 
+* **A password-file path expands `~` and environment variables** (#8).
+  `password_file = "~/pw"` used to fail naming the literal `~/pw`, which
+  read as a missing file. `~`, `$VAR`, and `${VAR}` now expand in every
+  place a password file can be named — the flag, `MXROUTE_PASSWORD_FILE`,
+  and the config file. An unset variable is left as written, so the error
+  names it.
+
 * **`from-message` shows the message before it derives anything.** Date,
   From, To, Subject, and List-Id when present, decoded. The UID is dug out
   of webmail by hand, so a mistyped digit used to build a filter from the
