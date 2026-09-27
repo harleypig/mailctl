@@ -488,6 +488,14 @@ def apply_to_existing(
     after showing it -- the decision to execute lives here, in the
     front-end, and never inside the engine.
     """
+    if engine.mail_pass_is_noop(spec, args.folder, folder.folder):
+        print(
+            f"\nSkipping the existing-mail pass: the rule leaves matching "
+            f"mail in {args.folder!r} as it is, so there is nothing to do."
+        )
+
+        return 0
+
     print(f"\nSearching {args.folder!r} for existing matches...")
 
     plan = engine.plan_mail(

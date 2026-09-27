@@ -882,6 +882,21 @@ def require_mail_action(folder: FolderPlan, spec: ActionSpec) -> None:
 
 
 # ----------------------------------------------------------------------------
+def mail_pass_is_noop(spec: ActionSpec, source: str, destination: str) -> bool:
+    """Whether the existing-mail pass would change nothing at all.
+
+    A rule that only keeps mail, or files it into the folder it is already
+    in, has nothing to do to delivered mail -- searching for it and asking
+    about it would be a prompt that changes nothing.
+    """
+    return (
+        not spec.discard
+        and not spec.flags
+        and (not destination or destination.casefold() == source.casefold())
+    )
+
+
+# ----------------------------------------------------------------------------
 def plan_mail(
     sessions: Sessions,
     criteria: Criteria,

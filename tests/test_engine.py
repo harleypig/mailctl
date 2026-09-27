@@ -740,3 +740,20 @@ def test_the_mail_pass_creates_its_folder_once_and_only_on_execute(
 
     assert mailbox.names().count("create_folder") == 1
     assert not engine.folder_pending(sessions, folder)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("spec", "destination", "noop"),
+    [
+        (ActionSpec(keep=True), "", True),
+        (ActionSpec(fileinto="INBOX"), "inbox", True),
+        (ActionSpec(fileinto="Lists"), "INBOX.Lists", False),
+        (ActionSpec(keep=True, flags=("\\Seen",)), "", False),
+        (ActionSpec(discard=True), "", False),
+    ],
+)
+def test_a_mail_pass_that_changes_nothing_is_recognised(
+    spec, destination, noop
+):
+    assert engine.mail_pass_is_noop(spec, "INBOX", destination) is noop

@@ -39,6 +39,12 @@ BUG FIXES:
   the script for `add`, after you confirm for `apply`. An `apply` with no
   matching mail no longer creates the folder at all, and says so.
 
+* **A rule that leaves mail where it is no longer offers to change it.**
+  `add --keep` alone, or `--fileinto` naming the folder the mail is already
+  in, used to search existing mail and then ask "Flag N message(s)?" about a
+  pass that flagged nothing. The existing-mail pass is now skipped, with a
+  line saying why.
+
 NOTES:
 
 * **The work now lives in an engine, not the CLI.** Everything mxfilter

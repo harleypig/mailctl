@@ -246,6 +246,10 @@ SCENARIOS = {
     "add-discard-yes": (["add", *GITHUB, "--discard", "--yes"], {}),
     "add-flag-only": (["add", *GITHUB, "--flag", "\\Flagged", "--yes"], {}),
     "add-keep-only": (["add", *GITHUB, "--keep", "--yes"], {}),
+    "add-fileinto-source": (
+        ["add", *GITHUB, "--fileinto", "INBOX", "--yes"],
+        {},
+    ),
     "add-before-unknown": (
         ["add", *GITHUB, "--fileinto", "Lists", "--before", "phantom"],
         {},
