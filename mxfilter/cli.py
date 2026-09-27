@@ -48,6 +48,11 @@ __all__ = ["build_parser", "main"]
 DEFAULT_MOVE_THRESHOLD = 25
 PREVIEW_LIMIT = 20
 
+ACTIVATE_HELP = (
+    "make the script the active one, the one Sieve runs. Without it, a "
+    "--script other than the active one is stored but left inactive"
+)
+
 # The action flags refused with an explanation rather than an argparse
 # "unrecognized arguments" error; see action_parser.
 REFUSED_ACTION_FLAGS = ("redirect", "notify", "vacation")
@@ -230,11 +235,43 @@ def render_event(event) -> None:
     if isinstance(event, engine.ScriptBackedUp):
         print(f"Backed up current script to {event.path}")
 
-    elif isinstance(event, engine.ScriptUploaded):
+    elif isinstance(event, engine.ScriptUploaded) and event.activated:
         print(f"Uploaded and activated script {event.script!r}")
+
+    elif isinstance(event, engine.ScriptUploaded):
+        print(f"Uploaded script {event.script!r}; it was not activated")
 
     elif isinstance(event, engine.FolderCreated):
         report_folder_creation(event.result)
+
+
+# ----------------------------------------------------------------------------
+def print_activation(plan) -> None:
+    """Say when an upload changes, or leaves alone, which script runs.
+
+    Sieve runs one script. Editing another is legitimate, but a user who
+    expects the edit to take effect needs telling that it will not -- and
+    switching the running script is a change of its own, so it is shown
+    before it happens rather than reported after.
+    """
+    if not plan.activate:
+        print(
+            f"\nScript {plan.script!r} is not the active script "
+            f"({plan.active!r} is), so it is stored but not run. Pass "
+            f"--activate to make it the active script."
+        )
+
+    elif plan.active is None:
+        print(
+            f"\nThe account has no active script; {plan.script!r} will "
+            f"become the active script."
+        )
+
+    elif plan.active != plan.script:
+        print(
+            f"\nScript {plan.script!r} will become the active script, in "
+            f"place of {plan.active!r}."
+        )
 
 
 # ----------------------------------------------------------------------------
@@ -860,11 +897,14 @@ def cmd_backup(args) -> int:
 
 # ----------------------------------------------------------------------------
 def cmd_restore(args) -> int:
-    """Replace the active script with a backup file, after showing it."""
+    """Replace a script with a backup file, after showing it."""
     config = configure(args)
+    backup = engine.read_backup_file(args.file, args.allow_empty)
 
     with connect(config, args) as sessions:
-        plan = engine.plan_restore(sessions, args.file)
+        plan = engine.plan_restore(
+            sessions, backup, args.script, args.activate
+        )
 
         print(
             f"Restore {plan.source} ({rule_count_phrase(plan.after)}) over "
@@ -880,6 +920,7 @@ def cmd_restore(args) -> int:
             return 0
 
         print_script_diff(plan.diff)
+        print_activation(plan)
 
         if args.dry_run:
             print("\n[dry-run] the script was NOT uploaded.")
@@ -1164,6 +1205,7 @@ def run_add(config, args, criteria: Criteria) -> int:
                 script=args.script,
                 replace=args.replace,
                 placement=placement_from_args(args),
+                activate=args.activate,
             ),
             folder,
         )
@@ -1177,6 +1219,7 @@ def run_add(config, args, criteria: Criteria) -> int:
         # stop means it will never be reached.
         print_placement(plan.placement)
         print_script_diff(plan.diff)
+        print_activation(plan)
 
         if args.dry_run:
             print("\n[dry-run] the script was NOT uploaded.")
@@ -1260,9 +1303,12 @@ def cmd_remove_rule(args) -> int:
     config = configure(args)
 
     with connect(config, args) as sessions:
-        plan = engine.plan_removal(sessions, args.rule_name, args.script)
+        plan = engine.plan_removal(
+            sessions, args.rule_name, args.script, args.activate
+        )
 
         print_script_diff(plan.diff)
+        print_activation(plan)
 
         if args.dry_run:
             print("\n[dry-run] the script was NOT uploaded.")
@@ -1288,7 +1334,11 @@ def cmd_move_rule(args) -> int:
 
     with connect(config, args) as sessions:
         plan = engine.plan_move(
-            sessions, args.rule_name, placement_from_args(args), args.script
+            sessions,
+            args.rule_name,
+            placement_from_args(args),
+            args.script,
+            args.activate,
         )
 
         if not plan.changes:
@@ -1307,6 +1357,7 @@ def cmd_move_rule(args) -> int:
 
         print_placement(plan.placement)
         print_script_diff(plan.diff)
+        print_activation(plan)
 
         if args.dry_run:
             print("\n[dry-run] the script was NOT uploaded.")
@@ -1846,8 +1897,9 @@ def build_parser() -> argparse.ArgumentParser:
     restore = subparsers.add_parser(
         "restore",
         parents=[common, connection, safety],
-        help="upload a backup file over the active script",
-        description="Replace the active Sieve script with a backup file, "
+        help="upload a backup file over the active script, or --script",
+        description="Replace the active Sieve script -- or the one --script "
+        "names -- with a backup file, "
         "byte for byte. The difference between the file and what the "
         "server has now is shown first, the current script is backed up "
         "before anything is sent, the server validates the file "
@@ -1859,6 +1911,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     restore.add_argument(
         "file", metavar="FILE", help="a file written by 'mxfilter backup'"
+    )
+    restore.add_argument("--script", help="script name; default active")
+    restore.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
+    restore.add_argument(
+        "--allow-empty",
+        dest="allow_empty",
+        action="store_true",
+        help="restore a FILE that is empty, which removes every rule; "
+        "refused without this",
     )
     restore.set_defaults(handler=cmd_restore)
 
@@ -1986,6 +2047,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     remove.add_argument("rule_name", metavar="NAME")
     remove.add_argument("--script", help="script name; default active")
+    remove.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
     remove.set_defaults(handler=cmd_remove_rule)
 
     move = subparsers.add_parser(
@@ -2001,6 +2063,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     move.add_argument("rule_name", metavar="NAME")
     move.add_argument("--script", help="script name; default active")
+    move.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
 
     where = move.add_argument_group("position").add_mutually_exclusive_group(
         required=True
@@ -2042,6 +2105,7 @@ def _add_rule_flags(parser: argparse.ArgumentParser) -> None:
         "--name", help="rule name; derived from criteria if omitted"
     )
     group.add_argument("--script", help="script name; default active")
+    group.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
     group.add_argument(
         "--replace",
         action="store_true",

@@ -25,6 +25,7 @@ mxfilter: Replace script 'managesieve' with '<TMP>/restore.sieve'? The current s
 --- sieve calls
 ('connect',)
 ('listscripts',)
+('listscripts',)
 ('getscript', 'managesieve')
 ('logout',)
 --- imap calls

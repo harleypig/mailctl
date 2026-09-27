@@ -902,7 +902,9 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
         password_cmd=_pick(getattr(args, "password_cmd", None), default=""),
         toml_password_file=_pick(file_values.get("password_file"), default=""),
         toml_password_cmd=_pick(file_values.get("password_cmd"), default=""),
-        backup_dir=Path(backup_dir) if backup_dir else default_backup_dir(),
+        backup_dir=expand_path(backup_dir)
+        if backup_dir
+        else default_backup_dir(),
         sources=sources,
         consulted=consulted,
         env_file=env_file,

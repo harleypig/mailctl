@@ -10,7 +10,7 @@ usage: mxfilter move-rule [-h] [--verbose] [--debug] [--host HOST]
                           [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
                           [--sieve-tls {starttls,ssl,none}]
                           [--backup-dir BACKUP_DIR] [--dry-run] [--yes]
-                          [--script SCRIPT]
+                          [--script SCRIPT] [--activate]
                           (--first | --last | --before OTHER | --after OTHER)
                           NAME
 mxfilter move-rule: error: one of the arguments --first --last --before --after is required

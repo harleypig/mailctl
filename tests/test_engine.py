@@ -40,9 +40,10 @@ class FakeSieveSession:
     """Stands in for ``SieveSession``, recording what it was asked to do."""
 
     # ------------------------------------------------------------------------
-    def __init__(self, script="", active="managesieve", caps=FULL):
+    def __init__(self, script="", active="managesieve", caps=FULL, others=()):
         self.script = script
         self.active = active
+        self.others = list(others)
         self.caps = list(caps)
         self.reject = False
         self.calls: list[tuple] = []
@@ -57,7 +58,7 @@ class FakeSieveSession:
 
     # ------------------------------------------------------------------------
     def list_scripts(self):
-        return (self.active, [])
+        return (self.active, list(self.others))
 
     # ------------------------------------------------------------------------
     def active_script_name(self):
@@ -879,7 +880,7 @@ def test_a_restore_is_planned_then_backs_up_and_uploads_exact_bytes(
     fake = FakeSieveSession(script="current\n")
     live = Sessions(sieve=fake)
 
-    plan = engine.plan_restore(live, backup)
+    plan = engine.plan_restore(live, engine.read_backup_file(backup))
 
     assert plan.changes
     assert plan.after == 'require "fileinto";\r\n# rule:[a]\r\n'
@@ -908,7 +909,9 @@ def test_a_restore_over_an_unparseable_script_is_allowed(
     live = Sessions(sieve=FakeSieveSession(script="if {{{ broken"))
 
     engine.execute_restore(
-        live, imap_config, engine.plan_restore(live, backup)
+        live,
+        imap_config,
+        engine.plan_restore(live, engine.read_backup_file(backup)),
     )
 
     assert "put_script" in live.sieve.names()
@@ -920,7 +923,7 @@ def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
     backup.write_text("same\n")
     live = Sessions(sieve=FakeSieveSession(script="same\n"))
 
-    plan = engine.plan_restore(live, backup)
+    plan = engine.plan_restore(live, engine.read_backup_file(backup))
 
     assert not plan.changes
     assert engine.execute_restore(live, imap_config, plan) is None
@@ -928,19 +931,97 @@ def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
 
 
 # ----------------------------------------------------------------------------
-def test_a_restore_needs_a_readable_file_and_an_active_script(tmp_path):
+def test_a_restore_needs_a_readable_file(tmp_path):
     with pytest.raises(MxFilterError, match="could not read backup"):
-        engine.plan_restore(
-            Sessions(sieve=FakeSieveSession()), tmp_path / "no"
-        )
+        engine.read_backup_file(tmp_path / "no")
 
+
+# ----------------------------------------------------------------------------
+def test_with_nothing_active_a_restore_asks_for_script(tmp_path):
     backup = tmp_path / "b.sieve"
     backup.write_text("x")
+    live = Sessions(sieve=FakeSieveSession(active=None))
 
-    with pytest.raises(MxFilterError, match="no active script"):
-        engine.plan_restore(
-            Sessions(sieve=FakeSieveSession(active=None)), backup
-        )
+    with pytest.raises(MxFilterError, match=r"no active script.*--script"):
+        engine.plan_restore(live, engine.read_backup_file(backup))
+
+
+# ----------------------------------------------------------------------------
+def test_with_nothing_active_a_named_restore_uploads_and_activates(
+    imap_config, tmp_path
+):
+    """The recovery case (#54): the account's script was deactivated."""
+    imap_config.backup_dir = tmp_path / "backups"
+    backup = tmp_path / "b.sieve"
+    backup.write_text("new\n")
+    fake = FakeSieveSession(script="old\n", active=None, others=["spare"])
+    live = Sessions(sieve=fake)
+
+    plan = engine.plan_restore(
+        live, engine.read_backup_file(backup), script="spare"
+    )
+
+    assert (plan.active, plan.activate) == (None, True)
+
+    engine.execute_restore(live, imap_config, plan)
+
+    assert fake.calls[-2:] == [
+        ("put_script", "spare", "new\n"),
+        ("set_active", "spare"),
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_backup_path_expands_home_and_variables(monkeypatch, tmp_path):
+    (tmp_path / "b.sieve").write_text("x")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("MXFILTER_TEST_DIR", str(tmp_path))
+
+    for spelled in ("~/b.sieve", "$MXFILTER_TEST_DIR/b.sieve"):
+        assert engine.read_backup_file(spelled).path == tmp_path / "b.sieve"
+
+    assert engine.read_backup_file("${MXFILTER_TEST_DIR}/b.sieve").text == "x"
+
+
+# ----------------------------------------------------------------------------
+def test_a_restore_targets_the_named_script_and_leaves_it_inactive(
+    imap_config, tmp_path
+):
+    imap_config.backup_dir = tmp_path / "backups"
+    backup = tmp_path / "b.sieve"
+    backup.write_text("new\n")
+    fake = FakeSieveSession(script="old\n", others=["spare"])
+    live = Sessions(sieve=fake)
+
+    plan = engine.plan_restore(
+        live, engine.read_backup_file(backup), script="spare"
+    )
+
+    assert (plan.script, plan.activate) == ("spare", False)
+    assert fake.calls == [("get_script", "spare")]
+
+    engine.execute_restore(live, imap_config, plan)
+
+    assert fake.calls[-1] == ("put_script", "spare", "new\n")
+    assert "set_active" not in fake.names()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("content", ["", "\n", "  \r\n\t"])
+def test_an_empty_backup_is_refused_unless_allowed(content, tmp_path):
+    backup = tmp_path / "empty.sieve"
+    backup.write_bytes(content.encode())
+    live = Sessions(sieve=FakeSieveSession(script="old\n"))
+
+    with pytest.raises(MxFilterError, match="--allow-empty"):
+        engine.read_backup_file(backup)
+
+    plan = engine.plan_restore(
+        live, engine.read_backup_file(backup, allow_empty=True)
+    )
+
+    assert plan.after == content
+    assert plan.changes
 
 
 # ----------------------------------------------------------------------------
@@ -956,11 +1037,108 @@ def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
 
     with pytest.raises(MxFilterError, match="rejected"):
         engine.execute_restore(
-            live, imap_config, engine.plan_restore(live, backup)
+            live,
+            imap_config,
+            engine.plan_restore(live, engine.read_backup_file(backup)),
         )
 
     assert "put_script" not in fake.names()
     assert len(list((tmp_path / "backups").iterdir())) == 1
+
+
+# ############################################################################
+# Which script ends up active (#53)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("name", "active", "requested", "expected"),
+    [
+        ("managesieve", "managesieve", False, True),
+        ("spare", "managesieve", False, False),
+        ("spare", "managesieve", True, True),
+        ("spare", None, False, True),
+    ],
+)
+def test_only_the_active_script_or_an_explicit_ask_activates(
+    name, active, requested, expected
+):
+    assert engine.activates(name, active, requested) is expected
+
+
+# ----------------------------------------------------------------------------
+def test_editing_another_script_leaves_the_active_one_running(
+    imap_config, tmp_path, roundcube_script
+):
+    imap_config.backup_dir = tmp_path
+    fake = FakeSieveSession(script=roundcube_script, others=["spare"])
+    live = Sessions(sieve=fake)
+
+    plan = engine.plan_removal(live, "keep-boss", script="spare")
+
+    assert (plan.script, plan.active, plan.activate) == (
+        "spare",
+        "managesieve",
+        False,
+    )
+
+    events = []
+    engine.execute_script_change(live, imap_config, plan, events.append)
+
+    assert "set_active" not in fake.names()
+    assert fake.calls[-1][:2] == ("put_script", "spare")
+    assert events[-1] == engine.ScriptUploaded("spare", activated=False)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("kind", ["rule", "removal", "move"])
+def test_activate_switches_the_running_script_when_asked(
+    kind, imap_config, imap_session, tmp_path, roundcube_script
+):
+    imap_config.backup_dir = tmp_path
+    fake = FakeSieveSession(script=roundcube_script, others=["spare"])
+    live = Sessions(sieve=fake, imap=imap_session)
+
+    if kind == "rule":
+        request = RuleRequest(
+            criteria(),
+            ActionSpec(fileinto="Lists"),
+            script="spare",
+            activate=True,
+        )
+        plan = engine.plan_rule(live, request, folder_for(live, imap_config))
+
+    elif kind == "removal":
+        plan = engine.plan_removal(live, "keep-boss", "spare", activate=True)
+
+    else:
+        plan = engine.plan_move(
+            live, "bin-the-noise", Placement(PLACE_FIRST), "spare", True
+        )
+
+    events = []
+    engine.execute_script_change(live, imap_config, plan, events.append)
+
+    assert fake.calls[-1] == ("set_active", "spare")
+    assert events[-1] == engine.ScriptUploaded("spare", activated=True)
+
+
+# ----------------------------------------------------------------------------
+def test_with_no_active_script_the_edited_one_is_activated(
+    sessions, imap_config, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    sessions.sieve.active = None
+    request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
+
+    plan = engine.plan_rule(
+        sessions, request, folder_for(sessions, imap_config)
+    )
+
+    assert plan.activate
+    engine.execute_script_change(sessions, imap_config, plan)
+    assert sessions.sieve.calls[-1] == ("set_active", plan.script)
 
 
 # ############################################################################

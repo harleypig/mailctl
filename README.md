@@ -202,17 +202,24 @@ assumptions below get settled for your account.
   backup, named `<script>-<UTC timestamp>.sieve`. XDG would call a backup
   *state* rather than config; keeping it here is a deliberate departure from
   that, not something XDG endorses, because a backup you cannot find is not a
-  backup. `--backup-dir` and `MXROUTE_BACKUP_DIR` move it. The file is written
-  mode `0600` in a directory created `0700`: a Sieve script is not a password,
-  but it does say who you correspond with and how you sort it.
+  backup. `--backup-dir`, `MXROUTE_BACKUP_DIR`, and `backup_dir` in
+  `config.toml` move it, with `~` and `$VAR` expanded in each. The file is
+  written mode `0600` in a directory created `0700`: a Sieve script is not a
+  password, but it does say who you correspond with and how you sort it.
 * **`mxfilter restore FILE` puts a backup back.** The backup is the server's
   exact bytes — no banner lines, nothing reformatted — and restore uploads
-  them exactly, over the active script only. It shows the raw diff against
-  what the server has now, backs the current script up first, lets the
-  server validate the file, and asks before it replaces anything. It is the
-  one command that **replaces** rather than merges: a rule added since the
-  backup was taken is removed, and the diff shows it. It works even over a
-  script mxfilter cannot parse ([ADR 0005][adr5]).
+  them exactly, over the active script — or over the one `--script NAME`
+  names, which stays inactive unless `--activate` is given. No other stored
+  script is touched. It shows the raw diff against what the server has now,
+  backs the current script up first, lets the server validate the file, and
+  asks before it replaces anything. It is the one command that **replaces**
+  rather than merges: a rule added since the backup was taken is removed, and
+  the diff shows it. It works even over a script mxfilter cannot parse
+  ([ADR 0005][adr5]). An empty FILE would remove every rule, so it is refused
+  unless `--allow-empty` is given. FILE is read and checked before mxfilter
+  connects, and `~` and `$VAR` in it are expanded. If the account has no
+  active script, restore refuses rather than guess, and `--script NAME` is
+  the way back: NAME is restored and made active.
 * Rules are merged into the parsed existing script, never appended blindly,
   so other rules survive. If the existing script cannot be parsed, mxfilter
   stops rather than overwrite it.
@@ -308,6 +315,13 @@ The active script's name is read from `LISTSCRIPTS` and written back to, and
 is never guessed — the webmail's script name is server-side config, and
 MXRoute is mid-migration on both its panel and Dovecot. `--script` overrides
 it; the name `mxfilter` is used only when the account has no scripts at all.
+
+The server runs one script, and editing a different one does not change
+which. `--script NAME` on a script that is not the active one stores the
+change and leaves NAME inactive, and mxfilter says so before it uploads;
+`--activate` makes NAME the active script as well. When the account has no
+active script at all, the script mxfilter writes is activated, since
+otherwise nothing would run it.
 
 ## `--compare` tests the whole header value
 

@@ -20,6 +20,8 @@ Rule 'from-noreply-github-com' on script 'mxfilter':
 +}
 
 --- end diff ---
+
+The account has no active script; 'mxfilter' will become the active script.
 Backed up current script to <TMP>/config/mxfilter/backups/mxfilter-<STAMP>.sieve
 Uploaded and activated script 'mxfilter'
 

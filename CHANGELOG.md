@@ -12,6 +12,13 @@ ENHANCEMENTS:
   anything undecodable replaced, and escaped. On a terminal, `--raw` is
   escaped as before.
 
+* **`mxfilter restore --script NAME` restores over a named script** rather
+  than always the active one ([#52]). It follows the same activation rule
+  as every other change, and takes `--activate` too.
+* **`mxfilter restore` refuses an empty FILE** unless `--allow-empty` is
+  given ([#52]). Uploading one removes every rule, and an empty file is more
+  often a truncated copy or the wrong path than a deliberate wipe.
+
 BUG FIXES:
 
 * **Unicode direction overrides no longer disguise what a message says.**
@@ -22,6 +29,25 @@ BUG FIXES:
   visible `\u202e`-style escape too. The direction marks U+200E, U+200F,
   and U+061C still pass, since they cannot reorder text and right-to-left
   mail uses them.
+
+* **`--script NAME` no longer switches the active script as a side
+  effect** ([#53]). `add`, `from-message`, `remove-rule`, and `move-rule`
+  used to activate whatever script they edited, so editing a spare script
+  silently changed the one Sieve runs. Now a script is activated only when
+  it already was the active one, when the account has no active script, or
+  when `--activate` (new on those commands) asks for it. When a change goes
+  to a script that stays inactive, mxfilter says so before uploading.
+* **`mxfilter restore` on an account with no active script** now names
+  `--script` as the way out instead of dead-ending ([#54]). With
+  `--script NAME` the backup is restored and NAME activated — the recovery
+  case.
+* **`mxfilter restore` reads and checks FILE before connecting** ([#54]), so
+  a mistyped path or an empty file is reported without a login first.
+* **`mxfilter restore` expands `$VAR` / `${VAR}` in FILE** as well as `~`
+  ([#54]), the same as the password-file path.
+* **`backup_dir` expands `~` and `$VAR` / `${VAR}`** ([#50]) — in
+  `config.toml`, in `MXROUTE_BACKUP_DIR`, and in `--backup-dir`. It was taken
+  literally, so `backup_dir = "~/backups"` created a directory named `~`.
 
 ## 0.3.0
 
@@ -398,3 +424,7 @@ NOTES:
   ruleset.
 
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
+[#53]: https://github.com/harleypig/mxroute-email-filters/issues/53
+[#52]: https://github.com/harleypig/mxroute-email-filters/issues/52
+[#54]: https://github.com/harleypig/mxroute-email-filters/issues/54
+[#50]: https://github.com/harleypig/mxroute-email-filters/issues/50

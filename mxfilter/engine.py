@@ -24,7 +24,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from . import MxFilterError
-from .config import Config
+from .config import Config, expand_path
 from .criteria import Criteria, escape_sieve_string
 from .imap import (
     FolderCreation,
@@ -110,6 +110,7 @@ class RuleRequest:
     script: str | None = None
     replace: bool = False
     placement: Placement | None = None
+    activate: bool = False
 
 
 # ############################################################################
@@ -127,9 +128,10 @@ class ScriptBackedUp:
 
 @dataclass(frozen=True)
 class ScriptUploaded:
-    """The new script was validated, uploaded, and activated."""
+    """The new script was validated and uploaded, and maybe activated."""
 
     script: str
+    activated: bool
 
 
 @dataclass(frozen=True)
@@ -501,7 +503,7 @@ def count_rules(source: str) -> int | None:
 
 @dataclass(frozen=True)
 class RestorePlan:
-    """A backup file to be uploaded, whole, over the active script.
+    """A backup file to be uploaded, whole, over a stored script.
 
     ``diff`` is a raw diff, not the normalized one a merge shows: restore
     uploads the file's exact bytes, so any difference -- formatting
@@ -513,6 +515,8 @@ class RestorePlan:
     before: str
     after: str
     diff: DisplayDiff
+    active: str | None
+    activate: bool
 
     # ------------------------------------------------------------------------
     @property
@@ -520,41 +524,78 @@ class RestorePlan:
         return self.before != self.after
 
 
+@dataclass(frozen=True)
+class BackupFile:
+    """A backup read from disk, exactly as written, ready to restore."""
+
+    path: Path
+    text: str
+
+
 # ----------------------------------------------------------------------------
-def read_backup_file(path: str | Path) -> tuple[Path, str]:
-    """Read a backup file exactly as written, newline translation off."""
-    source = Path(path).expanduser()
+def read_backup_file(
+    path: str | Path, allow_empty: bool = False
+) -> BackupFile:
+    """Read a backup file exactly as written, newline translation off.
+
+    Needs no server, so a front-end calls it before connecting: a mistyped
+    path or an empty file is reported without costing a login. ``~`` and
+    ``$VAR`` / ``${VAR}`` are expanded, as for every other path setting.
+
+    A file holding nothing but whitespace is refused unless
+    ``allow_empty``: uploading it removes every rule, and an empty file is
+    as likely to be a truncated copy or the wrong path as a deliberate
+    wipe.
+    """
+    source = expand_path(str(path))
 
     try:
         with source.open(encoding="utf-8", newline="") as handle:
-            return source, handle.read()
+            text = handle.read()
 
     except (OSError, UnicodeDecodeError) as exc:
         raise MxFilterError(
             f"could not read backup {source} -- {exc}"
         ) from exc
 
-
-# ----------------------------------------------------------------------------
-def plan_restore(sessions: Sessions, path: str | Path) -> RestorePlan:
-    """Work out replacing the active script with a backup, without doing it.
-
-    Only the active script is ever the target, so no other stored script is
-    touched. The current script may be one mxfilter cannot parse: restore
-    does not merge, and the current bytes are backed up before anything is
-    sent, so overwriting it loses nothing (ADR 0005).
-    """
-    source, after = read_backup_file(path)
-    sieve = _sieve(sessions)
-    name = sieve.active_script_name()
-
-    if not name:
+    if not text.strip() and not allow_empty:
         raise MxFilterError(
-            "no active script on the server to restore over. 'mxfilter "
-            "list' shows what the account has."
+            f"backup {source} is empty; restoring it would remove every "
+            f"rule from the script. Pass --allow-empty if that is what you "
+            f"want."
         )
 
-    before = sieve.get_script(name)
+    return BackupFile(source, text)
+
+
+# ----------------------------------------------------------------------------
+def plan_restore(
+    sessions: Sessions,
+    backup: BackupFile,
+    script: str | None = None,
+    activate: bool = False,
+) -> RestorePlan:
+    """Work out replacing a script with a backup, without doing it.
+
+    The target is ``script``, or the active script when none is named; no
+    other stored script is touched, and whether the target ends up active
+    follows the same rule as every other upload (``activates``). The
+    current script may be one mxfilter cannot parse: restore does not
+    merge, and the current bytes are backed up before anything is sent,
+    so overwriting it loses nothing (ADR 0005).
+    """
+    source, after = backup.path, backup.text
+    name, before, active = fetch_active(sessions, script)
+
+    # Not a guess at a name: with nothing active there is no "the script"
+    # to mean, and the recovery case is served by naming one, which is
+    # then activated because nothing else runs.
+    if script is None and active is None:
+        raise MxFilterError(
+            "no active script on the server to restore over. Name the "
+            "script to restore with --script NAME; with nothing active it "
+            "is activated. 'mxfilter list' shows what the account has."
+        )
 
     return RestorePlan(
         source=source,
@@ -562,6 +603,8 @@ def plan_restore(sessions: Sessions, path: str | Path) -> RestorePlan:
         before=before,
         after=after,
         diff=DisplayDiff(script_diff(before, after, name), reformats=False),
+        active=active,
+        activate=activates(name, active, activate),
     )
 
 
@@ -587,6 +630,7 @@ def execute_restore(
         plan.before,
         plan.after,
         on_event,
+        activate=plan.activate,
     )
 
 
@@ -853,6 +897,8 @@ class RulePlan:
     placement: Analysis
     diff: DisplayDiff
     folder: FolderPlan
+    active: str | None
+    activate: bool
 
 
 @dataclass(frozen=True)
@@ -864,6 +910,8 @@ class RemovalPlan:
     before: str
     after: str
     diff: DisplayDiff
+    active: str | None
+    activate: bool
 
 
 @dataclass(frozen=True)
@@ -884,6 +932,8 @@ class MovePlan:
     count: int
     placement: Analysis
     diff: DisplayDiff
+    active: str | None
+    activate: bool
 
     # ------------------------------------------------------------------------
     @property
@@ -894,8 +944,10 @@ class MovePlan:
 # ----------------------------------------------------------------------------
 def fetch_active(
     sessions: Sessions, requested: str | None = None
-) -> tuple[str, str]:
-    """Return ``(script_name, source)`` for the script to edit.
+) -> tuple[str, str, str | None]:
+    """Return ``(script_name, source, active)`` for the script to edit.
+
+    ``active`` is the name of the script the server runs now, or None.
 
     The name always comes from LISTSCRIPTS and is written back to. It is
     never guessed: whatever the webmail's managesieve plugin calls its
@@ -916,9 +968,22 @@ def fetch_active(
     _active, others = sieve.list_scripts()
 
     if name == active or name in others:
-        return (name, sieve.get_script(name))
+        return (name, sieve.get_script(name), active)
 
-    return (name, "")
+    return (name, "", active)
+
+
+# ----------------------------------------------------------------------------
+def activates(name: str, active: str | None, requested: bool) -> bool:
+    """Whether uploading ``name`` should also make it the active script.
+
+    Only one script runs, so switching it is a change of its own and is
+    never a side effect of editing another: ``--script other`` edits
+    ``other`` and leaves the running script alone unless activation was
+    asked for. With nothing active, activating is the only way the upload
+    does anything at all.
+    """
+    return requested or active is None or name == active
 
 
 # ----------------------------------------------------------------------------
@@ -983,7 +1048,7 @@ def plan_rule(
 
     actions = sieve_actions(request.actions, folder.folder, folder.use_create)
     name = request.name or default_rule_name(request.criteria)
-    script, before = fetch_active(sessions, request.script)
+    script, before, active = fetch_active(sessions, request.script)
 
     after = merge_rule(
         before,
@@ -1007,15 +1072,20 @@ def plan_rule(
         ),
         diff=display_diff(before, after, script),
         folder=folder,
+        active=active,
+        activate=activates(script, active, request.activate),
     )
 
 
 # ----------------------------------------------------------------------------
 def plan_removal(
-    sessions: Sessions, rule: str, script: str | None = None
+    sessions: Sessions,
+    rule: str,
+    script: str | None = None,
+    activate: bool = False,
 ) -> RemovalPlan:
     """Take a named rule out of the script without uploading the result."""
-    name, before = fetch_active(sessions, script)
+    name, before, active = fetch_active(sessions, script)
 
     if not before.strip():
         raise MxFilterError(f"script {name!r} is empty")
@@ -1023,7 +1093,13 @@ def plan_removal(
     after = remove_rule(before, rule)
 
     return RemovalPlan(
-        rule, name, before, after, display_diff(before, after, name)
+        rule,
+        name,
+        before,
+        after,
+        display_diff(before, after, name),
+        active,
+        activates(name, active, activate),
     )
 
 
@@ -1033,9 +1109,10 @@ def plan_move(
     rule: str,
     placement: Placement,
     script: str | None = None,
+    activate: bool = False,
 ) -> MovePlan:
     """Reorder a named rule without restating it, and without uploading."""
-    name, before = fetch_active(sessions, script)
+    name, before, active = fetch_active(sessions, script)
 
     if not before.strip():
         raise MxFilterError(f"script {name!r} is empty")
@@ -1060,6 +1137,8 @@ def plan_move(
         count=len(present),
         placement=analyze_placement(others, candidate, at_index=to_index),
         diff=display_diff(before, after, name),
+        active=active,
+        activate=activates(name, active, activate),
     )
 
 
@@ -1072,8 +1151,14 @@ def upload_script(
     after: str,
     on_event: EventSink | None = None,
     before_put: Callable[[], object] | None = None,
+    *,
+    activate: bool,
 ) -> Path:
-    """Back up, validate, upload, and activate a script.
+    """Back up, validate, and upload a script; activate it if asked.
+
+    ``activate`` has no default: whether the upload also switches which
+    script the server runs is decided by the plan (``activates``), and a
+    caller that forgot to pass it would otherwise switch it silently.
 
     The backup is written, and announced, before the server sees anything,
     so a rejected upload still leaves the user knowing where the copy is.
@@ -1091,9 +1176,11 @@ def upload_script(
         before_put()
 
     sieve.put_script(name, after)
-    sieve.set_active(name)
 
-    emit(ScriptUploaded(name))
+    if activate:
+        sieve.set_active(name)
+
+    emit(ScriptUploaded(name, activate))
 
     return path
 
@@ -1128,6 +1215,7 @@ def execute_script_change(
         plan.after,
         on_event,
         before_put,
+        activate=plan.activate,
     )
 
 

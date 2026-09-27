@@ -64,9 +64,10 @@ class FakeSieveClient:
     """A stand-in for ``sievelib.managesieve.Client`` with a script store."""
 
     # ------------------------------------------------------------------------
-    def __init__(self, caps, active, script, reject):
+    def __init__(self, caps, active, script, reject, others=None):
         self.caps = caps
         self.scripts = {} if active is None else {active: script}
+        self.scripts.update(others or {})
         self.active = active
         self.reject = reject
         self.calls: list[tuple] = []
@@ -139,7 +140,8 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # Scenarios
 # ############################################################################
 
-# name -> (argv, options). Options: caps, active, script, reject, config
+# name -> (argv, options). Options: caps, active, script, reject, others
+# (further stored scripts, by name), config
 # (the text of config.toml), file (the text of a file that "<FILE>" in
 # argv is replaced with the path of), env (the text of a .env written,
 # mode 0600, into the directory the command runs in), and mail / flags
@@ -311,6 +313,11 @@ SCENARIOS = {
         {"env": ENV_FILE, "config": 'sieve_tls = "ssl"\n'},
     ),
     "test-env-file-missing": (["test", "--env-file", "nowhere.env"], {}),
+    # #50: backup_dir expands $VAR / ${VAR} and ~, like any path setting.
+    "backup-dir-expanded": (
+        ["backup"],
+        {"config": 'backup_dir = "${XDG_CONFIG_HOME}/elsewhere"\n'},
+    ),
     "backup-dry": (["backup", "--dry-run"], {}),
     "backup-noactive": (["backup"], {"active": None}),
     "subscribe": (["subscribe", "spam"], {}),
@@ -355,6 +362,26 @@ SCENARIOS = {
         {"file": ONE_RULE, "reject": True},
     ),
     "restore-missing-file": (["restore", "/nonexistent/x.sieve"], {}),
+    # #52: a named target, and an empty file refused unless asked for.
+    "restore-script": (
+        ["restore", "<FILE>", "--script", "spare", "--yes"],
+        {"file": ONE_RULE, "others": {"spare": "# nothing yet\n"}},
+    ),
+    # #54: with nothing active a bare restore names --script; naming the
+    # deactivated script is the recovery, and activates it.
+    "restore-noactive": (
+        ["restore", "<FILE>", "--yes"],
+        {"file": ONE_RULE, "active": None, "others": {"managesieve": "x\n"}},
+    ),
+    "restore-noactive-script": (
+        ["restore", "<FILE>", "--script", "managesieve", "--yes"],
+        {"file": ONE_RULE, "active": None, "others": {"managesieve": "x\n"}},
+    ),
+    "restore-empty": (["restore", "<FILE>", "--yes"], {"file": "\n"}),
+    "restore-empty-allowed": (
+        ["restore", "<FILE>", "--allow-empty", "--dry-run"],
+        {"file": ""},
+    ),
     "add-dry-missing": (
         ["add", *GITHUB, "--fileinto", "Lists/GitHub", "--dry-run"],
         {},
@@ -598,6 +625,23 @@ SCENARIOS = {
     "remove-unknown": (["remove-rule", "phantom", "--yes"], {}),
     "remove-notty": (["remove-rule", "keep-boss"], {}),
     "remove-empty": (["remove-rule", "keep-boss", "--yes"], {"script": ""}),
+    # Editing a stored script that is not the active one must not switch
+    # which script the server runs (#53); --activate asks for exactly that.
+    "remove-other-script": (
+        ["remove-rule", "keep-boss", "--script", "spare", "--yes"],
+        {"others": {"spare": ONE_RULE}},
+    ),
+    "remove-other-script-activate": (
+        [
+            "remove-rule",
+            "keep-boss",
+            "--script",
+            "spare",
+            "--activate",
+            "--yes",
+        ],
+        {"others": {"spare": ONE_RULE}},
+    ),
     "from-uid": (
         ["from-message", "--uid", "2", "--fileinto", "Lists", "--dry-run"],
         {},
@@ -670,6 +714,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         options.get("active", "managesieve"),
         options.get("script", script),
         options.get("reject", False),
+        options.get("others"),
     )
 
     imap.messages = {

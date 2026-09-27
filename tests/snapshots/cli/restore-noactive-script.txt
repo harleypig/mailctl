@@ -1,4 +1,4 @@
-$ mxfilter restore <TMP>/restore.sieve --yes
+$ mxfilter restore <TMP>/restore.sieve --script managesieve --yes
 exit: 0
 --- stdout
 Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mxfilter could not parse):
@@ -7,7 +7,7 @@ Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mxfi
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1 +1,8 @@
--if {{{ broken
+-x
 +require ["fileinto","imap4flags"];
 +# rule:[keep-boss]
 +if header :contains "from" "boss@example.com"
@@ -18,6 +18,8 @@ Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mxfi
 +}
 
 --- end diff ---
+
+The account has no active script; 'managesieve' will become the active script.
 Backed up current script to <TMP>/config/mxfilter/backups/managesieve-<STAMP>.sieve
 Uploaded and activated script 'managesieve'
 

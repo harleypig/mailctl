@@ -26,6 +26,7 @@ mxfilter: the server rejected the generated script (CHECKSCRIPT returned failure
 --- sieve calls
 ('connect',)
 ('listscripts',)
+('listscripts',)
 ('getscript', 'managesieve')
 ('checkscript',)
 ('logout',)
