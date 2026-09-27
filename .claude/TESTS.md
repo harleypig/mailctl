@@ -6,8 +6,8 @@ carries the layout convention (`tests/` at the repo root, mirroring the
 package). This file records what belongs here.
 
 **The offline tier is written and green** (`make test`); the only skips are
-the 3 live-gated ones. No test count is recorded here — it changes with most
-commits, and a count nobody re-derives is only ever stale.
+the live-gated ones. `pytest -q` reports the current count; none is kept
+here, because a count nobody re-derives is only ever stale.
 The live tier is scaffolded (`tests/live/`) and skipped by default; it stays
 open until it has run against a real account, and the backup-and-restore
 fixture required before anything writes to one is still outstanding

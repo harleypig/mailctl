@@ -113,25 +113,28 @@ of rendering, prompting, confirmation, and progress output lives in
 without capturing stdout, and a future front-end can sit on the same core
 instead of requiring it to be torn apart first.
 
-**The engine does not know how it was called.** It never takes an `argparse`
-namespace, never imports the CLI, and never reads the terminal or the
-environment; `tests/test_core_no_presentation.py` enforces all three. Every
-change is **plan → decide → execute**: a `plan_*` function is read-only and
-returns what would change (a diff, placement findings, a message preview,
-counts); the front-end renders it and makes the decision (`--dry-run`,
-`--yes`, a confirmation prompt); an execute-style call carries the plan out.
-Progress arrives through a `(channel, message)` callback and the steps of an
-upload through an `on_event` callback, never through printing. New work goes
-into the engine first; `cli.py` should only gain parsing and rendering.
+**The engine does not know how it was called.** The operator's instruction,
+2026-09-27: *"the engine, the code that does the actual work, should not know
+nor care how the app was called (cli, tui, gui, web)"*. So it never takes an
+`argparse` namespace, never imports the CLI, and never reads the terminal or
+the environment; `tests/test_core_no_presentation.py` enforces all three.
+Every change is **plan → decide → execute**: a `plan_*` function is
+read-only and returns what would change (a diff, placement findings, a
+message preview, counts); the front-end renders it and makes the decision
+(`--dry-run`, `--yes`, a confirmation prompt); an execute-style call carries
+the plan out. New work goes into the engine first; `cli.py` should only gain
+parsing and rendering.
+
+**Nothing below the front-end writes to the terminal, progress included.**
+`--verbose` protocol chatter leaves `SieveSession` and `ImapSession` through
+a `progress` callback, and the steps of a change (backup written, script
+uploaded, folder created) leave the engine through an `on_event` callback;
+the CLI decides whether and how to show either. Do not add a second output
+path beside them.
 
 Safety policy lives in the engine, not the front-end: the backup before every
 upload, merge-never-overwrite, and the `--max-messages` ceiling (re-checked
 when a mail plan is executed) hold whichever front-end calls it.
-
-The one exception is deliberate and stays narrow: `SieveSession._log` and
-`ImapSession._log` emit `--verbose` protocol progress. It is confined to those
-two helpers and gated on a flag — do not let a second output path grow beside
-them, and do not add one to the offline helpers at all.
 
 ## The protocols
 
@@ -273,10 +276,10 @@ about MXroute's configuration** is not.
   created `0700`. Nothing decorates it — `mxfilter show` adds banner lines for
   a reader and is therefore *not* a backup, which is exactly the trap
   redirecting `show` to a file used to set. `mxfilter restore` puts one back
-  over the active script only: raw diff, backup of the current script,
-  CHECKSCRIPT, confirmation. It is the one write path that replaces instead
-  of merging, and it may replace a script mxfilter cannot parse
-  ([ADR 0005][adr5], [#13][i13]).
+  over the active script only: it shows a raw diff, asks for confirmation,
+  backs up the current script, and runs CHECKSCRIPT before sending. It is
+  the one write path that replaces instead of merging, and it may replace a
+  script mxfilter cannot parse ([ADR 0005][adr5], [#13][i13]).
 - **Show, then change.** Every mutating subcommand works out what would
   change, shows it (a diff for the script, a preview for the messages), and
   only then applies it. `--dry-run` stops after the "show it" step.
