@@ -29,6 +29,15 @@ ENHANCEMENTS:
   neither the backup nor what is uploaded is affected — normalisation is a
   display concern only.
 
+NOTES:
+
+* **The work now lives in an engine, not the CLI.** Everything mxfilter
+  does moved out of `cli.py` into `mxfilter/engine.py`, which takes plain
+  values, never prints or prompts, and splits every change into a read-only
+  plan and a separate execute step. The CLI is now only argument parsing and
+  rendering, so a terminal UI or other front-end can drive the same engine.
+  No command, flag, message, or exit code changed.
+
 ## 0.1.0
 
 Released 2026-08-14. The first tagged version; everything below is the work

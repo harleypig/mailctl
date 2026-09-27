@@ -113,14 +113,13 @@ catch a given message (the entry above), and bulk-moves matching mail. It is
 **not** intended to replace MXroute's web UI, at least initially.
 
 **Deferred, and deliberately not designed for.** No framework has been chosen
-and none should be until the feature is requested. One architectural
-constraint is being honoured **now**, purely because it is cheap now and
-expensive later: the core modules return structured data and never print — all
-rendering, prompting, and progress output lives in `cli.py`
-([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *The core returns data;
-only the CLI prints*). That convention stands on its own merits (the core is
-testable without capturing stdout), so it costs nothing if the front-end is
-never built — and if it is, the core does not have to be torn apart first.
+and none should be until the feature is requested. The architecture a second
+front-end needs is **in place now**: `mxfilter/engine.py` does all the work
+and knows nothing about how it was called, and every change is a read-only
+plan the front-end renders and decides on before asking the engine to execute
+it ([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *The core returns
+data; only the CLI prints*). A TUI would be a second module beside `cli.py`
+calling the same engine — nothing in the engine has to change first.
 
 ## Declarative rules in YAML — the `gmailctl` model
 

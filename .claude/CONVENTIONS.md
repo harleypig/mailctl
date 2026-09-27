@@ -86,7 +86,13 @@ Built on two libraries, both of which the code wraps rather than exposes:
   script-editing helpers (parse / merge / render / diff / backup).
 - `mxfilter/imap.py` — the IMAP session wrapper (folders, search, move, flag)
   and folder-name normalization.
-- `mxfilter/cli.py` — argument parsing and the subcommand implementations.
+- `mxfilter/engine.py` — the engine: every piece of work the tool does
+  (open sessions, plan the target folder, merge a rule, back up and upload,
+  plan and run the existing-mail pass, derive criteria from a message), for
+  any front-end. It takes plain values (`ActionSpec`, `RuleRequest`,
+  `Criteria`, `Placement`, `Config`) and returns plans and results.
+- `mxfilter/cli.py` — the CLI front-end: argument parsing, turning flags into
+  engine inputs, and rendering and confirming what the engine returns.
 - `mxfilter/__main__.py` — `python -m mxfilter`.
 - `tests/` — pytest, mirroring the package layout ([TESTS.md](TESTS.md)).
 
@@ -97,11 +103,27 @@ live there.
 
 ## The core returns data; only the CLI prints
 
-**`config`, `criteria`, `sieve`, and `imap` return structured values and raise
-`MxFilterError`. Every piece of rendering, prompting, confirmation, and
-progress output lives in `cli.py`.** Two reasons, both cashing out now: the
-core stays testable without capturing stdout, and a future front-end can sit
-on the same core instead of requiring it to be torn apart first.
+**`config`, `criteria`, `sieve`, `imap`, and the `engine` that drives them
+return structured values and raise `MxFilterError`. Every piece of rendering,
+prompting, confirmation, and progress output lives in `cli.py`.** Two reasons,
+both cashing out now: the core stays testable without capturing stdout, and a
+future front-end can sit on the same core instead of requiring it to be torn
+apart first.
+
+**The engine does not know how it was called.** It never takes an `argparse`
+namespace, never imports the CLI, and never reads the terminal or the
+environment; `tests/test_core_no_presentation.py` enforces all three. Every
+change is **plan → decide → execute**: a `plan_*` function is read-only and
+returns what would change (a diff, placement findings, a message preview,
+counts); the front-end renders it and makes the decision (`--dry-run`,
+`--yes`, a confirmation prompt); an execute-style call carries the plan out.
+Progress arrives through a `(channel, message)` callback and the steps of an
+upload through an `on_event` callback, never through printing. New work goes
+into the engine first; `cli.py` should only gain parsing and rendering.
+
+Safety policy lives in the engine, not the front-end: the backup before every
+upload, merge-never-overwrite, and the `--max-messages` ceiling (re-checked
+when a mail plan is executed) hold whichever front-end calls it.
 
 The one exception is deliberate and stays narrow: `SieveSession._log` and
 `ImapSession._log` emit `--verbose` protocol progress. It is confined to those
