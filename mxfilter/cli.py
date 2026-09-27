@@ -1030,12 +1030,14 @@ def cmd_subscribe(args) -> int:
 def cmd_test(args) -> int:
     """Connect to both services and report what they support."""
     config = configure(args)
+    state, failure = resolve_password(config)
 
     print(f"Sources:   {', '.join(s.describe() for s in config.consulted)}")
     print(f"Host:      {config.host}  ({origin_of(config, 'host')})")
     print(f"User:      {config.user}  ({origin_of(config, 'user')})")
     print(
-        f"Password:  {config.password_state()}{password_origin_suffix(config)}"
+        f"Password:  {state}{password_origin_suffix(config)}"
+        f"{'  -- see the error below' if failure else ''}"
     )
     print(
         f"IMAP:      {config.imap_host}:{config.imap_port}  "
@@ -1051,6 +1053,9 @@ def cmd_test(args) -> int:
         f"({origin_of(config, 'source_folder')})  "
         f"-- read by apply, messages, view, from-message"
     )
+
+    if failure is not None:
+        raise failure
 
     with connect(config, args) as sessions:
         sieve = engine.probe_sieve(sessions)
@@ -1109,6 +1114,28 @@ def cmd_test(args) -> int:
     )
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def resolve_password(config) -> tuple[str, MxFilterError | None]:
+    """Read the password now, so the report says how reading it went.
+
+    Returns the state to print and the error to raise once the settings
+    have been shown. A source that is configured but unusable -- a file
+    refused for its mode, a command that fails -- is reported as such
+    rather than as "set" above its own refusal (#61).
+    """
+    state = config.password_state()
+
+    try:
+        config.password()
+
+    except MxFilterError as exc:
+        return "not usable", exc
+
+    # Nothing configured and the prompt answered: the state read before
+    # asking was "unset", which is no longer true.
+    return ("set" if state == "unset" else state), None
 
 
 # ----------------------------------------------------------------------------

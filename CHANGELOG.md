@@ -54,6 +54,12 @@ BUG FIXES:
   `from-message`, `messages`, and `view` now falls back to
   `MXROUTE_SOURCE_FOLDER` (new), then `source_folder`, then `INBOX`, and
   `mxfilter test` shows which one is in play.
+* **`mxfilter test` reports the password as it turned out** ([#61]). It
+  printed `set (via file)` before reading the password, so a file then
+  refused for its mode was shown as set directly above the refusal. The
+  password is now read first: an unusable one shows as `not usable`, with
+  the reason below the settings, and an answered prompt shows as `set`
+  rather than the `unset` it was before asking.
 
 ## 0.3.0
 
@@ -435,3 +441,4 @@ NOTES:
 [#54]: https://github.com/harleypig/mxroute-email-filters/issues/54
 [#50]: https://github.com/harleypig/mxroute-email-filters/issues/50
 [#63]: https://github.com/harleypig/mxroute-email-filters/issues/63
+[#61]: https://github.com/harleypig/mxroute-email-filters/issues/61

@@ -1,6 +1,7 @@
 """The CLI's own presentation of failures, apart from any one command."""
 
 from mxfilter import MxFilterError, cli
+from mxfilter.config import Config
 
 
 # ----------------------------------------------------------------------------
@@ -33,3 +34,25 @@ def test_a_single_line_error_is_printed_unchanged(monkeypatch, capsys):
     assert cli.main(["test"]) == 1
 
     assert capsys.readouterr().err == "mxfilter: one line only\n"
+
+
+# ----------------------------------------------------------------------------
+def test_an_answered_prompt_is_reported_as_set():
+    """#61: the password is read before 'test' reports it, so the prompt
+    path shows the outcome ("set") rather than the pre-prompt "unset"."""
+    config = Config(user="u@example.com", environ={})
+    config.prompter = lambda _prompt: "answered"
+
+    assert cli.resolve_password(config) == ("set", None)
+
+
+# ----------------------------------------------------------------------------
+def test_an_unusable_password_is_reported_and_handed_back():
+    """Nothing configured and nothing to prompt with: the failure comes back
+    to be raised after the settings are shown, never swallowed."""
+    config = Config(user="u@example.com", environ={})
+
+    state, failure = cli.resolve_password(config)
+
+    assert state == "not usable"
+    assert isinstance(failure, MxFilterError)

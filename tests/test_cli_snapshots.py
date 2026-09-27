@@ -143,8 +143,9 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # name -> (argv, options). Options: caps, active, script, reject, others
 # (further stored scripts, by name), config
 # (the text of config.toml), file (the text of a file that "<FILE>" in
-# argv is replaced with the path of), env (the text of a .env written,
-# mode 0600, into the directory the command runs in), and mail / flags
+# argv is replaced with the path of; mode 0600 unless file_mode), env
+# (the text of a .env written, mode 0600, into the directory the command
+# runs in), and mail / flags
 # (extra messages and their IMAP flags, by UID).
 
 # Host from the env file over the exported MXROUTE_HOST, port from a flag
@@ -326,6 +327,16 @@ SCENARIOS = {
         {"env": ENV_FILE, "config": 'sieve_tls = "ssl"\n'},
     ),
     "test-env-file-missing": (["test", "--env-file", "nowhere.env"], {}),
+    # #61: the Password line reports the outcome of reading it, so a
+    # refused file is not shown as "set" above its own refusal.
+    "test-password-refused": (
+        ["test", "--password-file", "<FILE>"],
+        {"file": "not-a-real-password\n", "file_mode": 0o644},
+    ),
+    "test-password-file": (
+        ["test", "--password-file", "<FILE>"],
+        {"file": "not-a-real-password\n"},
+    ),
     # #50: backup_dir expands $VAR / ${VAR} and ~, like any path setting.
     "backup-dir-expanded": (
         ["backup"],
@@ -745,6 +756,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         restore_file = tmp_path / "restore.sieve"
         text = script if options["file"] == "SAME" else options["file"]
         restore_file.write_text(text, encoding="utf-8")
+        restore_file.chmod(options.get("file_mode", 0o600))
         argv = [str(restore_file) if arg == "<FILE>" else arg for arg in argv]
 
     if "env" in options:
