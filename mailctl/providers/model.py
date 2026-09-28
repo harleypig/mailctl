@@ -100,13 +100,18 @@ class ActionSpec:
     ``fileinto`` is the folder as the user named it, before normalization;
     None falls back to ``Config.default_folder``. ``flags`` are IMAP flag
     names, unescaped and in the order they should be added.
+
+    ``stop`` None is the provider's default: the rule ends evaluation where
+    the provider declares ``stop`` and simply runs where it does not.
+    True or False is an explicit request, and True is refused by a
+    provider without ``stop``.
     """
 
     fileinto: str | None = None
     discard: bool = False
     flags: tuple[str, ...] = ()
     keep: bool = False
-    stop: bool = True
+    stop: bool | None = None
 
 
 # ----------------------------------------------------------------------------

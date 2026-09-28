@@ -244,8 +244,10 @@ class Provider(ABC):
     ) -> list:
         """Translate a spec into the host's actions; refuse an empty one.
 
-        The result is opaque to the engine: it is carried on the plan and
-        handed back, never inspected.
+        ``spec.stop`` arrives settled, never None: the engine has applied
+        the default the capabilities give. The result is opaque to the
+        engine: it is carried on the plan and handed back, never
+        inspected.
         """
 
     @classmethod

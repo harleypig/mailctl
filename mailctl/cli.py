@@ -381,7 +381,8 @@ def actions_from_args(args) -> ActionSpec:
         discard=args.discard,
         flags=tuple(flags),
         keep=args.keep,
-        stop=not args.no_stop,
+        # None leaves it to the provider: its rules stop where it can.
+        stop=False if args.no_stop else None,
     )
 
 

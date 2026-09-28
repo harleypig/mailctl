@@ -392,6 +392,20 @@ class UnorderedProvider(FakeProvider):
         """No position to resolve."""
 
 
+class StoplessProvider(FakeProvider):
+    """The fake again, on a host where nothing ends evaluation early."""
+
+    name = "stopless"
+    capabilities = ProviderCapabilities(
+        ordering=True,
+        stop=False,
+        rule_sets=True,
+        actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
+        extensions=False,
+    )
+    opened = 0
+
+
 # ----------------------------------------------------------------------------
 def _stored(name: str, sender: str) -> dict:
     return {"name": name, "from": sender, "actions": ["file:x", "stop"]}
@@ -401,7 +415,7 @@ def _stored(name: str, sender: str) -> dict:
 @pytest.fixture
 def fakes(monkeypatch):
     """Register both fakes for the test, and zero their counters."""
-    for provider in (FakeProvider, UnorderedProvider):
+    for provider in (FakeProvider, UnorderedProvider, StoplessProvider):
         monkeypatch.setitem(registry.PROVIDERS, provider.name, provider)
         monkeypatch.setattr(provider, "opened", 0)
 
@@ -552,7 +566,12 @@ def test_the_operation_list_is_the_interface():
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "provider",
-    [*registry.PROVIDERS.values(), FakeProvider, UnorderedProvider],
+    [
+        *registry.PROVIDERS.values(),
+        FakeProvider,
+        UnorderedProvider,
+        StoplessProvider,
+    ],
     ids=lambda provider: provider.name,
 )
 def test_every_provider_implements_or_declines_every_operation(provider):
@@ -959,3 +978,78 @@ def test_an_unordered_host_plans_a_rule_with_no_placement_findings(
 
     assert not plan.placement
     assert provider.rule_names(plan.after) == ["narrow", "from-example-com"]
+
+
+# ############################################################################
+# The stop default is the provider's (#99)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def github_rule(**actions) -> RuleRequest:
+    criteria = Criteria()
+    criteria.add("From", GITHUB)
+
+    return RuleRequest(
+        criteria=criteria, actions=ActionSpec(fileinto="Lists", **actions)
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_host_without_stop_plans_a_default_rule(fakes, tmp_path):
+    """A rule nobody asked to stop is not refused for lacking stop."""
+    provider = StoplessProvider()
+    request = github_rule()
+    folder = engine.plan_folder(provider, Config(), "Lists")
+
+    engine.check_rule(Config(provider="stopless"), request)
+    plan = engine.plan_rule(provider, Config(), request, folder)
+
+    assert plan.actions == ["file:INBOX.Lists"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_host_with_stop_still_stops_by_default():
+    """mxroute's rules end evaluation unless --no-stop says otherwise."""
+    folder = engine.plan_folder(
+        MxrouteProvider(), Config(), "Lists", delimiter="."
+    )
+    spec = engine.resolve_stop(MxrouteProvider, ActionSpec(fileinto="Lists"))
+    actions = MxrouteProvider.translate_actions(spec, folder.folder, False)
+
+    assert spec.stop is True
+    assert actions[-1] == ("stop",)
+
+
+# ----------------------------------------------------------------------------
+def test_asking_a_host_without_stop_to_stop_is_refused(fakes):
+    """An explicit request is still one the provider has to honour."""
+    with pytest.raises(MailctlError) as caught:
+        engine.check_rule(Config(provider="stopless"), github_rule(stop=True))
+
+    assert str(caught.value) == (
+        "the stopless provider cannot end evaluation after a rule: it does "
+        "not declare the 'stop' capability"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_cli_adds_a_default_rule_on_a_host_without_stop(fakes, capsys):
+    code = cli.main(
+        [
+            "add",
+            "--provider",
+            "stopless",
+            "--from",
+            GITHUB,
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--no-apply",
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert code == 0, captured.err
+    assert '"actions": ["file:INBOX.Lists"]}]' in captured.out

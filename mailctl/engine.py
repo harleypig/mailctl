@@ -28,7 +28,7 @@ import stat
 import tomllib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -1046,6 +1046,23 @@ def check_rule(
 
 
 # ----------------------------------------------------------------------------
+def resolve_stop(
+    provider: Provider | type[Provider], spec: ActionSpec
+) -> ActionSpec:
+    """Settle a spec's ``stop`` default from the provider's capabilities.
+
+    None asks for the provider's default, which is to stop where it
+    declares ``stop``: a host that cannot end evaluation is not asked to,
+    so a rule nobody asked to stop is never refused for it. An explicit
+    True or False is left as it was.
+    """
+    if spec.stop is not None:
+        return spec
+
+    return replace(spec, stop=provider.capabilities.stop)
+
+
+# ----------------------------------------------------------------------------
 def default_rule_name(criteria: Criteria) -> str:
     """Derive a stable rule name from the first criterion."""
     term = criteria.terms[0]
@@ -1350,7 +1367,9 @@ def missing_extensions(
     provider: Provider, spec: ActionSpec, folder: FolderPlan
 ) -> list[str]:
     """Return the extensions the rule needs that the server does not list."""
-    needed = provider.required_features(spec, folder.folder, folder.use_create)
+    needed = provider.required_features(
+        resolve_stop(provider, spec), folder.folder, folder.use_create
+    )
 
     return provider.missing_features(needed)
 
@@ -1417,7 +1436,9 @@ def plan_rule(
     check_folder(folder)
 
     actions = provider.translate_actions(
-        request.actions, folder.folder, folder.use_create
+        resolve_stop(provider, request.actions),
+        folder.folder,
+        folder.use_create,
     )
     provider.check_actions(config, actions)
     name = request.name or default_rule_name(request.criteria)
