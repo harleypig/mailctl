@@ -22,6 +22,10 @@ BUG FIXES:
   every one of its conditions could hold on the same message: a new rule
   on a different From address than the earlier rule's is no longer
   flagged. The definite "never runs" finding is unchanged.
+* **A default rule name keeps its accented and non-Latin letters**
+  ([#118]). `mailctl add --subject "Café"` named the rule `subject-caf`;
+  it is now `subject-café`, and a CJK subject keeps its characters too.
+  The name reads back unchanged from the script's `# rule:[...]` marker.
 
 ## 0.8.1
 
@@ -722,3 +726,4 @@ NOTES:
 [#116]: https://github.com/harleypig/mailctl/issues/116
 
 [#117]: https://github.com/harleypig/mailctl/issues/117
+[#118]: https://github.com/harleypig/mailctl/issues/118

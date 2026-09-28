@@ -26,6 +26,7 @@ import os
 import re
 import stat
 import tomllib
+import unicodedata
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -1126,10 +1127,18 @@ def resolve_stop(
 
 # ----------------------------------------------------------------------------
 def default_rule_name(criteria: Criteria) -> str:
-    """Derive a stable rule name from the first criterion."""
+    """Derive a stable rule name from the first criterion.
+
+    Letters and digits in any script are kept (``Café`` gives
+    ``subject-café``): Roundcube's ``# rule:[...]`` marker holds UTF-8, so
+    there is nothing to gain from dropping them. NFC first, so an accent
+    typed as a combining mark stays on its letter instead of becoming a
+    separator.
+    """
     term = criteria.terms[0]
 
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", term.value).strip("-").lower()
+    value = unicodedata.normalize("NFC", term.value)
+    slug = re.sub(r"[\W_]+", "-", value).strip("-").lower()
 
     return f"{term.header.lower()}-{slug}"[:60] or DEFAULT_SCRIPT_NAME
 
