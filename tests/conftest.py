@@ -184,6 +184,11 @@ class FakeIMAPClient:
         # it; MXroute's reads ``name: Dovecot`` with no version (#18).
         self.id_response: tuple = ((b"name", b"Dovecot"),)
 
+        # The NAMESPACE response (RFC 2342) as IMAPClient's ``namespace``
+        # returns it: (personal, other, shared). Answered only once a test
+        # adds NAMESPACE to ``caps``, so by default the prefix is unknown.
+        self.namespace_response: tuple = ((("INBOX.", "."),), None, None)
+
         # Every FETCH as (uids, items), and the \Seen a real server would
         # have set in response -- kept apart from ``calls`` so the snapshot
         # records stay as they are.
@@ -262,6 +267,13 @@ class FakeIMAPClient:
         self.calls.append(("id_",))
 
         return self.id_response
+
+    # ------------------------------------------------------------------------
+    def namespace(self):
+        self._maybe_fail("namespace")
+        self.calls.append(("namespace",))
+
+        return self.namespace_response
 
     # ------------------------------------------------------------------------
     def create_folder(self, folder: str) -> None:

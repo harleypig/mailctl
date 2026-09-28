@@ -95,37 +95,52 @@ def case_variant_hint(name: str, known: list[str]) -> str:
 
 # ----------------------------------------------------------------------------
 def normalize_folder(
-    name: str, delimiter: str, known: list[str] | None = None
+    name: str,
+    delimiter: str,
+    known: list[str] | None = None,
+    prefix: str | None = None,
 ) -> str:
     """Return the server's spelling of a user-supplied folder name.
 
     When the folder list is available the answer is looked up rather than
     guessed. The lookup is exact except for ``INBOX`` (``same_folder``),
     so a folder whose case differs is not a match -- ``case_variants``
-    finds those. The fallback only kicks in for a folder that does not
-    exist yet: on a Maildir++ server (delimiter ``.``) a new folder belongs
-    under ``INBOX``, while a ``/``-delimited server keeps it as a top-level
-    sibling.
+    finds those.
+
+    A folder that does not exist yet goes under ``prefix``, the personal
+    namespace prefix the server reports (RFC 2342): ``""`` puts it at the
+    root, ``INBOX.`` under ``INBOX``. ``None`` means the server did not
+    say, and only then is the layout guessed: under ``INBOX`` when the
+    delimiter is ``.`` (Maildir++), a top-level sibling otherwise.
     """
     components = split_path(name, delimiter)
 
     if not components:
         raise MailctlError("empty folder name")
 
-    candidate = delimiter.join(components)
-
     if components[0].upper() == "INBOX":
-        candidate = delimiter.join(["INBOX", *components[1:]])
+        components = ["INBOX", *components[1:]]
+
+    candidate = delimiter.join(components)
 
     for option in (candidate, f"INBOX{delimiter}{candidate}"):
         for folder in known or ():
             if same_folder(folder, option):
                 return folder
 
-    if delimiter == "." and components[0].upper() != "INBOX":
-        return delimiter.join(["INBOX", *components])
+    if prefix is None:
+        parent = ["INBOX"] if delimiter == "." else []
 
-    return candidate
+    else:
+        parent = split_path(prefix, delimiter)
+
+        if parent and parent[0].upper() == "INBOX":
+            parent = ["INBOX", *parent[1:]]
+
+    if components[: len(parent)] == parent:
+        return candidate
+
+    return delimiter.join([*parent, *components])
 
 
 @dataclass(frozen=True)
