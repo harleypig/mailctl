@@ -4,6 +4,17 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.8.4
+
+NOTES:
+
+* **Documentation only; no change to the tool.** The icebox records the
+  open question of one Sieve evaluator per provider (Dovecot's own
+  `sieve-test` for MXroute, and what Gmail would even need) ([#129]). The
+  CLI-first convention now names per-folder retention as the kind of
+  automation the CLI exists for, run by cron or a timer rather than a
+  daemon ([#130]).
+
 ## 0.8.3
 
 FEATURES:
@@ -749,3 +760,5 @@ NOTES:
 [#117]: https://github.com/harleypig/mailctl/issues/117
 [#118]: https://github.com/harleypig/mailctl/issues/118
 [#119]: https://github.com/harleypig/mailctl/issues/119
+[#129]: https://github.com/harleypig/mailctl/pull/129
+[#130]: https://github.com/harleypig/mailctl/pull/130
