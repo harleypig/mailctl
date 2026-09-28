@@ -4,6 +4,8 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.8.1
+
 ENHANCEMENTS:
 
 * **`none` clears `disabled_extensions` for one run** ([#85]). An empty
