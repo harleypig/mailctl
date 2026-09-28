@@ -4,6 +4,17 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **Read-only live checks as one script** — `scripts/live-readonly.sh`
+  (or `make livecheck`) runs read-only checks against the account mailctl
+  is configured for and reports them as TAP: both services connect, the
+  script and rule counts agree, the folder list is consistent, viewing a
+  message leaves it unread, and every change command previews without
+  changing anything. Name checks to run just those; `--list` names them.
+  Only read-only subcommands and `--dry-run` are ever sent, `--yes` never
+  is, and the script refuses any change command that lacks `--dry-run`.
+
 ## 0.8.2
 
 BUG FIXES:
