@@ -29,6 +29,7 @@ from mailctl.engine import (
     RuleRequest,
 )
 from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.providers.mxroute.imap import new_imap_session
 from mailctl.providers.mxroute.sieve import parse_script
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
@@ -405,6 +406,22 @@ def test_without_mailbox_the_folder_is_planned_for_imap_then_created(
     assert not result.subscribed
     assert ("create_folder", "INBOX.New") in fake_imap.calls
     assert "subscribe_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_new_folder_is_planned_under_the_servers_namespace_prefix(
+    fake_imap, fake_sieve, imap_config
+):
+    """#116: an empty personal prefix plans ``X``, not ``INBOX.X``."""
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.namespace_response = ((("", "."),), None, None)
+    session = new_imap_session(imap_config)
+    session.open()
+    live = MxrouteProvider(sieve=fake_sieve, imap=session)
+
+    plan = engine.plan_folder(live, imap_config, "Probe", create=True)
+
+    assert plan.folder == "Probe"
 
 
 # ----------------------------------------------------------------------------

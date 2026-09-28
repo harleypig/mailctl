@@ -133,6 +133,7 @@ class ImapSession:
         self._delimiter = "."
         self._folders: list[str] = []
         self._subscribed: list[str] = []
+        self._prefix: str | None = None
         self._server: ServerProfile | None = None
 
     # ------------------------------------------------------------------------
@@ -192,6 +193,7 @@ class ImapSession:
 
         self.client = client
         self._read_folders()
+        self._read_namespace()
         self._log(
             f"connected; delimiter {self._delimiter!r}, "
             f"{len(self._folders)} folders, "
@@ -252,6 +254,37 @@ class ImapSession:
             self._delimiter = delimiter
 
     # ------------------------------------------------------------------------
+    def _read_namespace(self) -> None:
+        """Cache the personal namespace prefix (RFC 2342), if reported.
+
+        The prefix is where a new top-level folder belongs, which the
+        delimiter alone does not say: a ``.``-delimited Dovecot may keep
+        folders at the root or under ``INBOX.``. A server that does not
+        advertise ``NAMESPACE``, fails it, or reports no personal namespace
+        leaves the prefix unknown, and ``normalize_folder`` falls back to
+        guessing from the delimiter.
+        """
+        client = self._require_client()
+
+        if not client.has_capability("NAMESPACE"):
+            return
+
+        try:
+            personal = client.namespace()[0]
+
+        except IMAPClientError:
+            return
+
+        if not personal:
+            return
+
+        prefix = personal[0][0]
+
+        self._prefix = (
+            prefix.decode() if isinstance(prefix, bytes) else str(prefix)
+        )
+
+    # ------------------------------------------------------------------------
     @staticmethod
     def _decode_listing(listing) -> tuple[list[str], str]:
         """Turn a LIST/LSUB response into names and the delimiter it used."""
@@ -277,6 +310,16 @@ class ImapSession:
     def delimiter(self) -> str:
         """The server's folder hierarchy delimiter."""
         return self._delimiter
+
+    # ------------------------------------------------------------------------
+    @property
+    def namespace_prefix(self) -> str | None:
+        """The personal namespace prefix, or None when the server gave none.
+
+        ``""`` is a real answer -- folders live at the root -- and is not
+        the same as None, which means the layout is unknown.
+        """
+        return self._prefix
 
     # ------------------------------------------------------------------------
     @property
@@ -352,7 +395,9 @@ class ImapSession:
     # ------------------------------------------------------------------------
     def normalize(self, name: str) -> str:
         """Normalize a folder name against this server's naming."""
-        return normalize_folder(name, self._delimiter, self._folders)
+        return normalize_folder(
+            name, self._delimiter, self._folders, self._prefix
+        )
 
     # ------------------------------------------------------------------------
     def exists(self, folder: str) -> bool:

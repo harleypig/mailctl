@@ -174,6 +174,61 @@ def test_normalize_prefers_an_existing_folder_over_the_guess():
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("name", "prefix", "expected"),
+    [
+        pytest.param("Probe", "", "Probe", id="empty-prefix-is-the-root"),
+        pytest.param(
+            "Lists/GitHub", "", "Lists.GitHub", id="empty-prefix-nested"
+        ),
+        pytest.param(
+            "INBOX/Probe", "", "INBOX.Probe", id="empty-prefix-asked-inbox"
+        ),
+        pytest.param(
+            "Probe", "INBOX.", "INBOX.Probe", id="inbox-prefix-goes-under"
+        ),
+        pytest.param(
+            "inbox.Probe",
+            "INBOX.",
+            "INBOX.Probe",
+            id="inbox-prefix-not-doubled",
+        ),
+        pytest.param(
+            "Probe", None, "INBOX.Probe", id="no-prefix-keeps-the-guess"
+        ),
+    ],
+)
+def test_a_new_folder_goes_under_the_namespace_prefix(name, prefix, expected):
+    """#116: the server's personal namespace decides a new folder's parent.
+
+    MXroute is ``.``-delimited with an empty personal prefix, so a new
+    folder belongs at the root; the old Maildir++ guess put it under
+    ``INBOX``. The guess survives only where the prefix is unknown.
+    """
+    assert normalize_folder(name, ".", ["INBOX"], prefix) == expected
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("prefix", ["", "INBOX.", None])
+def test_the_namespace_prefix_never_changes_an_existing_folders_lookup(
+    prefix,
+):
+    """#116: only a folder that does not exist yet is placed by the prefix."""
+    known = ["INBOX", "INBOX.Lists.GitHub", "Archive", "INBOX.spam"]
+
+    assert (
+        normalize_folder("Lists/GitHub", ".", known, prefix)
+        == "INBOX.Lists.GitHub"
+    )
+    assert (
+        normalize_folder("INBOX.Lists.GitHub", ".", known, prefix)
+        == "INBOX.Lists.GitHub"
+    )
+    assert normalize_folder("spam", ".", known, prefix) == "INBOX.spam"
+    assert normalize_folder("Archive", ".", known, prefix) == "Archive"
+
+
+# ----------------------------------------------------------------------------
 def test_case_variants_are_the_folders_that_differ_only_in_case():
     """#56: what exact matching would otherwise hide from the user."""
     known = ["INBOX", "INBOX.Lists", "INBOX.LISTS", "INBOX.spam"]
@@ -281,6 +336,63 @@ def test_open_reads_the_delimiter_and_the_folder_list(imap_session):
     """Discovered, never hardcoded -- MXroute documents neither."""
     assert imap_session.delimiter == "."
     assert imap_session.folders == ["INBOX", "INBOX.Lists", "INBOX.spam"]
+
+
+# ----------------------------------------------------------------------------
+def test_open_reads_an_empty_personal_prefix_and_places_new_folders_at_root(
+    fake_imap,
+):
+    """#116: MXroute answers NAMESPACE with personal ``(("", "."),)``."""
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.namespace_response = ((("", "."),), None, None)
+    fake_imap.listing = [((), b".", b"INBOX"), ((), b".", b"Archive")]
+
+    with plain_session() as session:
+        assert session.namespace_prefix == ""
+        assert session.normalize("MailctlDryRunProbe") == "MailctlDryRunProbe"
+
+    assert fake_imap.names().count("namespace") == 1
+
+
+# ----------------------------------------------------------------------------
+def test_open_reads_an_inbox_personal_prefix(fake_imap):
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.namespace_response = ((("INBOX.", "."),), None, None)
+
+    with plain_session() as session:
+        assert session.namespace_prefix == "INBOX."
+        assert session.normalize("Probe") == "INBOX.Probe"
+
+
+# ----------------------------------------------------------------------------
+def test_without_namespace_the_prefix_is_unknown_and_the_guess_stands(
+    fake_imap,
+):
+    """Not advertised: NAMESPACE is never sent, and the fallback applies."""
+    with plain_session() as session:
+        assert session.namespace_prefix is None
+        assert session.normalize("Probe") == "INBOX.Probe"
+
+    assert "namespace" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_failing_namespace_falls_back_rather_than_failing_open(fake_imap):
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.failures["namespace"] = IMAPClientError("BAD")
+
+    with plain_session() as session:
+        assert session.namespace_prefix is None
+        assert session.normalize("Probe") == "INBOX.Probe"
+
+
+# ----------------------------------------------------------------------------
+def test_no_personal_namespace_falls_back(fake_imap):
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.namespace_response = (None, None, None)
+
+    with plain_session() as session:
+        assert session.namespace_prefix is None
 
 
 # ----------------------------------------------------------------------------

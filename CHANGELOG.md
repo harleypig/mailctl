@@ -4,6 +4,17 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BUG FIXES:
+
+* **A new folder goes where the server keeps folders** ([#116]). On a
+  server using `.` between folder names, mailctl guessed that a folder
+  that does not exist yet belonged under `INBOX`, so `--create-folder`
+  planned `INBOX.Receipts` on an account whose folders all sit at the top
+  level. It now asks the server where personal folders live (IMAP
+  `NAMESPACE`) and puts a new folder there. The guess is kept only for a
+  server that does not answer. Folders that already exist are found
+  exactly as before.
+
 ## 0.8.1
 
 ENHANCEMENTS:
@@ -700,3 +711,4 @@ NOTES:
 [ADR 0006]: adr/0006-two-layer-component-and-provider-architecture.md
 [#95]: https://github.com/harleypig/mailctl/issues/95
 [#97]: https://github.com/harleypig/mailctl/issues/97
+[#116]: https://github.com/harleypig/mailctl/issues/116
