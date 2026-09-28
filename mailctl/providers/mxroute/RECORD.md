@@ -22,7 +22,7 @@ can rely on, what it must still probe, and what it is leaving unused.
 | Tier | Last refreshed |
 |---|---|
 | Documented | 2026-09-27 (every public URL re-fetched; the panel page is behind a login) |
-| Observed | 2026-08-14 (one account, one server) |
+| Observed | 2026-09-28 (one account, `heracles.mxrouting.net`) |
 
 ## Documented
 
@@ -163,8 +163,9 @@ see* is the user-facing account of it.
 
 ### `mailctl test`, 2026-08-14, one account
 
-The server's name was not recorded. The next probe records it (see
-*Refresh log*).
+The server's name was not recorded. The 2026-09-28 probe recorded it for
+the same account (*Identity and the IMAP capability list, 2026-09-28*),
+but nothing records that the account was on that server in August.
 
 A live read against a single MXroute server settled several of these. It is a
 **separate tier on purpose**: an observation is stronger than a guess and
@@ -219,7 +220,7 @@ that did it was not recorded.
 | ManageSieve `IMPLEMENTATION` | **`Dovecot Pigeonhole`**, no version |
 | IMAP `ID` | **`name: Dovecot`**, no version |
 | ManageSieve `SASL` | **`PLAIN`** only |
-| IMAP `CAPABILITY` | **39 entries**; the list itself was not recorded |
+| IMAP `CAPABILITY` | **39 entries**; the list itself, and whether it was read before or after login, were not recorded |
 | Sieve extensions | **23**, listed below |
 
 The Sieve extensions, as the server listed them:
@@ -238,6 +239,45 @@ quirks are keyed on behaviour and capabilities, never on a version
 ([ADR 0006][adr6]). The two strings are also what selects the
 `components/imap/servers/dovecot.py` and
 `components/managesieve/servers/pigeonhole.py` profiles.
+
+### Identity and the IMAP capability list, 2026-09-28
+
+Recorded on [#120][i120]. The server was **`heracles.mxrouting.net`**, and
+every value below was read **after login**. The probe was one read-only IMAP
+session that ran `CAPABILITY`, `ID`, and `NAMESPACE` through `ImapSession`
+from a throwaway script. No mailctl command prints all three yet; that is
+the gap [#101][i101] closes.
+
+| Observed | Value |
+|---|---|
+| IMAP `ID` | **`name: Dovecot`**, no version, as on 2026-08-14 |
+| IMAP `NAMESPACE`, personal | **`(("", "."),)`**: an empty prefix, delimiter `.` |
+| IMAP `CAPABILITY` | **43 entries**, listed below |
+
+The IMAP capabilities, as the server listed them:
+
+```text
+BINARY CATENATE CHILDREN COMPRESS=DEFLATE CONDSTORE CONTEXT=SEARCH ENABLE
+ESEARCH ESORT I18NLEVEL=1 ID IDLE IMAP4REV1 INPROGRESS LIST-EXTENDED
+LIST-STATUS LITERAL+ LOGIN-REFERRALS METADATA MOVE MULTIAPPEND NAMESPACE
+NOTIFY PREVIEW PREVIEW=FUZZY QRESYNC QUOTA REPLACE SASL-IR SAVEDATE
+SEARCHRES SNIPPET=FUZZY SORT SORT=DISPLAY SPECIAL-USE STATUS=SIZE
+THREAD=ORDEREDSUBJECT THREAD=REFERENCES THREAD=REFS UIDPLUS UNSELECT
+URL-PARTIAL WITHIN
+```
+
+**The 39 of 2026-08-14 and the 43 here cannot be compared.** A server may
+advertise a different list before and after login, and the earlier count
+does not say which it was. So the difference is **not** evidence of drift,
+and it is not recorded as drift.
+
+**The empty `NAMESPACE` prefix bears on [#116][i116].** On this server a
+new top-level folder sits at the root, not under `INBOX`.
+
+`heracles.mxrouting.net` is not one of the six servers the 2026-03-04
+Dovecot post names as running 2.4 (*Announced changes*). That post is six
+months older than this probe, and the server reports no version, so which
+Dovecot it runs is still unknown.
 
 ### Folder subscription, 2026-08-14
 
@@ -265,8 +305,9 @@ Say so plainly rather than filling the gap:
   set. Every one of those rows is one server on one day.
 - **ManageSieve script-size, script-count, and rate limits.** Nothing in the
   `CAPABILITY` response speaks to these, so a live read cannot settle them.
-- **Which server the observations came from,** and so whether it is one of
-  the six on Dovecot 2.4.
+- **Which server the 2026-08-14 observations came from.** The 2026-09-28
+  ones came from `heracles.mxrouting.net`, but which Dovecot that server
+  runs is not known.
 - **What the in-house webmail does with the script and the folder list.**
   It might keep reading and writing the Roundcube `# rule:[NAME]` dialect,
   or it might ignore rule names. It might show only subscribed folders, or
@@ -284,8 +325,9 @@ Say so plainly rather than filling the gap:
   the phase-out.
 - **Port 143 with STARTTLS**, beyond the panel page (see *Connecting to
   IMAP*).
-- **The 39 IMAP capabilities by name.** Their list was not recorded, so
-  nothing below can say which of them go unused.
+- **Whether this server's IMAP `CAPABILITY` list changes at login.** Only
+  the after-login list is recorded, so the 2026-08-14 count cannot be
+  placed against it.
 
 ## Not yet used
 
@@ -326,8 +368,28 @@ the parser extended before mailctl can round-trip a script that uses it.
 
 mailctl uses `MOVE` when it is advertised, `UIDPLUS` for `UID EXPUNGE` in
 the move fallback, and `ID` to choose a server profile. It reads
-`FILTER=SIEVE` only to report on it. What else the 39 capabilities offer
-cannot be listed until they are recorded (*Unknown*).
+`FILTER=SIEVE` only to report on it. Of the 43 capabilities seen on
+2026-09-28 (*Observed*), these could serve mailctl. Each line says what it
+might do, not what will be built:
+
+- **`SPECIAL-USE`**: find Trash, Junk, Sent, and Archive by their role
+  rather than their name. It bears on rules that file to Trash, and on
+  `INBOX.spam` versus `Junk`.
+- **`NAMESPACE`**: the parent for a new folder, read from the server rather
+  than guessed ([#116][i116]).
+- **`PREVIEW`** / **`SNIPPET=FUZZY`**: a server-side preview line for
+  `mailctl messages`, without fetching bodies.
+- **`ESEARCH`**, **`SEARCHRES`**, and **`WITHIN`**: cheaper searches, and
+  age criteria such as *older than N days* for the retroactive pass.
+- **`SORT`**, **`SORT=DISPLAY`**, and **`THREAD=*`**: server-side ordering
+  and threading for `mailctl messages`.
+- **`METADATA`**: per-mailbox annotations. Whether mailctl has a use for it
+  is unclear; it is recorded as available.
+- **`QUOTA`**: the account's quota is a setting on the account, so under
+  the scoping rule `mailctl test` could report it.
+- **`NOTIFY`** / **`IDLE`**: push notification of new mail. Probably out of
+  scope: mailctl is a one-shot CLI and holds no session open to be told
+  anything.
 
 ### The host
 
@@ -355,14 +417,17 @@ cannot be listed until they are recorded (*Unknown*).
 | 2026-08-14 | *Observed*: the `mailctl test` table, identity, capability sets, subscription | `mailctl test` and direct protocol reads on one account (#16, #18, #38); server name not recorded |
 | 2026-09-27 | *Documented*: every public source re-fetched; announced changes added | WebFetch of the URLs above; OpenAPI paths counted; no probe run |
 | 2026-09-27 | *Documented*: in-house webmail sources (migration post, branding guide, 2023 post); recorded as a known condition | Web search of docs, blog and community; no webmail documentation exists beyond these |
+| 2026-09-28 | *Observed*: IMAP `CAPABILITY` (43, after login), `ID`, `NAMESPACE`; also a `mailctl test` read and the read-only CLI commands | One read-only IMAP session through `ImapSession` in a throwaway script (#101, #120); server `heracles.mxrouting.net` |
 
-**Due next:** a probe, by 2026-11-14 on the quarterly cadence. The in-house
-webmail does not bring it forward; see *Known condition* above. That probe
-should record three things the 2026-08-14 entry left out: the server name,
-the full IMAP `CAPABILITY` list, and the probe command. Separately, what
-the in-house webmail does with filters and folders is an *Unknown*. The
-only way to settle it is to use it: create one filter there and read the
-script back with `mailctl show`.
+**Due next:** a probe, by 2026-12-28 on the quarterly cadence. The in-house
+webmail does not bring it forward; see *Known condition* above. The
+2026-09-28 probe recorded the server name and the full IMAP `CAPABILITY`
+list that the 2026-08-14 entry left out; its command was a throwaway
+script, which [#101][i101] replaces. The next probe should also say whether
+each list was read before or after login. Separately, what the in-house
+webmail does with filters and folders is an *Unknown*. The only way to
+settle it is to use it: create one filter there and read the script back
+with `mailctl show`.
 
 [adr1]: ../../../adr/0001-standalone-cli-over-provider-resource.md
 [adr6]: ../../../adr/0006-two-layer-component-and-provider-architecture.md
@@ -373,7 +438,10 @@ script back with `mailctl show`.
 [i19]: https://github.com/harleypig/mailctl/issues/19
 [i30]: https://github.com/harleypig/mailctl/issues/30
 [i38]: https://github.com/harleypig/mailctl/issues/38
+[i101]: https://github.com/harleypig/mailctl/issues/101
 [i102]: https://github.com/harleypig/mailctl/issues/102
+[i116]: https://github.com/harleypig/mailctl/issues/116
+[i120]: https://github.com/harleypig/mailctl/issues/120
 [blog-redirect]: https://blog.mxroute.com/why-we-disabled-redirect-sieve-filters-on-mxroute
 [blog-dovecot24]: https://blog.mxroute.com/we-fixed-quota-reporting-then-dovecot-2-4-happened
 [blog-bandages]: https://blog.mxroute.com/ripping-off-bandages
