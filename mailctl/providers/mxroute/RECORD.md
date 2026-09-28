@@ -97,10 +97,36 @@ said, most recent first. They are the standing trigger for a refresh
   taylor.mxrouting.net, and wednesday.mxrouting.net"*, and *"The rest of
   the fleet will be there eventually."* The post describes a quota-reporting
   change and nothing about Sieve, ManageSieve, or IMAP behaviour.
-- The earlier statement that MXroute *intends to migrate away from
-  DirectAdmin, Crossbox, and Roundcube this year*, which CONVENTIONS.md ›
-  *Discover, don't hardcode* cites, was recorded without a URL. The 4.1
-  changelog above is now its source.
+- **The migration plan** ([blog, *Ripping off bandages*,
+  2026-07-19][blog-bandages], fetched 2026-09-27): MXroute plans to
+  *"migrate away from DirectAdmin, Crossbox, and Roundcube"* this year. The
+  post says nothing about filters, Sieve, or Dovecot. It links
+  [*The Next Chapter*][blog-next] (2025-12-05, the new control panel) and
+  the Dovecot 2.4 post above. The statement was first recorded here without
+  a URL, and CONVENTIONS.md › *Discover, don't hardcode* cites it. This
+  post and the 4.1 changelog are now its sources.
+- **Custom webmail branding** ([custom hostnames][docs-hostnames], fetched
+  2026-09-27): the in-house webmail has its own *Custom Webmail Branding*
+  guide, which uses the CNAME target `webmail-connect.mxroute.com`. It
+  warns that mixing that guide with the custom-hostnames one *"will break
+  the in-house webmail"*. The branding guide's own page was not found.
+- **Not this webmail:** [*Introducing the New MXroute Webmail
+  Upgrade*][blog-2023] (2023-05-11) predates the in-house client and is
+  most likely an earlier webmail change. Its body did not load when
+  fetched, so that reading is **assumed**.
+
+**Known condition, not news: the in-house webmail exists and Roundcube is
+still in place.** As of 2026-09-27, no MXroute source documents the
+in-house webmail beyond the lines above. There is no user guide, nothing on
+filters, Sieve, or folders, and no date for retiring Roundcube. The
+replacement is *in development*, not done. A small team announcing a
+multi-phase migration and delivering it over time is the expected state of
+this host, and MXroute has been reliable for years. So the webmail being
+live is **not** a reason to re-raise the migration as if it had moved.
+Re-check only when a new changelog entry or post says a phase finished, or
+when mailctl starts relying on webmail behaviour. Operator, 2026-09-27:
+*"this is a known condition--storing these details will help prevent this
+from coming up again."*
 
 **Two of mailctl's MXroute assumptions are exposed to the webmail change.**
 The Roundcube `# rule:[NAME]` dialect the provider writes back is
@@ -329,12 +355,15 @@ cannot be listed until they are recorded (*Unknown*).
 |---|---|---|
 | 2026-08-14 | *Observed*: the `mailctl test` table, identity, capability sets, subscription | `mailctl test` and direct protocol reads on one account (#16, #18, #38); server name not recorded |
 | 2026-09-27 | *Documented*: every public source re-fetched; announced changes added | WebFetch of the URLs above; OpenAPI paths counted; no probe run |
+| 2026-09-27 | *Documented*: in-house webmail sources (migration post, branding guide, 2023 post); recorded as a known condition | Web search of docs, blog and community; no webmail documentation exists beyond these |
 
-**Due next:** a probe. It is already due, because the in-house webmail is
-an announced change that the 2026-08-14 observations predate. The quarterly
-cadence would make it due by 2026-11-14 anyway. That probe should record
-the server name, the full IMAP `CAPABILITY` list, and the probe command,
-which are the three gaps the 2026-08-14 entry left.
+**Due next:** a probe, by 2026-11-14 on the quarterly cadence. The in-house
+webmail does not bring it forward; see *Known condition* above. That probe
+should record three things the 2026-08-14 entry left out: the server name,
+the full IMAP `CAPABILITY` list, and the probe command. Separately, what
+the in-house webmail does with filters and folders is an *Unknown*. The
+only way to settle it is to use it: create one filter there and read the
+script back with `mailctl show`.
 
 [adr1]: ../../../adr/0001-standalone-cli-over-provider-resource.md
 [adr6]: ../../../adr/0006-two-layer-component-and-provider-architecture.md
@@ -347,6 +376,10 @@ which are the three gaps the 2026-08-14 entry left.
 [i38]: https://github.com/harleypig/mailctl/issues/38
 [blog-redirect]: https://blog.mxroute.com/why-we-disabled-redirect-sieve-filters-on-mxroute
 [blog-dovecot24]: https://blog.mxroute.com/we-fixed-quota-reporting-then-dovecot-2-4-happened
+[blog-bandages]: https://blog.mxroute.com/ripping-off-bandages
+[blog-next]: https://blog.mxroute.com/the-next-chapter
+[blog-2023]: https://blog.mxroute.com/introducing-the-new-mxroute-webmail-upgrade-all-your-email-needs-in-one-place
+[docs-hostnames]: https://docs.mxroute.com/docs/branding/customhostnames.html
 [docs-ios]: https://docs.mxroute.com/docs/general/ios-mail.html
 [docs-expert]: https://docs.mxroute.com/docs/expert-spam-filtering.html
 [api-openapi]: https://api.mxroute.com/openapi.yaml
