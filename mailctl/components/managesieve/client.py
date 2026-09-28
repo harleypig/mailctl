@@ -3,7 +3,8 @@
 Two layers. :class:`SieveClient` is sievelib's ``Client`` with the gaps
 ADR 0006 names closed where they are: GETSCRIPT read byte-exact (S1, mailctl
 #90), the CAPABILITY response kept whole (S4), a configurable read timeout
-(S5), and debug output impossible (S8). :class:`SieveSession` sits on it,
+(S5), debug output impossible (S8), and a closed connection an error rather
+than an endless loop (S9, mailctl #95). :class:`SieveSession` sits on it,
 turns sievelib's two failure conventions -- a raised ``Error`` and a
 returned ``False`` -- into ``MailctlError`` with a readable message, and
 takes plain connection parameters so that nothing here knows which host,
@@ -24,7 +25,13 @@ import ssl
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from sievelib.managesieve import CRLF, KNOWN_CAPABILITIES, Client
+from sievelib.managesieve import (
+    CRLF,
+    KNOWN_CAPABILITIES,
+    Client,
+    Literal,
+    Response,
+)
 from sievelib.managesieve import Error as SieveProtocolError
 
 from ... import MailctlError
@@ -70,7 +77,7 @@ class SieveAuthenticationError(MailctlError):
 
 
 class SieveClient(Client):
-    """sievelib's client with ADR 0006's gaps S1, S4, S5, and S8 closed.
+    """sievelib's client with ADR 0006's gaps S1, S4, S5, S8, and S9 closed.
 
     Every other command is sievelib's, unchanged.
     """
@@ -96,6 +103,48 @@ class SieveClient(Client):
     # ------------------------------------------------------------------------
     def _Client__dprint(self, message) -> None:
         """Print nothing, whatever sievelib's debug flag says (S8)."""
+
+    # ------------------------------------------------------------------------
+    def _Client__read_line(self) -> bytes:
+        """sievelib's line reader, failing on a closed connection (S9).
+
+        sievelib's own returns an empty line at end of file, which its
+        response reader skips and asks for again, forever. This reads
+        through :meth:`_fill`, which raises instead, and otherwise keeps
+        sievelib's contract: a literal's size is raised as ``Literal``, a
+        status line as ``Response``, and ``BYE`` as an error.
+        """
+        line = self._read_line()
+
+        if not line:
+            return line
+
+        literal = _LITERAL.match(line)
+
+        if literal is not None:
+            raise Literal(int(literal[1]))
+
+        status = self._private("respcode_expr").match(line)
+
+        if status is None:
+            return line
+
+        if status[1] == b"BYE":
+            raise SieveProtocolError("Connection closed by server")
+
+        if status[1] == b"NO":
+            self._private("parse_error")(status[2])
+
+        raise Response(status[1], status[2])
+
+    # ------------------------------------------------------------------------
+    def _Client__read_block(self, size: int) -> bytes:
+        """Return exactly ``size`` bytes, failing on a closed connection (S9).
+
+        sievelib's own makes one ``recv`` and returns whatever came, so a
+        literal cut short is returned short and the reader then loops.
+        """
+        return self._read_exact(size)
 
     # ------------------------------------------------------------------------
     def connect(

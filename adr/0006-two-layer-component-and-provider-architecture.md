@@ -87,7 +87,7 @@ DIGEST-MD5, OAUTHBEARER, and XOAUTH2 (V). Its gaps, all V:
 | S6 | The parser rejects `subaddress`, `spamtest`/`virustest`, `include`, `mailboxexists`, `editheader`, `duplicate`, `special-use`, `ihave`, and the `i;ascii-numeric` comparator | Extend through `commands.add_commands()` as each is wanted |
 | S7 | Free-standing comments are dropped on render | [#7][i7] |
 | S8 | Debug mode prints the base64 `AUTHENTICATE` payload | `debug=False` stays pinned, and a test holds it there |
-| S9 | The response reader loops forever when the connection closes mid-literal, for every command but `GETSCRIPT` (amendment) | Raise `SieveConnectionError` on EOF — [#95][i95] |
+| S9 | The response reader loops forever when the connection closes mid-literal, for every command but `GETSCRIPT` (amendment) | sievelib's line and literal readers are overridden to read through the client's own, which raises on EOF — fixed in [#95][i95] |
 
 S8 is a credential leak rather than a rough edge. The pin is already in
 `sieve.py`, and it moves with the session as a guarantee, not a default.
