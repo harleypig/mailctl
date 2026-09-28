@@ -469,3 +469,112 @@ def test_overlapping_addresses_on_one_header_still_warn():
     analysis = analyze_placement(existing, candidate(value="@lists.example"))
 
     assert analysis.dead_on_arrival[0].certainty == POSSIBLE
+
+
+# ############################################################################
+# A broad allof -- every condition has to be able to hold (#117)
+# ############################################################################
+
+# The live account's shapes, from the read-only dry runs of 2026-09-28:
+# every new rule was flagged "may never run" against Github Payments, an
+# allof that needs From to contain one particular address.
+GITHUB_PAYMENTS = rule(
+    "Github Payments",
+    'allof (header :contains "subject" '
+    '"[GitHub] Payment Receipt for harleypig", '
+    'header :contains "from" "noreply@github.com", '
+    'header :contains "to" "harleypig@harleypig.com")',
+)
+
+ARCH_GENERAL = rule(
+    "Ignore Arch General",
+    'allof (header :contains "to" "aur-general@lists.archlinux.org")',
+)
+
+
+# ----------------------------------------------------------------------------
+def test_an_allof_with_a_value_disjoint_condition_is_not_warned_about():
+    """One condition that cannot hold rules the whole ``allof`` out."""
+    existing = build(GITHUB_PAYMENTS)
+
+    analysis = analyze_placement(
+        existing, candidate("from", "no-reply@perlmodules.net")
+    )
+
+    assert not analysis
+
+
+# ----------------------------------------------------------------------------
+def test_an_identical_earlier_rule_still_never_runs():
+    """The definite finding is untouched: it caught Ignore Arch General."""
+    existing = build(GITHUB_PAYMENTS, ARCH_GENERAL)
+
+    analysis = analyze_placement(
+        existing, candidate("to", "aur-general@lists.archlinux.org")
+    )
+
+    assert [(f.broad, f.certainty) for f in analysis.dead_on_arrival] == [
+        ("Ignore Arch General", CERTAIN)
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_an_allof_whose_every_condition_can_hold_still_warns():
+    """A From key inside the allof's own From key is a genuine "may"."""
+    existing = build(GITHUB_PAYMENTS)
+
+    analysis = analyze_placement(existing, candidate("from", "github.com"))
+
+    assert [(f.broad, f.certainty) for f in analysis.dead_on_arrival] == [
+        ("Github Payments", POSSIBLE)
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_narrow_anyof_needs_only_one_free_test_on_a_shared_header():
+    """Any one of an ``anyof``'s tests can be what fires it."""
+    existing = build(GITHUB_PAYMENTS)
+
+    criteria = Criteria(match="any")
+    criteria.add("from", "no-reply@perlmodules.net")
+    criteria.add("subject", "Payment Receipt")
+
+    analysis = analyze_placement(
+        existing, rule_from_criteria("New", criteria, ("fileinto",))
+    )
+
+    assert analysis.dead_on_arrival[0].certainty == POSSIBLE
+
+
+# ----------------------------------------------------------------------------
+def test_a_narrow_allof_is_ruled_out_by_any_disjoint_pair():
+    """An ``allof`` holds all its tests at once, so one clash is enough."""
+    existing = build(GITHUB_PAYMENTS)
+
+    criteria = Criteria(match="all")
+    criteria.add("from", "no-reply@perlmodules.net")
+    criteria.add("subject", "Payment Receipt")
+
+    analysis = analyze_placement(
+        existing, rule_from_criteria("New", criteria, ("fileinto",))
+    )
+
+    assert not analysis
+
+
+# ----------------------------------------------------------------------------
+def test_an_uncomparable_condition_does_not_rescue_a_disjoint_one():
+    """A glob cannot be ruled out, but the disjoint From still can be."""
+    existing = build(
+        rule(
+            "Glob",
+            'allof (header :matches "subject" "*receipt*", '
+            'header :contains "from" "noreply@github.com")',
+        )
+    )
+
+    analysis = analyze_placement(
+        existing, candidate("from", "no-reply@perlmodules.net")
+    )
+
+    assert not analysis

@@ -15,6 +15,14 @@ BUG FIXES:
   server that does not answer. Folders that already exist are found
   exactly as before.
 
+* **The "may never run" warning no longer fires on every rule that shares
+  a header with an earlier `allof`** ([#117]). An earlier rule that needs
+  several conditions at once was reported against any new rule testing
+  one of its headers, whatever the values. It is now reported only when
+  every one of its conditions could hold on the same message: a new rule
+  on a different From address than the earlier rule's is no longer
+  flagged. The definite "never runs" finding is unchanged.
+
 ## 0.8.1
 
 ENHANCEMENTS:
@@ -712,3 +720,5 @@ NOTES:
 [#95]: https://github.com/harleypig/mailctl/issues/95
 [#97]: https://github.com/harleypig/mailctl/issues/97
 [#116]: https://github.com/harleypig/mailctl/issues/116
+
+[#117]: https://github.com/harleypig/mailctl/issues/117
