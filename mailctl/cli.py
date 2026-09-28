@@ -19,6 +19,7 @@ import traceback
 from . import MailctlError, __version__, engine
 from .config import (
     CONFIG_FILE,
+    DEFAULT,
     ENV_FILE,
     ENVIRONMENT,
     SIEVE_TLS_MODES,
@@ -1223,6 +1224,17 @@ def cmd_test(args) -> int:
             )
             print_extension_table(extensions)
 
+            cleared = config.sources.get("disabled_extensions")
+
+            # A set-but-empty list overrode a lower rung (#85); with no
+            # row disabled, this line is the only place its source shows.
+            if (
+                not config.disabled_extensions
+                and cleared
+                and (cleared.kind != DEFAULT)
+            ):
+                print(f"  (none disabled: {cleared.describe()})")
+
         print(f"\n  active script: {rules.active or '(none)'}")
         print(f"  other scripts: {', '.join(rules.others) or '(none)'}")
         print(
@@ -1854,8 +1866,8 @@ def connection_parser(
         metavar="NAME",
         help="never emit this Sieve extension, even if the server "
         "advertises it; repeatable, and replaces "
-        "MAILCTL_DISABLED_EXTENSIONS / disabled_extensions for this run. "
-        "'mailctl test' lists the names"
+        "MAILCTL_DISABLED_EXTENSIONS / disabled_extensions for this run; "
+        "'none' disables nothing. 'mailctl test' lists the names"
         if offer.extensions
         else argparse.SUPPRESS,
     )

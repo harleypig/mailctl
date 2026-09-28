@@ -113,7 +113,8 @@ password_cmd = "pass show email/you@yourdomain.com"
 # created over IMAP and the rule says plain `fileinto`; with "fileinto" or
 # "imap4flags" off, a rule that needs it is refused. Names are
 # case-insensitive; an unknown one is an error. MAILCTL_DISABLED_EXTENSIONS
-# and --disable-extension REPLACE this list rather than adding to it.
+# and --disable-extension REPLACE this list rather than adding to it; set
+# either to "none" to clear it for one run.
 # `mailctl test` lists the names. Default: none.
 #disabled_extensions = ["mailbox"]
 

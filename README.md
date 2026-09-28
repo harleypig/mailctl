@@ -77,6 +77,12 @@ highest source that sets it **replaces** the lower ones rather than adding
 to them, so `--disable-extension copy` on one run means only `copy`, whatever
 the config file says. Names are case-insensitive.
 
+`none` means disable nothing. An empty value falls through to the next
+source, so `none` is how one run clears a list set lower down:
+`--disable-extension none` or `MAILCTL_DISABLED_EXTENSIONS=none` overrides
+the config file's list, and `mailctl test` names where the `none` came from.
+It must stand alone — `none` beside an extension name is refused.
+
 A disabled extension counts as not advertised:
 
 | Disabled | What mailctl does |

@@ -384,6 +384,87 @@ def test_a_config_file_value_that_is_not_a_list_of_names_is_refused(text):
 
 
 # ----------------------------------------------------------------------------
+def test_none_clears_a_lower_list_at_every_rung(tmp_path, monkeypatch):
+    """#85: ``none`` is an explicitly empty list. It beats a config-file
+    list from every rung above it, and its source is recorded -- an empty
+    value would fall through instead.
+    """
+    write_config_file('disabled_extensions = ["copy"]\n')
+    env_path = write_env_file(
+        tmp_path / "x.env", "MAILCTL_DISABLED_EXTENSIONS=None\n"
+    )
+
+    config = load_config(argparse.Namespace(disable_extension=["none"]))
+    assert config.disabled_extensions == frozenset()
+    assert config.sources["disabled_extensions"] == Source(
+        FLAG, "--disable-extension"
+    )
+
+    config = load_config(argparse.Namespace(env_file=str(env_path)))
+    assert config.disabled_extensions == frozenset()
+    assert config.sources["disabled_extensions"] == Source(
+        ENV_FILE, "MAILCTL_DISABLED_EXTENSIONS", env_path
+    )
+
+    monkeypatch.setenv("MAILCTL_DISABLED_EXTENSIONS", " NONE ")
+    config = load_config(argparse.Namespace())
+    assert config.disabled_extensions == frozenset()
+    assert config.sources["disabled_extensions"] == Source(
+        ENVIRONMENT, "MAILCTL_DISABLED_EXTENSIONS"
+    )
+
+    monkeypatch.delenv("MAILCTL_DISABLED_EXTENSIONS")
+    write_config_file('disabled_extensions = ["none"]\n')
+    config = load_config(argparse.Namespace())
+    assert config.disabled_extensions == frozenset()
+    assert config.sources["disabled_extensions"].kind == CONFIG_FILE
+
+
+# ----------------------------------------------------------------------------
+def test_none_through_the_real_parser_clears_the_config_file():
+    write_config_file('disabled_extensions = ["copy"]\n')
+
+    args = build_parser().parse_args(["test", "--disable-extension", "none"])
+
+    config = load_config(args)
+
+    assert config.disabled_extensions == frozenset()
+    assert config.sources["disabled_extensions"].kind == FLAG
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "rung",
+    ["flag", "env-file", "environment", "config-file"],
+)
+def test_none_mixed_with_a_name_is_refused(rung, tmp_path, monkeypatch):
+    """``none`` means nothing is disabled; with a name beside it the
+    request contradicts itself, so it is refused rather than guessed at.
+    """
+    args = argparse.Namespace()
+
+    if rung == "flag":
+        args = argparse.Namespace(disable_extension=["none", "mailbox"])
+
+    elif rung == "env-file":
+        env_path = write_env_file(
+            tmp_path / "x.env", "MAILCTL_DISABLED_EXTENSIONS=mailbox,none\n"
+        )
+        args = argparse.Namespace(env_file=str(env_path))
+
+    elif rung == "environment":
+        monkeypatch.setenv("MAILCTL_DISABLED_EXTENSIONS", "none,copy")
+
+    else:
+        write_config_file('disabled_extensions = ["None", "copy"]\n')
+
+    with pytest.raises(MailctlError, match="'none'") as caught:
+        load_config(args)
+
+    assert "cannot be combined" in str(caught.value)
+
+
+# ----------------------------------------------------------------------------
 def test_the_disable_flag_is_repeatable_through_the_real_parser():
     args = build_parser().parse_args(
         [

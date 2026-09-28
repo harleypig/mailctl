@@ -755,6 +755,15 @@ SCENARIOS = {
         ["test"],
         {"config": 'disabled_extensions = ["imap4flags"]\n'},
     ),
+    # #85: 'none' from the flag clears the config file's list, and says so.
+    "test-disabled-none": (
+        ["test", "--disable-extension", "none"],
+        {"config": 'disabled_extensions = ["imap4flags"]\n'},
+    ),
+    "test-disabled-none-mixed": (
+        ["test", "--disable-extension", "none", "--disable-extension", "copy"],
+        {},
+    ),
     "test-disabled-unknown": (["test", "--disable-extension", "mailbx"], {}),
     # A name only the server lists gets a row, folded to lower case once.
     "test-server-only": (

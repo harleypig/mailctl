@@ -4,6 +4,15 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+ENHANCEMENTS:
+
+* **`none` clears `disabled_extensions` for one run** ([#85]). An empty
+  value falls through to the next source, so a config-file list could not
+  be overridden with nothing. `--disable-extension none`, or
+  `MAILCTL_DISABLED_EXTENSIONS=none` in the env file or the environment,
+  now means disable nothing, and `mailctl test` names where it came from.
+  `none` beside an extension name is refused.
+
 ## 0.8.0
 
 NOTES:
@@ -665,4 +674,5 @@ NOTES:
 [#92]: https://github.com/harleypig/mailctl/issues/92
 [#106]: https://github.com/harleypig/mailctl/issues/106
 [#99]: https://github.com/harleypig/mailctl/issues/99
+[#85]: https://github.com/harleypig/mailctl/issues/85
 [ADR 0006]: adr/0006-two-layer-component-and-provider-architecture.md
