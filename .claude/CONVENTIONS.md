@@ -256,6 +256,24 @@ exposed in all of them; a feature only one front-end has is a gap in the
 others, not a design choice. The CLI is the only front-end today, so today
 this means the CLI exposes every engine operation.
 
+**The CLI comes first, and it is the baseline.** The operator, 2026-09-28:
+
+> I don't think I've said this before, even though it's been my plan all
+> along. I think I thought it was implied. The cli version of mailctl is
+> mainly for automating tasks. Focusing on it first is the baseline. It's
+> easier to build cli -> tui -> {gui,web} than to backfill.
+
+So the order is **CLI, then TUI, then GUI and web**. The CLI is the
+automation surface, and it is built first; a later front-end is built on
+what the CLI already exposes, never backfilled into it. Read with the
+paragraph above, this is why the CLI exposing every engine operation is the
+standing state rather than a stopgap.
+
+One consequence, because automation is the CLI's job: **its output and exit
+codes are a contract a script depends on.** Change them deliberately, never
+as a side effect. The CLI snapshots (TESTS.md) are what make such a change
+visible.
+
 ## Providers
 
 **A provider is a two-way translator** ([ADR 0006][adr6] *Amendment*).
@@ -437,6 +455,8 @@ account, recorded with the command, the date, and the server's hostname:
     `SIEVE`, `SASL`, `MAXREDIRECTS`, and `OWNER`.
 - **`make testlive`** is the live tier's read-only smoke tests. It
   confirms the port, the TLS mode, and the delimiter.
+- **`make livecheck`** runs the read-only CLI checks against the account
+  and confirms nothing changed (TESTS.md › *The read-only live check*).
 
 A probe never prints the password. It is held to the same bar as a debug
 shim (*Credentials*).

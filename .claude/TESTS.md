@@ -103,10 +103,36 @@ fixture required before anything writes to one is still outstanding
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
 
-The live tier is also this repo's **end-to-end** pass (`qa.md` dimension 8) —
-there is no third tier and no separate e2e suite. A CLI that talks to two
-servers has no meaningful integration layer between "offline logic" and "does
-it actually work against MXroute".
+The live tier and the read-only live check below are together this repo's
+**end-to-end** pass (`qa.md` dimension 8) — there is no separate e2e suite. A
+CLI that talks to two servers has no meaningful integration layer between
+"offline logic" and "does it actually work against MXroute".
+
+## The read-only live check
+
+`scripts/live-readonly.sh`, run by `make livecheck`, is a bash script that
+runs read-only CLI commands and `--dry-run` plans against the real account,
+then verifies that nothing changed. It reports in TAP. Name tests as
+arguments to run only those; `--list` shows the names.
+
+It is **not** the pytest live tier above, and the difference is the point:
+
+- **It never writes.** `tests/live/` will write, under the backup-and-restore
+  fixture [#9](https://github.com/harleypig/mailctl/issues/9) requires; this
+  one never does, so it needs no such fixture and is safe to run any time.
+- **It drives the CLI end to end**, as a user or an automation script would —
+  the installed `mailctl` command, not the package from inside Python. The
+  CLI is the automation surface (CONVENTIONS.md › *The core returns data;
+  only the CLI prints*), so this is the check that its commands work against
+  a real server.
+- **It uses the normal mailctl config** — the same settings, env file, and
+  password source the user runs with, not a test-only set.
+- **It paces itself.** The account is real, so there are no loops over the
+  server and there is a pause between tests.
+
+**Every future read-only live check goes here** (operator, 2026-09-28). A
+check that only reads, or only plans with `--dry-run`, is added to this
+script, not to `tests/live/`.
 
 ## Live-test credentials & safety
 
@@ -150,6 +176,9 @@ lands in `Lists/GitHub`" is.
 pytest                 # unit (offline, credential-free)
 make test              # the same, via the Makefile
 make testlive          # live (MAILCTL_LIVE=1; needs MAILCTL_* in the env)
+make livecheck         # read-only live check (normal mailctl config)
+scripts/live-readonly.sh --list        # the read-only check's test names
+scripts/live-readonly.sh list rules    # run only the named checks
 ```
 
 `TESTARGS` passes extra flags through, e.g. a run filter for a scoped live
