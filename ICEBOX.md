@@ -445,7 +445,11 @@ which nobody does. Design constraints follow from that:
   repeatedly, and mailctl is a one-shot CLI. Cron or a systemd timer keeps
   the tool a CLI; a daemon is a different product. Almost certainly the
   former, but
-  it decides how the config and reporting are shaped.
+  it decides how the config and reporting are shaped. The operator's
+  2026-09-28 statement that the CLI is mainly for automation points the same
+  way — cron or a timer driving the CLI, not a daemon
+  ([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *The CLI comes
+  first*). The config and reporting shape it decides is still open.
 - **Age from what?** `INTERNALDATE` (when the server received it) or the `Date:`
   header (what the sender claimed)? They differ, and the header is
   attacker-controlled. `INTERNALDATE` is almost certainly right, and is what
