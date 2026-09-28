@@ -4,6 +4,16 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **A `provider` setting names the mail host** ([#92], [ADR 0006]). It is
+  `--provider`, `MAILCTL_PROVIDER` (env file or environment), or `provider`
+  in `config.toml`, and resolves like every other setting. It defaults to
+  `mxroute`, the only provider today, so nothing needs setting. An unknown
+  name is refused before anything connects, naming the known ones.
+  `mailctl test` now shows the provider and where it came from, as a
+  `Provider:` line at the top of its settings.
+
 BUG FIXES:
 
 * **A non-ASCII search value no longer crashes the existing-mail pass**
@@ -45,6 +55,18 @@ NOTES:
   provider interface lands. The component can tell which server software
   it is talking to from the IMAP `ID` response; nothing depends on the
   answer yet. No command's behaviour changes.
+* **The engine now talks to a provider, not to the protocols** ([#92],
+  [ADR 0006]). A provider translates both ways. mailctl's own model (a
+  rule's criteria and actions, folders, messages) goes out in the host's
+  terms, Sieve over ManageSieve for MXroute, and the host's answers come
+  back in that model. What a host can do is declared as data, and a rule
+  it cannot express is refused before anything connects. MXroute's
+  policies (the `redirect` refusal, the Roundcube rule names, the login
+  and TLS advice) live in the `mxroute` provider, which replaces the
+  transitional modules. A test drives a second, fake provider through the
+  engine to show that adding a host needs no engine change. No command's
+  behaviour changes, apart from the new `Provider:` line in `mailctl
+  test`.
 * **The runtime dependencies are bounded on their next major** ([#91]).
   `IMAPClient>=4.1,<5` (the suite passes on 4.1) and `sievelib>=1.5.0,<2`,
   so a new major of either no longer lands on a fresh install unreviewed;
