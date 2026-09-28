@@ -30,12 +30,14 @@ __all__ = [
     "DeliveryCreate",
     "DisplayDiff",
     "ExtensionState",
+    "Fact",
     "FolderCreation",
     "FolderListing",
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
     "Placement",
+    "Wording",
     "action_names",
     "decode_header_value",
     "same_folder",
@@ -328,3 +330,44 @@ class MailActionResult:
     flagged: int = 0
     moved: int = 0
     deleted: int = 0
+
+
+# ############################################################################
+# The host, in its own words
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class Fact:
+    """One labelled line about the host, for a front-end to show.
+
+    ``text`` may run to several lines. ``settings`` pairs a label with each
+    setting the line reports, as ``(label, setting)``, so a front-end can
+    say where each value came from; it is empty for a fact the server
+    reported.
+    """
+
+    label: str
+    text: str
+    settings: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class Wording:
+    """The words a provider's host is described in, as data.
+
+    A front-end lays out the same report for every provider and fills it
+    from here, so nothing about one host is written into the front-end.
+
+    * ``rules_service`` / ``mail_service`` -- what each half connects to,
+      as a person would name it (``ManageSieve``, ``IMAP``).
+    * ``extensions`` -- what the rule language calls its extensions, for
+      a provider that declares ``extensions``.
+    * ``notes`` -- what a report about the host should end by saying: the
+      host's policies and the limits of what mailctl can see there.
+    """
+
+    rules_service: str
+    mail_service: str
+    extensions: str
+    notes: tuple[str, ...] = ()

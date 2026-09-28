@@ -46,12 +46,14 @@ from .model import (
     DeliveryCreate,
     DisplayDiff,
     ExtensionState,
+    Fact,
     FolderCreation,
     FolderListing,
     MailActionPlan,
     MailActionResult,
     MessageSummary,
     Placement,
+    Wording,
     action_names,
     decode_header_value,
     same_folder,
@@ -71,6 +73,7 @@ __all__ = [
     "DeliveryCreate",
     "DisplayDiff",
     "ExtensionState",
+    "Fact",
     "FolderCreation",
     "FolderListing",
     "MailActionPlan",
@@ -81,6 +84,7 @@ __all__ = [
     "Provider",
     "ProviderCapabilities",
     "Specific",
+    "Wording",
     "action_names",
     "declined",
     "decode_header_value",
@@ -222,6 +226,7 @@ class Provider(ABC):
 
     name: ClassVar[str]
     capabilities: ClassVar[ProviderCapabilities]
+    wording: ClassVar[Wording]
 
     # ------------------------------------------------------------------------
     # Before any network work
@@ -261,6 +266,13 @@ class Provider(ABC):
     @abstractmethod
     def check_actions(cls, config: Config, actions: list) -> None:
         """Refuse translated actions the configuration has turned off."""
+
+    @classmethod
+    @abstractmethod
+    def describe_actions(cls, actions: list) -> str:
+        """Translated actions as one line a person reads, host escaping
+        undone: the plan's summary, beside the diff that shows the source.
+        """
 
     @classmethod
     @abstractmethod
@@ -358,6 +370,24 @@ class Provider(ABC):
         the user said to assume, or None for the host's usual one; returns
         the name and the delimiter used.
         """
+
+    # ------------------------------------------------------------------------
+    # Describing the host, offline
+    # ------------------------------------------------------------------------
+
+    @classmethod
+    @abstractmethod
+    def connection_facts(cls, config: Config) -> list[Fact]:
+        """Where each half connects, as ``config`` resolves it.
+
+        Each fact names the settings it reports, so the front-end can say
+        where they came from.
+        """
+
+    @classmethod
+    @abstractmethod
+    def mail_facts(cls, capabilities: list[str]) -> list[Fact]:
+        """What the mail half's advertised capabilities mean for mailctl."""
 
     # ------------------------------------------------------------------------
     # Backups, offline -- the host's exact bytes, on disk

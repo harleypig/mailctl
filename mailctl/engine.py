@@ -62,6 +62,7 @@ from .providers.base import (
     ActionSpec,
     DisplayDiff,
     ExtensionState,
+    Fact,
     FolderCreation,
     FolderListing,
     MailActionPlan,
@@ -70,6 +71,7 @@ from .providers.base import (
     Placement,
     Progress,
     Provider,
+    Wording,
     action_names,
     decode_header_value,
     refuse,
@@ -235,8 +237,8 @@ class RulesReport:
 
 
 @dataclass(frozen=True)
-class SieveProbe:
-    """What the ManageSieve server says about itself."""
+class RulesProbe:
+    """What the rule half says about itself, and its rule sets."""
 
     capabilities: list[str]
     active: str | None
@@ -244,35 +246,18 @@ class SieveProbe:
 
 
 @dataclass(frozen=True)
-class ImapProbe:
-    """What the IMAP server says about itself."""
+class MailProbe:
+    """What the mail half says about itself, and its folder shape.
+
+    ``facts`` is what its advertised capabilities mean for mailctl, in the
+    provider's words.
+    """
 
     capabilities: list[str]
     delimiter: str
     folder_count: int
     unsubscribed: list[str] = field(default_factory=list)
-
-    # ------------------------------------------------------------------------
-    @property
-    def has_move(self) -> bool:
-        return "MOVE" in self.capabilities
-
-    # ------------------------------------------------------------------------
-    @property
-    def has_uidplus(self) -> bool:
-        return "UIDPLUS" in self.capabilities
-
-    # ------------------------------------------------------------------------
-    @property
-    def has_filter_sieve(self) -> bool:
-        """Whether Dovecot's ``imap_filter_sieve`` is enabled.
-
-        Detection only: mailctl has no FILTER=SIEVE code path.
-        """
-        return any(
-            item.upper().startswith("FILTER=SIEVE")
-            for item in self.capabilities
-        )
+    facts: list[Fact] = field(default_factory=list)
 
 
 # ----------------------------------------------------------------------------
@@ -320,25 +305,43 @@ def list_folders(provider: Provider) -> FolderListing:
 
 
 # ----------------------------------------------------------------------------
-def probe_sieve(provider: Provider) -> SieveProbe:
+def probe_rules(provider: Provider) -> RulesProbe:
     """Read what the rule half advertises, and its rule-set listing."""
     capabilities = provider.rules_capabilities()
     active, others = provider.list_rule_sets()
 
-    return SieveProbe(capabilities, active, others)
+    return RulesProbe(capabilities, active, others)
 
 
 # ----------------------------------------------------------------------------
-def probe_imap(provider: Provider) -> ImapProbe:
+def probe_mail(provider: Provider) -> MailProbe:
     """Read what the mail half advertises, and its folder shape."""
     listing = list_folders(provider)
+    capabilities = provider.mail_capabilities()
 
-    return ImapProbe(
-        provider.mail_capabilities(),
+    return MailProbe(
+        capabilities,
         listing.delimiter,
         len(listing.folders),
         listing.unsubscribed,
+        provider.mail_facts(capabilities),
     )
+
+
+# ----------------------------------------------------------------------------
+def wording(config: Config) -> Wording:
+    """The words the configured provider's host is described in.
+
+    Needs no connection. A front-end fills its report from this rather
+    than writing one host's names and policies into itself.
+    """
+    return provider_for(config).wording
+
+
+# ----------------------------------------------------------------------------
+def connection_facts(config: Config) -> list[Fact]:
+    """Where the configured provider connects, as ``config`` resolves it."""
+    return provider_for(config).connection_facts(config)
 
 
 # ############################################################################
@@ -348,7 +351,7 @@ def probe_imap(provider: Provider) -> ImapProbe:
 
 # ----------------------------------------------------------------------------
 def report_extensions(
-    provider: Provider, probe: SieveProbe, config: Config
+    provider: Provider, probe: RulesProbe, config: Config
 ) -> list[ExtensionState]:
     """One state per extension mailctl knows or the server lists, by name.
 
@@ -1256,7 +1259,11 @@ def realize_folder(
 
 @dataclass(frozen=True)
 class RulePlan:
-    """A rule merged into the script, not yet uploaded."""
+    """A rule merged into the script, not yet uploaded.
+
+    ``actions`` are the provider's own and opaque here; ``summary`` is the
+    provider's rendering of them for a person to read.
+    """
 
     name: str
     script: str
@@ -1264,6 +1271,7 @@ class RulePlan:
     after: str
     criteria: Criteria
     actions: list
+    summary: str
     placement: Analysis
     diff: DisplayDiff
     folder: FolderPlan
@@ -1460,6 +1468,7 @@ def plan_rule(
         after=after,
         criteria=request.criteria,
         actions=actions,
+        summary=provider.describe_actions(actions),
         placement=placement_analysis(
             provider,
             before,

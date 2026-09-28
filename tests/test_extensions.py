@@ -399,7 +399,7 @@ def test_disabling_an_extension_the_server_lacks_changes_nothing(
 def report(caps, config):
     """The report as a name -> state mapping, checking its order on the way."""
     states = engine.report_extensions(
-        MxrouteProvider(), engine.SieveProbe(caps, None, []), config
+        MxrouteProvider(), engine.RulesProbe(caps, None, []), config
     )
     names = [state.name for state in states]
 

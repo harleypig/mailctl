@@ -222,14 +222,17 @@ def test_read_rules_returns_rules_in_order_with_findings(sessions):
 
 
 # ----------------------------------------------------------------------------
-def test_the_imap_probe_reads_capabilities_off_the_server(sessions, fake_imap):
+def test_the_mail_probe_reads_capabilities_off_the_server(sessions, fake_imap):
+    """What each capability means is the provider's to say, as facts."""
     fake_imap.caps = {"UIDPLUS", "FILTER=SIEVE"}
 
-    probe = engine.probe_imap(sessions)
+    probe = engine.probe_mail(sessions)
+    facts = {fact.label: fact.text for fact in probe.facts}
 
-    assert probe.has_filter_sieve
-    assert probe.has_uidplus
-    assert not probe.has_move
+    assert list(facts) == ["MOVE", "UIDPLUS", "FILTER=SIEVE"]
+    assert facts["FILTER=SIEVE"].startswith("yes -- ")
+    assert facts["UIDPLUS"] == "yes"
+    assert facts["MOVE"] == "no (COPY+EXPUNGE)"
     assert probe.delimiter == "."
 
 
@@ -919,7 +922,7 @@ def test_the_folder_listing_says_which_folders_webmail_shows(sessions):
     assert listing.unsubscribed == ["INBOX.spam"]
     assert listing.is_subscribed("INBOX.Lists")
     assert not listing.is_subscribed("INBOX.lists")  # #56: exact
-    assert engine.probe_imap(sessions).unsubscribed == ["INBOX.spam"]
+    assert engine.probe_mail(sessions).unsubscribed == ["INBOX.spam"]
 
 
 # ----------------------------------------------------------------------------

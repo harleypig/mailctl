@@ -1,5 +1,8 @@
 """MXroute's side of IMAP: its login advice, its folders, its settings.
 
+It also says what the server's advertised capabilities mean for mailctl,
+as the facts ``mailctl test`` reports.
+
 The layer-1 ``imap`` library knows the protocol. What lives here is what
 MXroute has set up and what mailctl's configuration says: the mapping from
 ``Config`` to a session (port 143 is STARTTLS, anything else implicit
@@ -24,8 +27,9 @@ from ...components.imap import (
     ImapTLSError,
 )
 from ...config import Config
+from ..model import Fact
 
-__all__ = ["imap_session", "new_imap_session"]
+__all__ = ["capability_facts", "imap_session", "new_imap_session"]
 
 # The one port that means STARTTLS; every other port is implicit TLS.
 STARTTLS_PORT = 143
@@ -92,3 +96,41 @@ def imap_session(
 
     finally:
         session.close()
+
+
+# ----------------------------------------------------------------------------
+def capability_facts(capabilities: list[str]) -> list[Fact]:
+    """What MOVE, UIDPLUS, and FILTER=SIEVE mean here, one fact each.
+
+    Dovecot's Pigeonhole ``imap_filter_sieve`` plugin advertises
+    ``FILTER=SIEVE``, which lets a client ask the *server* to run a Sieve
+    script over messages matching an IMAP search -- the retroactive pass
+    done properly, server-side. It is experimental and off by default, so
+    it is almost certainly absent here; one CAPABILITY line settles it
+    either way, and an answer on the record beats an assumption.
+    """
+    move = "MOVE" in capabilities
+    uidplus = "UIDPLUS" in capabilities
+    filter_sieve = any(
+        item.upper().startswith("FILTER=SIEVE") for item in capabilities
+    )
+
+    if filter_sieve:
+        server_side = (
+            "yes -- this server can apply a Sieve script to existing mail "
+            "itself.\nmailctl still uses its own client-side pass; the "
+            "server-side path is not implemented."
+        )
+
+    else:
+        server_side = (
+            "no -- no server-side retroactive filtering (Dovecot "
+            "imap_filter_sieve is not enabled).\nmailctl's client-side "
+            "search-and-move pass is the only option here."
+        )
+
+    return [
+        Fact("MOVE", "yes" if move else "no (COPY+EXPUNGE)"),
+        Fact("UIDPLUS", "yes" if uidplus else "no"),
+        Fact("FILTER=SIEVE", server_side),
+    ]

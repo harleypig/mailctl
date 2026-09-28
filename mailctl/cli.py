@@ -620,7 +620,7 @@ def print_script_diff(report: DisplayDiff) -> None:
             "below shows only the rule change; no rule body is altered."
         )
 
-    print("\n--- sieve diff ---")
+    print(f"\n--- {report.label} diff ---")
     # A rule built from a message carries that message's text, and a stored
     # script can hold any bytes: both are untrusted by the time they print.
     print(safe_text(report.text) if report.text.strip() else "(no change)")
@@ -1191,15 +1191,11 @@ def cmd_test(args) -> int:
         f"Password:  {state}{password_origin_suffix(config)}"
         f"{'  -- see the error below' if failure else ''}"
     )
-    print(
-        f"IMAP:      {config.imap_host}:{config.imap_port}  "
-        f"({origin_of(config, host='imap_host', port='imap_port')})"
-    )
-    print(
-        f"Sieve:     {config.host}:{config.sieve_port} "
-        f"(tls={config.sieve_tls})  "
-        f"({origin_of(config, port='sieve_port', tls='sieve_tls')})"
-    )
+
+    for fact in engine.connection_facts(config):
+        origin = origin_of(config, **dict(fact.settings))
+        print(f"{fact.label + ':':<10} {fact.text}  ({origin})")
+
     print(
         f"Folder:    {config.source_folder}  "
         f"({origin_of(config, 'source_folder')})  "
@@ -1209,63 +1205,66 @@ def cmd_test(args) -> int:
     if failure is not None:
         raise failure
 
+    words = engine.wording(config)
+
     with connect(config, args) as sessions:
-        sieve = engine.probe_sieve(sessions)
+        rules = engine.probe_rules(sessions)
+        extensions = engine.report_extensions(sessions, rules, config)
 
-        print("\nManageSieve: connected")
+        print(f"\n{words.rules_service}: connected")
 
-        # Every row is read from this server's CAPABILITY response, not
-        # assumed. Nothing here asserts what MXRoute does or does not
-        # enable -- only 'redirect' is a documented MXRoute policy, and a
-        # policy is not a capability, so it would not show up here at all.
-        print("  Sieve extensions (* = mailctl's own rules can need it):")
-        print_extension_table(
-            engine.report_extensions(sessions, sieve, config)
-        )
-        print(f"\n  active script: {sieve.active or '(none)'}")
-        print(f"  other scripts: {', '.join(sieve.others) or '(none)'}")
+        # Every row is read from the server's own capability listing, not
+        # assumed; a host's policies are not capabilities, so they come
+        # from the provider's notes at the end instead.
+        if extensions:
+            print(
+                f"  {words.extensions} (* = mailctl's own rules can need it):"
+            )
+            print_extension_table(extensions)
+
+        print(f"\n  active script: {rules.active or '(none)'}")
+        print(f"  other scripts: {', '.join(rules.others) or '(none)'}")
         print(
             "  (mailctl always edits the ACTIVE script under its own "
             "name; it never guesses one.)"
         )
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        imap = engine.probe_imap(sessions)
+        mail = engine.probe_mail(sessions)
 
-        print("\nIMAP: connected")
-        print(f"  delimiter: {imap.delimiter!r}")
+        print(f"\n{words.mail_service}: connected")
+        print(f"  delimiter: {mail.delimiter!r}")
         print(
-            f"  folders:   {imap.folder_count} "
-            f"({imap.folder_count - len(imap.unsubscribed)} subscribed)"
+            f"  folders:   {mail.folder_count} "
+            f"({mail.folder_count - len(mail.unsubscribed)} subscribed)"
         )
 
-        if imap.unsubscribed:
+        if mail.unsubscribed:
             print(
                 f"  not subscribed (exist, but webmail will not show them): "
-                f"{', '.join(imap.unsubscribed)}"
+                f"{', '.join(mail.unsubscribed)}"
             )
-        print(
-            f"  MOVE:      {'yes' if imap.has_move else 'no (COPY+EXPUNGE)'}"
-        )
-        print(f"  UIDPLUS:   {'yes' if imap.has_uidplus else 'no'}")
 
-        report_filter_sieve(imap.has_filter_sieve)
+        print_facts(mail.facts)
 
-    print(
-        "\nNote: MXRoute disables the Sieve 'redirect' action as a matter "
-        "of policy (2024-03-21) -- use a panel forwarder, which handles "
-        "SRS properly. That is the only MXRoute restriction mailctl "
-        "asserts; everything else above came from the server."
-    )
-    print(
-        "\nNote: this covers the Sieve stage only. Mail may first pass a "
-        "DirectAdmin panel filter (an Exim filter, run before Sieve) that "
-        "mailctl cannot see or change; a message it drops never reaches "
-        "any Sieve rule. Whether your account has one is unconfirmed -- "
-        "see 'A filtering stage mailctl cannot see' in the README."
-    )
+    for note in words.notes:
+        print(f"\nNote: {note}")
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def print_facts(facts) -> None:
+    """One labelled fact per line, a long one's lines under its first."""
+    for fact in facts:
+        label = f"{fact.label}:"
+        first, *rest = fact.text.split("\n")
+        indent = " " * (3 + max(len(label), 10))
+
+        print(f"  {label:<10} {first}")
+
+        for line in rest:
+            print(f"{indent}{line}")
 
 
 # ----------------------------------------------------------------------------
@@ -1352,38 +1351,6 @@ def password_origin_suffix(config) -> str:
 
 
 # ----------------------------------------------------------------------------
-def report_filter_sieve(present: bool) -> None:
-    """Report whether the server can run Sieve retroactively itself.
-
-    Dovecot's Pigeonhole ``imap_filter_sieve`` plugin advertises
-    ``FILTER=SIEVE``, which lets a client ask the *server* to run a Sieve
-    script over messages matching an IMAP search -- the retroactive pass
-    done properly, server-side. It is experimental and off by default, so
-    it is almost certainly absent here; one CAPABILITY line settles it
-    either way, and an answer on the record beats an assumption.
-    """
-    if present:
-        print(
-            "  FILTER=SIEVE: yes -- this server can apply a Sieve script "
-            "to existing mail itself."
-        )
-        print(
-            "                mailctl still uses its own client-side pass; "
-            "the server-side path is not implemented."
-        )
-
-    else:
-        print(
-            "  FILTER=SIEVE: no -- no server-side retroactive filtering "
-            "(Dovecot imap_filter_sieve is not enabled)."
-        )
-        print(
-            "                mailctl's client-side search-and-move pass "
-            "is the only option here."
-        )
-
-
-# ----------------------------------------------------------------------------
 def cmd_add(args) -> int:
     """Add a rule to the active script, then apply it to existing mail."""
     config = configure(args)
@@ -1422,7 +1389,7 @@ def run_add(config, args, criteria: Criteria) -> int:
 
         print(f"\nRule {plan.name!r} on script {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
-        print(f"  then:  {describe_actions(plan.actions)}")
+        print(f"  then:  {plan.summary}")
 
         # The placement findings come before the diff. A diff shows what
         # changes; it cannot show that the change lands after a rule whose
@@ -1446,27 +1413,6 @@ def run_add(config, args, criteria: Criteria) -> int:
         apply_to_existing(sessions, config, criteria, args, spec, folder)
 
     return 0
-
-
-# ----------------------------------------------------------------------------
-def describe_actions(actions: list[tuple]) -> str:
-    """Render action tuples as a readable summary line.
-
-    Sieve escaping is undone for display: the summary should say
-    ``addflag \\Seen``, which is the flag the user asked for, rather than
-    the ``\\\\Seen`` that has to appear in the script source. The diff
-    printed underneath shows the real source, so nothing is hidden.
-    """
-    return "; ".join(
-        " ".join(unescape_sieve_string(str(part)) for part in action)
-        for action in actions
-    )
-
-
-# ----------------------------------------------------------------------------
-def unescape_sieve_string(value: str) -> str:
-    """Reverse ``escape_sieve_string`` for display purposes only."""
-    return value.replace('\\"', '"').replace("\\\\", "\\")
 
 
 # ----------------------------------------------------------------------------

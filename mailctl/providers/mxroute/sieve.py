@@ -51,6 +51,7 @@ __all__ = [
     "candidate_rule",
     "check_disabled_extensions",
     "check_rule_extensions",
+    "describe_actions",
     "display_diff",
     "merge_rule",
     "move_rule",
@@ -189,6 +190,27 @@ def _action_tuples(spec: ActionSpec, folder: str, use_create: bool) -> list:
         actions.append(("keep",))
 
     return actions
+
+
+# ----------------------------------------------------------------------------
+def describe_actions(actions: list) -> str:
+    """Render action tuples as a readable summary line.
+
+    Sieve escaping is undone for display: the summary should say
+    ``addflag \\Seen``, which is the flag the user asked for, rather than
+    the ``\\\\Seen`` that has to appear in the script source. The diff
+    printed underneath shows the real source, so nothing is hidden.
+    """
+    return "; ".join(
+        " ".join(_unescape_sieve_string(str(part)) for part in action)
+        for action in actions
+    )
+
+
+# ----------------------------------------------------------------------------
+def _unescape_sieve_string(value: str) -> str:
+    """Reverse ``escape_sieve_string`` for display purposes only."""
+    return value.replace('\\"', '"').replace("\\\\", "\\")
 
 
 # ----------------------------------------------------------------------------

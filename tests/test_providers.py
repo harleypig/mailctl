@@ -51,6 +51,7 @@ from mailctl.providers.base import (
     OPERATIONS,
     DeliveryCreate,
     DisplayDiff,
+    Fact,
     FolderCreation,
     FolderListing,
     MailActionPlan,
@@ -60,6 +61,7 @@ from mailctl.providers.base import (
     Provider,
     ProviderCapabilities,
     Specific,
+    Wording,
     declined,
 )
 from mailctl.providers.base import (
@@ -94,6 +96,12 @@ class FakeProvider(Provider):
 
     name = "fake"
     capabilities = FULL
+    wording = Wording(
+        rules_service="Fake rules",
+        mail_service="Fake mail",
+        extensions="Fake extensions",
+        notes=("the fake host keeps its rules as JSON.",),
+    )
     opened = 0
 
     # ------------------------------------------------------------------------
@@ -138,6 +146,18 @@ class FakeProvider(Provider):
     @classmethod
     def check_actions(cls, config, actions):
         pass
+
+    @classmethod
+    def describe_actions(cls, actions):
+        return ", ".join(actions)
+
+    @classmethod
+    def connection_facts(cls, config):
+        return [Fact("Fake", "fake.example", (("host", "host"),))]
+
+    @classmethod
+    def mail_facts(cls, capabilities):
+        return [Fact("Labels", "yes\nevery folder is a label")]
 
     @classmethod
     def candidate_rule(cls, name, criteria, actions):
@@ -1053,3 +1073,59 @@ def test_the_cli_adds_a_default_rule_on_a_host_without_stop(fakes, capsys):
 
     assert code == 0, captured.err
     assert '"actions": ["file:INBOX.Lists"]}]' in captured.out
+
+
+# ############################################################################
+# The host's own wording is the provider's data (#99)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_diff_and_its_actions_are_shown_in_the_hosts_own_words(
+    fakes, capsys
+):
+    """No Sieve heading and no Sieve tuple rendering on a JSON host."""
+    code = cli.main(
+        [
+            "add",
+            "--provider",
+            "fake",
+            "--from",
+            GITHUB,
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--no-apply",
+        ]
+    )
+
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "  then:  file:INBOX.Lists, stop\n" in out
+    assert "\n--- json diff ---\n" in out
+    assert "sieve" not in out.lower()
+
+
+# ----------------------------------------------------------------------------
+def test_the_test_report_is_laid_out_from_the_providers_data(
+    fakes, capsys, monkeypatch
+):
+    """Service names, capability facts, and closing notes are all the
+    provider's; nothing about MXroute or Sieve is left in the CLI."""
+    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
+
+    code = cli.main(["test", "--provider", "fake"])
+
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "\nFake:      fake.example  (default)\n" in out
+    assert "\nFake rules: connected\n" in out
+    assert "\nFake mail: connected\n" in out
+    assert "\n  Labels:    yes\n             every folder is a label\n" in out
+    assert "\nNote: the fake host keeps its rules as JSON.\n" in out
+    assert "extensions" not in out
+    assert "sieve" not in out.lower()
+    assert "MXRoute" not in out
+    assert "Exim" not in out
