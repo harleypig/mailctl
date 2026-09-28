@@ -15,6 +15,24 @@ BUG FIXES:
   server that does not answer. Folders that already exist are found
   exactly as before.
 
+* **The "may never run" warning no longer fires on every rule that shares
+  a header with an earlier `allof`** ([#117]). An earlier rule that needs
+  several conditions at once was reported against any new rule testing
+  one of its headers, whatever the values. It is now reported only when
+  every one of its conditions could hold on the same message: a new rule
+  on a different From address than the earlier rule's is no longer
+  flagged. The definite "never runs" finding is unchanged.
+* **A default rule name keeps its accented and non-Latin letters**
+  ([#118]). `mailctl add --subject "Café"` named the rule `subject-caf`;
+  it is now `subject-café`, and a CJK subject keeps its characters too.
+  The name reads back unchanged from the script's `# rule:[...]` marker.
+* **`mailctl list` no longer prints a blank line under the only script**
+  ([#119]). The ManageSieve library read a stray line break in the
+  server's script listing as a script with an empty name; `list` showed
+  it as a line of two spaces while `mailctl test` said there were no
+  other scripts. An empty name is now dropped where the listing is read,
+  so both commands agree.
+
 ## 0.8.1
 
 ENHANCEMENTS:
@@ -712,3 +730,7 @@ NOTES:
 [#95]: https://github.com/harleypig/mailctl/issues/95
 [#97]: https://github.com/harleypig/mailctl/issues/97
 [#116]: https://github.com/harleypig/mailctl/issues/116
+
+[#117]: https://github.com/harleypig/mailctl/issues/117
+[#118]: https://github.com/harleypig/mailctl/issues/118
+[#119]: https://github.com/harleypig/mailctl/issues/119

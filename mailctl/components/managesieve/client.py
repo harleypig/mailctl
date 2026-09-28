@@ -458,7 +458,14 @@ class SieveSession:
 
     # ------------------------------------------------------------------------
     def list_scripts(self) -> tuple[str | None, list[str]]:
-        """Return ``(active_script, other_scripts)``."""
+        """Return ``(active_script, other_scripts)``.
+
+        An empty name is dropped. sievelib splits the listing on any line
+        break and keeps a line it cannot parse as a name with its quotes
+        stripped, so a stray CR or LF in the response becomes a script
+        called ``""``. No script can have that name: RFC 5804 reserves
+        ``SETACTIVE ""`` for deactivating every script.
+        """
         client = self._require_client()
 
         try:
@@ -472,7 +479,7 @@ class SieveSession:
 
         active, others = result
 
-        return (active, list(others or []))
+        return (active or None, [name for name in others or [] if name])
 
     # ------------------------------------------------------------------------
     def active_script_name(self) -> str | None:

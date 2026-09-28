@@ -1,0 +1,12 @@
+$ mailctl list
+exit: 0
+--- stdout
+* managesieve   (active)
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls

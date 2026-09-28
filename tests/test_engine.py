@@ -30,7 +30,11 @@ from mailctl.engine import (
 )
 from mailctl.providers.mxroute import MxrouteProvider
 from mailctl.providers.mxroute.imap import new_imap_session
-from mailctl.providers.mxroute.sieve import parse_script
+from mailctl.providers.mxroute.sieve import (
+    merge_rule,
+    parse_script,
+    render_script,
+)
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
 NO_MAILBOX = ["fileinto", "imap4flags"]
@@ -325,6 +329,46 @@ def test_a_default_folder_needs_fileinto_like_an_explicit_one(imap_config):
 # ----------------------------------------------------------------------------
 def test_the_default_rule_name_is_derived_from_the_first_criterion():
     assert engine.default_rule_name(criteria()) == "from-noreply-github-com"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("Café", "subject-café", id="accented"),
+        pytest.param("Cafe\u0301 Menu", "subject-café-menu", id="combining"),
+        pytest.param("Ünïcödé_Test", "subject-ünïcödé-test", id="underscore"),
+        pytest.param("会議 のお知らせ", "subject-会議-のお知らせ", id="cjk"),
+    ],
+)
+def test_the_default_rule_name_keeps_non_ascii_letters(value, expected):
+    """``Café`` used to become ``subject-caf`` (#118)."""
+    name = engine.default_rule_name(criteria("Subject", value))
+
+    assert name == expected
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("value", ["Café", "会議のお知らせ"])
+def test_a_non_ascii_default_name_round_trips_through_the_script(value):
+    """The name written into ``# rule:[...]`` is the name read back."""
+    terms = criteria("Subject", value)
+    name = engine.default_rule_name(terms)
+
+    merged = merge_rule(
+        "",
+        name,
+        terms.sieve_conditions(),
+        [("fileinto", "INBOX.Archive"), ("stop",)],
+        terms.sieve_matchtype(),
+    )
+
+    assert f"# rule:[{name}]" in merged
+    rendered = render_script(parse_script(merged))
+
+    assert rule_names(parse_script(merged)) == [name]
+    assert f"# rule:[{name}]" in rendered
+    assert rule_names(parse_script(rendered)) == [name]
 
 
 # ############################################################################

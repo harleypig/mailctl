@@ -613,6 +613,62 @@ def _tests_overlap(left: HeaderTest, right: HeaderTest) -> bool:
 
 
 # ----------------------------------------------------------------------------
+def _disjoint(left: HeaderTest, right: HeaderTest) -> bool:
+    """True when two tests on one header provably want different values.
+
+    The opposite of :func:`_tests_overlap` only where both tests can be
+    compared at all. A test :func:`_comparable` refuses is never disjoint
+    from anything, because nothing here is entitled to say it is.
+    """
+    if _fold(left.header) != _fold(right.header):
+        return False
+
+    if not _comparable(left) or not _comparable(right):
+        return False
+
+    return not _tests_overlap(left, right)
+
+
+# ----------------------------------------------------------------------------
+def _conjunction_overlaps(broad: Rule, narrow: Rule) -> bool:
+    """Decide whether a broad ``allof`` could fire on the narrow rule's mail.
+
+    An ``allof`` fires only when **every** one of its conditions holds, so
+    one condition that cannot hold alongside the narrow rule is enough to
+    rule the pair out. The live account's ``Github Payments`` is the shape:
+    it needs From to contain ``noreply@github.com``, so it cannot catch
+    mail a rule keyed on another From address is waiting for, whatever its
+    Subject and To conditions say. Warning about every such pair is what
+    made the check fire on nearly every new rule (#117).
+
+    "Cannot hold" is :func:`_disjoint`: the same header, keys that do not
+    overlap. That is the bar :func:`_possible` already applies to a
+    disjunctive rule, and it shares its blind spot -- one From line naming
+    both addresses -- for the reason given there.
+
+    * narrow ``anyof`` -- one of its tests on a shared header has to be
+      free of every broad condition, since that test alone can be what
+      fires it.
+    * narrow ``allof`` -- all of its tests hold together, so no pair of
+      them may be disjoint.
+    """
+    broad_headers = {_fold(test.header) for test in broad.tests}
+
+    if narrow.combinator == ALLOF:
+        return not any(
+            _disjoint(wide, tight)
+            for wide in broad.tests
+            for tight in narrow.tests
+        )
+
+    return any(
+        _fold(tight.header) in broad_headers
+        and not any(_disjoint(wide, tight) for wide in broad.tests)
+        for tight in narrow.tests
+    )
+
+
+# ----------------------------------------------------------------------------
 def _possible(broad: Rule, narrow: Rule) -> str:
     """Return POSSIBLE when two rules could plausibly catch the same mail.
 
@@ -633,11 +689,12 @@ def _possible(broad: Rule, narrow: Rule) -> str:
     * a test on a shared header that :func:`_comparable` refuses -- a
       ``:matches`` glob, a non-default comparator, a non-ASCII key -- all
       undecidable here by design;
-    * a broad ``allof`` -- it may or may not fire, depending on the message;
-    * the keys actually overlap, one sitting inside the other.
+    * the keys actually overlap, one sitting inside the other;
+    * a broad ``allof`` whose every condition could hold on the same
+      message as the narrow rule's -- see :func:`_conjunction_overlaps`.
 
     Two distinct addresses tested with ``:contains`` on the same header
-    fall through all four and stay silent. They can still both match a
+    fall through all of these and stay silent. They can still both match a
     message carrying both addresses -- a To line with two recipients -- but
     that is a different and much rarer thing than one rule shadowing
     another, and warning about it on every pair costs more than it finds.
@@ -658,13 +715,16 @@ def _possible(broad: Rule, narrow: Rule) -> str:
     if not shared:
         return ""
 
+    if not _disjunctive(broad):
+        return POSSIBLE if _conjunction_overlaps(broad, narrow) else ""
+
     uncomparable = any(
         not _comparable(test)
         for test in (*broad.tests, *narrow.tests)
         if _fold(test.header) in shared
     )
 
-    if uncomparable or not _disjunctive(broad):
+    if uncomparable:
         return POSSIBLE
 
     overlapping = any(
