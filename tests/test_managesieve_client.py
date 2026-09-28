@@ -479,3 +479,26 @@ def test_a_whole_response_still_reads_one_byte_at_a_time(no_hang):
         "managesieve",
         ["other"],
     )
+
+
+# ############################################################################
+# The script list (#119)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "data",
+    [
+        pytest.param(b'"managesieve" ACTIVE\r\r\nOK "x"\r\n', id="stray-cr"),
+        pytest.param(b'"managesieve" ACTIVE\n\r\nOK "x"\r\n', id="stray-lf"),
+        pytest.param(b'"managesieve" ACTIVE\r\n""\r\nOK "x"\r\n', id="empty"),
+    ],
+)
+def test_an_empty_script_name_is_not_listed(data):
+    """sievelib turns a stray line break into a script called ``""``.
+
+    ``mailctl list`` printed it as a blank line under the only script
+    while ``mailctl test`` said there were no others.
+    """
+    assert open_session(data).list_scripts() == ("managesieve", [])

@@ -26,6 +26,12 @@ BUG FIXES:
   ([#118]). `mailctl add --subject "Café"` named the rule `subject-caf`;
   it is now `subject-café`, and a CJK subject keeps its characters too.
   The name reads back unchanged from the script's `# rule:[...]` marker.
+* **`mailctl list` no longer prints a blank line under the only script**
+  ([#119]). The ManageSieve library read a stray line break in the
+  server's script listing as a script with an empty name; `list` showed
+  it as a line of two spaces while `mailctl test` said there were no
+  other scripts. An empty name is now dropped where the listing is read,
+  so both commands agree.
 
 ## 0.8.1
 
@@ -727,3 +733,4 @@ NOTES:
 
 [#117]: https://github.com/harleypig/mailctl/issues/117
 [#118]: https://github.com/harleypig/mailctl/issues/118
+[#119]: https://github.com/harleypig/mailctl/issues/119

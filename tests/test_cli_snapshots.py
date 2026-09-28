@@ -64,8 +64,9 @@ class FakeSieveClient:
     """A stand-in for ``SieveClient`` with a script store."""
 
     # ------------------------------------------------------------------------
-    def __init__(self, caps, active, script, reject, others=None):
+    def __init__(self, caps, active, script, reject, others=None, stray=0):
         self.caps = caps
+        self.stray = stray
         self.scripts = {} if active is None else {active: script}
         self.scripts.update(others or {})
         self.active = active
@@ -88,7 +89,8 @@ class FakeSieveClient:
 
         others = sorted(name for name in self.scripts if name != self.active)
 
-        return (self.active, others)
+        # sievelib's reading of a stray line break in the listing (#119).
+        return (self.active, others + [""] * self.stray)
 
     # ------------------------------------------------------------------------
     def getscript_bytes(self, name):
@@ -148,8 +150,9 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # (the text of config.toml), file (the text of a file that "<FILE>" in
 # argv is replaced with the path of; mode 0600 unless file_mode), env
 # (the text of a .env written, mode 0600, into the directory the command
-# runs in), and mail / flags
-# (extra messages and their IMAP flags, by UID).
+# runs in), mail / flags
+# (extra messages and their IMAP flags, by UID), and stray (how many empty
+# names the script listing carries).
 
 # Host from the env file over the exported MAILCTL_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
@@ -320,6 +323,9 @@ SCENARIOS = {
     "view-missing": (["view", "99"], MAIL),
     "list": (["list"], {}),
     "list-verbose": (["list", "--verbose"], {}),
+    # One script, and a listing sievelib read an empty name out of (#119).
+    "list-stray-line": (["list"], {"stray": 1}),
+    "test-stray-line": (["test"], {"stray": 1}),
     "show": (["show"], {}),
     "rules": (["rules"], {}),
     "folders": (["folders"], {}),
@@ -849,6 +855,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         options.get("script", script),
         options.get("reject", False),
         options.get("others"),
+        options.get("stray", 0),
     )
 
     imap.messages = {
