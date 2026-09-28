@@ -33,4 +33,11 @@ test:
 testlive:
 	MAILCTL_LIVE=1 pytest -v $(TESTARGS)
 
-.PHONY: default venv install fmt lint test testlive
+# Read-only checks against the configured account, as TAP: only read-only
+# subcommands and --dry-run are sent. TESTARGS names the checks to run
+# (default all; `scripts/live-readonly.sh --list` names them), e.g.
+#   make livecheck TESTARGS='list folders'
+livecheck:
+	scripts/live-readonly.sh $(TESTARGS)
+
+.PHONY: default venv install fmt lint test testlive livecheck
