@@ -470,6 +470,10 @@ In practice:
 A default is fine where the protocol supplies one (port 4190); an **assumption
 about MXroute's configuration** is not.
 
+**Drift from a stored baseline is warned about, never refused**
+([#19][i19]): the live server wins, the difference is reported, and
+refreshing the baseline is an explicit command that shows the diff and asks.
+
 ## Rule conventions
 
 - **Merge, never overwrite.** A new rule is merged into the parsed existing
@@ -536,6 +540,21 @@ about MXroute's configuration** is not.
   one side only. Where IMAP `SEARCH` is coarser than the Sieve comparator, the
   results are re-checked client-side against the real Sieve semantics so the
   retroactive pass matches what the filter will do going forward.
+- **A further Sieve extension is adopted only when it passes three tests**
+  ([#17][i17]), so each candidate is judged against these rather than
+  argued from scratch:
+  1. **The retroactive pass can reproduce it.** The IMAP half must be able
+     to apply the same effect to mail already delivered. An extension with
+     no IMAP equivalent makes the two halves disagree, which is the failure
+     this tool exists to prevent — that alone is grounds to decline.
+  2. **It is registered in `EMIT_TABLE` with a decided absence path.** The
+     extension it needs is declared there like every other emitted feature,
+     and the rule says what happens on a server that does not advertise it:
+     a named fallback, or a refusal before anything is written. Never an
+     unconditional `require` that fails on the server.
+  3. **The provider's own panel does not already do it better.** Duplicating
+     the webmail badly is worse than not doing it; this is why `vacation`
+     (autoresponders) stays refused although the server may advertise it.
 
 ## Credentials
 
@@ -883,6 +902,7 @@ will read it.
 [i99]: https://github.com/harleypig/mailctl/issues/99
 [i26]: https://github.com/harleypig/mailctl/issues/26
 [rec-mxroute]: ../mailctl/providers/mxroute/RECORD.md
+[i17]: https://github.com/harleypig/mailctl/issues/17
 [i18]: https://github.com/harleypig/mailctl/issues/18
 [i19]: https://github.com/harleypig/mailctl/issues/19
 [i90]: https://github.com/harleypig/mailctl/issues/90
