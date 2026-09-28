@@ -163,14 +163,18 @@ Built on two libraries, both of which the code wraps rather than exposes:
     quirks yet.
 - `mailctl/providers/` — **layer 2** ([ADR 0006][adr6]): one package per
   host, each composing layer-1 components (see *Providers* below).
-  - `base.py` — the `Provider` interface, `ProviderCapabilities`, and the
-    provider-neutral model the engine speaks (`ActionSpec`,
-    `FolderListing`, and the folder, message, placement, and diff records
-    re-exported from layer 1).
+  - `base.py` — the `Provider` interface and `ProviderCapabilities`,
+    re-exporting the model so one import reaches both.
+  - `model.py` — the provider-neutral model the engine speaks:
+    `ActionSpec`, `Placement`, `DisplayDiff`, the folder and message
+    records, and the host's own words as data (`Wording`, `Fact`). It and
+    `base.py` import nothing from layer 1 (`tests/test_layer_purity.py`).
   - `registry.py` — `PROVIDERS`, every provider by name, and
     `provider_for(config)`.
   - `mxroute/provider.py` — `MxrouteProvider`: ManageSieve for rules, IMAP
-    for mail, translating both ways.
+    for mail, translating both ways, and MXroute's wording and notes.
+  - `mxroute/records.py` — the translation between the neutral model and
+    the components' own records.
   - `mxroute/sieve.py` — what is MXroute's rather than the protocol's:
     `MXROUTE_FORBIDDEN_ACTIONS`, the Roundcube `# rule:[NAME]` dialect and
     the script functions bound to it, the translation of an `ActionSpec`
@@ -180,7 +184,8 @@ Built on two libraries, both of which the code wraps rather than exposes:
   - `mxroute/imap.py` — the same for IMAP: `imap_session()` maps `Config`
     onto an `ImapSession` (port 143 is STARTTLS, any other implicit TLS)
     and adds the full-address login advice and the hints that name
-    mailctl's settings.
+    mailctl's settings, and says what `MOVE`, `UIDPLUS`, and
+    `FILTER=SIEVE` mean as the facts `mailctl test` shows.
 - `mailctl/rules.py` — reads a parsed script into a flat rule model and
   reports which rules cannot fire where they are (shadowing, in both
   directions); offline.
@@ -270,8 +275,8 @@ parsed script becomes `Rule` values.
   defers them.
 - **Differences are data, never a branch.** A provider declares
   `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, its `actions`,
-  `extensions`, its namespaced `specifics` with their schema, and the
-  operations it `declined`. The engine reads those and never asks which
+  `extensions`, its namespaced `specifics` with their schema, the
+  connection `settings` it reads, and the operations it `declined`. The engine reads those and never asks which
   provider it has.
 - **Refused before any network work.** `engine.check_rule` refuses a rule
   the provider cannot express, through one error naming the provider, the
@@ -281,6 +286,45 @@ parsed script becomes `Rule` values.
   what it declines matches its capabilities. `tests/test_providers.py`
   holds this. It also drives a fake second provider through the engine to
   show the calls match `mxroute`'s.
+- **The neutral model is the provider layer's own.** `providers/model.py`
+  defines every record the engine and a front-end build or read, and it
+  and `base.py` import nothing from a component. A component keeps its
+  own records, and the provider translates (`mxroute/records.py`), so a
+  provider with no Sieve never imports the Sieve component ([#99][i99]).
+- **The host's words are the provider's data.** A front-end lays out one
+  report for every provider and fills it from `Provider.wording` (service
+  names, what extensions are called, closing notes such as MXroute's
+  redirect and Exim/DirectAdmin notes), `connection_facts` and
+  `mail_facts` (labelled lines), `DisplayDiff.label` (the diff heading),
+  and `describe_actions` (a rule's actions in words). Nothing about one
+  host is written into `cli.py`.
+- **A default comes from the capabilities.** `ActionSpec.stop` None is the
+  provider's default, which `engine.resolve_stop` settles from the `stop`
+  capability: a host that cannot stop is never asked to, so its default
+  rules are not refused. `--no-stop` sends False; an explicit True is
+  still refused where `stop` is not declared.
+- **Offered only what it declares** ([#26][i26] constraint 4). The CLI
+  parses twice: a first pass reads only `--provider` and `--env-file` and
+  resolves the provider, then the parsers are built from its capabilities.
+  Without `ordering`, the placement flags and `move-rule` are not offered;
+  without `stop`, `--no-stop`; without `rule_sets`, `add`'s `--script` and
+  `--activate`; without `extensions`, `--disable-extension`. The
+  connection flags (`--host`, `--imap-*`, `--sieve-*`) are offered only
+  where `ProviderCapabilities.settings` names them, with the help it
+  gives — they keep their names and their `MAILCTL_*` variables, being
+  `mxroute`'s connection options. An unoffered option is **hidden, not
+  removed**: given anyway it still parses and meets the engine's refusal
+  naming the provider, which stays the backstop for every front-end. A
+  first pass that cannot resolve a provider falls back to the default
+  provider's offer, and the run reports the problem. `mxroute` declares
+  everything, so its help is what it always was.
+- **A setting belongs to the provider that can use it.**
+  `disabled_extensions` keeps its name and its ladder, but only a provider
+  declaring `extensions` takes it; any other refuses it, before
+  connecting, naming the provider and where the setting came from. A
+  connection flag a provider does not read is refused the same way. An
+  ambient connection setting from the environment or the config file may
+  serve another provider, so only a flag is refused.
 - **Adding one is a record, a package, and a registry line**:
   `providers/<name>/RECORD.md` first (*Providers are probed and read*),
   then `providers/<name>/`, composing the layer-1 components it needs,
@@ -836,6 +880,8 @@ will read it.
 [i9]: https://github.com/harleypig/mailctl/issues/9
 [adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
+[i99]: https://github.com/harleypig/mailctl/issues/99
+[i26]: https://github.com/harleypig/mailctl/issues/26
 [rec-mxroute]: ../mailctl/providers/mxroute/RECORD.md
 [i18]: https://github.com/harleypig/mailctl/issues/18
 [i19]: https://github.com/harleypig/mailctl/issues/19
