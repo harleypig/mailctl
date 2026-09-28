@@ -25,6 +25,12 @@ BUG FIXES:
   through an answer, every command except fetching a script waited
   forever with no output. It now stops with an error saying the server
   closed the connection.
+* **A sender or subject written in raw UTF-8 is shown as sent** ([#97]).
+  `mailctl messages`, `mailctl view`, and the message preview before a
+  filter is derived showed a non-ASCII address such as `zoë@exemple.fr`
+  as replacement characters. They now show the text, still escaping any
+  control character in it. A header that is not valid UTF-8 reads as
+  before.
 
 ## 0.8.0
 
@@ -691,3 +697,4 @@ NOTES:
 [#102]: https://github.com/harleypig/mailctl/issues/102
 [ADR 0006]: adr/0006-two-layer-component-and-provider-architecture.md
 [#95]: https://github.com/harleypig/mailctl/issues/95
+[#97]: https://github.com/harleypig/mailctl/issues/97

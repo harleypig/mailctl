@@ -111,6 +111,12 @@ LATIN1_8BIT = (
 )
 
 
+# A raw UTF-8 header (RFC 6532), carrying a C1 control once decoded.
+UTF8_HEADER = (
+    "From: zoë@exemple.fr\r\nSubject: café \u009b31m\r\n\r\nhi\r\n"
+).encode()
+
+
 # ----------------------------------------------------------------------------
 @pytest.fixture
 def mailbox(fake_imap, monkeypatch):
@@ -120,6 +126,7 @@ def mailbox(fake_imap, monkeypatch):
         2: HOSTILE_8BIT,
         3: SPOOFED,
         4: LATIN1_8BIT,
+        5: UTF8_HEADER,
     }
     monkeypatch.setenv("MAILCTL_HOST", "mail.example.com")
     monkeypatch.setenv("MAILCTL_USER", "user@example.com")
@@ -209,6 +216,19 @@ def test_view_shows_the_escapes_and_keeps_the_text(run):
     assert "\\x9b31m" in output
     assert "progress\\x0dsafe tail" in output
     assert "bad\\x1b[1mname.bin" in output
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv", [("view", "5"), ("messages",)], ids=["view", "messages"]
+)
+def test_a_raw_utf8_header_is_shown_decoded_and_still_escaped(run, argv):
+    """Decoding raw UTF-8 (#97) turns bytes into a real C1 control too."""
+    output = run(*argv)
+
+    assert "zoë@exemple.fr" in output
+    assert "\\x9b" in output
+    assert_terminal_safe(output)
 
 
 # ----------------------------------------------------------------------------
