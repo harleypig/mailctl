@@ -458,6 +458,21 @@ def test_an_undecodable_8bit_header_is_still_printable(sessions, fake_imap):
 
 
 # ----------------------------------------------------------------------------
+def test_a_raw_utf8_header_reads_as_its_text(sessions, fake_imap):
+    """RFC 6532 mail is shown as sent, in the listing and the view (#97)."""
+    fake_imap.messages = {
+        1: "From: zoë@exemple.fr\r\nSubject: café\r\n\r\nhi\r\n".encode()
+    }
+
+    content = engine.read_message(sessions, "INBOX", 1)
+    listing = engine.list_messages(sessions, "INBOX", limit=1)
+
+    assert content.header("From") == "zoë@exemple.fr"
+    assert content.header("Subject") == "café"
+    assert listing.messages[0].sender == "zoë@exemple.fr"
+
+
+# ----------------------------------------------------------------------------
 def test_a_folded_header_is_unfolded():
     source = rfc822("Subject: one\r\n two", body="x")
 

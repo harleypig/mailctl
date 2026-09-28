@@ -306,8 +306,8 @@ def summarize(uid: int, data: dict, message, folder: str) -> MessageSummary:
     return MessageSummary(
         uid=uid,
         date=internal.strftime("%Y-%m-%d %H:%M:%S") if internal else "",
-        sender=decode_header_value(message.get("From", "")),
-        subject=decode_header_value(message.get("Subject", "")),
+        sender=decode_header_value(_utf8_header(message.get("From", ""))),
+        subject=decode_header_value(_utf8_header(message.get("Subject", ""))),
         folder=folder,
         size=data.get(b"RFC822.SIZE") or 0,
         flags=flag_names(data.get(b"FLAGS")),

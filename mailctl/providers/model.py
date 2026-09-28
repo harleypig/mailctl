@@ -80,7 +80,14 @@ def same_folder(left: str, right: str) -> bool:
 
 # ----------------------------------------------------------------------------
 def decode_header_value(raw: "str | Header") -> str:
-    """Decode RFC 2047 encoded words, falling back to the raw value."""
+    """Decode RFC 2047 encoded words, falling back to the raw value.
+
+    A raw 8-bit header (RFC 6532) is read as the UTF-8 it usually is,
+    rather than as replacement characters; one that is not valid UTF-8 is
+    read as before.
+    """
+    raw = _utf8_header(raw)
+
     try:
         return str(make_header(decode_header(raw)))
 
@@ -88,6 +95,30 @@ def decode_header_value(raw: "str | Header") -> str:
     # raises it, and one such header must not abort a whole listing.
     except (UnicodeDecodeError, LookupError, ValueError, HeaderParseError):
         return str(raw)
+
+
+# ----------------------------------------------------------------------------
+def _utf8_header(raw: "str | Header") -> "str | Header":
+    """Read ``email``'s ``unknown-8bit`` chunks as UTF-8 where they are.
+
+    The IMAP component has the same reading for its search re-check; the
+    layers may not import each other, so each keeps its own (ADR 0006).
+    """
+    if not isinstance(raw, Header):
+        return raw
+
+    try:
+        return "".join(
+            chunk.decode(
+                "utf-8" if charset in (None, "unknown-8bit") else charset
+            )
+            if isinstance(chunk, bytes)
+            else chunk
+            for chunk, charset in decode_header(raw)
+        )
+
+    except (UnicodeError, LookupError):
+        return raw
 
 
 # ############################################################################

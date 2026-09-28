@@ -3,7 +3,7 @@
 Everything above ``SieveClient`` in the suite runs on a client double.
 These tests run the real ``SieveClient`` -- sievelib's code and ours --
 against a fake *socket* that replays a server's bytes, because the gaps
-closed here (ADR 0006 S1, S4, S5, S8) live in how the wire is read:
+closed here (ADR 0006 S1, S4, S5, S8, S9) live in how the wire is read:
 
 * **S1 / #90** -- GETSCRIPT returns the server's exact bytes. sievelib's
   own reader turns CRLF into LF and drops the final line ending, so a
@@ -13,12 +13,15 @@ closed here (ADR 0006 S1, S4, S5, S8) live in how the wire is read:
 * **S5** -- the read timeout is the caller's, not a hard-coded 5 s.
 * **S8** -- nothing can switch on sievelib's debug output, which prints
   the base64 AUTHENTICATE payload: the password.
+* **S9 / #95** -- a connection that closes mid-response is an error.
+  sievelib's own reader asks for the next line forever.
 
 They also stand guard over sievelib's private names, which the wrapper
 reaches into; a sievelib release that renames one fails here first.
 """
 
 import inspect
+import signal
 import socket
 from typing import cast
 
@@ -30,6 +33,7 @@ from mailctl.components.managesieve import write_backup
 from mailctl.components.managesieve.client import (
     DEFAULT_TIMEOUT,
     SieveClient,
+    SieveConnectionError,
     SieveSession,
 )
 from mailctl.components.managesieve.servers import PLAIN
@@ -387,3 +391,91 @@ def test_even_a_forced_debug_flag_prints_nothing(monkeypatch, capsys):
 
     assert captured.out == ""
     assert captured.err == ""
+
+
+# ############################################################################
+# S9 / #95: a closed connection fails rather than hanging
+# ############################################################################
+
+# Seconds a truncated response may take to fail. sievelib's own reader
+# never returns, so the guard is what turns a hang into a red test.
+HANG_GUARD = 5
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def no_hang():
+    """Fail the test, rather than the run, if a read never returns."""
+
+    def hung(_signum, _frame):
+        raise AssertionError(f"still reading after {HANG_GUARD}s: a hang")
+
+    previous = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(HANG_GUARD)
+
+    yield
+
+    signal.alarm(0)
+    signal.signal(signal.SIGALRM, previous)
+
+
+# ----------------------------------------------------------------------------
+def test_sievelib_still_has_the_readers_the_client_replaces():
+    """A rename upstream would bypass the S9 overrides without a word."""
+    assert callable(getattr(client_module.Client, "_Client__read_line", None))
+    assert callable(getattr(client_module.Client, "_Client__read_block", None))
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "data",
+    [
+        pytest.param(b"", id="nothing"),
+        pytest.param(b'"IMPLEMENTATION" "Dove', id="mid-line"),
+        pytest.param(GREETING[:-20], id="before-the-status"),
+    ],
+)
+def test_a_greeting_cut_short_fails_to_connect(monkeypatch, no_hang, data):
+    """CAPABILITY is read by sievelib's reader, at connect and STARTTLS."""
+    sock = ScriptedSocket(data)
+    monkeypatch.setattr(
+        client_module.socket, "create_connection", lambda *a, **k: sock
+    )
+
+    with pytest.raises(SieveConnectionError, match="closed by server"):
+        connected()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "data",
+    [
+        pytest.param(b'"managesieve" ACT', id="mid-line"),
+        pytest.param(b"{20}\r\nmanage", id="mid-literal"),
+        pytest.param(b"{11}\r\nmanagesieve", id="after-the-literal"),
+        pytest.param(b'"managesieve" ACTIVE\r\n', id="before-the-status"),
+    ],
+)
+def test_a_script_list_cut_short_fails(no_hang, data):
+    with pytest.raises(MailctlError, match=r"LISTSCRIPTS.*closed by server"):
+        open_session(data, chunk=3).list_scripts()
+
+
+# ----------------------------------------------------------------------------
+def test_an_error_literal_cut_short_fails(no_hang):
+    """A NO whose reason is a literal reads it through the same path."""
+    session = open_session(b"NO {40}\r\nscript too")
+
+    with pytest.raises(MailctlError, match=r"PUTSCRIPT.*closed by server"):
+        session.put_script("s", "keep;")
+
+
+# ----------------------------------------------------------------------------
+def test_a_whole_response_still_reads_one_byte_at_a_time(no_hang):
+    """The overrides keep sievelib's contract, literals included."""
+    data = b'{5}\r\nother\r\n"managesieve" ACTIVE\r\nOK "Listed."\r\n'
+
+    assert open_session(data, chunk=1).list_scripts() == (
+        "managesieve",
+        ["other"],
+    )

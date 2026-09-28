@@ -450,6 +450,37 @@ def test_a_matched_message_carries_its_decoded_summary(
 
 
 # ----------------------------------------------------------------------------
+def test_a_raw_utf8_header_is_summarized_as_its_text(imap_session, fake_imap):
+    """RFC 6532: an 8-bit header is UTF-8, not replacement characters (#97)."""
+    fake_imap.messages = {
+        7: "From: zoë@exemple.fr\r\nSubject: café\r\n\r\n".encode()
+    }
+
+    criteria = Criteria()
+    criteria.add("from", "zoë@exemple.fr")
+
+    found = imap_session.search(criteria, "INBOX")
+
+    assert found[0].sender == "zoë@exemple.fr"
+    assert found[0].subject == "café"
+
+
+# ----------------------------------------------------------------------------
+def test_a_header_that_is_not_utf8_is_summarized_as_before(
+    imap_session, fake_imap
+):
+    """Latin-1 bytes still read as replacement characters, and never raise."""
+    fake_imap.messages = {7: b"From: Jos\xe9 <j@example.com>\r\n\r\n"}
+
+    criteria = Criteria()
+    criteria.add("from", "j@example.com")
+
+    found = imap_session.search(criteria, "INBOX")
+
+    assert found[0].sender == "Jos\ufffd <j@example.com>"
+
+
+# ----------------------------------------------------------------------------
 def test_a_search_failure_names_the_folder(imap_session, fake_imap):
     fake_imap.messages = {1: message("a@example.com")}
     fake_imap.failures["search"] = IMAPClientError("SEARCH rejected")
