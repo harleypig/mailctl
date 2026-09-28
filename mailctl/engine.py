@@ -176,12 +176,32 @@ def connect(
     unknown provider or a setting it refuses costs no connection.
     """
     provider = provider_for(config)
+    check_settings(provider, config)
     provider.validate(config)
 
     with provider.open(
         config, rules=rules, mail=mail, progress=progress
     ) as live:
         yield live
+
+
+# ----------------------------------------------------------------------------
+def check_settings(provider: type[Provider], config: Config) -> None:
+    """Refuse a setting the provider has no use for, rather than ignore it.
+
+    ``disabled_extensions`` narrows the extensions a provider emits, so it
+    means something only to one that declares ``extensions``; anywhere
+    else it would be a switch that looks like it took effect and did not.
+    """
+    if config.disabled_extensions and not provider.capabilities.extensions:
+        origin = config.sources.get("disabled_extensions")
+        where = f" (from {origin.describe()})" if origin is not None else ""
+
+        raise refuse(
+            provider.name,
+            f"take disabled_extensions{where}",
+            "it does not declare the 'extensions' capability",
+        )
 
 
 # ----------------------------------------------------------------------------

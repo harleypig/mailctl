@@ -1129,3 +1129,61 @@ def test_the_test_report_is_laid_out_from_the_providers_data(
     assert "sieve" not in out.lower()
     assert "MXRoute" not in out
     assert "Exim" not in out
+
+
+# ############################################################################
+# disabled_extensions belongs to a provider that declares extensions (#99)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_disabled_extensions_is_refused_by_a_host_without_extensions(
+    fakes, monkeypatch
+):
+    """A setting the provider has no use for is an error, never ignored."""
+    monkeypatch.setenv("MAILCTL_DISABLED_EXTENSIONS", "mailbox")
+    monkeypatch.setenv("MAILCTL_PROVIDER", "stopless")
+    config = load_config(argparse.Namespace())
+
+    with pytest.raises(MailctlError) as caught, engine.connect(config):
+        pass
+
+    assert str(caught.value) == (
+        "the stopless provider cannot take disabled_extensions (from "
+        "environment): it does not declare the 'extensions' capability"
+    )
+    assert StoplessProvider.opened == 0
+
+
+# ----------------------------------------------------------------------------
+def test_an_empty_disabled_extensions_is_no_request_at_all(fakes):
+    """Nothing disabled asks nothing of the provider."""
+    with engine.connect(Config(provider="stopless")) as live:
+        assert live.name == "stopless"
+
+
+# ----------------------------------------------------------------------------
+def test_the_cli_refuses_disable_extension_for_such_a_host(fakes, capsys):
+    code = cli.main(
+        ["list", "--provider", "stopless", "--disable-extension", "mailbox"]
+    )
+
+    assert code == 1
+    assert (
+        "the stopless provider cannot take disabled_extensions (from flag "
+        "--disable-extension)" in capsys.readouterr().err
+    )
+    assert StoplessProvider.opened == 0
+
+
+# ----------------------------------------------------------------------------
+def test_mxroute_still_takes_disabled_extensions(monkeypatch):
+    """The owner of the setting: accepted, and its names still checked."""
+    config = Config(disabled_extensions=frozenset({"mailbox"}))
+
+    MxrouteProvider.validate(config)
+
+    with pytest.raises(MailctlError, match="unknown Sieve extension"):
+        MxrouteProvider.validate(
+            Config(disabled_extensions=frozenset({"nope"}))
+        )

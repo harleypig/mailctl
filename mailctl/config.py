@@ -246,9 +246,10 @@ class Config:
     source_folder: str = DEFAULT_SOURCE_FOLDER
     backup_dir: Path = field(default_factory=lambda: default_backup_dir())
 
-    # Sieve extensions mailctl must not emit, lower-cased, whatever the
-    # server advertises. Which names are known is the engine's to judge,
-    # since the engine owns what gets emitted; this only parses the list.
+    # Rule-language extensions mailctl must not emit, lower-cased, whatever
+    # the server advertises. The provider owns it: one that declares
+    # 'extensions' judges which names are known, and any other refuses the
+    # setting outright. This only parses the list.
     disabled_extensions: frozenset[str] = frozenset()
 
     # The three credential flags. argparse makes them mutually exclusive,
