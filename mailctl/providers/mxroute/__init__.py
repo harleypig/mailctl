@@ -1,4 +1,10 @@
 """MXroute: ManageSieve plus IMAP, and the policies MXroute has set.
 
-Transitional until epic #92's step 4 gives it the provider interface.
+``provider`` is the provider-interface class; ``sieve`` and ``imap`` hold
+MXroute's side of each protocol -- its policies, its webmail's rule-name
+dialect, and the advice a failed login gains.
 """
+
+from .provider import MxrouteProvider
+
+__all__ = ["MxrouteProvider"]

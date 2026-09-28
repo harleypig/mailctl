@@ -11,9 +11,6 @@ The spam folder is the same naming trap on this host: on MXroute it is
 create a second folder next to the real one. The layer-1 session matches
 folder names against the server's own list rather than taking them on
 trust, which is what catches it; nothing here names the folder.
-
-Transitional: epic #92's step 4 folds this into the ``mxroute`` provider
-behind the provider interface.
 """
 
 from collections.abc import Callable, Iterator

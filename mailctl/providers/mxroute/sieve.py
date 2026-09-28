@@ -6,40 +6,62 @@ favour of its forwarders, rule names in the dialect of Roundcube (the
 webmail it runs), connection advice for its undocumented ManageSieve port,
 and the mapping from mailctl's ``Config`` to a session.
 
-Transitional: epic #92's step 4 folds this into the ``mxroute`` provider
-behind the provider interface.
+It is also where the provider's translation to Sieve happens: a neutral
+``ActionSpec`` becomes Sieve action tuples, and ``disabled_extensions`` is
+checked against what those tuples need. ``MxrouteProvider``
+(``provider.py``) presents all of it behind the provider interface.
 """
 
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 
 from sievelib import factory
 
 from ... import MailctlError
 from ...components.managesieve import (
+    KNOWN_EXTENSIONS,
+    REQUIRED_EXTENSIONS,
+    UNIMPLEMENTED_ACTIONS,
     DisplayDiff,
     NameDialect,
     Placement,
     SieveAuthenticationError,
     SieveConnectionError,
     SieveSession,
+    emitted_extensions,
     rewrite_hash_comments,
 )
 from ...components.managesieve import script as _script
 from ...components.managesieve.script import SIEVELIB_NAME_MARKER
-from ...config import DEFAULT, DEFAULT_SIEVE_PORT, DEFAULT_SIEVE_TLS, Config
+from ...config import (
+    DEFAULT,
+    DEFAULT_SIEVE_PORT,
+    DEFAULT_SIEVE_TLS,
+    Config,
+    Source,
+)
+from ...criteria import Criteria, escape_sieve_string
+from ...rules import Rule, rule_from_criteria
+from ..base import ActionSpec, ExtensionState
 
 __all__ = [
     "MXROUTE_FORBIDDEN_ACTIONS",
     "ROUNDCUBE_DIALECT",
     "ROUNDCUBE_NAME_MARKER",
+    "candidate_rule",
+    "check_disabled_extensions",
+    "check_rule_extensions",
     "display_diff",
     "merge_rule",
     "move_rule",
     "parse_script",
+    "reject_actions",
     "remove_rule",
     "render_script",
+    "report_extensions",
+    "required_extensions",
+    "sieve_actions",
     "sieve_session",
 ]
 
@@ -84,6 +106,196 @@ MXROUTE_FORBIDDEN_ACTIONS = {
 # visible and editable in the panel's filter UI, and rules the user wrote
 # there keep their names through a merge.
 ROUNDCUBE_NAME_MARKER = re.compile(r"#\s*rule:\[(?P<name>.+)\]")
+
+
+# ############################################################################
+# Refusals -- the actions mailctl will not emit here
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def reject_actions(requested: Iterable[str]) -> None:
+    """Refuse actions this tool will not generate, and say why.
+
+    ``redirect`` is refused because MXRoute has publicly disabled it -- a
+    policy, so the alternative is named. The rest are simply not
+    implemented here, and mailctl has no evidence either way about whether
+    this server supports them.
+    """
+    requested = set(requested)
+
+    for name, explanation in MXROUTE_FORBIDDEN_ACTIONS.items():
+        if name in requested:
+            raise MailctlError(explanation)
+
+    for name, label in UNIMPLEMENTED_ACTIONS.items():
+        if name in requested:
+            raise MailctlError(
+                f"mailctl does not generate the Sieve '{label}' action. "
+                f"This is a conservative choice of ours, not a documented "
+                f"MXRoute restriction -- the MXRoute control panel is where "
+                f"this feature lives if you need it. To see whether the "
+                f"server advertises the extension at all, run "
+                f"'mailctl test'."
+            )
+
+
+# ############################################################################
+# Translation -- the neutral actions, as Sieve
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def sieve_actions(spec: ActionSpec, folder: str, use_create: bool) -> list:
+    """Build the sievelib action tuples for the requested actions.
+
+    Flags are emitted before ``fileinto`` so the delivered copy carries
+    them, and ``stop`` last so later rules do not also fire.
+    """
+    actions = _action_tuples(spec, folder, use_create)
+
+    if not actions:
+        raise MailctlError(
+            "no action requested -- use --fileinto, --discard, --mark-read, "
+            "--flag, or --keep"
+        )
+
+    if spec.stop:
+        actions.append(("stop",))
+
+    return actions
+
+
+# ----------------------------------------------------------------------------
+def _action_tuples(spec: ActionSpec, folder: str, use_create: bool) -> list:
+    """The actions ahead of ``stop``; empty when nothing was asked for."""
+    actions: list[tuple] = []
+
+    for flag in spec.flags:
+        actions.append(("addflag", escape_sieve_string(flag)))
+
+    if spec.discard:
+        actions.append(("discard",))
+
+    elif folder:
+        if use_create:
+            actions.append(
+                ("fileinto", ":create", escape_sieve_string(folder))
+            )
+
+        else:
+            actions.append(("fileinto", escape_sieve_string(folder)))
+
+    if spec.keep:
+        actions.append(("keep",))
+
+    return actions
+
+
+# ----------------------------------------------------------------------------
+def required_extensions(
+    spec: ActionSpec, folder: str, use_create: bool
+) -> set[str]:
+    """Return the Sieve extensions the generated rule will need.
+
+    ``folder`` is the resolved target, so a folder that came from
+    ``Config.default_folder`` rather than ``spec.fileinto`` counts too.
+    """
+    return emitted_extensions(_action_tuples(spec, folder, use_create))
+
+
+# ----------------------------------------------------------------------------
+def candidate_rule(name: str, criteria: Criteria, actions: list) -> Rule:
+    """Read Sieve action tuples back as the neutral rule they make."""
+    stops = any(action[0] == "stop" for action in actions)
+    action_names = tuple(action[0] for action in actions)
+
+    return rule_from_criteria(name, criteria, action_names, stops=stops)
+
+
+# ############################################################################
+# disabled_extensions -- what the server advertises, less what is disabled
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def check_disabled_extensions(config: Config) -> None:
+    """Refuse a disabled_extensions entry mailctl does not know.
+
+    A typo would otherwise disable nothing and say nothing, which is the
+    one outcome a switch must not have.
+    """
+    unknown = sorted(config.disabled_extensions - set(KNOWN_EXTENSIONS))
+
+    if unknown:
+        raise MailctlError(
+            f"disabled_extensions: unknown Sieve extension(s) "
+            f"{', '.join(repr(name) for name in unknown)} "
+            f"(from {disabled_source(config).describe()}). Known: "
+            f"{', '.join(KNOWN_EXTENSIONS)}"
+        )
+
+
+# ----------------------------------------------------------------------------
+def disabled_source(config: Config) -> Source:
+    """Where disabled_extensions came from; a hand-built Config has none."""
+    return config.sources.get("disabled_extensions", Source(DEFAULT))
+
+
+# ----------------------------------------------------------------------------
+def disabled_message(config: Config, names: Iterable[str]) -> str:
+    """Name what is disabled and the setting that disabled it."""
+    names = sorted(names)
+    listed = ", ".join(repr(name) for name in names)
+    noun = "extension" if len(names) == 1 else "extensions"
+    verb = "is" if len(names) == 1 else "are"
+
+    return (
+        f"the Sieve {noun} {listed} {verb} disabled by mailctl "
+        f"(disabled_extensions, from {disabled_source(config).describe()})"
+    )
+
+
+# ----------------------------------------------------------------------------
+def check_rule_extensions(config: Config, actions: list) -> None:
+    """Refuse actions needing an extension disabled_extensions turns off.
+
+    Checked at plan and again at execute, so a plan made under one
+    setting is not carried out under another.
+    """
+    blocked = emitted_extensions(actions) & config.disabled_extensions
+
+    if blocked:
+        it = "it" if len(blocked) == 1 else "them"
+
+        raise MailctlError(
+            f"{disabled_message(config, blocked)}, and this rule needs "
+            f"{it}. Drop the action that needs {it}, or take {it} out of "
+            f"disabled_extensions."
+        )
+
+
+# ----------------------------------------------------------------------------
+def report_extensions(
+    capabilities: Iterable[str], config: Config
+) -> list[ExtensionState]:
+    """One state per extension mailctl knows or the server lists, by name.
+
+    A server-listed name mailctl does not know is never disabled:
+    ``check_disabled_extensions`` refuses such a name before this runs.
+    """
+    advertised = {name.lower() for name in capabilities}
+    origin = disabled_source(config)
+
+    return [
+        ExtensionState(
+            name,
+            name in advertised,
+            name in REQUIRED_EXTENSIONS,
+            origin if name in config.disabled_extensions else None,
+        )
+        for name in sorted(advertised | set(KNOWN_EXTENSIONS))
+    ]
 
 
 # ############################################################################
