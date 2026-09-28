@@ -71,6 +71,16 @@ NOTES:
   `IMAPClient>=4.1,<5` (the suite passes on 4.1) and `sievelib>=1.5.0,<2`,
   so a new major of either no longer lands on a fresh install unreviewed;
   raising a bound is a deliberate, tested change.
+* **Each provider keeps a dated record of its host** ([#92],
+  [ADR 0006]). What MXroute documents, what a probe saw on one server,
+  and what is still unknown now live in
+  `mailctl/providers/mxroute/RECORD.md`, along with the capabilities
+  mailctl does not use yet and the changes MXroute has announced (the
+  in-house webmail replacing Roundcube, Dovecot 2.4). The record says when
+  it was last refreshed. A record is refreshed when a provider is built,
+  when its host announces a change, before an old observation is relied
+  on for a new feature, and at least quarterly. A new provider starts with
+  its record. No command's behaviour changes.
 
 ## 0.6.0
 

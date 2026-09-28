@@ -281,8 +281,10 @@ parsed script becomes `Rule` values.
   what it declines matches its capabilities. `tests/test_providers.py`
   holds this. It also drives a fake second provider through the engine to
   show the calls match `mxroute`'s.
-- **Adding one is a package and a registry line**: `providers/<name>/`,
-  composing the layer-1 components it needs, with no engine change.
+- **Adding one is a record, a package, and a registry line**:
+  `providers/<name>/RECORD.md` first (*Providers are probed and read*),
+  then `providers/<name>/`, composing the layer-1 components it needs,
+  with no engine change.
 
 ## The protocols
 
@@ -291,8 +293,9 @@ There is no vendor API here — the tool speaks two standard protocols.
 - **ManageSieve** — RFC 5804. IANA reserved **TCP 4190** for it, and the RFC
   requires both ends to implement **STARTTLS** (*"Client and server
   implementations MUST implement the STARTTLS extension"*). That is the
-  tool's default, and it is a **default, not a verified fact about MXroute**
-  — see *Confidence* below.
+  tool's default, and it is a **default, not a documented fact about
+  MXroute**. A probe observed it working on one server; see the MXroute
+  [record][rec-mxroute].
 - **IMAP** — port **993** (implicit TLS) or **143** (STARTTLS). The username
   is the **full email address**, and the hostname is **per-account**
   (MXroute's panel gives it as "the same as your primary MX record"), so it is
@@ -310,80 +313,96 @@ exception and is handled separately (*Credentials*).
 
 ### Confidence — documented, observed, and unknown
 
-MXroute documents very little of its Sieve surface, and the gaps are
-themselves a design driver (they are why *Discover, don't hardcode* below is a
-rule rather than a preference). Mark these honestly; do **not** quietly
-promote one tier to another.
+Every fact mailctl relies on about a host sits in one of three tiers. The
+tiers are **documented** (the host, or the software it runs, says so),
+**observed** (a probe saw it on one server on one day), and **unknown**.
+Mark each fact honestly, and do **not** quietly promote one tier to
+another. An observation is stronger than a guess and weaker than
+documentation. It describes *that server*, not the host. Unknowns are stated
+plainly rather than filled.
 
-**Confirmed:**
+MXroute documents very little of its Sieve surface. That gap is itself a
+design driver: it is why *Discover, don't hardcode* below is a rule rather
+than a preference. **The facts themselves live with the provider**, one
+record per provider, and each record is kept in these three tiers:
 
-- **Sieve `redirect` is disabled.** MXroute's own blog says so — *"Why we
-  disabled redirect sieve filters on MXroute"* (2024-03-21) — and gives the
-  reason: real forwarders "are designed to properly handle SRS".
-- **IMAP 993 / 143, full-email-address username, per-account hostname** (the
-  panel's *Email Clients* page).
-- **The REST API exposes nothing for filters or Sieve.** Verified twice, two
-  ways: against the published OpenAPI document (26 paths, none filter-related)
-  and against MXroute's own 4.0.1 changelog, which enumerates the API's
-  categories in full — Domains, Email Accounts, Forwarders, Spam Settings,
-  Catch-All, DNS Information, Quota, Reseller. This is the load-bearing fact
-  behind [ADR 0001][adr1].
-  - **Wording trap:** that changelog describes *"Forwarders — set up and
-    manage email forwarding **rules**"*. "Rules" there means **forwarders**,
-    not Sieve rules. Do not read it as filter support and re-open the
-    question.
-
-**Observed on one account — `mailctl test`, 2026-08-14:**
-
-A live read against a single MXroute server settled several of these. It is a
-**separate tier on purpose**: an observation is stronger than a guess and
-weaker than documentation, and it describes *that server* rather than MXroute.
-
-| Observed | Value |
+| Provider | Record |
 |---|---|
-| ManageSieve port + TLS | **4190 + STARTTLS works** — the protocol default was right |
-| Folder delimiter | **`.`** — Maildir++, as the blog-post path suggested |
-| Spam folder | **`INBOX.spam` exists** |
-| Active script name | **`managesieve`** |
-| `vacation` | **advertised** |
-| `enotify` | **not advertised** |
-| `FILTER=SIEVE` | **not advertised** — no server-side retroactive filtering |
-| `spamtest`, `extlists` | **not advertised** |
-| `regex`, `mailbox`, `imap4flags`, `copy`, `envelope` | **advertised** |
+| `mxroute` | [`mailctl/providers/mxroute/RECORD.md`][rec-mxroute] |
 
-**This does not license hardcoding any of it**, and the reason matters: the
-tool discovers these at runtime not because we were unsure what *this* account
-reports, but because MXroute is mid-migration on both its panel and Dovecot
-(*Discover, don't hardcode*, below). An observation dated today says nothing
-about the same server next quarter, and nothing about anyone else's server.
-The script name in particular is a per-server configuration value
-(`managesieve_script_name`), so it is the **least** generalizable item here.
+Code and docs that need a host fact cite the provider's record, not this
+section. This section owns the discipline.
 
-**`vacation` being advertised changes the status of our refusal.** mailctl
-still refuses both `vacation` and `notify`, but they are no longer refusals of
-the same kind: `enotify` is **not advertised** on this server, while
-`vacation` **is** — so declining to emit it is a **deliberate choice of ours**
-(the control panel does autoresponders, and a Sieve autoresponder has real
-footguns), where declining an action the server never advertised is barely a
-choice at all.
+### Providers are probed and read
 
-The shared refusal message is still correct for both and needs no tailoring:
-it says the refusal is ours rather than a documented MXroute restriction, and
-points at `mailctl test` to find out what this server actually advertises.
-Distinguishing the two in the message would bake a per-server observation into
-a string, which is precisely what *Discover, don't hardcode* exists to
-prevent.
+The operator's requirement, 2026-09-27:
 
-Half the trigger on the `vacation` icebox entry has therefore fired; see
-[ICEBOX.md](../ICEBOX.md).
+> during development and maintenance the provider, if possible, needs to be
+> probed as well as documentation read to make sure we're able to take full
+> advantage of the service.
 
-**Unconfirmed — say so plainly rather than filling the gap:**
+So a provider's record has two jobs. It says **what the provider can rely
+on**. It also says **what the host offers that mailctl does not yet use**,
+in a *Not yet used* section, so that "take full advantage" has somewhere to
+land. **Both halves are refreshed together**: read the documentation again,
+and probe where a probe is possible.
 
-- **Whether any of the observations above generalize.** MXroute documents
-  neither the ManageSieve port, the TLS mode, the delimiter, nor the extension
-  set. Every one of those rows is one server on one day.
-- **ManageSieve script-size, script-count, and rate limits.** Nothing in the
-  `CAPABILITY` response speaks to these, so a live read cannot settle them.
+**A record is keyed on observed capabilities and behaviour, with dates,
+never on a version number.** Hosts run different server versions at
+different times, and servers hide their version: MXroute's reports none on
+either protocol ([#18][i18]). A version a server does report is a hint.
+
+**Refresh a provider's record:**
+
+- **when the provider is built.** A new provider, Gmail for example,
+  **starts with its record, written before its code**. What the host
+  documents and what a probe shows are the inputs to its capability
+  declaration, so they come first.
+- **when the host announces a change.** For MXroute, the standing cases are
+  the Dovecot 2.3 → 2.4 migration and the replacement of Roundcube,
+  Crossbox, and DirectAdmin. Each record lists the announcements it has
+  seen.
+- **before relying on an old observation for a new feature.** Re-probe
+  before building on an observation older than the cadence below. It
+  describes one server on one day.
+- **quarterly, at the latest.** Refresh any record whose newest observation
+  is more than 90 days old.
+
+**Why quarterly, and not each release.** Tags here are cheap and publish
+nothing ([RELEASING.md](../RELEASING.md)), so they come in bursts and
+droughts that have nothing to do with the host. A release-keyed refresh
+would run three times in a busy week and then not for months. The host's
+own rhythm is the one that matters, and MXroute's releases have come a few
+months apart: 3.2 in June 2025, 3.9 in December 2025, 4.0 in January 2026,
+and 4.0.1 in May 2026. So a quarter catches a change nobody announced
+within about one host release. The trigger is the date on the record, which
+anyone can check. Nothing automates it yet.
+
+**What a probe is, today.** A probe is a read-only live session against one
+account, recorded with the command, the date, and the server's hostname:
+
+- **`mailctl test`** gives the delimiter, the folder and subscription
+  counts, the active script, `MOVE`, `UIDPLUS`, `FILTER=SIEVE`, and whether
+  each Sieve extension mailctl emits or reports on is advertised.
+- **The full sets, which `mailctl test` does not print.** Read these through
+  the components:
+  - IMAP `ID`, from `ImapSession.identity()`;
+  - IMAP `CAPABILITY`, from `ImapSession.capabilities()`;
+  - the whole ManageSieve CAPABILITY response, from
+    `SieveSession.server_capabilities()`. It carries `IMPLEMENTATION`,
+    `SIEVE`, `SASL`, `MAXREDIRECTS`, and `OWNER`.
+- **`make testlive`** is the live tier's read-only smoke tests. It
+  confirms the port, the TLS mode, and the delimiter.
+
+A probe never prints the password. It is held to the same bar as a debug
+shim (*Credentials*).
+
+**The automated form is [#18][i18] and [#19][i19], and neither is built.**
+[#18][i18] is a machine-readable, dated capability baseline per host.
+[#19][i19] compares the live server against it and reports drift. Once
+they exist, a probe is *capture a baseline*, and the record cites the
+baseline instead of transcribing it. Until then, the record is the
+baseline, in prose.
 
 ### Discover, don't hardcode
 
@@ -809,6 +828,9 @@ will read it.
 [i9]: https://github.com/harleypig/mailctl/issues/9
 [adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
+[rec-mxroute]: ../mailctl/providers/mxroute/RECORD.md
+[i18]: https://github.com/harleypig/mailctl/issues/18
+[i19]: https://github.com/harleypig/mailctl/issues/19
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [i13]: https://github.com/harleypig/mailctl/issues/13
 [i89]: https://github.com/harleypig/mailctl/issues/89
