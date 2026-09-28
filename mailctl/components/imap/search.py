@@ -1,15 +1,14 @@
 """What a search needs from its criteria, and how its key reaches the wire.
 
 The session searches by a caller's criteria without importing mailctl's
-criteria model: anything with an IMAPClient search key and a re-check
-against a message's headers will do. That keeps this library free of the
-model, which belongs to the layer above (ADR 0006).
+criteria model: anything with an IMAPClient search key will do. That keeps
+this library free of the model, which belongs to the layer above (ADR
+0006); so does re-checking the candidates the search returns (ADR 0007).
 
 :func:`encode_search_key` closes ADR 0006's gap I1 (mailctl #89): a
 non-ASCII value in a nested key cannot be sent by IMAPClient as given.
 """
 
-from collections.abc import Mapping, Sequence
 from typing import Protocol
 
 from ... import MailctlError
@@ -24,17 +23,10 @@ _NEUTRAL_KEY = b"ALL"
 
 
 class SearchCriteria(Protocol):
-    """Criteria the session can search by and re-check."""
+    """Criteria the session can search by."""
 
     def imap_search_key(self) -> list:
         """Return the IMAPClient search key that narrows the mailbox."""
-        ...
-
-    def matches(self, headers: Mapping[str, Sequence[str]]) -> bool:
-        """Return whether decoded headers really match.
-
-        ``headers`` maps an upper-cased header name to every occurrence.
-        """
         ...
 
 

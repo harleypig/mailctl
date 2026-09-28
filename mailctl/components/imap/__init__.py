@@ -24,18 +24,19 @@ from .folders import (
 )
 from .messages import (
     BULK_CHUNK,
+    FetchedMessage,
     MailActionPlan,
     MailActionResult,
     MessageSummary,
     PartialExecution,
     decode_header_value,
-    header_values,
     structure_has_attachment,
 )
 from .search import SearchCriteria
 
 __all__ = [
     "BULK_CHUNK",
+    "FetchedMessage",
     "FolderCreation",
     "ImapAuthenticationError",
     "ImapConnectionError",
@@ -50,7 +51,6 @@ __all__ = [
     "case_variant_hint",
     "case_variants",
     "decode_header_value",
-    "header_values",
     "normalize_folder",
     "same_folder",
     "split_path",

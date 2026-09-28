@@ -18,9 +18,21 @@ import re
 
 import pytest
 from imapclient import IMAPClient
+from utilities_support import mxroute
 
-from mailctl import MailctlError
+from mailctl import MailctlError, utilities
 from mailctl.criteria import Criteria
+from mailctl.providers.base import ActionSpec
+
+
+# ----------------------------------------------------------------------------
+def matching(imap_session, criteria, folder="INBOX"):
+    """What the existing-mail pass selects: the session's candidates,
+    re-checked against the real comparison by the mail utility."""
+    return utilities.mail.plan_mail(
+        mxroute(imap=imap_session), criteria, ActionSpec(), folder, ""
+    ).messages
+
 
 # ############################################################################
 # The wire
@@ -175,7 +187,7 @@ def test_a_non_ascii_value_is_sent_as_one_utf8_literal(
     value, _line = NON_ASCII[header]
     fake_imap.messages = {}
 
-    imap_session.search(criteria_for(header, value, shape), "INBOX")
+    matching(imap_session, criteria_for(header, value, shape))
 
     skeleton, literals = parse_wire(wire[-1])
 
@@ -198,7 +210,7 @@ def test_the_recheck_compares_decoded_text(
         2: carrying(b"Subject: nothing to see"),
     }
 
-    found = imap_session.search(criteria_for(header, value, shape), "INBOX")
+    found = matching(imap_session, criteria_for(header, value, shape))
 
     assert [message.uid for message in found] == [1]
 
@@ -211,7 +223,7 @@ def test_an_ascii_search_is_sent_exactly_as_before(imap_session, wire):
     criteria.add("from", "a@example.com")
     criteria.add("subject", "report")
 
-    imap_session.search(criteria, "INBOX")
+    matching(imap_session, criteria)
 
     assert wire[-1] == (
         b"A1 UID SEARCH (OR (FROM a@example.com) (SUBJECT report))\r\n"
@@ -227,7 +239,7 @@ def test_a_value_that_is_not_text_is_refused_by_name(imap_session, wire):
     criteria.add("subject", "caf\udce9")
 
     with pytest.raises(MailctlError, match="not valid text"):
-        imap_session.search(criteria, "INBOX")
+        matching(imap_session, criteria)
 
     assert wire == []
 

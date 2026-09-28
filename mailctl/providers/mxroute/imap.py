@@ -8,9 +8,9 @@ address as the username.
 
 The spam folder is the same naming trap on this host: on MXroute it is
 ``INBOX.spam`` in lower case, and filing into ``Junk`` would silently
-create a second folder next to the real one. The layer-1 session matches
-folder names against the server's own list rather than taking them on
-trust, which is what catches it; nothing here names the folder.
+create a second folder next to the real one. Folder names are matched
+against the server's own list rather than taken on trust (the dialect's
+``normalize``), which is what catches it; nothing here names the folder.
 
 It is the transport's side of the provider. What the server's advertised
 capabilities mean for mailctl is the dialect's (``dialect.py``).

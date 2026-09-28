@@ -19,11 +19,10 @@ from ...components.managesieve.client import SieveSession
 from ...config import Config
 from ...criteria import Criteria
 from ..base import (
-    FolderCreation,
+    FetchedMessage,
     FolderListing,
     MailActionPlan,
     MailActionResult,
-    MessageSummary,
     Progress,
     Transport,
 )
@@ -159,34 +158,15 @@ class MxrouteTransport(Transport):
         imap = self._imap()
 
         return FolderListing(
-            imap.delimiter, sorted(imap.folders), list(imap.subscribed_folders)
+            imap.delimiter,
+            imap.folders,
+            imap.subscribed_folders,
+            imap.namespace_prefix,
         )
 
     # ------------------------------------------------------------------------
-    def delimiter(self) -> str:
-        return self._imap().delimiter
-
-    # ------------------------------------------------------------------------
-    def normalize(self, name: str) -> str:
-        return self._imap().normalize(name)
-
-    # ------------------------------------------------------------------------
-    def exists(self, folder: str) -> bool:
-        return self._imap().exists(folder)
-
-    # ------------------------------------------------------------------------
-    def case_variants(self, folder: str) -> list[str]:
-        return list(self._imap().case_variants(folder))
-
-    # ------------------------------------------------------------------------
-    def is_subscribed(self, folder: str) -> bool:
-        return self._imap().is_subscribed(folder)
-
-    # ------------------------------------------------------------------------
-    def create_folder(self, folder: str, subscribe: bool) -> FolderCreation:
-        return records.folder_creation(
-            self._imap().create_folder(folder, subscribe=subscribe)
-        )
+    def create_folder(self, folder: str) -> None:
+        self._imap().create_folder(folder, subscribe=False)
 
     # ------------------------------------------------------------------------
     def subscribe(self, folder: str) -> None:
@@ -197,23 +177,30 @@ class MxrouteTransport(Transport):
         self._imap().unsubscribe(folder)
 
     # ------------------------------------------------------------------------
-    def select_mail(
-        self,
-        criteria: Criteria,
-        source: str,
-        destination: str,
-        flags: list[str],
-        discard: bool,
-    ) -> MailActionPlan:
-        return records.mail_plan(
-            self._imap().plan_actions(
-                criteria,
-                source=source,
-                destination=destination,
-                flags=flags,
-                discard=discard,
-            )
-        )
+    def search(self, folder: str, criteria: Criteria) -> list[int]:
+        return self._imap().search_uids(criteria, folder)
+
+    # ------------------------------------------------------------------------
+    def search_messages(self, folder: str, expression: str) -> list[int]:
+        return self._imap().raw_search(folder, expression)
+
+    # ------------------------------------------------------------------------
+    def fetch_headers(
+        self, uids: list[int], folder: str
+    ) -> list[FetchedMessage]:
+        return [
+            records.fetched_message(item)
+            for item in self._imap().fetch_headers(uids, folder)
+        ]
+
+    # ------------------------------------------------------------------------
+    def fetch_summaries(
+        self, uids: list[int], folder: str
+    ) -> list[FetchedMessage]:
+        return [
+            records.fetched_message(item)
+            for item in self._imap().fetch_summaries(uids, folder)
+        ]
 
     # ------------------------------------------------------------------------
     def apply_mail(self, plan: MailActionPlan) -> MailActionResult:
@@ -222,27 +209,8 @@ class MxrouteTransport(Transport):
         )
 
     # ------------------------------------------------------------------------
-    def search_messages(self, folder: str, expression: str) -> list[int]:
-        return self._imap().raw_search(folder, expression)
-
-    # ------------------------------------------------------------------------
     def message_headers(self, folder: str, uid: int) -> Message:
         return self._imap().fetch_message_headers(folder, uid)
-
-    # ------------------------------------------------------------------------
-    def list_messages(
-        self,
-        folder: str,
-        *,
-        criteria: Criteria | None,
-        expression: str | None,
-        limit: int | None,
-    ) -> tuple[list[MessageSummary], bool]:
-        summaries, more = self._imap().list_messages(
-            folder, criteria=criteria, expression=expression, limit=limit
-        )
-
-        return [records.message_summary(item) for item in summaries], more
 
     # ------------------------------------------------------------------------
     def message_source(

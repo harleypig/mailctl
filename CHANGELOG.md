@@ -21,8 +21,10 @@ NOTES:
   it reads and stores what it is handed and reports whether the server
   accepted it, without building or checking anything. The utilities now
   do the building, using the dialect for the host-specific parts, and
-  write backup files themselves. Every command's output is byte-for-byte
-  what it was.
+  write backup files themselves. The check that keeps the existing-mail
+  pass to exactly what the Sieve rule matches -- IMAP's search is only a
+  rough first cut -- moved from the IMAP code into the mail utility. Every
+  command's output is byte-for-byte what it was.
 
 ## 0.8.4
 

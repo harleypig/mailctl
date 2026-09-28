@@ -13,13 +13,19 @@ from html.parser import HTMLParser
 from .. import MailctlError
 from ..criteria import Criteria
 from ..engine import Session
-from ..providers.base import MessageSummary, decode_header_value
+from ..providers.base import MessageSummary, Transport, decode_header_value
+from .mail import header_values
 
 # ############################################################################
 # Finding and reading messages
 # ############################################################################
 
 DEFAULT_LIST_LIMIT = 20
+
+# Messages read per round from the newest end of a listing, so a small
+# limit on a large folder reads only about what it shows. The same size as
+# the IMAP component's command chunk, so a round is one FETCH.
+LIST_PAGE = 250
 
 # Undecodable 8-bit bytes surface as these; no output stream can encode one.
 LONE_SURROGATES = re.compile("[\ud800-\udfff]")
@@ -152,13 +158,67 @@ def list_messages(
             f"the message limit must be at least 1, not {limit}"
         )
 
-    folder = session.transport.normalize(folder)
+    transport = session.transport
+    folder = session.dialect.normalize(folder, transport.list_folders())
 
-    messages, more = session.transport.list_messages(
-        folder, criteria=criteria, expression=search, limit=limit
-    )
+    messages, more = newest_matches(transport, folder, criteria, search, limit)
 
     return MessageListing(folder, messages, more)
+
+
+# ----------------------------------------------------------------------------
+def newest_matches(
+    transport: Transport,
+    folder: str,
+    criteria: Criteria | None,
+    expression: str | None,
+    limit: int | None,
+) -> tuple[list[MessageSummary], bool]:
+    """Up to ``limit`` matches, newest (highest UID) first, and whether
+    candidates beyond the limit went unexamined.
+
+    ``criteria`` is searched for and re-checked against the fetched
+    headers, as the existing-mail pass does; ``expression`` is a raw host
+    search taken as given; with neither, every message is a candidate.
+    """
+    if criteria is not None:
+        uids = transport.search(folder, criteria)
+
+    else:
+        uids = transport.search_messages(folder, expression or "ALL")
+
+    newest = sorted(uids, reverse=True)
+    step = min(LIST_PAGE, limit or LIST_PAGE)
+    matches: list[MessageSummary] = []
+    examined = 0
+
+    while examined < len(newest) and not (limit and len(matches) >= limit):
+        chunk = newest[examined : examined + step]
+        fetched = {
+            item.summary.uid: item
+            for item in transport.fetch_summaries(chunk, folder)
+        }
+
+        for uid in chunk:
+            examined += 1
+            item = fetched.get(uid)
+
+            # A UID the search returned and the fetch did not was expunged
+            # in between; it is simply gone.
+            if item is None:
+                continue
+
+            if criteria is not None and not criteria.matches(
+                header_values(item.headers)
+            ):
+                continue
+
+            matches.append(item.summary)
+
+            if limit and len(matches) >= limit:
+                break
+
+    return matches, examined < len(newest)
 
 
 # ----------------------------------------------------------------------------
@@ -172,9 +232,10 @@ def read_message(session: Session, folder: str, uid: int) -> MessageContent:
     if uid < 1:
         raise MailctlError(f"message UIDs start at 1, not {uid}")
 
-    folder = session.transport.normalize(folder)
+    transport = session.transport
+    folder = session.dialect.normalize(folder, transport.list_folders())
 
-    source, flags = session.transport.message_source(folder, uid)
+    source, flags = transport.message_source(folder, uid)
 
     return parse_message(source, uid=uid, folder=folder, flags=flags)
 

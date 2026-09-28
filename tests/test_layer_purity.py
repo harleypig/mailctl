@@ -408,6 +408,7 @@ MODEL_TYPES = (
     "DeliveryCreate",
     "DisplayDiff",
     "ExtensionState",
+    "FetchedMessage",
     "FolderCreation",
     "FolderListing",
     "MailActionPlan",
@@ -479,6 +480,11 @@ BUILDING_MODULES = {
     "mailctl.components.managesieve.emit",
     "mailctl.rules",
 }
+
+# The utilities, where the re-check of a search's candidates lives. A
+# transport importing one would be composing -- or narrowing -- what it
+# should only fetch.
+RECHECK_PACKAGE = "mailctl.utilities"
 
 # Modules that open a connection. A dialect may import none of them, nor
 # any name a component's client module defines, however it is spelled: a
@@ -600,6 +606,7 @@ def transport_violations(source: str, package: str, dialect: set[str]):
         f"{module} {sorted(taken)}".rstrip(" []")
         for module, taken in imports(source, package)
         if module in BUILDING_MODULES
+        or module.startswith(RECHECK_PACKAGE)
         or module in dialect
         or any(f"{module}.{name}" in dialect for name in taken)
         or (module.startswith("mailctl.") and taken & names)
@@ -716,6 +723,7 @@ MXROUTE_TRANSPORT = {
         "from ...rules import read_rules\n",
         "from . import sieve\n",
         "from .dialect import MxrouteDialect\n",
+        "from ...utilities.mail import recheck\n",
     ],
 )
 def test_the_transport_guard_would_catch_a_building_helper(source):
