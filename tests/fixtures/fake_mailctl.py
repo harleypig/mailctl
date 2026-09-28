@@ -10,6 +10,8 @@ faults to inject, so a test can watch a check go red:
 - ``no-unread``       -- no message is unread
 - ``view-marks-read`` -- ``view`` marks its message read, as a regression would
 - ``drift``           -- ``folders`` changes between calls
+- ``password-unset``  -- ``test`` reports the password unset
+- ``bad-marker``      -- a ``# rule:[`` marker ``show`` cannot close
 - ``backup-writes``   -- ``backup --dry-run`` writes its file anyway
 - ``backup-writes-elsewhere`` -- it writes some other file beside it
 """
@@ -60,14 +62,18 @@ No rule is shadowed by an earlier one.
 TEST = """\
 Sources:   environment
 Provider:  mxroute  (default)
-Password:  set  (MAILCTL_PASSWORD, environment)
+{password}
 
 ManageSieve: connected
   active script: managesieve
 
 IMAP: connected
   delimiter: '.'
-"""
+""".format(
+    # The shape a live run printed on 2026-09-28, path aside.
+    password="Password:  set (via file)  (password_file, config file "
+    "/home/u/.config/mailctl/config.toml)"
+)
 
 DIFF = """\
 --- sieve diff ---
@@ -88,6 +94,19 @@ def option(name: str) -> str | None:
         return ARGV[ARGV.index(name) + 1]
 
     return None
+
+
+# ----------------------------------------------------------------------------
+def show() -> str:
+    """The script as the live server sends it: CRLF, banner lines aside."""
+    lines = SCRIPT.splitlines()
+
+    if "bad-marker" in BREAK:
+        lines = [line.replace("]", "") for line in lines]
+
+    body = "".join(f"{line}\r\n" for line in lines[1:-1])
+
+    return f"{lines[0]}\n{body}{lines[-1]}\n"
 
 
 # ----------------------------------------------------------------------------
@@ -204,8 +223,11 @@ def main() -> int:
     elif command == "test":
         out = TEST
 
+        if "password-unset" in BREAK:
+            out = out.replace("Password:  set (via file)", "Password:  unset")
+
     elif command == "show":
-        out = SCRIPT
+        out = show()
 
     elif command == "rules":
         out = RULES

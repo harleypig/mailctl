@@ -124,18 +124,25 @@ guard_allows() {
 }
 
 #-----------------------------------------------------------------------------
-# Run mailctl once. Sets RC; stdout lands in $OUT and stderr in $ERR.
+# Run mailctl once. Sets RC; stdout lands in $OUT and stderr in $ERR, with
+# a trailing CR dropped from each line so the parsers see one line ending:
+# `show` prints the server's script bytes, and those end in CRLF. $RAW keeps
+# stdout byte for byte.
 run_mailctl() {
   if ! guard_allows "$@"; then
     printf 'live-readonly.sh refused to run: mailctl %s\n' "$*" > "$ERR"
     : > "$OUT"
+    : > "$RAW"
     RC=125
 
     return "$RC"
   fi
 
-  timeout "$CALL_TIMEOUT" "$MAILCTL_BIN" "$@" < /dev/null > "$OUT" 2> "$ERR"
+  timeout "$CALL_TIMEOUT" "$MAILCTL_BIN" "$@" < /dev/null > "$RAW" 2> "$ERR"
   RC=$?
+
+  sed 's/\r$//' "$RAW" > "$OUT"
+  sed -i 's/\r$//' "$ERR"
 
   return "$RC"
 }
@@ -238,10 +245,10 @@ view_from_address() {
 #-----------------------------------------------------------------------------
 fingerprint() {
   run_mailctl show || return 1
-  sha256sum < "$OUT" | cut -c1-64
+  sha256sum < "$RAW" | cut -c1-64
 
   run_mailctl folders || return 1
-  sha256sum < "$OUT" | cut -c1-64
+  sha256sum < "$RAW" | cut -c1-64
 }
 
 ##############################################################################
@@ -257,8 +264,15 @@ t_test() {
   expect_line '^ManageSieve: connected' || return 1
   expect_line '^IMAP: connected' || return 1
 
-  # The state word and where it came from -- never anything else.
-  expect_line '^Password:  set(  \([^)]*\))?$' || return 1
+  # Only the state word is pinned; how and where it was found varies with
+  # the rung of the password ladder that supplied it.
+  if grep -qE '^Password:  unset( |$)' "$OUT"; then
+    fail "the password is unset"
+
+    return 1
+  fi
+
+  expect_line '^Password:  set( |$)'
 }
 
 #-----------------------------------------------------------------------------
@@ -487,9 +501,17 @@ t_remove_rule() {
   run_mailctl show
   expect_ok show || return 1
 
-  # The marker is the rule's name exactly as the script holds it.
+  # The marker is the rule's name exactly as the script holds it. A marker
+  # that is there but does not parse is a failure, not a reason to skip.
   name=$(sed -n 's/^# rule:\[\(.*\)\]$/\1/p' "$OUT" | head -n 1)
-  need "$name" "the active script has no named rules" || return 2
+
+  if [[ -z $name ]] && grep -q '^# rule:\[' "$OUT"; then
+    fail "show has '# rule:[' markers, but none parsed as a name"
+
+    return 1
+  fi
+
+  need "$name" "the active script has no rules" || return 2
 
   run_mailctl remove-rule --dry-run "$name"
   expect_ok 'remove-rule --dry-run' || return 1
@@ -629,6 +651,7 @@ main() {
   WORK=$(mktemp -d) || exit 2
   trap 'rm -rf -- "$WORK"' EXIT
   OUT=$WORK/stdout
+  RAW=$WORK/stdout.raw
   ERR=$WORK/stderr
   RC=0
   FAILED=0

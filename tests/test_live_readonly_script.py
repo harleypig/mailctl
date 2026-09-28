@@ -223,6 +223,44 @@ def test_no_unread_message_skips_view_keeps_unread(tmp_path):
     assert not any(call[0] == "view" for call in calls)
 
 
+# ----------------------------------------------------------------------------
+def test_the_live_password_line_passes(tmp_path):
+    """``set (via file)`` is how a password file reads; only ``set`` counts."""
+    proc, _ = run(tmp_path, "test")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - test"]
+
+
+# ----------------------------------------------------------------------------
+def test_an_unset_password_fails_test_by_name(tmp_path):
+    proc, _ = run(tmp_path, "test", breaks=["password-unset"])
+
+    assert proc.returncode == 1
+    assert proc.stdout.splitlines()[1:3] == [
+        "not ok 1 - test",
+        "# the password is unset",
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_remove_rule_reads_names_from_a_crlf_script(tmp_path):
+    """The live server's script ends its lines in CRLF, and ``show`` passes
+    them through; a rule name must still come out without the CR."""
+    proc, calls = run(tmp_path, "remove-rule")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - remove-rule"]
+    assert ["remove-rule", "--dry-run", "keep boss"] in calls
+
+
+# ----------------------------------------------------------------------------
+def test_a_marker_that_does_not_parse_fails_rather_than_skips(tmp_path):
+    proc, calls = run(tmp_path, "remove-rule", breaks=["bad-marker"])
+
+    assert proc.returncode == 1
+    assert proc.stdout.splitlines()[1] == "not ok 1 - remove-rule"
+    assert not any(call[0] == "remove-rule" for call in calls)
+
+
 # ############################################################################
 # Safety
 # ############################################################################
