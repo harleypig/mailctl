@@ -13,7 +13,7 @@ whole point of these tests:
 
 Collapsing those two into one "unsupported" message would state as fact
 something this project has explicitly recorded as unconfirmed
-(CONVENTIONS.md > Confidence).
+(mailctl/providers/mxroute/RECORD.md).
 
 The refusal has to happen at generation time. Emitting the action instead
 produces a script the server rejects -- or, worse, one it accepts and that

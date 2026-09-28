@@ -7,8 +7,9 @@ and "does it work against MXroute".
 Everything here is **read-only**. It exercises exactly the claims the
 offline tier cannot make -- that the ManageSieve port and TLS mode are
 right, and that the folder delimiter this account reports is the one the
-offline normalization was fed. Both are recorded as unconfirmed or merely
-likely in CONVENTIONS.md > Confidence, which is why reading them off the
+offline normalization was fed. Neither is documented by MXroute, and both
+are recorded as one server's observation in
+mailctl/providers/mxroute/RECORD.md, which is why reading them off the
 server is the whole point.
 
 Nothing here writes. Adding a test that does means adding the backup and
@@ -33,8 +34,8 @@ def test_the_sieve_port_and_tls_mode_actually_connect(live_config):
     """4190 + STARTTLS is an RFC default, not a documented MXroute fact.
 
     If this fails, the answer is a ``--sieve-port`` / ``--sieve-tls``
-    combination that works, recorded in CONVENTIONS.md -- not a change to
-    the tool's defaults.
+    combination that works, recorded in the provider's RECORD.md -- not a
+    change to the tool's defaults.
     """
     with sieve_session(live_config) as session:
         capabilities = session.capabilities()

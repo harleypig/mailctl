@@ -35,8 +35,8 @@ entry stays iceboxed on that alone.
 
 The tool refuses `vacation` today and points at the control panel. That
 refusal is a **conservative default, not a documented MXroute limitation** —
-unlike `redirect`, no MXroute source says either way
-([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *Confidence*). Both
+unlike `redirect`, no MXroute source says either way (the MXroute
+[record](mailctl/providers/mxroute/RECORD.md) › *Observed*). Both
 halves of the trigger matter: an autoresponder that the server silently drops
 is worse than no autoresponder, and the panel already does this adequately, so
 confirmation alone is not a reason to build it.
