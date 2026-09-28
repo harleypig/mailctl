@@ -821,6 +821,14 @@ will read it.
 - **A tag publishes nothing.** There is no release pipeline and no registry —
   a tag is a marker on history, so it is cheap and carries no
   cannot-be-unpublished risk. See [RELEASING.md](../RELEASING.md).
+- **The version is written in one place: `pyproject.toml`.** A release
+  bumps that file and nothing else. `mailctl/__init__.py` reads
+  `__version__` back from the installed metadata with
+  `importlib.metadata.version("mailctl")`, falling back to `0+unknown`
+  when nothing is installed, and `tests/test_version.py` fails if the two
+  ever disagree ([#106][i106]). An editable install records the version at
+  install time, so a bump shows in `mailctl --version` only after
+  `uv pip install -e .` is run again.
 
 [adr1]: ../adr/0001-standalone-cli-over-provider-resource.md
 [adr2]: ../adr/0002-non-destructive-script-merge.md
@@ -835,4 +843,5 @@ will read it.
 [i13]: https://github.com/harleypig/mailctl/issues/13
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i10]: https://github.com/harleypig/mailctl/issues/10
+[i106]: https://github.com/harleypig/mailctl/issues/106
 [da495]: https://github.com/harleypig/dotagents/issues/495

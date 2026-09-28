@@ -16,9 +16,19 @@ without a server:
 ``cli``          argument parsing and the subcommand implementations
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 __all__ = ["MailctlError", "__version__"]
 
-__version__ = "0.7.0"
+# pyproject.toml is the one place the version is written; this reads it back
+# from the installed metadata. An editable install records the version when
+# it is installed, so a bump shows here only after `uv pip install -e .`.
+try:
+    __version__ = version("mailctl")
+
+except PackageNotFoundError:
+    # Run from a bare source tree with nothing installed: no metadata to read.
+    __version__ = "0+unknown"
 
 
 # ############################################################################

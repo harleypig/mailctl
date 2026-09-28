@@ -4,6 +4,15 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+NOTES:
+
+* **The version is written only in `pyproject.toml`** ([#106]).
+  `mailctl --version` now reads it from the installed package instead of
+  a second copy in the source, so the two can no longer disagree. A
+  release bumps one file. After a bump, an editable install shows the new
+  version only once it is reinstalled (`uv pip install -e .`). Run from a
+  source tree with nothing installed, the version reads `0+unknown`.
+
 ## 0.7.0
 
 FEATURES:
@@ -639,4 +648,5 @@ NOTES:
 [#90]: https://github.com/harleypig/mailctl/issues/90
 [#91]: https://github.com/harleypig/mailctl/issues/91
 [#92]: https://github.com/harleypig/mailctl/issues/92
+[#106]: https://github.com/harleypig/mailctl/issues/106
 [ADR 0006]: adr/0006-two-layer-component-and-provider-architecture.md
