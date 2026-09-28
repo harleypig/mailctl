@@ -13,6 +13,13 @@ ENHANCEMENTS:
   now means disable nothing, and `mailctl test` names where it came from.
   `none` beside an extension name is refused.
 
+BUG FIXES:
+
+* **The `redirect` refusal and `mailctl test`'s note date MXroute's
+  announcement correctly** ([#102]). MXroute's post *"Why we disabled
+  redirect sieve filters on MXroute"* is dated 2024-03-22; mailctl said a
+  day earlier.
+
 ## 0.8.0
 
 NOTES:
@@ -675,4 +682,5 @@ NOTES:
 [#106]: https://github.com/harleypig/mailctl/issues/106
 [#99]: https://github.com/harleypig/mailctl/issues/99
 [#85]: https://github.com/harleypig/mailctl/issues/85
+[#102]: https://github.com/harleypig/mailctl/issues/102
 [ADR 0006]: adr/0006-two-layer-component-and-provider-architecture.md

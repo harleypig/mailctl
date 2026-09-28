@@ -65,7 +65,7 @@ __all__ = [
     "sieve_session",
 ]
 
-# Confirmed disabled by MXRoute, from MXroute's own blog (2024-03-21):
+# Confirmed disabled by MXRoute, from MXroute's own blog (2024-03-22):
 # they "decided to disable the ability for users to create redirect sieve
 # filters" because their real forwarders are designed to handle SRS
 # properly. This one is a documented policy, not a capability, so it will
@@ -81,7 +81,7 @@ __all__ = [
 MXROUTE_FORBIDDEN_ACTIONS = {
     "redirect": (
         "MXRoute disables the Sieve 'redirect' action server-side (their "
-        "2024-03-21 announcement). Their own forwarders are built to handle "
+        "2024-03-22 announcement). Their own forwarders are built to handle "
         "SRS correctly, which a Sieve redirect does not -- so set up a "
         "forwarder in the control panel, or with the 'mxroute_forwarder' "
         "Terraform resource, instead."

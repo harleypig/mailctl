@@ -360,7 +360,7 @@ documentation read better.
 ### Confirmed
 
 * The `redirect` action is **disabled server-side** — MXRoute announced this
-  on 2024-03-21, saying their own forwarders "are designed to properly handle
+  on 2024-03-22, saying their own forwarders "are designed to properly handle
   SRS" where a Sieve redirect does not. `--redirect` fails with a pointer to
   the panel's Forwarders (or the `mxroute_forwarder` Terraform resource).
 * The username is the **full email address**, on both IMAP and ManageSieve.

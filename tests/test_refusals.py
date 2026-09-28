@@ -3,7 +3,7 @@
 Two different reasons, deliberately kept apart, and the difference is the
 whole point of these tests:
 
-* ``redirect`` is **confirmed disabled** by MXroute (their 2024-03-21
+* ``redirect`` is **confirmed disabled** by MXroute (their 2024-03-22
   announcement), so the refusal names the alternative that actually
   works -- a forwarder.
 * ``notify`` and ``vacation`` are simply **not implemented here**. No
