@@ -4,6 +4,16 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+NOTES:
+
+* **The engine is split into the session and the utilities; no behaviour
+  change** ([#133]). `mailctl.engine` now holds only the session: choosing
+  the configured provider, checking its settings, and opening and closing
+  it. The work itself moved, unchanged, into `mailctl.utilities`, one
+  module per subject (rules, scripts, backup, folders, mail, messages,
+  migration, reports), and the CLI calls the utilities. Every command's
+  output is byte-for-byte what it was.
+
 ## 0.8.4
 
 NOTES:
@@ -762,3 +772,4 @@ NOTES:
 [#119]: https://github.com/harleypig/mailctl/issues/119
 [#129]: https://github.com/harleypig/mailctl/pull/129
 [#130]: https://github.com/harleypig/mailctl/pull/130
+[#133]: https://github.com/harleypig/mailctl/issues/133

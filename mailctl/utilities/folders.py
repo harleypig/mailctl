@@ -1,0 +1,299 @@
+"""Folders: listed, subscribed, and planned as a rule's target.
+
+A folder planned for creation is created on execute only, never while
+planning, so a dry run or a rejected script leaves no stray folder.
+"""
+
+from dataclasses import dataclass
+
+from .. import MailctlError
+from ..config import Config, Source
+from ..providers.base import FolderCreation, FolderListing, Provider
+from .events import EventSink, FolderCreated
+
+# Folder plan outcomes.
+FOLDER_NONE = "none"
+FOLDER_EXISTS = "exists"
+FOLDER_MISSING = "missing"
+FOLDER_SIEVE_CREATES = "sieve-creates"
+FOLDER_IMAP_CREATE = "imap-create"
+FOLDER_BOTH_CREATE = "imap-and-sieve-create"
+FOLDER_UNCREATABLE = "uncreatable"
+
+
+# ############################################################################
+# Listing folders
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def list_folders(provider: Provider) -> FolderListing:
+    """Return the folder list, sorted, with the delimiter."""
+    return provider.list_folders()
+
+
+# ############################################################################
+# Folder subscription -- a setting, reported and changed like one
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class SubscriptionPlan:
+    """A folder's subscription, as it is and as it was asked to be."""
+
+    requested: str
+    folder: str
+    delimiter: str
+    subscribe: bool
+    subscribed_now: bool
+
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        """Whether executing the plan would change anything."""
+        return self.subscribe != self.subscribed_now
+
+
+# ----------------------------------------------------------------------------
+def case_variant_hint(variants: list[str]) -> str:
+    """A sentence naming a missing folder's case variants, or nothing.
+
+    For an error about a folder that is missing: the likeliest reason is
+    that the one meant is spelled with different case.
+    """
+    if not variants:
+        return ""
+
+    listed = ", ".join(repr(folder) for folder in variants)
+
+    return (
+        f"{listed} {'exists' if len(variants) == 1 else 'exist'}, but "
+        f"folder names are case-sensitive. "
+    )
+
+
+# ----------------------------------------------------------------------------
+def plan_subscription(
+    provider: Provider, name: str, subscribe: bool
+) -> SubscriptionPlan:
+    """Work out a subscription change without making it.
+
+    The name is normalized like every other folder name, so one copied out
+    of the folder listing works. Subscribing needs the folder to exist;
+    unsubscribing does not, since a subscription can outlive its folder and
+    removing that stale entry is a legitimate thing to want.
+    """
+    folder = provider.normalize(name)
+    subscribed_now = provider.is_subscribed(folder)
+
+    hint = case_variant_hint(provider.case_variants(folder))
+
+    if subscribe and not provider.exists(folder):
+        raise MailctlError(
+            f"no folder named {folder!r} on the server, so there is nothing "
+            f"to subscribe to. {hint}'mailctl folders' lists what exists."
+        )
+
+    if not subscribe and not subscribed_now and not provider.exists(folder):
+        raise MailctlError(
+            f"no folder or subscription named {folder!r} on the server. "
+            f"{hint}'mailctl folders' lists what exists."
+        )
+
+    return SubscriptionPlan(
+        name, folder, provider.delimiter(), subscribe, subscribed_now
+    )
+
+
+# ----------------------------------------------------------------------------
+def execute_subscription(provider: Provider, plan: SubscriptionPlan) -> None:
+    """Apply a subscription plan; a plan that changes nothing does nothing.
+
+    The provider confirms a subscription took effect, so a server that
+    answers OK without acting on it raises here.
+    """
+    if not plan.changes:
+        return
+
+    if plan.subscribe:
+        provider.subscribe(plan.folder)
+
+    else:
+        provider.unsubscribe(plan.folder)
+
+
+# ############################################################################
+# The target folder
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class FolderPlan:
+    """Where filed mail goes, and how that folder comes to exist.
+
+    ``delimiter_assumed`` is true when there was no IMAP session to read
+    the delimiter from, so the provider's assumed one was used instead.
+
+    ``case_variants`` holds existing folders that differ from ``folder``
+    only in case. Folder names are case-sensitive, so none of them is the
+    target -- but a missing or to-be-created folder with one beside it is
+    most likely a typo, and the front-end should say so (#56).
+
+    ``mailbox_disabled_by`` is set when the server advertises ``mailbox``
+    but ``disabled_extensions`` turns it off, so ``:create`` is not used;
+    it names where that setting came from.
+    """
+
+    requested: str
+    folder: str
+    delimiter: str
+    delimiter_assumed: bool
+    status: str
+    subscribe: bool
+    case_variants: tuple[str, ...] = ()
+    mailbox_disabled_by: Source | None = None
+
+    # ------------------------------------------------------------------------
+    @property
+    def use_create(self) -> bool:
+        """Whether the rule should say ``fileinto :create``."""
+        return self.status in (FOLDER_SIEVE_CREATES, FOLDER_BOTH_CREATE)
+
+    # ------------------------------------------------------------------------
+    @property
+    def imap_creates(self) -> bool:
+        """Whether the execute step makes the folder over IMAP."""
+        return self.status in (FOLDER_IMAP_CREATE, FOLDER_BOTH_CREATE)
+
+
+# ----------------------------------------------------------------------------
+def plan_folder(
+    provider: Provider,
+    config: Config,
+    requested: str | None,
+    *,
+    create: bool = False,
+    subscribe: bool = True,
+    delimiter: str | None = None,
+) -> FolderPlan:
+    """Normalize the target folder and decide how it gets to exist.
+
+    With an IMAP session the folder is made over IMAP by
+    :func:`create_folder` and subscribed unless declined -- Sieve's
+    ``:create`` makes it only at delivery time, when nothing is running to
+    subscribe to it (#40). When the server also advertises ``mailbox`` the
+    rule says ``fileinto :create`` as well, so it recreates the folder if
+    it is later deleted; otherwise it stays a plain ``fileinto``. With no
+    IMAP session ``:create`` is the only route. Read-only: nothing is
+    created here, and a folder that cannot be created is reported as such
+    for :func:`check_folder` to refuse, so the front-end can show the plan
+    first.
+
+    With no ManageSieve session (the existing-mail pass alone) the Sieve
+    route is simply unavailable. ``mailbox`` named in
+    ``disabled_extensions`` counts as not advertised: the rule stays a
+    plain ``fileinto`` and IMAP, where there is a session, makes the
+    folder.
+    """
+    requested = requested or config.default_folder or ""
+    mail = provider.has_mail
+
+    if not requested:
+        return FolderPlan("", "", "", False, FOLDER_NONE, subscribe)
+
+    if not mail:
+        folder, assumed = provider.assumed_folder(requested, delimiter)
+
+    else:
+        assumed = provider.delimiter()
+        folder = provider.normalize(requested)
+
+    shape = {
+        "requested": requested,
+        "folder": folder,
+        "delimiter": assumed,
+        "delimiter_assumed": not mail,
+        "subscribe": subscribe,
+    }
+
+    if mail and provider.exists(folder):
+        return FolderPlan(status=FOLDER_EXISTS, **shape)
+
+    if mail:
+        shape["case_variants"] = tuple(provider.case_variants(folder))
+
+    delivery = provider.delivery_create(config)
+    has_mailbox = delivery.usable
+
+    if delivery.disabled_by is not None:
+        shape["mailbox_disabled_by"] = delivery.disabled_by
+
+    if not create:
+        return FolderPlan(status=FOLDER_MISSING, **shape)
+
+    if not mail:
+        status = FOLDER_SIEVE_CREATES if has_mailbox else FOLDER_UNCREATABLE
+
+    else:
+        status = FOLDER_BOTH_CREATE if has_mailbox else FOLDER_IMAP_CREATE
+
+    return FolderPlan(status=status, **shape)
+
+
+# ----------------------------------------------------------------------------
+def check_folder(plan: FolderPlan) -> None:
+    """Refuse a folder that was asked to be created and cannot be."""
+    if plan.status != FOLDER_UNCREATABLE:
+        return
+
+    if plan.mailbox_disabled_by is not None:
+        raise MailctlError(
+            f"the Sieve 'mailbox' extension is disabled by mailctl "
+            f"(disabled_extensions, from "
+            f"{plan.mailbox_disabled_by.describe()}) and --no-imap was "
+            f"given, so {plan.folder!r} cannot be created"
+        )
+
+    raise MailctlError(
+        f"the server does not advertise the Sieve 'mailbox' extension "
+        f"and --no-imap was given, so {plan.folder!r} cannot be created"
+    )
+
+
+# ----------------------------------------------------------------------------
+def create_folder(provider: Provider, plan: FolderPlan) -> FolderCreation:
+    """Create the planned folder over IMAP, subscribing unless declined."""
+    if not plan.imap_creates:
+        raise MailctlError(
+            f"folder {plan.folder!r} is not planned for IMAP creation "
+            f"({plan.status})"
+        )
+
+    return provider.create_folder(plan.folder, subscribe=plan.subscribe)
+
+
+# ----------------------------------------------------------------------------
+def folder_pending(provider: Provider, plan: FolderPlan) -> bool:
+    """Whether a folder planned for IMAP creation has not been made yet."""
+    return plan.imap_creates and not provider.exists(plan.folder)
+
+
+# ----------------------------------------------------------------------------
+def realize_folder(
+    provider: Provider, plan: FolderPlan, on_event: EventSink | None = None
+) -> FolderCreation | None:
+    """Create a folder planned for IMAP creation, once.
+
+    Returns None, and does nothing, for any other plan or for a folder an
+    earlier execute step already made -- ``add`` creates it before the
+    upload, and its existing-mail pass must not try again.
+    """
+    if not folder_pending(provider, plan):
+        return None
+
+    result = create_folder(provider, plan)
+
+    if on_event:
+        on_event(FolderCreated(result))
+
+    return result

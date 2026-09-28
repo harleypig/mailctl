@@ -23,7 +23,7 @@ from types import SimpleNamespace
 import pytest
 from imapclient.exceptions import IMAPClientError
 
-from mailctl import MailctlError, engine
+from mailctl import MailctlError, utilities
 from mailctl.cli import (
     build_parser,
     prepare_folder,
@@ -101,7 +101,7 @@ def test_the_subscription_check_is_exact_except_for_inbox(imap_session):
 def test_the_listing_subscription_check_is_exact_except_for_inbox():
     """``folders`` and ``test`` report through FolderListing, not the
     session, and must not merge two differently cased folders (#56)."""
-    listing = engine.FolderListing(
+    listing = utilities.folders.FolderListing(
         ".", ["INBOX", "INBOX.Lists", "INBOX.lists"], ["inbox", "INBOX.Lists"]
     )
 
@@ -294,7 +294,7 @@ def test_the_primitives_raise_and_name_the_folder(
 # ----------------------------------------------------------------------------
 def test_the_cli_reports_a_subscribed_folder(capsys):
     report_folder_creation(
-        engine.FolderCreation(folder=NEW_FOLDER, subscribed=True)
+        utilities.folders.FolderCreation(folder=NEW_FOLDER, subscribed=True)
     )
 
     assert "subscribed" in capsys.readouterr().out
@@ -308,7 +308,7 @@ def test_the_cli_says_when_a_folder_was_deliberately_left_hidden(capsys):
     choosing, and the folder is invisible for a reason nobody can see.
     """
     report_folder_creation(
-        engine.FolderCreation(folder=NEW_FOLDER, subscribed=False)
+        utilities.folders.FolderCreation(folder=NEW_FOLDER, subscribed=False)
     )
 
     captured = capsys.readouterr()
@@ -323,7 +323,7 @@ def test_the_cli_warns_on_a_failed_subscription_without_calling_it_a_failure(
 ):
     """It has to say both halves: the folder works, and it is invisible."""
     report_folder_creation(
-        engine.FolderCreation(
+        utilities.folders.FolderCreation(
             folder=NEW_FOLDER,
             subscribed=False,
             subscribe_error="could not subscribe to folder -- denied",
@@ -367,7 +367,7 @@ def test_ensure_folder_subscribes_and_reports_it(
     live = MxrouteProvider(sieve_without_mailbox(), imap_session)
     plan = prepare_folder(live, imap_config, add_args())
 
-    engine.realize_folder(live, plan, render_event)
+    utilities.folders.realize_folder(live, plan, render_event)
 
     assert plan.folder == NEW_FOLDER
     assert plan.use_create is False
@@ -382,7 +382,7 @@ def test_ensure_folder_honours_no_subscribe_and_says_what_it_cost(
     live = MxrouteProvider(sieve_without_mailbox(), imap_session)
     plan = prepare_folder(live, imap_config, add_args("--no-subscribe"))
 
-    engine.realize_folder(live, plan, render_event)
+    utilities.folders.realize_folder(live, plan, render_event)
 
     assert "subscribe_folder" not in fake_imap.names()
     assert "will not appear in webmail" in capsys.readouterr().out

@@ -29,7 +29,7 @@ from typing import cast
 
 import pytest
 
-from mailctl import MailctlError, cli, engine
+from mailctl import MailctlError, cli, engine, utilities
 from mailctl.components.managesieve import SieveSession
 from mailctl.config import (
     CONFIG_FILE,
@@ -43,7 +43,6 @@ from mailctl.config import (
     load_config,
 )
 from mailctl.criteria import Criteria
-from mailctl.engine import ActionSpec, RuleRequest
 from mailctl.providers import model, registry
 from mailctl.providers.base import (
     DISCARD,
@@ -70,6 +69,7 @@ from mailctl.providers.base import (
 )
 from mailctl.providers.mxroute import MxrouteProvider
 from mailctl.rules import rule_from_criteria
+from mailctl.utilities.rules import ActionSpec, RuleRequest
 
 # ############################################################################
 # A second provider, for the test only
@@ -541,17 +541,19 @@ def drive(recorded: Provider | Recorder, config: Config) -> None:
     spec = ActionSpec(fileinto="Lists")
     request = RuleRequest(criteria=criteria, actions=spec, name="github")
 
-    folder = engine.plan_folder(provider, config, spec.fileinto)
-    engine.missing_extensions(provider, spec, folder)
-    plan = engine.plan_rule(provider, config, request, folder)
-    engine.execute_script_change(provider, config, plan)
+    folder = utilities.folders.plan_folder(provider, config, spec.fileinto)
+    utilities.rules.missing_extensions(provider, spec, folder)
+    plan = utilities.rules.plan_rule(provider, config, request, folder)
+    utilities.rules.execute_script_change(provider, config, plan)
 
-    engine.list_scripts(provider)
-    engine.read_rules(provider)
+    utilities.scripts.list_scripts(provider)
+    utilities.rules.read_rules(provider)
 
-    source = engine.source_folder(provider, "INBOX")
-    mail = engine.plan_mail(provider, criteria, spec, source, folder.folder)
-    engine.execute_mail(provider, mail, folder=folder)
+    source = utilities.mail.source_folder(provider, "INBOX")
+    mail = utilities.mail.plan_mail(
+        provider, criteria, spec, source, folder.folder
+    )
+    utilities.mail.execute_mail(provider, mail, folder=folder)
 
 
 # ############################################################################
@@ -790,7 +792,7 @@ def test_a_declined_capability_is_refused_before_any_connection(fakes):
     config = Config(provider="unordered")
 
     with pytest.raises(MailctlError) as caught:
-        engine.check_rule(config, request)
+        utilities.rules.check_rule(config, request)
 
     assert str(caught.value) == (
         "the unordered provider cannot place a rule at a position in "
@@ -810,13 +812,13 @@ def test_plan_rule_refuses_it_before_touching_the_provider(fakes):
     )
     recorder = Recorder(UnorderedProvider())
     provider = cast(Provider, recorder)
-    folder = engine.plan_folder(FakeProvider(), Config(), "Lists")
+    folder = utilities.folders.plan_folder(FakeProvider(), Config(), "Lists")
 
     with pytest.raises(MailctlError, match="'ordering'"):
-        engine.plan_rule(provider, Config(), request, folder)
+        utilities.rules.plan_rule(provider, Config(), request, folder)
 
     with pytest.raises(MailctlError, match="'ordering'"):
-        engine.plan_move(provider, "keep-boss", Placement("first"))
+        utilities.rules.plan_move(provider, "keep-boss", Placement("first"))
 
     assert recorder.calls == []
 
@@ -849,8 +851,8 @@ def test_without_ordering_no_position_can_shadow_a_rule(fakes):
         [_stored("broad", "example.com"), _stored("narrow", "a@example.com")]
     )
 
-    assert engine.read_rules(provider).findings == []
-    assert engine.read_rules(FakeProvider()).findings == []
+    assert utilities.rules.read_rules(provider).findings == []
+    assert utilities.rules.read_rules(FakeProvider()).findings == []
 
 
 # ----------------------------------------------------------------------------
@@ -860,7 +862,7 @@ def test_an_undeclared_action_is_refused_naming_what_is_declared(fakes):
     request = RuleRequest(criteria=criteria, actions=ActionSpec(discard=True))
 
     with pytest.raises(MailctlError) as caught:
-        engine.check_rule(Config(provider="unordered"), request)
+        utilities.rules.check_rule(Config(provider="unordered"), request)
 
     assert "cannot emit discard" in str(caught.value)
     assert "fileinto, flag, keep" in str(caught.value)
@@ -888,12 +890,15 @@ def test_specifics_are_checked_against_the_declared_schema(
     )
 
     if refused is None:
-        assert engine.check_rule(Config(provider="fake"), request) is None
+        assert (
+            utilities.rules.check_rule(Config(provider="fake"), request)
+            is None
+        )
 
         return
 
     with pytest.raises(MailctlError, match=refused):
-        engine.check_rule(Config(provider="fake"), request)
+        utilities.rules.check_rule(Config(provider="fake"), request)
 
 
 # ----------------------------------------------------------------------------
@@ -907,7 +912,7 @@ def test_mxroute_declares_no_specifics_so_any_is_refused():
     )
 
     with pytest.raises(MailctlError, match="declared: none"):
-        engine.check_rule(Config(), request)
+        utilities.rules.check_rule(Config(), request)
 
 
 # ############################################################################
@@ -977,10 +982,10 @@ def test_mxroute_capabilities_are_what_sieve_over_managesieve_offers():
 def test_the_redirect_policy_is_the_providers_not_the_engines(fakes):
     """The same refusal call reaches each provider's own policy."""
     with pytest.raises(MailctlError, match="mxroute_forwarder"):
-        engine.reject_actions(Config(), ["redirect"])
+        utilities.rules.reject_actions(Config(), ["redirect"])
 
     with pytest.raises(MailctlError, match="fake does not redirect"):
-        engine.reject_actions(Config(provider="fake"), ["redirect"])
+        utilities.rules.reject_actions(Config(provider="fake"), ["redirect"])
 
 
 # ----------------------------------------------------------------------------
@@ -993,9 +998,9 @@ def test_an_unordered_host_plans_a_rule_with_no_placement_findings(
     request = RuleRequest(criteria=criteria, actions=ActionSpec(keep=True))
     provider = UnorderedProvider()
     provider.scripts["main"] = json.dumps([_stored("narrow", "a@example.com")])
-    folder = engine.plan_folder(provider, Config(), None)
+    folder = utilities.folders.plan_folder(provider, Config(), None)
 
-    plan = engine.plan_rule(provider, Config(), request, folder)
+    plan = utilities.rules.plan_rule(provider, Config(), request, folder)
 
     assert not plan.placement
     assert provider.rule_names(plan.after) == ["narrow", "from-example-com"]
@@ -1021,10 +1026,10 @@ def test_a_host_without_stop_plans_a_default_rule(fakes, tmp_path):
     """A rule nobody asked to stop is not refused for lacking stop."""
     provider = StoplessProvider()
     request = github_rule()
-    folder = engine.plan_folder(provider, Config(), "Lists")
+    folder = utilities.folders.plan_folder(provider, Config(), "Lists")
 
-    engine.check_rule(Config(provider="stopless"), request)
-    plan = engine.plan_rule(provider, Config(), request, folder)
+    utilities.rules.check_rule(Config(provider="stopless"), request)
+    plan = utilities.rules.plan_rule(provider, Config(), request, folder)
 
     assert plan.actions == ["file:INBOX.Lists"]
 
@@ -1032,10 +1037,12 @@ def test_a_host_without_stop_plans_a_default_rule(fakes, tmp_path):
 # ----------------------------------------------------------------------------
 def test_a_host_with_stop_still_stops_by_default():
     """mxroute's rules end evaluation unless --no-stop says otherwise."""
-    folder = engine.plan_folder(
+    folder = utilities.folders.plan_folder(
         MxrouteProvider(), Config(), "Lists", delimiter="."
     )
-    spec = engine.resolve_stop(MxrouteProvider, ActionSpec(fileinto="Lists"))
+    spec = utilities.rules.resolve_stop(
+        MxrouteProvider, ActionSpec(fileinto="Lists")
+    )
     actions = MxrouteProvider.translate_actions(spec, folder.folder, False)
 
     assert spec.stop is True
@@ -1046,7 +1053,9 @@ def test_a_host_with_stop_still_stops_by_default():
 def test_asking_a_host_without_stop_to_stop_is_refused(fakes):
     """An explicit request is still one the provider has to honour."""
     with pytest.raises(MailctlError) as caught:
-        engine.check_rule(Config(provider="stopless"), github_rule(stop=True))
+        utilities.rules.check_rule(
+            Config(provider="stopless"), github_rule(stop=True)
+        )
 
     assert str(caught.value) == (
         "the stopless provider cannot end evaluation after a rule: it does "

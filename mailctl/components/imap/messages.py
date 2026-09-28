@@ -243,11 +243,11 @@ def flag_names(raw) -> tuple[str, ...]:
 def structure_has_attachment(node) -> bool:
     """Whether a parsed BODYSTRUCTURE holds a part that is not message text.
 
-    The same line ``engine.parse_message`` draws on the full source: a
-    text/plain or text/html part is text unless it is marked as an
-    attachment or carries a file name; any other leaf -- a PDF, an inline
-    image, an attached message -- is an attachment. Cheap because it reads
-    only the structure the server already sent with the summary.
+    The same line ``utilities.messages.parse_message`` draws on the full
+    source: a text/plain or text/html part is text unless it is marked as
+    an attachment or carries a file name; any other leaf -- a PDF, an
+    inline image, an attached message -- is an attachment. Cheap because it
+    reads only the structure the server already sent with the summary.
     """
     if not isinstance(node, tuple) or not node:
         return False

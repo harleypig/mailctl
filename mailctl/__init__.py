@@ -12,7 +12,8 @@ without a server:
 ``criteria``     the shared criteria model, to Sieve *and* to IMAP SEARCH
 ``components``   one library per protocol: ``managesieve`` and ``imap``
 ``providers``    how one host uses them: ``mxroute``
-``engine``       the work itself, for any front-end
+``engine``       the session: the chosen provider, opened and closed
+``utilities``    the work itself, for any front-end
 ``cli``          argument parsing and the subcommand implementations
 """
 

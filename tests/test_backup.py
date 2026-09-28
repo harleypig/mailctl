@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from mailctl import cli, engine
+from mailctl import cli, utilities
 from mailctl.components.managesieve import (
     backup_path,
     resolve_backup_target,
@@ -231,7 +231,7 @@ def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
         set_active=lambda name: uploaded.append(("active", name)),
     )
 
-    engine.upload_script(
+    utilities.scripts.upload_script(
         MxrouteProvider(sieve=session),
         load_config(SimpleNamespace()),
         "managesieve",

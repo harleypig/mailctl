@@ -1,15 +1,15 @@
 """The core returns data; only the CLI prints.
 
 ``config``, ``criteria``, ``rules``, every module under
-``components/`` and ``providers/``, and the ``engine`` that drives them
-return structured values and raise ``MailctlError``. Every piece of
-rendering, prompting, and progress output lives in ``cli.py``
-(CONVENTIONS.md).
+``components/``, ``providers/``, and ``utilities/``, and the ``engine``
+session they run in return structured values and raise
+``MailctlError``. Every piece of rendering, prompting, and progress output
+lives in ``cli.py`` (CONVENTIONS.md).
 
-The engine is held to one bar more: it must not know how it was called.
-So it may not import ``argparse`` or the CLI, and may not reach for the
-terminal or the environment -- a TUI, GUI, or web front-end has to be
-able to drive it unchanged.
+The engine and the utilities are held to one bar more: they must not
+know how they were called. So they may not import ``argparse`` or the
+CLI, and may not reach for the terminal or the environment -- a TUI, GUI,
+or web front-end has to be able to drive them unchanged.
 
 That split is worth a test rather than a convention alone for two reasons,
 and the second is the sharp one:
@@ -45,7 +45,7 @@ PACKAGE = Path(mailctl.__file__).parent
 
 # The layered packages are walked rather than listed, so a module added to
 # one is guarded the day it lands instead of the day somebody remembers.
-LAYERED_PACKAGES = ("components", "providers")
+LAYERED_PACKAGES = ("components", "providers", "utilities")
 
 CORE_MODULES = (
     "config",
@@ -57,6 +57,13 @@ CORE_MODULES = (
         for package in LAYERED_PACKAGES
         for path in (PACKAGE / package).rglob("*.py")
     ),
+)
+
+# The session and the utilities: the work, which must not know how it was
+# called. Walked like the rest, so a new utility is held to it on arrival.
+WORK_MODULES = (
+    "engine",
+    *(name for name in CORE_MODULES if name.startswith("utilities/")),
 )
 
 # What would tie the engine to one front-end. The CLI module is named both
@@ -165,23 +172,25 @@ def test_a_core_module_never_imports_a_prompting_module(name):
 
 
 # ----------------------------------------------------------------------------
-def test_the_engine_does_not_import_a_front_end():
+@pytest.mark.parametrize("name", WORK_MODULES)
+def test_the_engine_does_not_import_a_front_end(name):
     """Parsed arguments are the CLI's; the engine takes plain values."""
-    found = imported_modules(module_tree("engine")) & FRONT_END_MODULES
+    found = imported_modules(module_tree(name)) & FRONT_END_MODULES
 
     assert found == set(), (
-        f"mailctl/engine.py imports {sorted(found)}; the engine must not "
+        f"mailctl/{name}.py imports {sorted(found)}; the engine must not "
         f"know how it was called"
     )
 
 
 # ----------------------------------------------------------------------------
-def test_the_engine_does_not_touch_the_terminal_or_environment():
+@pytest.mark.parametrize("name", WORK_MODULES)
+def test_the_engine_does_not_touch_the_terminal_or_environment(name):
     """Whether stdin is a tty, and what is exported, are front-end facts."""
-    found = touched_attributes(module_tree("engine")) & FRONT_END_ATTRIBUTES
+    found = touched_attributes(module_tree(name)) & FRONT_END_ATTRIBUTES
 
     assert found == set(), (
-        f"mailctl/engine.py reads {sorted(found)}; interaction belongs in "
+        f"mailctl/{name}.py reads {sorted(found)}; interaction belongs in "
         f"the front-end"
     )
 
@@ -210,6 +219,9 @@ def test_the_walk_reaches_the_layered_packages():
     assert "components/imap/client" in CORE_MODULES
     assert "providers/mxroute/sieve" in CORE_MODULES
     assert "providers/mxroute/imap" in CORE_MODULES
+    assert "utilities/rules" in CORE_MODULES
+    assert "utilities/mail" in CORE_MODULES
+    assert "utilities/rules" in WORK_MODULES
 
 
 # ----------------------------------------------------------------------------

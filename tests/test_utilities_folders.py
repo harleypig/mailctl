@@ -1,0 +1,446 @@
+"""Folders -- listed, subscribed, and planned as a target -- driven as a
+front-end would drive them.
+
+No argparse and no stdout here: every test builds plain inputs, calls
+the utility, and asserts on what comes back and on what the fakes were
+asked to do.
+
+The Sieve side is a session-level fake (``FakeSieveSession``); the IMAP
+side is the real ``ImapSession`` over the ``FakeIMAPClient`` double from
+conftest, so folder normalization and planning run for real.
+"""
+
+import pytest
+from utilities_support import NO_MAILBOX, FakeSieveSession, criteria
+
+from mailctl import MailctlError, utilities
+from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.providers.mxroute.imap import new_imap_session
+from mailctl.utilities.mail import MailActionPlan
+from mailctl.utilities.rules import (
+    ActionSpec,
+    RuleRequest,
+)
+
+# ############################################################################
+# The target folder
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_no_folder_means_no_folder_plan(sessions, imap_config):
+    plan = utilities.folders.plan_folder(sessions, imap_config, None)
+
+    assert plan.status == utilities.folders.FOLDER_NONE
+
+
+# ----------------------------------------------------------------------------
+def test_the_config_default_folder_is_used_when_none_is_given(
+    sessions, imap_config
+):
+    imap_config.default_folder = "Lists"
+
+    plan = utilities.folders.plan_folder(sessions, imap_config, None)
+
+    assert plan.folder == "INBOX.Lists"
+    assert plan.status == utilities.folders.FOLDER_EXISTS
+
+
+# ----------------------------------------------------------------------------
+def test_a_missing_folder_is_reported_not_created(
+    sessions, imap_config, fake_imap
+):
+    plan = utilities.folders.plan_folder(sessions, imap_config, "Lists/GitHub")
+
+    assert plan.folder == "INBOX.Lists.GitHub"
+    assert plan.status == utilities.folders.FOLDER_MISSING
+    assert "create_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_with_mailbox_and_imap_the_folder_is_made_both_ways(
+    sessions, imap_config, fake_imap
+):
+    """Sieve's :create stays as the fallback; IMAP makes it visible now."""
+    plan = utilities.folders.plan_folder(
+        sessions, imap_config, "New", create=True
+    )
+
+    assert plan.status == utilities.folders.FOLDER_BOTH_CREATE
+    assert plan.use_create
+    assert utilities.folders.folder_pending(sessions, plan)
+    assert "create_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_without_imap_only_sieve_creates_the_folder(fake_sieve, imap_config):
+    """--no-imap: nothing can create or subscribe it now (#40)."""
+    live = MxrouteProvider(sieve=fake_sieve, imap=None)
+
+    plan = utilities.folders.plan_folder(live, imap_config, "New", create=True)
+
+    assert plan.status == utilities.folders.FOLDER_SIEVE_CREATES
+    assert plan.use_create
+    assert not utilities.folders.folder_pending(live, plan)
+
+
+# ----------------------------------------------------------------------------
+def test_without_mailbox_the_folder_is_planned_for_imap_then_created(
+    imap_session, imap_config, fake_imap
+):
+    live = MxrouteProvider(FakeSieveSession(caps=NO_MAILBOX), imap_session)
+
+    plan = utilities.folders.plan_folder(
+        live, imap_config, "New", create=True, subscribe=False
+    )
+
+    assert plan.status == utilities.folders.FOLDER_IMAP_CREATE
+    assert "create_folder" not in fake_imap.names()
+
+    result = utilities.folders.create_folder(live, plan)
+
+    assert result.folder == "INBOX.New"
+    assert not result.subscribed
+    assert ("create_folder", "INBOX.New") in fake_imap.calls
+    assert "subscribe_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_new_folder_is_planned_under_the_servers_namespace_prefix(
+    fake_imap, fake_sieve, imap_config
+):
+    """#116: an empty personal prefix plans ``X``, not ``INBOX.X``."""
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.namespace_response = ((("", "."),), None, None)
+    session = new_imap_session(imap_config)
+    session.open()
+    live = MxrouteProvider(sieve=fake_sieve, imap=session)
+
+    plan = utilities.folders.plan_folder(
+        live, imap_config, "Probe", create=True
+    )
+
+    assert plan.folder == "Probe"
+
+
+# ----------------------------------------------------------------------------
+def test_creating_a_folder_that_was_not_planned_for_it_is_refused(
+    sessions, imap_config
+):
+    plan = utilities.folders.plan_folder(sessions, imap_config, "Lists")
+
+    with pytest.raises(MailctlError, match="not planned for IMAP creation"):
+        utilities.folders.create_folder(sessions, plan)
+
+
+# ----------------------------------------------------------------------------
+def test_without_imap_the_delimiter_is_assumed_and_said_so(imap_config):
+    live = MxrouteProvider(sieve=FakeSieveSession())
+
+    plan = utilities.folders.plan_folder(live, imap_config, "Lists/GitHub")
+
+    assert plan.delimiter_assumed
+    assert plan.delimiter == "."
+    assert plan.folder == "INBOX.Lists.GitHub"
+
+
+# ----------------------------------------------------------------------------
+def test_a_folder_that_cannot_be_created_is_planned_then_refused(
+    imap_config,
+):
+    live = MxrouteProvider(sieve=FakeSieveSession(caps=NO_MAILBOX))
+
+    plan = utilities.folders.plan_folder(live, imap_config, "New", create=True)
+
+    assert plan.status == utilities.folders.FOLDER_UNCREATABLE
+
+    with pytest.raises(MailctlError, match="cannot be created"):
+        utilities.folders.check_folder(plan)
+
+    request = RuleRequest(criteria(), ActionSpec(fileinto="New"))
+
+    with pytest.raises(MailctlError, match="cannot be created"):
+        utilities.rules.plan_rule(live, imap_config, request, plan)
+
+
+# ############################################################################
+# Folder creation happens on execute
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def imap_created_folder_plan(imap_session, imap_config):
+    live = MxrouteProvider(FakeSieveSession(caps=NO_MAILBOX), imap_session)
+    folder = utilities.folders.plan_folder(
+        live, imap_config, "New", create=True
+    )
+    request = RuleRequest(criteria(), ActionSpec(fileinto="New"))
+
+    return live, utilities.rules.plan_rule(live, imap_config, request, folder)
+
+
+# ----------------------------------------------------------------------------
+def test_a_rule_plan_creates_its_folder_only_on_execute(
+    imap_session, imap_config, fake_imap, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    live, plan = imap_created_folder_plan(imap_session, imap_config)
+
+    assert "create_folder" not in fake_imap.names()
+
+    events = []
+    utilities.rules.execute_script_change(
+        live, imap_config, plan, events.append
+    )
+
+    assert ("create_folder", "INBOX.New") in fake_imap.calls
+    assert [type(event) for event in events] == [
+        utilities.events.ScriptBackedUp,
+        utilities.events.FolderCreated,
+        utilities.events.ScriptUploaded,
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_rejected_script_leaves_no_folder_behind(
+    imap_session, imap_config, fake_imap, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    live, plan = imap_created_folder_plan(imap_session, imap_config)
+    live.sieve.reject = True
+
+    with pytest.raises(MailctlError, match="rejected"):
+        utilities.rules.execute_script_change(live, imap_config, plan)
+
+    assert "create_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("subscribe", "expected"), [(True, True), (False, False)]
+)
+def test_a_sieve_create_rule_also_creates_and_subscribes_on_execute(
+    sessions, imap_config, fake_imap, tmp_path, subscribe, expected
+):
+    """The :create path is the default one here, so it has to subscribe
+    too, not only the IMAP-creation path (#40)."""
+    imap_config.backup_dir = tmp_path
+    folder = utilities.folders.plan_folder(
+        sessions, imap_config, "New", create=True, subscribe=subscribe
+    )
+    plan = utilities.rules.plan_rule(
+        sessions,
+        imap_config,
+        RuleRequest(criteria(), ActionSpec(fileinto="New")),
+        folder,
+    )
+
+    assert 'fileinto :create "INBOX.New"' in plan.after
+    assert "create_folder" not in fake_imap.names()
+
+    events = []
+    utilities.rules.execute_script_change(
+        sessions, imap_config, plan, events.append
+    )
+
+    assert ("create_folder", "INBOX.New") in fake_imap.calls
+    assert (("subscribe_folder", "INBOX.New") in fake_imap.calls) is expected
+    assert [type(event) for event in events] == [
+        utilities.events.ScriptBackedUp,
+        utilities.events.FolderCreated,
+        utilities.events.ScriptUploaded,
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_rejected_sieve_create_rule_leaves_no_folder_behind(
+    sessions, imap_config, fake_imap, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    folder = utilities.folders.plan_folder(
+        sessions, imap_config, "New", create=True
+    )
+    plan = utilities.rules.plan_rule(
+        sessions,
+        imap_config,
+        RuleRequest(criteria(), ActionSpec(fileinto="New")),
+        folder,
+    )
+    sessions.sieve.reject = True
+
+    with pytest.raises(MailctlError, match="rejected"):
+        utilities.rules.execute_script_change(sessions, imap_config, plan)
+
+    assert "create_folder" not in fake_imap.names()
+
+
+# ############################################################################
+# Subscription
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_the_folder_listing_says_which_folders_webmail_shows(sessions):
+    listing = utilities.folders.list_folders(sessions)
+
+    assert listing.unsubscribed == ["INBOX.spam"]
+    assert listing.is_subscribed("INBOX.Lists")
+    assert not listing.is_subscribed("INBOX.lists")  # #56: exact
+    assert utilities.reports.probe_mail(sessions).unsubscribed == [
+        "INBOX.spam"
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_subscribing_is_planned_then_executed(sessions, fake_imap):
+    plan = utilities.folders.plan_subscription(
+        sessions, "spam", subscribe=True
+    )
+
+    assert plan.folder == "INBOX.spam"
+    assert plan.changes
+    assert "subscribe_folder" not in fake_imap.names()
+
+    utilities.folders.execute_subscription(sessions, plan)
+
+    assert ("subscribe_folder", "INBOX.spam") in fake_imap.calls
+    assert utilities.folders.list_folders(sessions).unsubscribed == []
+
+
+# ----------------------------------------------------------------------------
+def test_unsubscribing_hides_without_deleting(sessions, fake_imap):
+    plan = utilities.folders.plan_subscription(
+        sessions, "Lists", subscribe=False
+    )
+
+    utilities.folders.execute_subscription(sessions, plan)
+
+    listing = utilities.folders.list_folders(sessions)
+
+    assert "INBOX.Lists" in listing.folders
+    assert "INBOX.Lists" in listing.unsubscribed
+
+
+# ----------------------------------------------------------------------------
+def test_a_plan_that_changes_nothing_does_nothing(sessions, fake_imap):
+    plan = utilities.folders.plan_subscription(
+        sessions, "Lists", subscribe=True
+    )
+
+    assert not plan.changes
+
+    utilities.folders.execute_subscription(sessions, plan)
+
+    assert "subscribe_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_missing_folder_cannot_be_subscribed(sessions):
+    with pytest.raises(MailctlError, match="nothing to subscribe to"):
+        utilities.folders.plan_subscription(
+            sessions, "Nowhere", subscribe=True
+        )
+
+    with pytest.raises(MailctlError, match="no folder or subscription"):
+        utilities.folders.plan_subscription(
+            sessions, "Nowhere", subscribe=False
+        )
+
+
+# ----------------------------------------------------------------------------
+def test_a_stale_subscription_to_a_gone_folder_can_be_removed(
+    sessions, fake_imap
+):
+    fake_imap.subscriptions.append(((), b".", b"INBOX.Gone"))
+    sessions.imap._read_folders()
+
+    plan = utilities.folders.plan_subscription(
+        sessions, "Gone", subscribe=False
+    )
+
+    assert plan.changes
+
+
+# ----------------------------------------------------------------------------
+def test_a_subscribe_the_server_ignores_is_an_error(sessions, fake_imap):
+    fake_imap.subscribe_takes_effect = False
+    plan = utilities.folders.plan_subscription(
+        sessions, "spam", subscribe=True
+    )
+
+    with pytest.raises(MailctlError, match="still does not list it"):
+        utilities.folders.execute_subscription(sessions, plan)
+
+
+# ############################################################################
+# Folder names are case-sensitive, except INBOX (RFC 3501 section 5.1)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("source", "destination", "noop"),
+    [
+        ("INBOX.Foo", "INBOX.foo", False),
+        ("INBOX.foo", "INBOX.foo", True),
+        ("inbox", "INBOX", True),
+        ("Inbox", "INBOX", True),
+    ],
+)
+def test_only_inbox_compares_case_insensitively(source, destination, noop):
+    """On a case-sensitive server INBOX.Foo and INBOX.foo are two folders.
+
+    Treating them as one skipped a real move as a no-op.
+    """
+    spec = ActionSpec(fileinto=destination)
+
+    assert utilities.mail.mail_pass_is_noop(spec, source, destination) is noop
+    assert MailActionPlan(source, destination, [], False).moves is not noop
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("create", [False, True])
+def test_a_case_variant_is_reported_not_taken_for_the_folder(
+    sessions, imap_config, create
+):
+    """#56: 'lists' is not INBOX.Lists, and planning must say that one
+    exists rather than silently treat the name as absent -- above all
+    when --create-folder is about to make a second, differently cased
+    folder beside it."""
+    plan = utilities.folders.plan_folder(
+        sessions, imap_config, "lists", create=create
+    )
+
+    assert plan.folder == "INBOX.lists"
+    assert plan.status != utilities.folders.FOLDER_EXISTS
+    assert plan.case_variants == ("INBOX.Lists",)
+
+
+# ----------------------------------------------------------------------------
+def test_an_exact_folder_has_no_case_variants(sessions, imap_config):
+    plan = utilities.folders.plan_folder(sessions, imap_config, "Lists")
+
+    assert plan.status == utilities.folders.FOLDER_EXISTS
+    assert plan.case_variants == ()
+
+
+# ----------------------------------------------------------------------------
+def test_subscribing_a_case_variant_names_the_real_folder(sessions):
+    with pytest.raises(MailctlError, match=r"'INBOX\.Lists' exists"):
+        utilities.folders.plan_subscription(sessions, "lists", subscribe=True)
+
+
+# ----------------------------------------------------------------------------
+def test_the_source_folder_is_normalized_like_the_destination(
+    sessions, fake_imap
+):
+    """--folder Lists and --fileinto Lists name the same folder."""
+    fake_imap.listing.append(((), b".", b"INBOX.Lists.X"))
+    sessions.imap._read_folders()
+
+    source = utilities.mail.source_folder(sessions, "Lists/X")
+
+    assert source == "INBOX.Lists.X"
+    assert utilities.mail.mail_pass_is_noop(
+        ActionSpec(fileinto="Lists/X"), source, "INBOX.Lists.X"
+    )

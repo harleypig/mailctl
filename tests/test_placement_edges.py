@@ -28,7 +28,7 @@ import re
 
 import pytest
 
-from mailctl import MailctlError, engine
+from mailctl import MailctlError, utilities
 from mailctl.cli import build_parser, print_placement
 from mailctl.components.managesieve import (
     PLACE_AFTER,
@@ -40,7 +40,6 @@ from mailctl.components.managesieve import (
     rule_names,
 )
 from mailctl.criteria import Criteria
-from mailctl.engine import placement_analysis
 from mailctl.providers.mxroute import MxrouteProvider
 from mailctl.providers.mxroute.sieve import (
     merge_rule,
@@ -48,6 +47,7 @@ from mailctl.providers.mxroute.sieve import (
     render_script,
 )
 from mailctl.rules import analyze_placement, read_rules, rule_from_criteria
+from mailctl.utilities.rules import placement_analysis
 
 # A script in the state an MXroute account is actually in: written by two
 # different tools, in two different name dialects, with four structurally
@@ -812,7 +812,7 @@ def test_replacing_a_rule_does_not_report_it_shadowing_itself(capsys):
             "Announce",
             _criteria("to", "@lists.example.com"),
             BROAD_ACTIONS,
-            engine.Placement(PLACE_FIRST),
+            utilities.rules.Placement(PLACE_FIRST),
         )
     )
 

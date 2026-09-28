@@ -22,7 +22,7 @@ silently drops mail.
 
 import pytest
 
-from mailctl import MailctlError, engine
+from mailctl import MailctlError, utilities
 from mailctl.cli import actions_from_args, build_parser, reject_forbidden
 from mailctl.components.managesieve import UNIMPLEMENTED_ACTIONS
 from mailctl.config import Config
@@ -190,7 +190,9 @@ def test_flags_are_emitted_before_fileinto_and_stop_comes_last():
     the same mail again.
     """
     args = parse_add("--mark-read")
-    spec = engine.resolve_stop(MxrouteProvider, actions_from_args(args))
+    spec = utilities.rules.resolve_stop(
+        MxrouteProvider, actions_from_args(args)
+    )
     actions = sieve_actions(spec, "INBOX.Lists", False)
 
     assert [action[0] for action in actions] == ["addflag", "fileinto", "stop"]
