@@ -29,17 +29,16 @@ can rely on, what it must still probe, and what it is leaving unused.
 ### `redirect` is disabled
 
 - **Sieve `redirect` is disabled.** MXroute's own blog says so — *"Why we
-  disabled redirect sieve filters on MXroute"* (2024-03-21) — and gives the
+  disabled redirect sieve filters on MXroute"* (2024-03-22) — and gives the
   reason: real forwarders "are designed to properly handle SRS".
   - Source: [the blog post][blog-redirect], fetched 2026-09-27. It reads
     *"We've decided to disable the ability for users to create redirect
     sieve filters"* and *"Email forwarders on MXroute are designed to
     properly handle SRS"*.
-  - **Date mismatch:** on 2026-09-27 the post showed **Mar 22, 2024**.
-    Everything in the tree says 2024-03-21: this record, `mailctl test`'s
-    note, and the refusal message. The difference is a day, and it may be a
-    time-zone effect. It is recorded here and not corrected, because the
-    refusal text is pinned by a CLI snapshot.
+  - **Date resolved:** on 2026-09-27 the post showed **Mar 22, 2024**, and
+    its own metadata gives `2024-03-22T00:00:00.000Z`. This record,
+    `mailctl test`'s note, and the refusal message all say 2024-03-22
+    ([#102][i102]).
 
 ### Connecting to IMAP
 
@@ -374,6 +373,7 @@ script back with `mailctl show`.
 [i19]: https://github.com/harleypig/mailctl/issues/19
 [i30]: https://github.com/harleypig/mailctl/issues/30
 [i38]: https://github.com/harleypig/mailctl/issues/38
+[i102]: https://github.com/harleypig/mailctl/issues/102
 [blog-redirect]: https://blog.mxroute.com/why-we-disabled-redirect-sieve-filters-on-mxroute
 [blog-dovecot24]: https://blog.mxroute.com/we-fixed-quota-reporting-then-dovecot-2-4-happened
 [blog-bandages]: https://blog.mxroute.com/ripping-off-bandages

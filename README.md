@@ -77,6 +77,12 @@ highest source that sets it **replaces** the lower ones rather than adding
 to them, so `--disable-extension copy` on one run means only `copy`, whatever
 the config file says. Names are case-insensitive.
 
+`none` means disable nothing. An empty value falls through to the next
+source, so `none` is how one run clears a list set lower down:
+`--disable-extension none` or `MAILCTL_DISABLED_EXTENSIONS=none` overrides
+the config file's list, and `mailctl test` names where the `none` came from.
+It must stand alone — `none` beside an extension name is refused.
+
 A disabled extension counts as not advertised:
 
 | Disabled | What mailctl does |
@@ -354,7 +360,7 @@ documentation read better.
 ### Confirmed
 
 * The `redirect` action is **disabled server-side** — MXRoute announced this
-  on 2024-03-21, saying their own forwarders "are designed to properly handle
+  on 2024-03-22, saying their own forwarders "are designed to properly handle
   SRS" where a Sieve redirect does not. `--redirect` fails with a pointer to
   the panel's Forwarders (or the `mxroute_forwarder` Terraform resource).
 * The username is the **full email address**, on both IMAP and ManageSieve.

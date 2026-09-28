@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: MXRoute disables the Sieve 'redirect' action server-side (their 2024-03-21 announcement). Their own forwarders are built to handle SRS correctly, which a Sieve redirect does not -- so set up a forwarder in the control panel, or with the 'mxroute_forwarder' Terraform resource, instead.
+mailctl: MXRoute disables the Sieve 'redirect' action server-side (their 2024-03-22 announcement). Their own forwarders are built to handle SRS correctly, which a Sieve redirect does not -- so set up a forwarder in the control panel, or with the 'mxroute_forwarder' Terraform resource, instead.
 
 --- sieve calls
 --- imap calls

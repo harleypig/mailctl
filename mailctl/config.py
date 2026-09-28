@@ -900,6 +900,11 @@ def _as_port(value, label: str) -> int:
         raise MailctlError(f"{label}: {value!r} is not a port number") from exc
 
 
+# The disabled_extensions value meaning "disable nothing". Reserved, so it
+# can never be taken for an extension's name.
+DISABLE_NOTHING = "none"
+
+
 # ----------------------------------------------------------------------------
 def _as_extension_names(value, origin: Source) -> frozenset[str]:
     """Normalize ``disabled_extensions`` from whichever source won.
@@ -908,6 +913,10 @@ def _as_extension_names(value, origin: Source) -> frozenset[str]:
     comma-separated string -- TOML has lists, so a string there is refused
     rather than guessed at. Names are case-insensitive, as Sieve's own
     are, so they are kept lower-cased; blanks are dropped.
+
+    ``none`` is reserved: alone it is an explicitly empty list, which --
+    unlike an empty value -- stops the ladder, so one run can clear a
+    config-file list. Beside another name it is refused.
     """
     if isinstance(value, str) and origin.kind != CONFIG_FILE:
         value = value.split(",")
@@ -920,7 +929,19 @@ def _as_extension_names(value, origin: Source) -> frozenset[str]:
             f"(from {origin.describe()})"
         )
 
-    return frozenset(item.strip().lower() for item in value if item.strip())
+    names = frozenset(item.strip().lower() for item in value if item.strip())
+
+    if DISABLE_NOTHING not in names:
+        return names
+
+    if len(names) > 1:
+        raise MailctlError(
+            f"disabled_extensions: '{DISABLE_NOTHING}' means disable "
+            f"nothing and cannot be combined with extension names "
+            f"(from {origin.describe()})"
+        )
+
+    return frozenset()
 
 
 # ----------------------------------------------------------------------------

@@ -1,0 +1,9 @@
+$ mailctl test --disable-extension none --disable-extension copy
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: disabled_extensions: 'none' means disable nothing and cannot be combined with extension names (from flag --disable-extension)
+
+--- sieve calls
+--- imap calls
