@@ -55,6 +55,18 @@ DEFAULT_PROVIDER = "mxroute"
 
 SIEVE_TLS_MODES = ("starttls", "ssl", "none")
 
+# The settings that say where and how a provider connects. Which of them a
+# provider reads is its own declaration (ProviderCapabilities.settings);
+# the rest -- the account, the password, where backups go -- every
+# provider reads.
+CONNECTION_SETTINGS = (
+    "host",
+    "imap_host",
+    "imap_port",
+    "sieve_port",
+    "sieve_tls",
+)
+
 # The one prefix an env file is read for. Anything else in the file belongs
 # to some other program sharing it, and is ignored rather than refused.
 ENV_PREFIX = "MAILCTL_"

@@ -23,6 +23,7 @@ import difflib
 import email
 import inspect
 import json
+import re
 from contextlib import contextmanager
 from typing import cast
 
@@ -1187,3 +1188,170 @@ def test_mxroute_still_takes_disabled_extensions(monkeypatch):
         MxrouteProvider.validate(
             Config(disabled_extensions=frozenset({"nope"}))
         )
+
+
+# ############################################################################
+# Help offers only what the selected provider declares (#26, #99)
+# ############################################################################
+
+PLACEMENT_FLAGS = ("--first", "--last", "--before", "--after")
+
+# Flags hidden for reasons that have nothing to do with the provider:
+# refused actions, accepted only to explain the refusal, and apply's
+# undocumented --delimiter.
+ALWAYS_HIDDEN = {"--redirect", "--notify", "--vacation", "--delimiter"}
+
+
+class BareProvider(FakeProvider):
+    """The fake with no connection settings, no ordering, no extensions."""
+
+    name = "bare"
+    capabilities = ProviderCapabilities(
+        ordering=False,
+        stop=False,
+        rule_sets=True,
+        actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
+        extensions=False,
+        declined=frozenset(("move_rule", "position")),
+    )
+    opened = 0
+
+    move_rule = UnorderedProvider.move_rule
+    position = UnorderedProvider.position
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def bare(fakes, monkeypatch):
+    monkeypatch.setitem(registry.PROVIDERS, BareProvider.name, BareProvider)
+    monkeypatch.setattr(BareProvider, "opened", 0)
+
+
+# ----------------------------------------------------------------------------
+def help_text(capsys, *argv: str) -> str:
+    """What ``mailctl ARGV --help`` prints."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main([*argv, "--help"])
+
+    assert stopped.value.code == 0
+
+    return capsys.readouterr().out
+
+
+# ----------------------------------------------------------------------------
+def offered_flags(parser: argparse.ArgumentParser) -> dict[str, set[str]]:
+    """Every subcommand's flags, split into shown and hidden."""
+    subparsers = next(
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    found = {"shown": set(), "hidden": set()}
+
+    for sub in subparsers.choices.values():
+        for action in sub._actions:
+            key = "hidden" if action.help == argparse.SUPPRESS else "shown"
+            found[key].update(action.option_strings)
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def test_mxroute_declares_everything_so_nothing_is_hidden():
+    """Its help is the help every earlier version printed."""
+    flags = offered_flags(cli.build_parser())
+
+    assert flags["hidden"] - {"--verbose", "--debug"} == ALWAYS_HIDDEN
+    assert {*PLACEMENT_FLAGS, "--no-stop", "--disable-extension"} <= (
+        flags["shown"]
+    )
+    assert {"--host", "--sieve-port", "--sieve-tls", "--imap-host"} <= (
+        flags["shown"]
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_placement_is_not_offered_without_ordering(bare, capsys):
+    text = help_text(capsys, "add", "--provider", "bare")
+
+    for flag in PLACEMENT_FLAGS:
+        assert flag not in text
+
+    assert "--name" in text
+
+
+# ----------------------------------------------------------------------------
+def test_move_rule_is_not_listed_without_ordering(bare, capsys, monkeypatch):
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    text = help_text(capsys)
+    usage = text.split("\n\n")[0]
+
+    # remove-rule contains the name, so it is matched as a whole word.
+    assert not re.search(r"(?<![\w-])move-rule", text)
+    assert "remove-rule" in usage
+
+
+# ----------------------------------------------------------------------------
+def test_no_stop_is_not_offered_without_stop(bare, capsys):
+    assert "--no-stop" not in help_text(capsys, "add", "--provider", "bare")
+    assert "--no-stop" in help_text(capsys, "add")
+
+
+# ----------------------------------------------------------------------------
+def test_disable_extension_is_not_offered_without_extensions(bare, capsys):
+    text = help_text(capsys, "list", "--provider", "bare")
+
+    assert "--disable-extension" not in text
+
+
+# ----------------------------------------------------------------------------
+def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
+    """A host that reads no --sieve-port does not offer one, and its help
+    says nothing about MXroute."""
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    text = help_text(capsys, "list")
+
+    for flag in ("--sieve-port", "--sieve-tls", "--imap-host", "--host "):
+        assert flag not in text
+
+    assert "MXRoute" not in text
+    assert "--user" in text
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "refusal"),
+    [
+        (
+            ["add", "--from", GITHUB, "--fileinto", "L", "--first"],
+            "'ordering'",
+        ),
+        (["move-rule", "x", "--first"], "'ordering'"),
+        (["list", "--sieve-port", "4190"], "flag --sieve-port"),
+        (["list", "--disable-extension", "mailbox"], "disabled_extensions"),
+    ],
+    ids=["placement", "move-rule", "connection-flag", "disable-extension"],
+)
+def test_a_hidden_option_given_anyway_is_refused_by_name(
+    bare, capsys, argv, refusal
+):
+    """Refusal stays the backstop: named, and before any connection."""
+    assert cli.main([*argv, "--provider", "bare"]) == 1
+
+    error = capsys.readouterr().err
+
+    assert "the bare provider cannot" in error
+    assert refusal in error
+    assert BareProvider.opened == 0
+
+
+# ----------------------------------------------------------------------------
+def test_an_unreadable_selection_falls_back_to_offering_everything(
+    capsys, monkeypatch
+):
+    """Help is never where a bad setting is reported; the run is."""
+    monkeypatch.setenv("MAILCTL_PROVIDER", "no-such-provider")
+
+    assert "--first" in help_text(capsys, "add")

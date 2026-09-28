@@ -127,6 +127,9 @@ class ProviderCapabilities:
     * ``extensions`` -- it reports rule-language extensions by name.
     * ``specifics`` -- the namespaced keys a request's ``specifics`` may
       carry, each with its schema. An unknown key is refused.
+    * ``settings`` -- which of ``config.CONNECTION_SETTINGS`` it reads, each
+      with the help its flag shows (empty for none). A front-end offers
+      only these, and one given by flag that is not here is refused.
     * ``declined`` -- the :data:`OPERATIONS` this provider does not perform;
       each is implemented with :func:`declined`.
     """
@@ -138,6 +141,7 @@ class ProviderCapabilities:
     extensions: bool
     specifics: Mapping[str, Specific] = field(default_factory=dict)
     declined: frozenset[str] = frozenset()
+    settings: Mapping[str, str] = field(default_factory=dict)
 
 
 # ----------------------------------------------------------------------------

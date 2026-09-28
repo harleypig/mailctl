@@ -84,6 +84,13 @@ class MxrouteProvider(Provider):
         rule_sets=True,
         actions=frozenset((FILEINTO, DISCARD, FLAG, KEEP)),
         extensions=True,
+        settings={
+            "host": "MXRoute server hostname",
+            "imap_host": "",
+            "imap_port": "",
+            "sieve_port": "",
+            "sieve_tls": "",
+        },
     )
 
     wording = Wording(

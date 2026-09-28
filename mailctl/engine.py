@@ -34,6 +34,8 @@ from pathlib import Path
 
 from . import MailctlError
 from .config import (
+    CONNECTION_SETTINGS,
+    FLAG,
     Config,
     LegacySetting,
     Source,
@@ -71,6 +73,7 @@ from .providers.base import (
     Placement,
     Progress,
     Provider,
+    ProviderCapabilities,
     Wording,
     action_names,
     decode_header_value,
@@ -189,10 +192,27 @@ def connect(
 def check_settings(provider: type[Provider], config: Config) -> None:
     """Refuse a setting the provider has no use for, rather than ignore it.
 
-    ``disabled_extensions`` narrows the extensions a provider emits, so it
-    means something only to one that declares ``extensions``; anywhere
-    else it would be a switch that looks like it took effect and did not.
+    A connection flag the provider does not read would be a switch that
+    looks like it took effect and did not. So would ``disabled_extensions``
+    anywhere but a provider that declares ``extensions``, since it narrows
+    the extensions a provider emits. An ambient connection setting -- one
+    from the environment or the config file -- may serve another provider,
+    so only a flag is refused.
     """
+    for name in CONNECTION_SETTINGS:
+        origin = config.sources.get(name)
+
+        if (
+            origin is not None
+            and origin.kind == FLAG
+            and name not in provider.capabilities.settings
+        ):
+            raise refuse(
+                provider.name,
+                f"take {origin.describe()}",
+                f"it does not read the {name!r} setting",
+            )
+
     if config.disabled_extensions and not provider.capabilities.extensions:
         origin = config.sources.get("disabled_extensions")
         where = f" (from {origin.describe()})" if origin is not None else ""
@@ -202,6 +222,25 @@ def check_settings(provider: type[Provider], config: Config) -> None:
             f"take disabled_extensions{where}",
             "it does not declare the 'extensions' capability",
         )
+
+
+# ----------------------------------------------------------------------------
+def capabilities_for(config: Config) -> ProviderCapabilities:
+    """What the provider ``config`` selects declares; needs no connection.
+
+    A front-end reads this to offer only what that provider can do.
+    """
+    return provider_for(config).capabilities
+
+
+# ----------------------------------------------------------------------------
+def check_move(config: Config) -> None:
+    """Refuse moving a rule under a provider without ``ordering``.
+
+    Needs no connection, so a front-end calls it before connecting;
+    :func:`plan_move` holds the same line for any other caller.
+    """
+    require_capability(provider_for(config), "ordering")
 
 
 # ----------------------------------------------------------------------------
