@@ -60,7 +60,12 @@ Steps:
    ```
 
 3. Move the accumulated [CHANGELOG.md](CHANGELOG.md) entries from
-   `## Unreleased` under a `## 0.1.0` heading in the same change.
+   `## Unreleased` under a `## 0.1.0` heading in the same change, and bump
+   `version` in `pyproject.toml`. That is the only file the version is
+   written in: `mailctl.__version__`, and so `mailctl --version`, is read
+   from the installed package's metadata (#106). An editable install
+   records the version when it is installed, so after a bump run
+   `uv pip install -e .` again before `mailctl --version` shows it.
 
 **A tag publishes nothing**, which is the one place this differs usefully from
 the sibling provider: there, pushing a tag triggers a Registry release that
