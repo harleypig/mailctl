@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-09-27
 - Amended: 2026-09-27, at step 4 and again for #99 (see *Amendment*)
+- Amended by [ADR 0007][adr7], 2026-09-28 (see *Amended by ADR 0007*)
 - Supersedes the open questions of [#26][i26]; recorded for epic [#92][i92].
 
 ## Context
@@ -373,6 +374,15 @@ Three readings, settled after step 4 ([#99][i99]):
 - **Connection settings are declared as capability data.** Each provider
   names the connection settings it reads, and only those are offered.
 
+## Amended by ADR 0007
+
+2026-09-28. [ADR 0007][adr7] keeps both layers and one provider package per
+host, and splits the provider in two: a **dialect** (offline, host-specific
+translation, refusals, and wording) and a **transport** (communication with
+the server only). The engine becomes the session, and the work it holds
+today moves to utility modules above it. The IMAP client-side re-check
+leaves the `imap` component for the mail utility.
+
 ## Based on
 
 - [#26][i26] — the provider interface's settled position, and the
@@ -393,6 +403,7 @@ Three readings, settled after step 4 ([#99][i99]):
 [adr1]: 0001-standalone-cli-over-provider-resource.md
 [adr3]: 0003-python-core-with-per-component-language-choice.md
 [adr4]: 0004-adopt-go-sieve-as-the-evaluation-engine.md
+[adr7]: 0007-interfaces-utilities-session-provider-layering.md
 [icebox]: ../ICEBOX.md
 [i7]: https://github.com/harleypig/mailctl/issues/7
 [i16]: https://github.com/harleypig/mailctl/issues/16
