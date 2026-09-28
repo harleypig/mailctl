@@ -23,9 +23,7 @@ from ...components.managesieve import (
     KNOWN_EXTENSIONS,
     REQUIRED_EXTENSIONS,
     UNIMPLEMENTED_ACTIONS,
-    DisplayDiff,
     NameDialect,
-    Placement,
     SieveAuthenticationError,
     SieveConnectionError,
     SieveSession,
@@ -43,7 +41,8 @@ from ...config import (
 )
 from ...criteria import Criteria, escape_sieve_string
 from ...rules import Rule, rule_from_criteria
-from ..base import ActionSpec, ExtensionState
+from ..base import ActionSpec, DisplayDiff, ExtensionState, Placement
+from . import records
 
 __all__ = [
     "MXROUTE_FORBIDDEN_ACTIONS",
@@ -378,7 +377,7 @@ def merge_rule(
         actions,
         matchtype,
         replace,
-        placement,
+        records.placement(placement),
         ROUNDCUBE_DIALECT,
     )
 
@@ -392,13 +391,17 @@ def remove_rule(existing: str, name: str) -> str:
 # ----------------------------------------------------------------------------
 def move_rule(existing: str, name: str, placement: Placement) -> str:
     """``managesieve.move_rule``, with Roundcube's rule names."""
-    return _script.move_rule(existing, name, placement, ROUNDCUBE_DIALECT)
+    return _script.move_rule(
+        existing, name, records.placement(placement), ROUNDCUBE_DIALECT
+    )
 
 
 # ----------------------------------------------------------------------------
 def display_diff(before: str, after: str, name: str = "sieve") -> DisplayDiff:
     """``managesieve.display_diff``, with Roundcube's rule names."""
-    return _script.display_diff(before, after, name, ROUNDCUBE_DIALECT)
+    return records.display_diff(
+        _script.display_diff(before, after, name, ROUNDCUBE_DIALECT)
+    )
 
 
 # ############################################################################

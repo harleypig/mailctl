@@ -71,9 +71,7 @@ from .providers.base import (
     Progress,
     Provider,
     action_names,
-    case_variant_hint,
     decode_header_value,
-    normalize_folder,
     refuse,
     same_folder,
     validate_specifics,
@@ -385,6 +383,24 @@ class SubscriptionPlan:
 
 
 # ----------------------------------------------------------------------------
+def case_variant_hint(variants: list[str]) -> str:
+    """A sentence naming a missing folder's case variants, or nothing.
+
+    For an error about a folder that is missing: the likeliest reason is
+    that the one meant is spelled with different case.
+    """
+    if not variants:
+        return ""
+
+    listed = ", ".join(repr(folder) for folder in variants)
+
+    return (
+        f"{listed} {'exists' if len(variants) == 1 else 'exist'}, but "
+        f"folder names are case-sensitive. "
+    )
+
+
+# ----------------------------------------------------------------------------
 def plan_subscription(
     provider: Provider, name: str, subscribe: bool
 ) -> SubscriptionPlan:
@@ -398,7 +414,7 @@ def plan_subscription(
     folder = provider.normalize(name)
     subscribed_now = provider.is_subscribed(folder)
 
-    hint = case_variant_hint(folder, provider.case_variants(folder))
+    hint = case_variant_hint(provider.case_variants(folder))
 
     if subscribe and not provider.exists(folder):
         raise MailctlError(
@@ -1049,7 +1065,7 @@ class FolderPlan:
     """Where filed mail goes, and how that folder comes to exist.
 
     ``delimiter_assumed`` is true when there was no IMAP session to read
-    the delimiter from, so the Maildir++ heuristic was used instead.
+    the delimiter from, so the provider's assumed one was used instead.
 
     ``case_variants`` holds existing folders that differ from ``folder``
     only in case. Folder names are case-sensitive, so none of them is the
@@ -1119,8 +1135,7 @@ def plan_folder(
         return FolderPlan("", "", "", False, FOLDER_NONE, subscribe)
 
     if not mail:
-        assumed = delimiter or "."
-        folder = normalize_folder(requested, assumed, None)
+        folder, assumed = provider.assumed_folder(requested, delimiter)
 
     else:
         assumed = provider.delimiter()

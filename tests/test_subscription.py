@@ -293,7 +293,9 @@ def test_the_primitives_raise_and_name_the_folder(
 
 # ----------------------------------------------------------------------------
 def test_the_cli_reports_a_subscribed_folder(capsys):
-    report_folder_creation(FolderCreation(folder=NEW_FOLDER, subscribed=True))
+    report_folder_creation(
+        engine.FolderCreation(folder=NEW_FOLDER, subscribed=True)
+    )
 
     assert "subscribed" in capsys.readouterr().out
 
@@ -305,7 +307,9 @@ def test_the_cli_says_when_a_folder_was_deliberately_left_hidden(capsys):
     Months later that flag is a line in a saved command nobody remembers
     choosing, and the folder is invisible for a reason nobody can see.
     """
-    report_folder_creation(FolderCreation(folder=NEW_FOLDER, subscribed=False))
+    report_folder_creation(
+        engine.FolderCreation(folder=NEW_FOLDER, subscribed=False)
+    )
 
     captured = capsys.readouterr()
 
@@ -319,7 +323,7 @@ def test_the_cli_warns_on_a_failed_subscription_without_calling_it_a_failure(
 ):
     """It has to say both halves: the folder works, and it is invisible."""
     report_folder_creation(
-        FolderCreation(
+        engine.FolderCreation(
             folder=NEW_FOLDER,
             subscribed=False,
             subscribe_error="could not subscribe to folder -- denied",

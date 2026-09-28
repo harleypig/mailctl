@@ -43,7 +43,7 @@ from mailctl.config import (
 )
 from mailctl.criteria import Criteria
 from mailctl.engine import ActionSpec, RuleRequest
-from mailctl.providers import registry
+from mailctl.providers import model, registry
 from mailctl.providers.base import (
     DISCARD,
     FILEINTO,
@@ -223,7 +223,7 @@ class FakeProvider(Provider):
             before.splitlines(), after.splitlines(), name, name, lineterm=""
         )
 
-        return DisplayDiff("\n".join(lines), reformats=False)
+        return DisplayDiff("\n".join(lines), reformats=False, label="json")
 
     @classmethod
     def raw_diff(cls, before, after, name):
@@ -232,6 +232,12 @@ class FakeProvider(Provider):
     @classmethod
     def report_extensions(cls, advertised, config):
         return []
+
+    # -- folders, offline ----------------------------------------------------
+
+    @classmethod
+    def assumed_folder(cls, name, delimiter):
+        return name.replace("/", delimiter or "."), delimiter or "."
 
     # -- backups, offline ----------------------------------------------------
 
@@ -862,6 +868,49 @@ def test_mxroute_declares_no_specifics_so_any_is_refused():
 
     with pytest.raises(MailctlError, match="declared: none"):
         engine.check_rule(Config(), request)
+
+
+# ############################################################################
+# mxroute hands back the neutral model, never its components' records
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_mxroute_translates_every_record_it_returns(
+    fake_imap, imap_session, roundcube_script
+):
+    """The components keep records of their own; the engine gets the
+    model's. A record passed through untranslated would still work -- the
+    fields agree -- which is why only the type can show it."""
+    fake_imap.messages = {7: github_message(7)}
+    provider = MxrouteProvider(
+        sieve=rule_session(roundcube_script), imap=imap_session
+    )
+    criteria = Criteria()
+    criteria.add("From", GITHUB)
+
+    diff = provider.diff(roundcube_script, roundcube_script, "managesieve")
+    raw = provider.raw_diff(roundcube_script, "", "managesieve")
+    plan = provider.select_mail(criteria, "INBOX", "INBOX.Lists", [], False)
+    result = provider.apply_mail(plan)
+    created = provider.create_folder("INBOX.New", subscribe=True)
+    listed, _more = provider.list_messages(
+        "INBOX", criteria=criteria, expression=None, limit=None
+    )
+
+    assert type(diff) is model.DisplayDiff
+    assert type(raw) is model.DisplayDiff
+    assert (diff.label, raw.label) == ("sieve", "sieve")
+    assert type(plan) is model.MailActionPlan
+    assert plan.count == 1
+    assert {type(message) for message in plan.messages} == {
+        model.MessageSummary
+    }
+    assert type(result) is model.MailActionResult
+    assert result.moved == 1
+    assert type(created) is model.FolderCreation
+    assert listed
+    assert {type(message) for message in listed} == {model.MessageSummary}
 
 
 # ############################################################################

@@ -365,3 +365,71 @@ def test_the_engine_guard_allows_the_interface_and_the_registry():
 def test_a_component_may_not_import_a_provider(source):
     """Layer 1 never reaches up: the interface included."""
     assert violations(source, "mailctl.components.imap"), source
+
+
+# ############################################################################
+# The neutral model is layer 2's own, borrowed from no component (#99)
+# ############################################################################
+
+# The interface and the model it speaks. A second provider imports these,
+# so a component import here would tie that provider to a protocol it may
+# not use -- the Gmail provider to the Sieve component, for one.
+NEUTRAL_FILES = {
+    "base": PACKAGE / "providers" / "base.py",
+    "model": PACKAGE / "providers" / "model.py",
+}
+
+# The records the engine and a front-end build and read. Each must be
+# defined in the neutral model, not merely re-exported from somewhere.
+MODEL_TYPES = (
+    "ActionSpec",
+    "DeliveryCreate",
+    "DisplayDiff",
+    "ExtensionState",
+    "FolderCreation",
+    "FolderListing",
+    "MailActionPlan",
+    "MailActionResult",
+    "MessageSummary",
+    "Placement",
+)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("neutral", sorted(NEUTRAL_FILES))
+def test_the_neutral_model_imports_no_component(neutral):
+    path = NEUTRAL_FILES[neutral]
+    found = component_imports(
+        path.read_text(encoding="utf-8"), "mailctl.providers"
+    )
+
+    assert found == [], (
+        f"providers/{neutral}.py imports {found}; the provider interface "
+        f"and its model borrow nothing from layer 1 (#99)"
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", MODEL_TYPES)
+def test_every_model_type_is_defined_in_the_neutral_model(name):
+    """The engine's and the interface's copy is the model's own class."""
+    from mailctl import engine
+    from mailctl.providers import base, model
+
+    record = getattr(model, name)
+
+    assert record.__module__ == "mailctl.providers.model"
+    assert getattr(base, name) is record
+
+    if hasattr(engine, name):
+        assert getattr(engine, name) is record
+
+
+# ----------------------------------------------------------------------------
+def test_the_neutral_guard_would_catch_a_borrowed_type():
+    """Known positive: the import base.py carried before #99."""
+    source = "from ..components.managesieve import DisplayDiff, Placement\n"
+
+    assert component_imports(source, "mailctl.providers") == [
+        "mailctl.components.managesieve"
+    ]

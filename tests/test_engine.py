@@ -15,18 +15,19 @@ import email
 import pytest
 
 from mailctl import MailctlError, engine
-from mailctl.components.imap import MailActionPlan
-from mailctl.components.managesieve import (
+from mailctl.components.managesieve import client as sieve_client
+from mailctl.components.managesieve import rule_names
+from mailctl.config import Config
+from mailctl.criteria import Criteria
+from mailctl.engine import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
+    ActionSpec,
+    MailActionPlan,
     Placement,
-    rule_names,
+    RuleRequest,
 )
-from mailctl.components.managesieve import client as sieve_client
-from mailctl.config import Config
-from mailctl.criteria import Criteria
-from mailctl.engine import ActionSpec, RuleRequest
 from mailctl.providers.mxroute import MxrouteProvider
 from mailctl.providers.mxroute.sieve import parse_script
 

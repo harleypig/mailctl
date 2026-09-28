@@ -16,7 +16,7 @@ covers the two things that are not visible in the rendered script:
 
 import pytest
 
-from mailctl import MailctlError
+from mailctl import MailctlError, engine
 from mailctl.cli import build_parser, placement_from_args
 from mailctl.components.managesieve import (
     PLACE_AFTER,
@@ -200,14 +200,18 @@ def test_naming_the_rule_itself_is_refused_before_the_lookup():
     ("argv", "expected"),
     [
         ([], None),
-        (["--first"], Placement(PLACE_FIRST)),
-        (["--last"], Placement(PLACE_LAST)),
-        (["--before", "Lists"], Placement(PLACE_BEFORE, "Lists")),
-        (["--after", "Lists"], Placement(PLACE_AFTER, "Lists")),
+        (["--first"], engine.Placement(PLACE_FIRST)),
+        (["--last"], engine.Placement(PLACE_LAST)),
+        (["--before", "Lists"], engine.Placement(PLACE_BEFORE, "Lists")),
+        (["--after", "Lists"], engine.Placement(PLACE_AFTER, "Lists")),
     ],
 )
 def test_each_flag_reaches_the_resolver_as_a_placement(argv, expected):
-    """Every flag maps to exactly one placement, and none maps to none."""
+    """Every flag maps to exactly one placement, and none maps to none.
+
+    The CLI builds the engine's neutral placement, which the provider
+    translates for its own script handling.
+    """
     args = build_parser().parse_args(["add", "--to", "x", *argv])
 
     assert placement_from_args(args) == expected
@@ -224,7 +228,7 @@ def test_from_message_carries_the_same_flags_as_add():
         ["from-message", "--uid", "1", "--before", "Lists"]
     )
 
-    assert placement_from_args(args) == Placement(PLACE_BEFORE, "Lists")
+    assert placement_from_args(args) == engine.Placement(PLACE_BEFORE, "Lists")
 
 
 # ----------------------------------------------------------------------------

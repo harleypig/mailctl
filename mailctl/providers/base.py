@@ -16,11 +16,9 @@ present on its provider, marked with :func:`declined`, so every registered
 provider answers every call in :data:`OPERATIONS` --
 ``tests/test_providers.py`` holds that.
 
-Some of the neutral model is re-exported from layer 1 rather than defined
-here: the folder and message records are the IMAP component's, and the
-placement and diff records the ManageSieve component's. Each is plain data
-with no protocol behaviour, so a copy here would only add a translation
-that changes nothing.
+The neutral model itself is :mod:`mailctl.providers.model`, re-exported
+here so a provider or the engine reaches the interface and its records
+through one import.
 """
 
 from abc import ABC, abstractmethod
@@ -32,29 +30,38 @@ from pathlib import Path
 from typing import ClassVar
 
 from .. import MailctlError
-from ..components.imap import (
-    FolderCreation,
-    MailActionPlan,
-    MailActionResult,
-    MessageSummary,
-    case_variant_hint,
-    decode_header_value,
-    normalize_folder,
-    same_folder,
-)
-from ..components.managesieve import (
+from ..config import Config
+from ..criteria import Criteria
+from ..rules import Rule
+from .model import (
+    DISCARD,
+    FILEINTO,
+    FLAG,
+    KEEP,
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
+    ActionSpec,
+    DeliveryCreate,
     DisplayDiff,
+    ExtensionState,
+    FolderCreation,
+    FolderListing,
+    MailActionPlan,
+    MailActionResult,
+    MessageSummary,
     Placement,
+    action_names,
+    decode_header_value,
+    same_folder,
 )
-from ..config import Config, Source
-from ..criteria import Criteria
-from ..rules import Rule
 
 __all__ = [
+    "DISCARD",
+    "FILEINTO",
+    "FLAG",
+    "KEEP",
     "OPERATIONS",
     "PLACE_AFTER",
     "PLACE_BEFORE",
@@ -75,10 +82,8 @@ __all__ = [
     "ProviderCapabilities",
     "Specific",
     "action_names",
-    "case_variant_hint",
     "declined",
     "decode_header_value",
-    "normalize_folder",
     "refuse",
     "same_folder",
     "validate_specifics",
@@ -87,118 +92,6 @@ __all__ = [
 # (channel, message) -- the channel names which of a provider's sessions
 # the message came from.
 Progress = Callable[[str, str], None]
-
-# The neutral names of the things a rule can do, as ActionSpec spells them.
-FILEINTO = "fileinto"
-DISCARD = "discard"
-FLAG = "flag"
-KEEP = "keep"
-
-
-# ############################################################################
-# The neutral model
-# ############################################################################
-
-
-@dataclass(frozen=True)
-class ActionSpec:
-    """What a rule, or the existing-mail pass, should do to a message.
-
-    ``fileinto`` is the folder as the user named it, before normalization;
-    None falls back to ``Config.default_folder``. ``flags`` are IMAP flag
-    names, unescaped and in the order they should be added.
-    """
-
-    fileinto: str | None = None
-    discard: bool = False
-    flags: tuple[str, ...] = ()
-    keep: bool = False
-    stop: bool = True
-
-
-@dataclass(frozen=True)
-class FolderListing:
-    """The account's folders, the hierarchy delimiter, and which folders
-    are subscribed (LSUB) -- the ones webmail actually draws."""
-
-    delimiter: str
-    folders: list[str]
-    subscribed: list[str] = field(default_factory=list)
-
-    # ------------------------------------------------------------------------
-    def is_subscribed(self, folder: str) -> bool:
-        return any(same_folder(name, folder) for name in self.subscribed)
-
-    # ------------------------------------------------------------------------
-    @property
-    def unsubscribed(self) -> list[str]:
-        """Folders that exist but that webmail will not show."""
-        return [name for name in self.folders if not self.is_subscribed(name)]
-
-
-@dataclass(frozen=True)
-class ExtensionState:
-    """One rule-language extension as a run of mailctl sees it.
-
-    ``advertised`` is whether the server lists it; ``required`` is whether
-    mailctl's own rules can need it. ``disabled_by`` is where
-    ``disabled_extensions`` came from when the name is in it, else None.
-    """
-
-    name: str
-    advertised: bool
-    required: bool = False
-    disabled_by: Source | None = None
-
-    # ------------------------------------------------------------------------
-    @property
-    def enabled(self) -> bool | None:
-        """Whether mailctl may use it; None when the server lacks it.
-
-        Disabling is a narrowing of what mailctl emits, never a claim about
-        the server, so for an unadvertised name it decides nothing.
-        """
-        if not self.advertised:
-            return None
-
-        return self.disabled_by is None
-
-
-@dataclass(frozen=True)
-class DeliveryCreate:
-    """Whether a rule can create its target folder when mail arrives.
-
-    ``advertised`` is whether the host offers it at all; ``disabled_by``
-    names the setting that turned it off, when one did.
-    """
-
-    advertised: bool
-    disabled_by: Source | None = None
-
-    # ------------------------------------------------------------------------
-    @property
-    def usable(self) -> bool:
-        return self.advertised and self.disabled_by is None
-
-
-# ----------------------------------------------------------------------------
-def action_names(spec: ActionSpec, folder: str) -> frozenset[str]:
-    """The neutral actions a spec asks for, given its resolved folder."""
-    names = set()
-
-    if spec.flags:
-        names.add(FLAG)
-
-    if spec.discard:
-        names.add(DISCARD)
-
-    elif folder:
-        names.add(FILEINTO)
-
-    if spec.keep:
-        names.add(KEEP)
-
-    return frozenset(names)
 
 
 # ############################################################################
@@ -447,6 +340,22 @@ class Provider(ABC):
         cls, advertised: list[str], config: Config
     ) -> list[ExtensionState]:
         """Every extension mailctl knows or the host lists, and its state."""
+
+    # ------------------------------------------------------------------------
+    # Folders, offline
+    # ------------------------------------------------------------------------
+
+    @classmethod
+    @abstractmethod
+    def assumed_folder(
+        cls, name: str, delimiter: str | None
+    ) -> tuple[str, str]:
+        """A folder name as the host would spell it, with no folder list.
+
+        For when the mail half is not connected. ``delimiter`` is the one
+        the user said to assume, or None for the host's usual one; returns
+        the name and the delimiter used.
+        """
 
     # ------------------------------------------------------------------------
     # Backups, offline -- the host's exact bytes, on disk
