@@ -4,6 +4,8 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.7.0
+
 FEATURES:
 
 * **A `provider` setting names the mail host** ([#92], [ADR 0006]). It is
