@@ -44,7 +44,9 @@ confirmation alone is not a reason to build it.
 ## Sieve evaluation — "which filters would catch this message"
 
 `ICEBOX:` sieve evaluation, sieve interpreter, evaluate sieve, which filter
-matches, match existing filters, sifter, sifter3, python-sifter — **trigger:
+matches, match existing filters, sifter, sifter3, python-sifter,
+per-provider evaluator, multiple evaluators, gmail evaluator, pigeonhole for
+mxroute — **trigger:
 work actually starts on the front-end below, which depends on it.**
 
 Answering *"which of my existing filters would catch this message?"* means
@@ -90,10 +92,29 @@ Verified before deciding: MIT, 307 Pigeonhole conformance subtests passing,
 4.9 MB static binary, and correct on this account's real script including
 implicit keep.
 
+**An open thought, 2026-09-28 — not a decision, and not yet researched.**
+The operator: *"The Dovecot Pigeonhole tool suggests that we may need to
+support multiple evaluators, depending on the provider. MXRoute uses dovecot,
+so we'd probably want to support that for mxroute. But will that work for
+gmail? \*shrug\* Need to research it."* The evaluator may need to be **per
+provider** rather than one engine. `sieve-test` is the engine MXroute itself
+runs — its answer is the server's answer, as above — so for the `mxroute`
+provider it is the natural evaluator. That sits in tension with
+[ADR 0004][adr4], which makes go-sieve primary and `sieve-test` only an
+oracle; if this is adopted, ADR 0004 is amended, not silently overridden. It
+fits the two-layer architecture ([ADR 0006][adr6]): an evaluator would be a
+provider capability like the others, so the engine asks the provider and
+never picks an engine itself. **Gmail is the open question** — whether any of
+these works for it is unresearched. Gmail does not run Sieve (see the
+evaluation-model table under *Declarative rules* below), so "an evaluator for
+Gmail" may mean evaluating Gmail's own filter semantics rather than driving a
+Sieve engine. That is the question to research, not a conclusion.
+
 What remains iceboxed is the **feature**, not the engine choice: nothing is
 built until the work is actually requested.
 
 [adr4]: adr/0004-adopt-go-sieve-as-the-evaluation-engine.md
+[adr6]: adr/0006-two-layer-component-and-provider-architecture.md
 
 This is now an **anticipated** requirement rather than a speculative one,
 because the front-end direction below depends on it. It stays iceboxed all the
