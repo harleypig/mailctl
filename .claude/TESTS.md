@@ -76,7 +76,18 @@ fixture required before anything writes to one is still outstanding
    - The **layer-purity guard** (`test_layer_purity.py`) — a module under
      `components/` imports only the stdlib, the library its own component
      wraps (`imapclient` for `imap`, `sievelib` for `managesieve`), other
-     components, and `MailctlError` ([ADR 0006][adr6]).
+     components, and `MailctlError` ([ADR 0006][adr6]). The other way
+     round, `engine.py` and `cli.py` import no component, and the engine
+     reaches a provider only through `providers.base` and
+     `providers.registry`, with no provider's name in its code.
+   - **Providers** (`test_providers.py`) — every registered provider
+     implements or explicitly declines every operation of `Provider`, and
+     declines exactly what its capabilities say. The `provider` setting
+     climbs the ladder with provenance; an unknown name is refused before
+     anything connects. A fake second provider, registered for the test,
+     is driven through the engine's representative operations and receives
+     the same calls, in the same shape, as `mxroute`. A capability it
+     declines is refused before it is opened.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
