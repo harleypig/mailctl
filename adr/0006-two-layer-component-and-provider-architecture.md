@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-09-27
+- Amended: 2026-09-27, at step 4 (see *Amendment*)
 - Supersedes the open questions of [#26][i26]; recorded for epic [#92][i92].
 
 ## Context
@@ -86,6 +87,7 @@ DIGEST-MD5, OAUTHBEARER, and XOAUTH2 (V). Its gaps, all V:
 | S6 | The parser rejects `subaddress`, `spamtest`/`virustest`, `include`, `mailboxexists`, `editheader`, `duplicate`, `special-use`, `ihave`, and the `i;ascii-numeric` comparator | Extend through `commands.add_commands()` as each is wanted |
 | S7 | Free-standing comments are dropped on render | [#7][i7] |
 | S8 | Debug mode prints the base64 `AUTHENTICATE` payload | `debug=False` stays pinned, and a test holds it there |
+| S9 | The response reader loops forever when the connection closes mid-literal, for every command but `GETSCRIPT` (amendment) | Raise `SieveConnectionError` on EOF — [#95][i95] |
 
 S8 is a credential leak rather than a rough edge. The pin is already in
 `sieve.py`, and it moves with the session as a guarantee, not a default.
@@ -103,12 +105,14 @@ and the Gmail `X-GM-*` helpers (V). Its gaps, all V:
 | I4 | `CONDSTORE`/`QRESYNC` select parameters and `VANISHED` unsupported | Not needed today; noted |
 | I5 | No `COMPRESS` | Not needed today; noted |
 | I6 | Our dependency pin has no upper bound | [#91][i91] |
+| I7 | A nested group's closing `)` is glued onto its last item; an 8-bit last item is then sent as a literal, so the group never closes (amendment) | A trailing `ALL` closes the group — fixed in [#98][pr98] |
 
 **Server modules hold one server software's quirks**, beside the protocol
 client that needs them: `imap/servers/dovecot.py`,
 `managesieve/servers/pigeonhole.py`, and a future `cyrus.py`. A quirk is
 behaviour a server has beyond or against its RFC. [#39][i39]'s *does
-`CREATE` subscribe* is the first to be placed, and it goes in `dovecot.py`.
+`CREATE` subscribe* is not one: it is protocol behaviour, and the session
+checks it for every server (see *Amendment*).
 
 - **A server module is chosen by probing, never by configuration.** It reads
   IMAP `ID` and the ManageSieve `IMPLEMENTATION` capability. Both libraries
@@ -244,8 +248,8 @@ Below is what the shape above is checked against:
      close S1 ([#90][i90]), S4, and S5's timeout; keep S8's `debug=False`
      pin; add `servers/pigeonhole.py`;
   3. layer 1 `imap`: move `ImapSession` and folder normalization; fix I1
-     ([#89][i89]); add `servers/dovecot.py` as the home of [#39][i39]'s
-     subscription behaviour;
+     ([#89][i89]); add `servers/dovecot.py`, the home for Dovecot's
+     quirks when one is found;
   4. layer 2: the provider interface, the in-tree registry, and the
      `mxroute` provider; move the engine onto the provider; add the
      `provider` setting;
@@ -287,6 +291,71 @@ Below is what the shape above is checked against:
   Namespaced provider specifics are the same mechanism that entry asks for,
   so nothing here forecloses it.
 
+## Amendment
+
+2026-09-27, made with step 4 of [#92][i92]. The decision above stands. This
+records three things learned since it was accepted.
+
+### The provider is a two-way translator
+
+The operator, on [#92][i92]:
+
+> the provider library should present--as much as possible--the same
+> interface to the main program, while converting that input into the
+> appropriate output to the provider (and vice versa).
+
+*One formalized interface* therefore means translation in both
+directions:
+
+- **The engine speaks one provider-neutral model.** A rule is criteria
+  plus an action spec. The model also covers folders, messages,
+  capabilities, results, and `MailctlError`.
+- **Outbound, the provider converts that model into its host's terms.**
+  For `mxroute` that is Sieve text over ManageSieve, in Roundcube's
+  rule-name dialect.
+- **Inbound, it converts the host's answers back into the same model.** A
+  parsed script becomes neutral rules. A server refusal becomes a
+  `MailctlError`.
+- **Sameness is the default.** Where hosts differ, the difference is
+  declared as data. It is never a reason for the engine to branch on
+  which provider it has. A test holds this: a fake second provider
+  receives exactly the calls `mxroute` receives, in the same shape.
+
+Step 4 settled one reading. **`ordering` and `stop` are capability flags**,
+checked against fields the shared model already carries: a rule's
+placement, and whether it stops evaluation. `rule_sets` covers a named or
+activated script the same way. **Namespaced specifics** (`<namespace>.<key>`,
+schema-described) are for parameters no shared field carries, such as
+Gmail's labels. `mxroute` declares none. Both are checked before any
+network work, through one refusal naming the provider, the construct, and
+why.
+
+### Two more library gaps
+
+These were found while building steps 2 and 3, and are now in the tables
+above:
+
+- **S9 (`sievelib`).** The response reader loops forever when the
+  connection closes mid-literal. This affects every command except
+  `GETSCRIPT`, whose reader mailctl already replaced ([#95][i95]).
+- **I7 (`IMAPClient`).** A nested group's closing `)` is glued onto its
+  last item. When that item is 8-bit, it is then sent as a literal, so the
+  group never closes. [#98][pr98] fixed it by appending `ALL` to such a
+  group, which puts `SEARCH CHARSET UTF-8 (SUBJECT {5+}café ALL)` on the
+  wire.
+
+### #39 is protocol behaviour, not a Dovecot quirk
+
+The decision placed *`CREATE` doesn't subscribe* ([#39][i39]) in
+`dovecot.py`. That was wrong. RFC 3501's `CREATE` (6.3.3) says nothing
+about subscription. The subscribed set, which `LSUB` returns, changes only
+through `SUBSCRIBE` (6.3.6). So a server that does not subscribe on
+`CREATE` is following the protocol.
+
+That is why the `imap` session subscribes explicitly and re-reads `LSUB` to
+confirm it, for every server. It is also why `dovecot.py` carries no quirk
+yet.
+
 ## Based on
 
 - [#26][i26] — the provider interface's settled position, and the
@@ -318,6 +387,8 @@ Below is what the shape above is checked against:
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [i91]: https://github.com/harleypig/mailctl/issues/91
 [i92]: https://github.com/harleypig/mailctl/issues/92
+[i95]: https://github.com/harleypig/mailctl/issues/95
+[pr98]: https://github.com/harleypig/mailctl/pull/98
 [src-sievelib]: https://github.com/tonioo/sievelib
 [src-imapclient]: https://github.com/mjs/imapclient
 [src-rfc5804]: https://www.rfc-editor.org/rfc/rfc5804.txt
