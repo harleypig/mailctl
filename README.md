@@ -57,6 +57,13 @@ optional value, put `--env-file` after any positional argument, or write
 `messages`, `view`), resolves the same way: `MAILCTL_SOURCE_FOLDER`, then
 `source_folder` in the config file, then `INBOX`.
 
+`--provider` names the mail host mailctl talks to, and resolves the same
+way: `MAILCTL_PROVIDER`, then `provider` in the config file, then `mxroute`.
+`mxroute` is the only provider today, so there is nothing to set yet. An
+unknown name is refused before anything connects, and the error lists the
+known ones. `mailctl test` shows which provider a run uses and where that
+came from.
+
 ### Turning off a Sieve extension
 
 `disabled_extensions` tells mailctl never to write a rule that needs a

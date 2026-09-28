@@ -12,6 +12,13 @@ Every change is split the same way. A ``plan_*`` function is read-only and
 returns what would change; the front-end renders it and decides; an
 ``execute``-style function carries out the plan it was handed. A dry run is
 a plan that is never executed.
+
+The engine never touches a protocol. It works against one ``Provider``
+(``mailctl.providers.base``), chosen by the ``provider`` setting, in the
+provider-neutral model: criteria, an ``ActionSpec``, folders, messages.
+The provider translates that into its host's terms and back. What a host
+can do is read from its declared capabilities; the engine never asks which
+provider it has.
 """
 
 import email.utils
@@ -19,39 +26,14 @@ import os
 import re
 import stat
 import tomllib
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import ExitStack, contextmanager
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from functools import partial
 from html.parser import HTMLParser
 from pathlib import Path
 
 from . import MailctlError
-from .components.imap import (
-    FolderCreation,
-    ImapSession,
-    MailActionPlan,
-    MailActionResult,
-    MessageSummary,
-    case_variant_hint,
-    decode_header_value,
-    normalize_folder,
-    same_folder,
-)
-from .components.managesieve import (
-    UNIMPLEMENTED_ACTIONS,
-    DisplayDiff,
-    Placement,
-    SieveSession,
-    backup_script,
-    resolve_backup_target,
-    resolve_position,
-    rule_names,
-    script_diff,
-    write_backup,
-)
 from .config import (
-    DEFAULT,
     Config,
     LegacySetting,
     Source,
@@ -59,26 +41,45 @@ from .config import (
     expand_path,
     legacy_config_dir,
 )
-from .criteria import Criteria, escape_sieve_string
-from .providers.mxroute.imap import imap_session
-from .providers.mxroute.sieve import (
-    MXROUTE_FORBIDDEN_ACTIONS,
-    display_diff,
-    merge_rule,
-    move_rule,
-    parse_script,
-    remove_rule,
-    sieve_session,
+from .criteria import Criteria
+
+# The PLACE_* names are re-exported (``X as X``): a front-end builds and
+# renders the neutral model through the engine alone, never importing a
+# provider or a component.
+from .providers.base import (
+    PLACE_AFTER as PLACE_AFTER,
 )
-from .rules import (
-    Analysis,
-    Rule,
-    Shadow,
-    analyze_placement,
-    audit,
-    rule_from_criteria,
+from .providers.base import (
+    PLACE_BEFORE as PLACE_BEFORE,
 )
-from .rules import read_rules as read_rule_list
+from .providers.base import (
+    PLACE_FIRST as PLACE_FIRST,
+)
+from .providers.base import (
+    PLACE_LAST as PLACE_LAST,
+)
+from .providers.base import (
+    ActionSpec,
+    DisplayDiff,
+    ExtensionState,
+    FolderCreation,
+    FolderListing,
+    MailActionPlan,
+    MailActionResult,
+    MessageSummary,
+    Placement,
+    Progress,
+    Provider,
+    action_names,
+    case_variant_hint,
+    decode_header_value,
+    normalize_folder,
+    refuse,
+    same_folder,
+    validate_specifics,
+)
+from .providers.registry import provider_for
+from .rules import Analysis, Rule, Shadow, analyze_placement, audit
 
 DEFAULT_SCRIPT_NAME = "mailctl"
 
@@ -87,9 +88,6 @@ DEFAULT_SCRIPT_NAME = "mailctl"
 # second script created beside it.
 LEGACY_SCRIPT_NAME = "mxfilter"
 DEFAULT_MAX_MESSAGES = 500
-
-# (channel, message) -- channel is "sieve" or "imap".
-Progress = Callable[[str, str], None]
 
 # Folder plan outcomes.
 FOLDER_NONE = "none"
@@ -100,51 +98,6 @@ FOLDER_IMAP_CREATE = "imap-create"
 FOLDER_BOTH_CREATE = "imap-and-sieve-create"
 FOLDER_UNCREATABLE = "uncreatable"
 
-# Every command, test, and tag the engine can put in a rule, and the Sieve
-# extension it has to be `require`d under -- None for the base language.
-# The required set 'test' reports and the set a rule is checked against are
-# both read off this table, so a new emitted feature that is missing from
-# it fails at the first plan that emits it, not silently later.
-EMIT_TABLE: dict[str, str | None] = {
-    # actions
-    "addflag": "imap4flags",
-    "discard": None,
-    "fileinto": "fileinto",
-    "keep": None,
-    "stop": None,
-    # action tags
-    ":create": "mailbox",
-    # tests, their match types, and the combinators joining them
-    "header": None,
-    ":contains": None,
-    ":is": None,
-    ":matches": None,
-    "anyof": None,
-    "allof": None,
-}
-
-REQUIRED_EXTENSIONS = tuple(
-    sorted({ext for ext in EMIT_TABLE.values() if ext is not None})
-)
-
-# Reported by 'test' so the answer comes from the server rather than from
-# folklore. mailctl emits none of these; none of them decides anything.
-INFORMATIONAL_EXTENSIONS = (
-    "copy",
-    "envelope",
-    "enotify",
-    "vacation",
-    "regex",
-    "spamtest",
-    "extlists",
-)
-
-# The names disabled_extensions accepts: the ones 'test' always reports,
-# whatever the server lists. Disabling an informational one changes nothing
-# mailctl emits today, and keeps holding if a later feature starts emitting
-# it.
-KNOWN_EXTENSIONS = REQUIRED_EXTENSIONS + INFORMATIONAL_EXTENSIONS
-
 
 # ############################################################################
 # Inputs
@@ -152,24 +105,14 @@ KNOWN_EXTENSIONS = REQUIRED_EXTENSIONS + INFORMATIONAL_EXTENSIONS
 
 
 @dataclass(frozen=True)
-class ActionSpec:
-    """What a rule, or the existing-mail pass, should do to a message.
-
-    ``fileinto`` is the folder as the user named it, before normalization;
-    None falls back to ``Config.default_folder``. ``flags`` are IMAP flag
-    names, unescaped and in the order they should be added.
-    """
-
-    fileinto: str | None = None
-    discard: bool = False
-    flags: tuple[str, ...] = ()
-    keep: bool = False
-    stop: bool = True
-
-
-@dataclass(frozen=True)
 class RuleRequest:
-    """A rule to merge into the account's script."""
+    """A rule to merge into the account's rule set.
+
+    ``script``, ``activate``, and ``placement`` need a provider declaring
+    ``rule_sets`` and ``ordering``. ``specifics`` carries provider-only
+    parameters under namespaced keys, checked against the provider's
+    schema before any network work (:func:`check_rule`).
+    """
 
     criteria: Criteria
     actions: ActionSpec
@@ -178,6 +121,7 @@ class RuleRequest:
     replace: bool = False
     placement: Placement | None = None
     activate: bool = False
+    specifics: Mapping[str, object] = field(default_factory=dict)
 
 
 # ############################################################################
@@ -212,16 +156,8 @@ EventSink = Callable[[object], None]
 
 
 # ############################################################################
-# Sessions
+# The provider
 # ############################################################################
-
-
-@dataclass
-class Sessions:
-    """The open server sessions a piece of work runs against."""
-
-    sieve: SieveSession | None = None
-    imap: ImapSession | None = None
 
 
 # ----------------------------------------------------------------------------
@@ -229,53 +165,44 @@ class Sessions:
 def connect(
     config: Config,
     *,
-    sieve: bool = True,
-    imap: bool = False,
+    rules: bool = True,
+    mail: bool = False,
     progress: Progress | None = None,
-) -> Iterator[Sessions]:
-    """Open the requested sessions and close them on the way out.
+) -> Iterator[Provider]:
+    """Open the requested halves of the configured provider, then close them.
 
-    IMAP is opened first, so a login failure there is reported before any
-    ManageSieve traffic.
+    ``rules`` is the half that stores rules, ``mail`` the half that holds
+    messages and folders. The configuration is validated first, so an
+    unknown provider or a setting it refuses costs no connection.
     """
+    provider = provider_for(config)
+    provider.validate(config)
 
-    check_disabled_extensions(config)
-
-    def channel(name: str):
-        return partial(progress, name) if progress else None
-
-    with ExitStack() as stack:
-        sessions = Sessions()
-
-        if imap:
-            sessions.imap = stack.enter_context(
-                imap_session(config, progress=channel("imap"))
-            )
-
-        if sieve:
-            sessions.sieve = stack.enter_context(
-                sieve_session(config, progress=channel("sieve"))
-            )
-
-        yield sessions
+    with provider.open(
+        config, rules=rules, mail=mail, progress=progress
+    ) as live:
+        yield live
 
 
 # ----------------------------------------------------------------------------
-def _sieve(sessions: Sessions) -> SieveSession:
-    """Return the ManageSieve session, or raise if none was opened."""
-    if sessions.sieve is None:
-        raise MailctlError("no ManageSieve session is open")
+def require_capability(provider: Provider | type[Provider], name: str) -> None:
+    """Refuse work needing a capability the provider does not declare."""
+    if getattr(provider.capabilities, name):
+        return
 
-    return sessions.sieve
+    raise refuse(
+        provider.name,
+        CAPABILITY_CONSTRUCTS[name],
+        f"it does not declare the {name!r} capability",
+    )
 
 
-# ----------------------------------------------------------------------------
-def _imap(sessions: Sessions) -> ImapSession:
-    """Return the IMAP session, or raise if none was opened."""
-    if sessions.imap is None:
-        raise MailctlError("no IMAP session is open")
-
-    return sessions.imap
+# What a request asks for, in words, when it needs each capability.
+CAPABILITY_CONSTRUCTS = {
+    "ordering": "place a rule at a position in evaluation order",
+    "rule_sets": "name or activate one of several rule sets",
+    "stop": "end evaluation after a rule",
+}
 
 
 # ############################################################################
@@ -285,15 +212,19 @@ def _imap(sessions: Sessions) -> ImapSession:
 
 @dataclass(frozen=True)
 class ScriptText:
-    """One script's source, exactly as the server holds it."""
+    """One script's source, exactly as the server holds it.
+
+    ``provider`` reads it; it is not part of the value.
+    """
 
     name: str
     source: str
+    provider: Provider | type[Provider] = field(compare=False, repr=False)
 
     # ------------------------------------------------------------------------
     def rule_names(self) -> list[str]:
         """Parse on demand, so an unparseable script can still be shown."""
-        return rule_names(parse_script(self.source))
+        return self.provider.rule_names(self.source)
 
 
 @dataclass(frozen=True)
@@ -303,26 +234,6 @@ class RulesReport:
     script: str
     rules: list[Rule]
     findings: list[Shadow]
-
-
-@dataclass(frozen=True)
-class FolderListing:
-    """The account's folders, the hierarchy delimiter, and which folders
-    are subscribed (LSUB) -- the ones webmail actually draws."""
-
-    delimiter: str
-    folders: list[str]
-    subscribed: list[str] = field(default_factory=list)
-
-    # ------------------------------------------------------------------------
-    def is_subscribed(self, folder: str) -> bool:
-        return any(same_folder(name, folder) for name in self.subscribed)
-
-    # ------------------------------------------------------------------------
-    @property
-    def unsubscribed(self) -> list[str]:
-        """Folders that exist but that webmail will not show."""
-        return [name for name in self.folders if not self.is_subscribed(name)]
 
 
 @dataclass(frozen=True)
@@ -367,28 +278,30 @@ class ImapProbe:
 
 
 # ----------------------------------------------------------------------------
-def list_scripts(sessions: Sessions) -> tuple[str | None, list[str]]:
+def list_scripts(provider: Provider) -> tuple[str | None, list[str]]:
     """Return ``(active, others)``."""
-    return _sieve(sessions).list_scripts()
+    return provider.list_rule_sets()
 
 
 # ----------------------------------------------------------------------------
-def read_script(sessions: Sessions, name: str | None = None) -> ScriptText:
+def read_script(provider: Provider, name: str | None = None) -> ScriptText:
     """Return a named script, or the active one."""
-    sieve = _sieve(sessions)
-    name = name or sieve.active_script_name()
+    name = name or provider.active_rule_set()
 
     if not name:
         raise MailctlError("no active script; name one explicitly")
 
-    return ScriptText(name, sieve.get_script(name))
+    return ScriptText(name, provider.read_rule_set(name), provider)
 
 
 # ----------------------------------------------------------------------------
-def read_rules(sessions: Sessions, script: str | None = None) -> RulesReport:
-    """Read a script's rules and audit their order."""
-    sieve = _sieve(sessions)
-    name = script or sieve.active_script_name()
+def read_rules(provider: Provider, script: str | None = None) -> RulesReport:
+    """Read a script's rules and audit their order.
+
+    The audit is about order, so a provider that does not declare
+    ``ordering`` has nothing for it to find.
+    """
+    name = script or provider.active_rule_set()
 
     if not name:
         raise MailctlError(
@@ -396,173 +309,57 @@ def read_rules(sessions: Sessions, script: str | None = None) -> RulesReport:
             "show. 'mailctl list' shows what the account has."
         )
 
-    rules = read_rule_list(parse_script(sieve.get_script(name)))
+    rules = provider.read_rules(provider.read_rule_set(name))
+    findings = audit(rules) if provider.capabilities.ordering else []
 
-    return RulesReport(name, rules, audit(rules))
+    return RulesReport(name, rules, findings)
 
 
 # ----------------------------------------------------------------------------
-def list_folders(sessions: Sessions) -> FolderListing:
+def list_folders(provider: Provider) -> FolderListing:
     """Return the folder list, sorted, with the delimiter."""
-    imap = _imap(sessions)
-
-    return FolderListing(
-        imap.delimiter, sorted(imap.folders), list(imap.subscribed_folders)
-    )
+    return provider.list_folders()
 
 
 # ----------------------------------------------------------------------------
-def probe_sieve(sessions: Sessions) -> SieveProbe:
-    """Read the ManageSieve capabilities and script listing."""
-    sieve = _sieve(sessions)
-    capabilities = sieve.capabilities()
-    active, others = sieve.list_scripts()
+def probe_sieve(provider: Provider) -> SieveProbe:
+    """Read what the rule half advertises, and its rule-set listing."""
+    capabilities = provider.rules_capabilities()
+    active, others = provider.list_rule_sets()
 
     return SieveProbe(capabilities, active, others)
 
 
 # ----------------------------------------------------------------------------
-def probe_imap(sessions: Sessions) -> ImapProbe:
-    """Read the IMAP capabilities and folder shape."""
-    imap = _imap(sessions)
-
-    listing = list_folders(sessions)
+def probe_imap(provider: Provider) -> ImapProbe:
+    """Read what the mail half advertises, and its folder shape."""
+    listing = list_folders(provider)
 
     return ImapProbe(
-        imap.capabilities(),
-        imap.delimiter,
+        provider.mail_capabilities(),
+        listing.delimiter,
         len(listing.folders),
         listing.unsubscribed,
     )
 
 
 # ############################################################################
-# Sieve extensions -- what the server advertises, less what is disabled
+# Extensions -- what the server advertises, less what is disabled
 # ############################################################################
-
-
-@dataclass(frozen=True)
-class ExtensionState:
-    """One Sieve extension as a run of mailctl sees it.
-
-    ``advertised`` is whether the server lists it; ``required`` is whether
-    mailctl's own rules can need it. ``disabled_by`` is where
-    ``disabled_extensions`` came from when the name is in it, else None.
-    """
-
-    name: str
-    advertised: bool
-    required: bool = False
-    disabled_by: Source | None = None
-
-    # ------------------------------------------------------------------------
-    @property
-    def enabled(self) -> bool | None:
-        """Whether mailctl may use it; None when the server lacks it.
-
-        Disabling is a narrowing of what mailctl emits, never a claim about
-        the server, so for an unadvertised name it decides nothing.
-        """
-        if not self.advertised:
-            return None
-
-        return self.disabled_by is None
-
-
-# ----------------------------------------------------------------------------
-def check_disabled_extensions(config: Config) -> None:
-    """Refuse a disabled_extensions entry mailctl does not know.
-
-    A typo would otherwise disable nothing and say nothing, which is the
-    one outcome a switch must not have.
-    """
-    unknown = sorted(config.disabled_extensions - set(KNOWN_EXTENSIONS))
-
-    if unknown:
-        raise MailctlError(
-            f"disabled_extensions: unknown Sieve extension(s) "
-            f"{', '.join(repr(name) for name in unknown)} "
-            f"(from {disabled_source(config).describe()}). Known: "
-            f"{', '.join(KNOWN_EXTENSIONS)}"
-        )
-
-
-# ----------------------------------------------------------------------------
-def disabled_source(config: Config) -> Source:
-    """Where disabled_extensions came from; a hand-built Config has none."""
-    return config.sources.get("disabled_extensions", Source(DEFAULT))
-
-
-# ----------------------------------------------------------------------------
-def disabled_message(config: Config, names: Iterable[str]) -> str:
-    """Name what is disabled and the setting that disabled it."""
-    names = sorted(names)
-    listed = ", ".join(repr(name) for name in names)
-    noun = "extension" if len(names) == 1 else "extensions"
-    verb = "is" if len(names) == 1 else "are"
-
-    return (
-        f"the Sieve {noun} {listed} {verb} disabled by mailctl "
-        f"(disabled_extensions, from {disabled_source(config).describe()})"
-    )
-
-
-# ----------------------------------------------------------------------------
-def emitted_extensions(
-    actions: Iterable[tuple],
-    conditions: Iterable[tuple] = (),
-    matchtype: str | None = None,
-) -> set[str]:
-    """Return the extensions a rule's actions and tests need, by EMIT_TABLE.
-
-    An action tuple is ``(command, *arguments)``; any argument that is a
-    ``:tag`` counts. A condition is ``(header, :matchtype, value)``, the
-    shape ``Criteria.sieve_conditions`` builds.
-    """
-    names = []
-
-    for action in actions:
-        names.append(action[0])
-        names += [
-            part
-            for part in action[1:]
-            if isinstance(part, str) and part.startswith(":")
-        ]
-
-    for condition in conditions:
-        names += ["header", condition[1]]
-
-    if matchtype:
-        names.append(matchtype)
-
-    return {
-        extension
-        for name in names
-        if (extension := EMIT_TABLE[name]) is not None
-    }
 
 
 # ----------------------------------------------------------------------------
 def report_extensions(
-    probe: SieveProbe, config: Config
+    provider: Provider, probe: SieveProbe, config: Config
 ) -> list[ExtensionState]:
     """One state per extension mailctl knows or the server lists, by name.
 
-    A server-listed name mailctl does not know is never disabled:
-    ``check_disabled_extensions`` refuses such a name before this runs.
+    Empty for a provider that does not declare ``extensions``.
     """
-    advertised = {name.lower() for name in probe.capabilities}
-    origin = disabled_source(config)
+    if not provider.capabilities.extensions:
+        return []
 
-    return [
-        ExtensionState(
-            name,
-            name in advertised,
-            name in REQUIRED_EXTENSIONS,
-            origin if name in config.disabled_extensions else None,
-        )
-        for name in sorted(advertised | set(KNOWN_EXTENSIONS))
-    ]
+    return provider.report_extensions(probe.capabilities, config)
 
 
 # ############################################################################
@@ -589,7 +386,7 @@ class SubscriptionPlan:
 
 # ----------------------------------------------------------------------------
 def plan_subscription(
-    sessions: Sessions, name: str, subscribe: bool
+    provider: Provider, name: str, subscribe: bool
 ) -> SubscriptionPlan:
     """Work out a subscription change without making it.
 
@@ -598,46 +395,43 @@ def plan_subscription(
     unsubscribing does not, since a subscription can outlive its folder and
     removing that stale entry is a legitimate thing to want.
     """
-    imap = _imap(sessions)
-    folder = imap.normalize(name)
-    subscribed_now = imap.is_subscribed(folder)
+    folder = provider.normalize(name)
+    subscribed_now = provider.is_subscribed(folder)
 
-    hint = case_variant_hint(folder, imap.folders)
+    hint = case_variant_hint(folder, provider.case_variants(folder))
 
-    if subscribe and not imap.exists(folder):
+    if subscribe and not provider.exists(folder):
         raise MailctlError(
             f"no folder named {folder!r} on the server, so there is nothing "
             f"to subscribe to. {hint}'mailctl folders' lists what exists."
         )
 
-    if not subscribe and not subscribed_now and not imap.exists(folder):
+    if not subscribe and not subscribed_now and not provider.exists(folder):
         raise MailctlError(
             f"no folder or subscription named {folder!r} on the server. "
             f"{hint}'mailctl folders' lists what exists."
         )
 
     return SubscriptionPlan(
-        name, folder, imap.delimiter, subscribe, subscribed_now
+        name, folder, provider.delimiter(), subscribe, subscribed_now
     )
 
 
 # ----------------------------------------------------------------------------
-def execute_subscription(sessions: Sessions, plan: SubscriptionPlan) -> None:
+def execute_subscription(provider: Provider, plan: SubscriptionPlan) -> None:
     """Apply a subscription plan; a plan that changes nothing does nothing.
 
-    Subscribing is confirmed by re-reading LSUB (``ImapSession.subscribe``),
-    so a server that answers OK without acting on it raises here.
+    The provider confirms a subscription took effect, so a server that
+    answers OK without acting on it raises here.
     """
     if not plan.changes:
         return
 
-    imap = _imap(sessions)
-
     if plan.subscribe:
-        imap.subscribe(plan.folder)
+        provider.subscribe(plan.folder)
 
     else:
-        imap.unsubscribe(plan.folder)
+        provider.unsubscribe(plan.folder)
 
 
 # ############################################################################
@@ -652,15 +446,15 @@ class BackupPlan:
     script: str
     source: str
     target: Path
+    provider: Provider | type[Provider] = field(compare=False, repr=False)
 
 
 # ----------------------------------------------------------------------------
 def plan_backup(
-    sessions: Sessions, config: Config, output: str | None = None
+    provider: Provider, config: Config, output: str | None = None
 ) -> BackupPlan:
     """Fetch the active script and resolve where its copy goes."""
-    sieve = _sieve(sessions)
-    name = sieve.active_script_name()
+    name = provider.active_rule_set()
 
     if not name:
         raise MailctlError(
@@ -668,27 +462,29 @@ def plan_backup(
             "up. 'mailctl list' shows what the account has."
         )
 
-    source = sieve.get_script(name)
-    target = resolve_backup_target(output, name, config.backup_dir)
+    source = provider.read_rule_set(name)
+    target = provider.backup_target(output, name, config.backup_dir)
 
-    return BackupPlan(name, source, target)
+    return BackupPlan(name, source, target, provider)
 
 
 # ----------------------------------------------------------------------------
 def execute_backup(plan: BackupPlan) -> Path:
     """Write the server's exact bytes to the planned target."""
-    return write_backup(plan.source, plan.target)
+    return plan.provider.write_backup(plan.source, plan.target)
 
 
 # ----------------------------------------------------------------------------
-def count_rules(source: str) -> int | None:
+def count_rules(
+    provider: Provider | type[Provider], source: str
+) -> int | None:
     """Return how many rules a script holds, or None if it will not parse.
 
     A script too broken to parse is the one most worth backing up, so this
     reports rather than raises.
     """
     try:
-        return len(rule_names(parse_script(source)))
+        return len(provider.rule_names(source))
 
     except MailctlError:
         return None
@@ -1118,7 +914,7 @@ def read_backup_file(
 
 # ----------------------------------------------------------------------------
 def plan_restore(
-    sessions: Sessions,
+    provider: Provider,
     backup: BackupFile,
     script: str | None = None,
     activate: bool = False,
@@ -1133,7 +929,7 @@ def plan_restore(
     so overwriting it loses nothing (ADR 0005).
     """
     source, after = backup.path, backup.text
-    name, before, active = fetch_active(sessions, script)
+    name, before, active = fetch_active(provider, script)
 
     # Not a guess at a name: with nothing active there is no "the script"
     # to mean, and the recovery case is served by naming one, which is
@@ -1150,7 +946,7 @@ def plan_restore(
         script=name,
         before=before,
         after=after,
-        diff=DisplayDiff(script_diff(before, after, name), reformats=False),
+        diff=provider.raw_diff(before, after, name),
         active=active,
         activate=activates(name, active, activate),
     )
@@ -1158,7 +954,7 @@ def plan_restore(
 
 # ----------------------------------------------------------------------------
 def execute_restore(
-    sessions: Sessions,
+    provider: Provider,
     config: Config,
     plan: RestorePlan,
     on_event: EventSink | None = None,
@@ -1172,7 +968,7 @@ def execute_restore(
         return None
 
     return upload_script(
-        _sieve(sessions),
+        provider,
         config,
         plan.script,
         plan.before,
@@ -1188,108 +984,49 @@ def execute_restore(
 
 
 # ----------------------------------------------------------------------------
-def reject_actions(requested: Iterable[str]) -> None:
-    """Refuse actions this tool will not generate, and say why.
+def reject_actions(config: Config, requested: Iterable[str]) -> None:
+    """Refuse actions the configured provider will not emit, and say why.
 
-    ``redirect`` is refused because MXRoute has publicly disabled it -- a
-    policy, so the alternative is named. The rest are simply not
-    implemented here, and mailctl has no evidence either way about whether
-    this server supports them.
+    Needs no connection, so a front-end calls it before connecting.
     """
-    requested = set(requested)
-
-    for name, explanation in MXROUTE_FORBIDDEN_ACTIONS.items():
-        if name in requested:
-            raise MailctlError(explanation)
-
-    for name, label in UNIMPLEMENTED_ACTIONS.items():
-        if name in requested:
-            raise MailctlError(
-                f"mailctl does not generate the Sieve '{label}' action. "
-                f"This is a conservative choice of ours, not a documented "
-                f"MXRoute restriction -- the MXRoute control panel is where "
-                f"this feature lives if you need it. To see whether the "
-                f"server advertises the extension at all, run "
-                f"'mailctl test'."
-            )
+    provider_for(config).refuse_actions(requested)
 
 
 # ----------------------------------------------------------------------------
-def sieve_actions(spec: ActionSpec, folder: str, use_create: bool) -> list:
-    """Build the sievelib action tuples for the requested actions.
+def check_rule(
+    config: Config,
+    request: RuleRequest,
+    provider: Provider | type[Provider] | None = None,
+) -> None:
+    """Refuse a rule the provider cannot express, before any network work.
 
-    Flags are emitted before ``fileinto`` so the delivered copy carries
-    them, and ``stop`` last so later rules do not also fire.
+    Every refusal goes through one error (``providers.base.refuse``) naming
+    the provider, the construct, and why. ``provider`` defaults to the one
+    ``config`` selects; :func:`plan_rule` passes its own.
     """
-    actions = _action_tuples(spec, folder, use_create)
+    provider = provider or provider_for(config)
+    caps = provider.capabilities
 
-    if not actions:
-        raise MailctlError(
-            "no action requested -- use --fileinto, --discard, --mark-read, "
-            "--flag, or --keep"
+    folder = request.actions.fileinto or config.default_folder or ""
+    unsupported = action_names(request.actions, folder) - caps.actions
+
+    if unsupported:
+        raise refuse(
+            provider.name,
+            f"emit {', '.join(sorted(unsupported))}",
+            f"it declares only {', '.join(sorted(caps.actions)) or 'none'}",
         )
 
-    if spec.stop:
-        actions.append(("stop",))
+    if request.placement is not None:
+        require_capability(provider, "ordering")
 
-    return actions
+    if request.script or request.activate:
+        require_capability(provider, "rule_sets")
 
+    if request.actions.stop:
+        require_capability(provider, "stop")
 
-# ----------------------------------------------------------------------------
-def _action_tuples(spec: ActionSpec, folder: str, use_create: bool) -> list:
-    """The actions ahead of ``stop``; empty when nothing was asked for."""
-    actions: list[tuple] = []
-
-    for flag in spec.flags:
-        actions.append(("addflag", escape_sieve_string(flag)))
-
-    if spec.discard:
-        actions.append(("discard",))
-
-    elif folder:
-        if use_create:
-            actions.append(
-                ("fileinto", ":create", escape_sieve_string(folder))
-            )
-
-        else:
-            actions.append(("fileinto", escape_sieve_string(folder)))
-
-    if spec.keep:
-        actions.append(("keep",))
-
-    return actions
-
-
-# ----------------------------------------------------------------------------
-def required_extensions(
-    spec: ActionSpec, folder: str, use_create: bool
-) -> set[str]:
-    """Return the Sieve extensions the generated rule will need.
-
-    ``folder`` is the resolved target, so a folder that came from
-    ``Config.default_folder`` rather than ``spec.fileinto`` counts too.
-    """
-    return emitted_extensions(_action_tuples(spec, folder, use_create))
-
-
-# ----------------------------------------------------------------------------
-def check_rule_extensions(config: Config, actions: list) -> None:
-    """Refuse actions needing an extension disabled_extensions turns off.
-
-    Checked at plan and again at execute, so a plan made under one
-    setting is not carried out under another.
-    """
-    blocked = emitted_extensions(actions) & config.disabled_extensions
-
-    if blocked:
-        it = "it" if len(blocked) == 1 else "them"
-
-        raise MailctlError(
-            f"{disabled_message(config, blocked)}, and this rule needs "
-            f"{it}. Drop the action that needs {it}, or take {it} out of "
-            f"disabled_extensions."
-        )
+    validate_specifics(provider.name, caps.specifics, request.specifics)
 
 
 # ----------------------------------------------------------------------------
@@ -1348,7 +1085,7 @@ class FolderPlan:
 
 # ----------------------------------------------------------------------------
 def plan_folder(
-    sessions: Sessions,
+    provider: Provider,
     config: Config,
     requested: str | None,
     *,
@@ -1376,46 +1113,43 @@ def plan_folder(
     folder.
     """
     requested = requested or config.default_folder or ""
-    imap = sessions.imap
+    mail = provider.has_mail
 
     if not requested:
         return FolderPlan("", "", "", False, FOLDER_NONE, subscribe)
 
-    if imap is None:
+    if not mail:
         assumed = delimiter or "."
         folder = normalize_folder(requested, assumed, None)
 
     else:
-        assumed = ""
-        folder = imap.normalize(requested)
+        assumed = provider.delimiter()
+        folder = provider.normalize(requested)
 
     shape = {
         "requested": requested,
         "folder": folder,
-        "delimiter": assumed or imap.delimiter,
-        "delimiter_assumed": imap is None,
+        "delimiter": assumed,
+        "delimiter_assumed": not mail,
         "subscribe": subscribe,
     }
 
-    if imap is not None and imap.exists(folder):
+    if mail and provider.exists(folder):
         return FolderPlan(status=FOLDER_EXISTS, **shape)
 
-    if imap is not None:
-        shape["case_variants"] = tuple(imap.case_variants(folder))
+    if mail:
+        shape["case_variants"] = tuple(provider.case_variants(folder))
 
-    advertised = sessions.sieve is not None and not (
-        sessions.sieve.missing_extensions({"mailbox"})
-    )
-    disabled = "mailbox" in config.disabled_extensions
-    has_mailbox = advertised and not disabled
+    delivery = provider.delivery_create(config)
+    has_mailbox = delivery.usable
 
-    if advertised and disabled:
-        shape["mailbox_disabled_by"] = disabled_source(config)
+    if delivery.disabled_by is not None:
+        shape["mailbox_disabled_by"] = delivery.disabled_by
 
     if not create:
         return FolderPlan(status=FOLDER_MISSING, **shape)
 
-    if imap is None:
+    if not mail:
         status = FOLDER_SIEVE_CREATES if has_mailbox else FOLDER_UNCREATABLE
 
     else:
@@ -1445,7 +1179,7 @@ def check_folder(plan: FolderPlan) -> None:
 
 
 # ----------------------------------------------------------------------------
-def create_folder(sessions: Sessions, plan: FolderPlan) -> FolderCreation:
+def create_folder(provider: Provider, plan: FolderPlan) -> FolderCreation:
     """Create the planned folder over IMAP, subscribing unless declined."""
     if not plan.imap_creates:
         raise MailctlError(
@@ -1453,18 +1187,18 @@ def create_folder(sessions: Sessions, plan: FolderPlan) -> FolderCreation:
             f"({plan.status})"
         )
 
-    return _imap(sessions).create_folder(plan.folder, subscribe=plan.subscribe)
+    return provider.create_folder(plan.folder, subscribe=plan.subscribe)
 
 
 # ----------------------------------------------------------------------------
-def folder_pending(sessions: Sessions, plan: FolderPlan) -> bool:
+def folder_pending(provider: Provider, plan: FolderPlan) -> bool:
     """Whether a folder planned for IMAP creation has not been made yet."""
-    return plan.imap_creates and not _imap(sessions).exists(plan.folder)
+    return plan.imap_creates and not provider.exists(plan.folder)
 
 
 # ----------------------------------------------------------------------------
 def realize_folder(
-    sessions: Sessions, plan: FolderPlan, on_event: EventSink | None = None
+    provider: Provider, plan: FolderPlan, on_event: EventSink | None = None
 ) -> FolderCreation | None:
     """Create a folder planned for IMAP creation, once.
 
@@ -1472,10 +1206,10 @@ def realize_folder(
     earlier execute step already made -- ``add`` creates it before the
     upload, and its existing-mail pass must not try again.
     """
-    if not folder_pending(sessions, plan):
+    if not folder_pending(provider, plan):
         return None
 
-    result = create_folder(sessions, plan)
+    result = create_folder(provider, plan)
 
     if on_event:
         on_event(FolderCreated(result))
@@ -1547,7 +1281,7 @@ class MovePlan:
 
 # ----------------------------------------------------------------------------
 def fetch_active(
-    sessions: Sessions, requested: str | None = None
+    provider: Provider, requested: str | None = None
 ) -> tuple[str, str, str | None]:
     """Return ``(script_name, source, active)`` for the script to edit.
 
@@ -1567,9 +1301,8 @@ def fetch_active(
     set up before the rename does not grow a duplicate beside it.
     ``DEFAULT_SCRIPT_NAME`` is used only when there is neither.
     """
-    sieve = _sieve(sessions)
-    active = sieve.active_script_name()
-    _active, others = sieve.list_scripts()
+    active = provider.active_rule_set()
+    _active, others = provider.list_rule_sets()
 
     fallback = (
         LEGACY_SCRIPT_NAME
@@ -1579,7 +1312,7 @@ def fetch_active(
     name = requested or active or fallback
 
     if name == active or name in others:
-        return (name, sieve.get_script(name), active)
+        return (name, provider.read_rule_set(name), active)
 
     return (name, "", active)
 
@@ -1599,16 +1332,17 @@ def activates(name: str, active: str | None, requested: bool) -> bool:
 
 # ----------------------------------------------------------------------------
 def missing_extensions(
-    sessions: Sessions, spec: ActionSpec, folder: FolderPlan
+    provider: Provider, spec: ActionSpec, folder: FolderPlan
 ) -> list[str]:
     """Return the extensions the rule needs that the server does not list."""
-    needed = required_extensions(spec, folder.folder, folder.use_create)
+    needed = provider.required_features(spec, folder.folder, folder.use_create)
 
-    return _sieve(sessions).missing_extensions(needed)
+    return provider.missing_features(needed)
 
 
 # ----------------------------------------------------------------------------
 def placement_analysis(
+    provider: Provider | type[Provider],
     before: str,
     name: str,
     criteria: Criteria,
@@ -1620,16 +1354,18 @@ def placement_analysis(
     A rule of the same name is dropped from the comparison set first. With
     a replace the old copy is being overwritten, so leaving it in would
     have the new rule shadowed by the version it replaces -- and would put
-    the indexes out by one, since ``resolve_position`` counts the other
-    rules only.
+    the indexes out by one, since ``position`` counts the other rules only.
+
+    A provider that does not declare ``ordering`` evaluates every rule on
+    its own, so no position can shadow one and the analysis is empty.
     """
-    present = read_rule_list(parse_script(before))
+    if not provider.capabilities.ordering:
+        return Analysis()
+
+    present = provider.read_rules(before)
     rules = [entry for entry in present if entry.name != name]
 
-    stops = any(action[0] == "stop" for action in actions)
-    action_names = tuple(action[0] for action in actions)
-
-    candidate = rule_from_criteria(name, criteria, action_names, stops=stops)
+    candidate = provider.candidate_rule(name, criteria, actions)
 
     # Resolved against every name in the script, including the one being
     # replaced -- that is how "no placement, so leave it where it is" finds
@@ -1638,7 +1374,7 @@ def placement_analysis(
     # NOT rule_from_criteria's index=-1 default: analyze_placement clamps
     # with max(0, at_index), so a -1 here would mean the FRONT of the
     # script rather than the end of it.
-    at_index = resolve_position(
+    at_index = provider.position(
         [entry.name for entry in present], placement, name
     )
 
@@ -1647,7 +1383,7 @@ def placement_analysis(
 
 # ----------------------------------------------------------------------------
 def plan_rule(
-    sessions: Sessions,
+    provider: Provider,
     config: Config,
     request: RuleRequest,
     folder: FolderPlan,
@@ -1656,24 +1392,27 @@ def plan_rule(
 
     Never overwrites: the rule is merged into the parsed existing script,
     and a parse failure is raised rather than fallen back from (ADR 0002).
-    A rule needing an extension named in ``disabled_extensions`` is
-    refused; the one with a fallback, ``mailbox``, was already dropped by
-    :func:`plan_folder`.
+    A rule the provider cannot express is refused before the script is
+    read (:func:`check_rule`). A rule needing an extension named in
+    ``disabled_extensions`` is refused; the one with a fallback,
+    ``mailbox``, was already dropped by :func:`plan_folder`.
     """
+    check_rule(config, request, provider)
     request.criteria.require_terms()
     check_folder(folder)
 
-    actions = sieve_actions(request.actions, folder.folder, folder.use_create)
-    check_rule_extensions(config, actions)
+    actions = provider.translate_actions(
+        request.actions, folder.folder, folder.use_create
+    )
+    provider.check_actions(config, actions)
     name = request.name or default_rule_name(request.criteria)
-    script, before, active = fetch_active(sessions, request.script)
+    script, before, active = fetch_active(provider, request.script)
 
-    after = merge_rule(
+    after = provider.add_rule(
         before,
         name,
-        request.criteria.sieve_conditions(),
+        request.criteria,
         actions,
-        matchtype=request.criteria.sieve_matchtype(),
         replace=request.replace,
         placement=request.placement,
     )
@@ -1686,9 +1425,14 @@ def plan_rule(
         criteria=request.criteria,
         actions=actions,
         placement=placement_analysis(
-            before, name, request.criteria, actions, request.placement
+            provider,
+            before,
+            name,
+            request.criteria,
+            actions,
+            request.placement,
         ),
-        diff=display_diff(before, after, script),
+        diff=provider.diff(before, after, script),
         folder=folder,
         active=active,
         activate=activates(script, active, request.activate),
@@ -1697,25 +1441,25 @@ def plan_rule(
 
 # ----------------------------------------------------------------------------
 def plan_removal(
-    sessions: Sessions,
+    provider: Provider,
     rule: str,
     script: str | None = None,
     activate: bool = False,
 ) -> RemovalPlan:
     """Take a named rule out of the script without uploading the result."""
-    name, before, active = fetch_active(sessions, script)
+    name, before, active = fetch_active(provider, script)
 
     if not before.strip():
         raise MailctlError(f"script {name!r} is empty")
 
-    after = remove_rule(before, rule)
+    after = provider.remove_rule(before, rule)
 
     return RemovalPlan(
         rule,
         name,
         before,
         after,
-        display_diff(before, after, name),
+        provider.diff(before, after, name),
         active,
         activates(name, active, activate),
     )
@@ -1723,24 +1467,30 @@ def plan_removal(
 
 # ----------------------------------------------------------------------------
 def plan_move(
-    sessions: Sessions,
+    provider: Provider,
     rule: str,
     placement: Placement,
     script: str | None = None,
     activate: bool = False,
 ) -> MovePlan:
-    """Reorder a named rule without restating it, and without uploading."""
-    name, before, active = fetch_active(sessions, script)
+    """Reorder a named rule without restating it, and without uploading.
+
+    Refused, before the script is read, by a provider that does not
+    declare ``ordering``.
+    """
+    require_capability(provider, "ordering")
+
+    name, before, active = fetch_active(provider, script)
 
     if not before.strip():
         raise MailctlError(f"script {name!r} is empty")
 
-    after = move_rule(before, rule, placement)
+    after = provider.move_rule(before, rule, placement)
 
-    present = read_rule_list(parse_script(before))
+    present = provider.read_rules(before)
     names = [entry.name for entry in present]
     from_index = names.index(rule)
-    to_index = resolve_position(names, placement, rule)
+    to_index = provider.position(names, placement, rule)
 
     candidate = present[from_index]
     others = present[:from_index] + present[from_index + 1 :]
@@ -1754,7 +1504,7 @@ def plan_move(
         to_index=to_index,
         count=len(present),
         placement=analyze_placement(others, candidate, at_index=to_index),
-        diff=display_diff(before, after, name),
+        diff=provider.diff(before, after, name),
         active=active,
         activate=activates(name, active, activate),
     )
@@ -1762,7 +1512,7 @@ def plan_move(
 
 # ----------------------------------------------------------------------------
 def upload_script(
-    sieve: SieveSession,
+    provider: Provider,
     config: Config,
     name: str,
     before: str,
@@ -1785,18 +1535,18 @@ def upload_script(
     """
     emit = on_event or (lambda event: None)
 
-    path = backup_script(before, name, config.backup_dir)
+    path = provider.backup(before, name, config.backup_dir)
     emit(ScriptBackedUp(name, path))
 
-    sieve.check_script(after)
+    provider.check_rule_set(after)
 
     if before_put:
         before_put()
 
-    sieve.put_script(name, after)
+    provider.store_rule_set(name, after)
 
     if activate:
-        sieve.set_active(name)
+        provider.activate_rule_set(name)
 
     emit(ScriptUploaded(name, activate))
 
@@ -1805,7 +1555,7 @@ def upload_script(
 
 # ----------------------------------------------------------------------------
 def execute_script_change(
-    sessions: Sessions,
+    provider: Provider,
     config: Config,
     plan: RulePlan | RemovalPlan | MovePlan,
     on_event: EventSink | None = None,
@@ -1820,14 +1570,14 @@ def execute_script_change(
     before_put = None
 
     if isinstance(plan, RulePlan):
-        check_rule_extensions(config, plan.actions)
+        provider.check_actions(config, plan.actions)
         folder = plan.folder
 
         def before_put():
-            realize_folder(sessions, folder, on_event)
+            realize_folder(provider, folder, on_event)
 
     return upload_script(
-        _sieve(sessions),
+        provider,
         config,
         plan.script,
         plan.before,
@@ -1869,33 +1619,33 @@ def mail_pass_is_noop(spec: ActionSpec, source: str, destination: str) -> bool:
 
 
 # ----------------------------------------------------------------------------
-def source_folder(sessions: Sessions, name: str) -> str:
+def source_folder(provider: Provider, name: str) -> str:
     """Normalize the folder the existing-mail pass reads from.
 
     The same normalization the target gets, so ``--folder Lists/X`` and
     ``--fileinto Lists/X`` are recognised as one folder, and the search
     selects the server's real name for it.
     """
-    return _imap(sessions).normalize(name)
+    return provider.normalize(name)
 
 
 # ----------------------------------------------------------------------------
 def plan_mail(
-    sessions: Sessions,
+    provider: Provider,
     criteria: Criteria,
     spec: ActionSpec,
     source: str,
     destination: str,
 ) -> MailActionPlan:
-    """Search ``source`` read-only and work out what would be done."""
+    """Select the matches in ``source`` read-only and plan what is done.
+
+    Selection is the provider's: it answers which delivered messages the
+    rule matches, however its host evaluates rules.
+    """
     criteria.require_terms()
 
-    return _imap(sessions).plan_actions(
-        criteria,
-        source=source,
-        destination=destination,
-        flags=list(spec.flags),
-        discard=spec.discard,
+    return provider.select_mail(
+        criteria, source, destination, list(spec.flags), spec.discard
     )
 
 
@@ -1925,7 +1675,7 @@ def check_message_cap(plan: MailActionPlan, max_messages: int) -> None:
 
 # ----------------------------------------------------------------------------
 def execute_mail(
-    sessions: Sessions,
+    provider: Provider,
     plan: MailActionPlan,
     max_messages: int = DEFAULT_MAX_MESSAGES,
     folder: FolderPlan | None = None,
@@ -1939,9 +1689,9 @@ def execute_mail(
     check_message_cap(plan, max_messages)
 
     if folder is not None:
-        realize_folder(sessions, folder, on_event)
+        realize_folder(provider, folder, on_event)
 
-    return _imap(sessions).execute(plan)
+    return provider.apply_mail(plan)
 
 
 # ############################################################################
@@ -1973,17 +1723,16 @@ class DerivedCriteria:
 
 # ----------------------------------------------------------------------------
 def pick_message(
-    sessions: Sessions,
+    provider: Provider,
     folder: str,
     uid: int | None = None,
     search: str | None = None,
 ) -> PickedMessage:
     """Fetch one message's headers, by UID or by the newest search match."""
-    imap = _imap(sessions)
     candidates = 1
 
     if uid is None:
-        uids = imap.raw_search(folder, search or "")
+        uids = provider.search_messages(folder, search or "")
 
         if not uids:
             raise MailctlError(f"no message in {folder!r} matched {search!r}")
@@ -1991,7 +1740,7 @@ def pick_message(
         candidates = len(uids)
         uid = max(uids)
 
-    headers = imap.fetch_message_headers(folder, uid)
+    headers = provider.message_headers(folder, uid)
 
     return PickedMessage(uid, folder, headers, candidates)
 
@@ -2169,7 +1918,7 @@ class MessageContent:
 
 # ----------------------------------------------------------------------------
 def list_messages(
-    sessions: Sessions,
+    provider: Provider,
     folder: str = "INBOX",
     criteria: Criteria | None = None,
     search: str | None = None,
@@ -2195,10 +1944,9 @@ def list_messages(
             f"the message limit must be at least 1, not {limit}"
         )
 
-    imap = _imap(sessions)
-    folder = imap.normalize(folder)
+    folder = provider.normalize(folder)
 
-    messages, more = imap.list_messages(
+    messages, more = provider.list_messages(
         folder, criteria=criteria, expression=search, limit=limit
     )
 
@@ -2206,7 +1954,7 @@ def list_messages(
 
 
 # ----------------------------------------------------------------------------
-def read_message(sessions: Sessions, folder: str, uid: int) -> MessageContent:
+def read_message(provider: Provider, folder: str, uid: int) -> MessageContent:
     """Fetch one message whole and decode it, without marking it read.
 
     The folder is selected read-only and the body fetched with
@@ -2216,10 +1964,9 @@ def read_message(sessions: Sessions, folder: str, uid: int) -> MessageContent:
     if uid < 1:
         raise MailctlError(f"message UIDs start at 1, not {uid}")
 
-    imap = _imap(sessions)
-    folder = imap.normalize(folder)
+    folder = provider.normalize(folder)
 
-    source, flags = imap.fetch_message_source(folder, uid)
+    source, flags = provider.message_source(folder, uid)
 
     return parse_message(source, uid=uid, folder=folder, flags=flags)
 

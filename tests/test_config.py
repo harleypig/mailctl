@@ -1418,6 +1418,7 @@ def test_every_setting_records_a_source():
     config = load_config(argparse.Namespace(host="h"))
 
     assert set(config.sources) == {
+        "provider",
         "host",
         "user",
         "imap_host",

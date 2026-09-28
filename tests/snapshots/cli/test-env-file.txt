@@ -2,6 +2,7 @@ $ mailctl test --env-file --sieve-port 4192
 exit: 0
 --- stdout
 Sources:   env file .env, environment, config file <TMP>/config/mailctl/config.toml
+Provider:  mxroute  (default)
 Host:      mail.from-env-file.example  (env file .env)
 User:      user@example.com  (environment)
 Password:  set (via command)  (MAILCTL_PASSWORD_CMD, env file .env)

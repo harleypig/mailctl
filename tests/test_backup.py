@@ -27,6 +27,7 @@ from mailctl.components.managesieve import (
 )
 from mailctl.components.managesieve import client as sieve_client
 from mailctl.config import Config, default_backup_dir, load_config
+from mailctl.providers.mxroute import MxrouteProvider
 
 # A script whose bytes are awkward on purpose: CRLF endings, as the CRLF
 # protocol that fetched it produces, and no trailing newline. A text-mode
@@ -231,7 +232,7 @@ def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
     )
 
     engine.upload_script(
-        session,
+        MxrouteProvider(sieve=session),
         load_config(SimpleNamespace()),
         "managesieve",
         CRLF_SCRIPT,

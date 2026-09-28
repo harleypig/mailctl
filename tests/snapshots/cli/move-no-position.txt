@@ -3,8 +3,8 @@ exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mailctl move-rule [-h] [--verbose] [--debug] [--host HOST]
-                         [--user USER]
+usage: mailctl move-rule [-h] [--verbose] [--debug] [--provider PROVIDER]
+                         [--host HOST] [--user USER]
                          [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
                          [--env-file [PATH]] [--imap-host IMAP_HOST]
                          [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]

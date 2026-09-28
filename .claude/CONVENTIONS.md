@@ -140,6 +140,8 @@ Built on two libraries, both of which the code wraps rather than exposes:
   - `managesieve/script.py` — the offline script handling (parse / merge /
     move / remove / render / diff), rule names through a `NameDialect`, and
     `UNIMPLEMENTED_ACTIONS`.
+  - `managesieve/emit.py` — `EMIT_TABLE`, every command, test, and tag
+    mailctl can put in a rule and the Sieve extension each needs; offline.
   - `managesieve/backup.py` — the backup path and the byte-exact writer.
   - `managesieve/servers/` — one module per server software, chosen by the
     `IMPLEMENTATION` capability, with a plain-protocol fallback;
@@ -159,24 +161,36 @@ Built on two libraries, both of which the code wraps rather than exposes:
   - `imap/servers/` — one module per server software, chosen by the IMAP
     `ID` response, with a plain-protocol fallback; `dovecot.py` carries no
     quirks yet.
-- `mailctl/providers/mxroute/sieve.py` — **transitional** home of what is
-  MXroute's rather than the protocol's: `MXROUTE_FORBIDDEN_ACTIONS`, the
-  Roundcube `# rule:[NAME]` dialect and the script functions bound to it,
-  the connection and login advice, and `sieve_session()`, which maps
-  `Config` onto a `SieveSession`. Epic #92's step 4 turns it into the
-  `mxroute` provider.
-- `mailctl/providers/mxroute/imap.py` — the same, **transitional**, for
-  IMAP: `imap_session()` maps `Config` onto an `ImapSession` (port 143 is
-  STARTTLS, any other implicit TLS) and adds the full-address login advice
-  and the hints that name mailctl's settings.
+- `mailctl/providers/` — **layer 2** ([ADR 0006][adr6]): one package per
+  host, each composing layer-1 components (see *Providers* below).
+  - `base.py` — the `Provider` interface, `ProviderCapabilities`, and the
+    provider-neutral model the engine speaks (`ActionSpec`,
+    `FolderListing`, and the folder, message, placement, and diff records
+    re-exported from layer 1).
+  - `registry.py` — `PROVIDERS`, every provider by name, and
+    `provider_for(config)`.
+  - `mxroute/provider.py` — `MxrouteProvider`: ManageSieve for rules, IMAP
+    for mail, translating both ways.
+  - `mxroute/sieve.py` — what is MXroute's rather than the protocol's:
+    `MXROUTE_FORBIDDEN_ACTIONS`, the Roundcube `# rule:[NAME]` dialect and
+    the script functions bound to it, the translation of an `ActionSpec`
+    into Sieve actions, the `disabled_extensions` checks, the connection
+    and login advice, and `sieve_session()`, which maps `Config` onto a
+    `SieveSession`.
+  - `mxroute/imap.py` — the same for IMAP: `imap_session()` maps `Config`
+    onto an `ImapSession` (port 143 is STARTTLS, any other implicit TLS)
+    and adds the full-address login advice and the hints that name
+    mailctl's settings.
 - `mailctl/rules.py` — reads a parsed script into a flat rule model and
   reports which rules cannot fire where they are (shadowing, in both
   directions); offline.
 - `mailctl/engine.py` — the engine: every piece of work the tool does
-  (open sessions, plan the target folder, merge a rule, back up and upload,
-  plan and run the existing-mail pass, derive criteria from a message), for
-  any front-end. It takes plain values (`ActionSpec`, `RuleRequest`,
-  `Criteria`, `Placement`, `Config`) and returns plans and results.
+  (open the provider, plan the target folder, merge a rule, back up and
+  upload, plan and run the existing-mail pass, derive criteria from a
+  message), for any front-end and against any provider. It takes plain
+  values (`ActionSpec`, `RuleRequest`, `Criteria`, `Placement`, `Config`)
+  and returns plans and results. It imports no component and never names
+  a provider (`tests/test_layer_purity.py`).
 - `mailctl/cli.py` — the CLI front-end: argument parsing, turning flags into
   engine inputs, and rendering and confirming what the engine returns.
 - `mailctl/__main__.py` — `python -m mailctl`.
@@ -208,6 +222,10 @@ message preview, counts); the front-end renders it and makes the decision
 the plan out. New work goes into the engine first; `cli.py` should only gain
 parsing and rendering.
 
+**The engine reaches the protocols only through a provider.** It imports
+no `mailctl.components` module, and the CLI imports none either: the
+neutral names a front-end builds or renders come through the engine.
+
 **Nothing below the front-end writes to the terminal, progress included.**
 `--verbose` protocol chatter leaves `SieveSession` and `ImapSession` through
 a `progress` callback, and the steps of a change (backup written, script
@@ -232,6 +250,39 @@ not.** A capability wanted for one front-end is built into the engine and
 exposed in all of them; a feature only one front-end has is a gap in the
 others, not a design choice. The CLI is the only front-end today, so today
 this means the CLI exposes every engine operation.
+
+## Providers
+
+**A provider is a two-way translator** ([ADR 0006][adr6] *Amendment*).
+The engine speaks one provider-neutral model: a rule is criteria plus an
+`ActionSpec`, and the model also covers folders, messages, capabilities,
+results, and `MailctlError`. The provider converts that model into its
+host's terms on the way out, and converts the host's answers back on the
+way in. For `mxroute`, outbound is Sieve over ManageSieve, and inbound a
+parsed script becomes `Rule` values.
+
+- **Selected by the `provider` setting**, default `mxroute`, resolved like
+  every other setting: `--provider`, then `MAILCTL_PROVIDER` in the env
+  file or the environment, then `provider` in `config.toml`. An unknown
+  name is refused, naming the known ones, before anything connects.
+- **In-tree and registered in-tree.** A provider is a `Provider` subclass
+  listed in `providers/registry.py`. There are no entry points; ADR 0006
+  defers them.
+- **Differences are data, never a branch.** A provider declares
+  `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, its `actions`,
+  `extensions`, its namespaced `specifics` with their schema, and the
+  operations it `declined`. The engine reads those and never asks which
+  provider it has.
+- **Refused before any network work.** `engine.check_rule` refuses a rule
+  the provider cannot express, through one error naming the provider, the
+  construct, and why.
+- **Every provider answers every operation.** Each one implements or
+  explicitly declines (`@declined`) every operation of `Provider`, and
+  what it declines matches its capabilities. `tests/test_providers.py`
+  holds this. It also drives a fake second provider through the engine to
+  show the calls match `mxroute`'s.
+- **Adding one is a package and a registry line**: `providers/<name>/`,
+  composing the layer-1 components it needs, with no engine change.
 
 ## The protocols
 
@@ -405,7 +456,8 @@ about MXroute's configuration** is not.
 - **Supported and used:** `fileinto`, `discard`, `stop`, `keep`, and flag
   actions.
 - **Every emitted feature declares its extension, in one table.**
-  `engine.EMIT_TABLE` maps each command, test, and tag a rule can contain to
+  `EMIT_TABLE` (`components/managesieve/emit.py`) maps each command, test,
+  and tag a rule can contain to
   the Sieve extension it needs (None for the base language). The required
   set `mailctl test` reports and the check a rule is held to are both read
   off it, and `tests/test_extensions.py` checks it against sievelib's own
@@ -482,7 +534,9 @@ and it is enforced by construction rather than by care:
 ## The sibling repository
 
 [`terraform-provider-mxroute`][provider] and this tool are **complementary,
-not overlapping**, and the boundary is clean because the API draws it for us:
+not overlapping**, and the boundary is clean because the API draws it for us.
+(That repository is a *Terraform* provider; it is unrelated to mailctl's own
+`mxroute` provider, which is this tool's layer 2 — see *Providers*.)
 
 | Repo | Owns |
 |------|------|

@@ -81,6 +81,12 @@ password_cmd = "pass show email/you@yourdomain.com"
 
 # --- Behaviour ------------------------------------------------------------
 
+# The mail host mailctl talks to, by provider name. "mxroute" is the only
+# one today and the default, so there is nothing to set yet. An unknown
+# name is an error that lists the known ones. MAILCTL_PROVIDER and
+# --provider override it.
+#provider = "mxroute"
+
 # Where script backups are written -- both the automatic pre-upload copy
 # and 'mailctl backup'.
 #

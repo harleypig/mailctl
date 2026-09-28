@@ -1,13 +1,14 @@
 """Sieve extensions: what mailctl emits, and the switch that narrows it (#82).
 
-Two things are pinned here. The emit table (``engine.EMIT_TABLE``) is the
-one place that says which extension each emitted command, test, and tag
-needs, so it is checked against sievelib's own ``require`` line over every
-rule shape the engine can build -- sievelib is the independent oracle, and
-the shapes are derived from ``ActionSpec`` and the criteria modes rather
-than hand-picked. Then ``disabled_extensions``: a disabled extension counts
-as not advertised, which refuses a rule that needs it, falls back where a
-fallback exists, and changes nothing where the server never had it.
+Two things are pinned here. The emit table (``EMIT_TABLE``, in the
+ManageSieve component) is the one place that says which extension each
+emitted command, test, and tag needs, so it is checked against sievelib's
+own ``require`` line over every rule shape the engine can build --
+sievelib is the independent oracle, and the shapes are derived from
+``ActionSpec`` and the criteria modes rather than hand-picked. Then
+``disabled_extensions``: a disabled extension counts as not advertised,
+which refuses a rule that needs it, falls back where a fallback exists,
+and changes nothing where the server never had it.
 """
 
 import itertools
@@ -17,10 +18,12 @@ from typing import cast
 import pytest
 
 from mailctl import MailctlError, engine
-from mailctl.components.managesieve import SieveSession
+from mailctl.components.managesieve import SieveSession, emit
 from mailctl.config import FLAG, Source
 from mailctl.criteria import COMPARE_OPS, MATCH_MODES, Criteria
-from mailctl.engine import ActionSpec, RuleRequest, Sessions
+from mailctl.engine import ActionSpec, RuleRequest
+from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.providers.mxroute import sieve as mxroute_sieve
 from mailctl.providers.mxroute.sieve import merge_rule
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
@@ -77,9 +80,9 @@ class FakeSieveSession:
 
 
 # ----------------------------------------------------------------------------
-def live_sessions(sieve: FakeSieveSession, imap=None) -> Sessions:
+def live_sessions(sieve: FakeSieveSession, imap=None) -> MxrouteProvider:
     """Sessions over the fake, typed as the session it stands in for."""
-    return Sessions(cast(SieveSession, sieve), imap)
+    return MxrouteProvider(cast(SieveSession, sieve), imap)
 
 
 # ----------------------------------------------------------------------------
@@ -114,12 +117,12 @@ def rule_shapes():
 
     for fileinto, discard, flags, keep, stop, create in specs:
         spec = ActionSpec(fileinto, discard, flags, keep, stop)
-        actions = engine._action_tuples(spec, fileinto or "", create)
+        actions = mxroute_sieve._action_tuples(spec, fileinto or "", create)
 
         if not actions:
             continue
 
-        actions = engine.sieve_actions(spec, fileinto or "", create)
+        actions = mxroute_sieve.sieve_actions(spec, fileinto or "", create)
 
         for compare, match in itertools.product(COMPARE_OPS, MATCH_MODES):
             built = Criteria(match=match, compare=compare)
@@ -171,7 +174,7 @@ def test_the_emit_table_matches_the_require_line_sievelib_writes():
             set(re.findall(r'"([^"]+)"', line.group(1))) if line else set()
         )
 
-        derived = engine.emitted_extensions(
+        derived = emit.emitted_extensions(
             actions, built.sieve_conditions(), built.sieve_matchtype()
         )
 
@@ -189,18 +192,18 @@ def test_every_word_a_rule_emits_is_in_the_emit_table():
         code = re.sub(r'"(?:[^"\\]|\\.)*"|#[^\n]*', "", script)
         words = set(re.findall(r":?[a-z][a-z0-9]*", code))
 
-        assert words - CONTROL <= set(engine.EMIT_TABLE), script
+        assert words - CONTROL <= set(emit.EMIT_TABLE), script
 
 
 # ----------------------------------------------------------------------------
 def test_the_required_set_is_derived_from_the_emit_table():
-    assert engine.REQUIRED_EXTENSIONS == ("fileinto", "imap4flags", "mailbox")
+    assert emit.REQUIRED_EXTENSIONS == ("fileinto", "imap4flags", "mailbox")
 
 
 # ----------------------------------------------------------------------------
 def test_informational_extensions_are_ones_mailctl_never_emits():
-    assert not set(engine.INFORMATIONAL_EXTENSIONS) & set(
-        engine.REQUIRED_EXTENSIONS
+    assert not set(emit.INFORMATIONAL_EXTENSIONS) & set(
+        emit.REQUIRED_EXTENSIONS
     )
 
 
@@ -215,7 +218,7 @@ def test_an_unknown_extension_name_is_refused_by_name(imap_config):
     imap_config.sources["disabled_extensions"] = FLAG_SOURCE
 
     with pytest.raises(MailctlError) as caught:
-        engine.check_disabled_extensions(imap_config)
+        mxroute_sieve.check_disabled_extensions(imap_config)
 
     message = str(caught.value)
 
@@ -226,9 +229,9 @@ def test_an_unknown_extension_name_is_refused_by_name(imap_config):
 
 # ----------------------------------------------------------------------------
 def test_every_reported_name_is_accepted(imap_config):
-    imap_config.disabled_extensions = frozenset(engine.KNOWN_EXTENSIONS)
+    imap_config.disabled_extensions = frozenset(emit.KNOWN_EXTENSIONS)
 
-    assert engine.check_disabled_extensions(imap_config) is None
+    assert mxroute_sieve.check_disabled_extensions(imap_config) is None
 
 
 # ----------------------------------------------------------------------------
@@ -238,7 +241,7 @@ def test_connecting_refuses_an_unknown_name_before_any_session(imap_config):
 
     with (
         pytest.raises(MailctlError, match="'nope'"),
-        engine.connect(imap_config, sieve=False),
+        engine.connect(imap_config, rules=False),
     ):
         pass
 
@@ -396,7 +399,7 @@ def test_disabling_an_extension_the_server_lacks_changes_nothing(
 def report(caps, config):
     """The report as a name -> state mapping, checking its order on the way."""
     states = engine.report_extensions(
-        engine.SieveProbe(caps, None, []), config
+        MxrouteProvider(), engine.SieveProbe(caps, None, []), config
     )
     names = [state.name for state in states]
 
@@ -410,9 +413,9 @@ def test_the_report_is_one_row_per_known_or_listed_extension(imap_config):
     """Rows are the union of mailctl's names and the server's, folded."""
     rows = report(["FileInto", "fileinto", "Body", "regex"], imap_config)
 
-    assert set(rows) == {*engine.KNOWN_EXTENSIONS, "body"}
+    assert set(rows) == {*emit.KNOWN_EXTENSIONS, "body"}
     assert {name for name, row in rows.items() if row.required} == set(
-        engine.REQUIRED_EXTENSIONS
+        emit.REQUIRED_EXTENSIONS
     )
 
 
@@ -459,6 +462,6 @@ def test_an_empty_capability_list_leaves_every_known_name_unavailable(
 ):
     rows = report([], imap_config)
 
-    assert set(rows) == set(engine.KNOWN_EXTENSIONS)
+    assert set(rows) == set(emit.KNOWN_EXTENSIONS)
     assert not any(row.advertised for row in rows.values())
     assert all(row.enabled is None for row in rows.values())

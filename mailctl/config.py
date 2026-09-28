@@ -48,6 +48,11 @@ DEFAULT_IMAP_PORT = 993
 DEFAULT_SIEVE_TLS = "starttls"
 DEFAULT_SOURCE_FOLDER = "INBOX"
 
+# The host a run talks to, by its registered name (mailctl.providers).
+# Only the name lives here: the registry imports this module, so the lookup
+# -- and the refusal of an unknown name -- happens there.
+DEFAULT_PROVIDER = "mxroute"
+
 SIEVE_TLS_MODES = ("starttls", "ssl", "none")
 
 # The one prefix an env file is read for. Anything else in the file belongs
@@ -230,6 +235,7 @@ class LegacySetting:
 class Config:
     """Resolved connection settings for one MXRoute account."""
 
+    provider: str = DEFAULT_PROVIDER
     host: str = ""
     user: str = ""
     imap_host: str = ""
@@ -974,6 +980,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
             default=(default, Source(DEFAULT)),
         )
 
+    provider = setting("provider", DEFAULT_PROVIDER)
     host = setting("host")
     user = setting("user")
 
@@ -1034,6 +1041,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
         consulted.append(Source(CONFIG_FILE, path=toml))
 
     return Config(
+        provider=provider or DEFAULT_PROVIDER,
         host=host or "",
         user=user or "",
         imap_host=imap_host or "",

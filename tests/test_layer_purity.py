@@ -10,6 +10,11 @@ layers exist to undo.
 The wrapped library is per component: ``imap`` importing ``sievelib`` would
 tie the Gmail provider, which has no Sieve, to a library it never uses.
 
+The line runs the other way too. The engine and the CLI import no
+layer-1 module at all, and the engine reaches a provider only through the
+interface and the registry, never naming one -- which is what lets a
+second provider be added with no engine change.
+
 The check resolves relative imports to absolute names first, because
 ``from ...config import Config`` and ``from mailctl.config import Config``
 are the same dependency spelled two ways.
@@ -213,3 +218,150 @@ def test_the_guard_allows_what_layer_1_may_use(source):
 )
 def test_the_guard_allows_what_the_imap_component_may_use(source):
     assert violations(source, "mailctl.components.imap") == [], source
+
+
+# ############################################################################
+# The engine and the CLI talk to a provider, never to a component
+# ############################################################################
+
+# The front of the tree. Each may reach the protocols only through a
+# provider; the engine may reach a provider only through the interface and
+# the registry, so it can never name one.
+FRONT_FILES = {"engine": PACKAGE / "engine.py", "cli": PACKAGE / "cli.py"}
+
+ENGINE_PROVIDER_MODULES = {
+    "mailctl.providers.base",
+    "mailctl.providers.registry",
+}
+
+
+# ----------------------------------------------------------------------------
+def component_imports(source: str, package: str) -> list[str]:
+    """Every import of a layer-1 module in ``source``."""
+    return [
+        module
+        for module, _names in imports(source, package)
+        if module == "mailctl.components"
+        or module.startswith("mailctl.components.")
+    ]
+
+
+# ----------------------------------------------------------------------------
+def provider_imports(source: str, package: str) -> list[str]:
+    """Every import of a provider module other than the interface's own."""
+    return [
+        module
+        for module, _names in imports(source, package)
+        if module.startswith("mailctl.providers")
+        and module not in ENGINE_PROVIDER_MODULES
+    ]
+
+
+# ----------------------------------------------------------------------------
+def provider_name_literals(source: str) -> list[str]:
+    """String literals in code that name a registered provider.
+
+    Docstrings are prose and are skipped; a literal anywhere else is the
+    engine comparing against, or choosing, one provider by name.
+    """
+    from mailctl.providers.registry import PROVIDERS
+
+    tree = ast.parse(source)
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(
+            node,
+            ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+        )
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+        and any(name in node.value.lower() for name in PROVIDERS)
+    ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("front", sorted(FRONT_FILES))
+def test_the_front_imports_no_component(front):
+    path = FRONT_FILES[front]
+    found = component_imports(path.read_text(encoding="utf-8"), "mailctl")
+
+    assert found == [], (
+        f"{front}.py imports {found}; the engine and the CLI reach a "
+        f"protocol only through a provider (ADR 0006)"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_engine_reaches_providers_only_through_the_interface():
+    source = FRONT_FILES["engine"].read_text(encoding="utf-8")
+
+    assert provider_imports(source, "mailctl") == []
+    assert provider_name_literals(source) == []
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from .components.imap import ImapSession\n",
+        "from mailctl.components.managesieve import script\n",
+        "import mailctl.components\n",
+    ],
+)
+def test_the_front_guard_would_catch_a_component_import(source):
+    assert component_imports(source, "mailctl"), source
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from .providers.mxroute import MxrouteProvider\n",
+        "from .providers.mxroute.sieve import merge_rule\n",
+    ],
+)
+def test_the_engine_guard_would_catch_a_named_provider(source):
+    assert provider_imports(source, "mailctl"), source
+
+
+# ----------------------------------------------------------------------------
+def test_the_engine_guard_would_catch_a_provider_named_in_code():
+    source = (
+        'def f(p):\n    """Mentions mxroute in prose, which is fine."""\n'
+        '    return p.name == "mxroute"\n'
+    )
+
+    assert provider_name_literals(source) == ["mxroute"]
+
+
+# ----------------------------------------------------------------------------
+def test_the_engine_guard_allows_the_interface_and_the_registry():
+    source = (
+        "from .providers.base import Provider\n"
+        "from .providers.registry import provider_for\n"
+    )
+
+    assert provider_imports(source, "mailctl") == []
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from ...providers.base import Provider\n",
+        "from mailctl.providers import registry\n",
+    ],
+)
+def test_a_component_may_not_import_a_provider(source):
+    """Layer 1 never reaches up: the interface included."""
+    assert violations(source, "mailctl.components.imap"), source

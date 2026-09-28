@@ -2,6 +2,7 @@ $ mailctl test --disable-extension mailbx
 exit: 1
 --- stdout
 Sources:   environment
+Provider:  mxroute  (default)
 Host:      mail.example.com  (environment)
 User:      user@example.com  (environment)
 Password:  set  (MAILCTL_PASSWORD, environment)
