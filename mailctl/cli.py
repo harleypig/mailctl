@@ -17,15 +17,6 @@ import sys
 import traceback
 
 from . import MailctlError, __version__, engine
-from .components.imap import FolderCreation, decode_header_value
-from .components.managesieve import (
-    PLACE_AFTER,
-    PLACE_BEFORE,
-    PLACE_FIRST,
-    PLACE_LAST,
-    DisplayDiff,
-    Placement,
-)
 from .config import (
     CONFIG_FILE,
     ENV_FILE,
@@ -37,8 +28,16 @@ from .criteria import COMPARE_OPS, MATCH_MODES, Criteria
 from .engine import (
     DEFAULT_LIST_LIMIT,
     DEFAULT_MAX_MESSAGES,
+    PLACE_AFTER,
+    PLACE_BEFORE,
+    PLACE_FIRST,
+    PLACE_LAST,
     ActionSpec,
+    DisplayDiff,
+    FolderCreation,
+    Placement,
     RuleRequest,
+    decode_header_value,
 )
 from .rules import CERTAIN
 
@@ -225,10 +224,10 @@ def progress_from_args(args):
 
 
 # ----------------------------------------------------------------------------
-def connect(config, args, *, sieve: bool = True, imap: bool = False):
-    """Open engine sessions with this invocation's progress reporting."""
+def connect(config, args, *, rules: bool = True, mail: bool = False):
+    """Open the provider with this invocation's progress reporting."""
     return engine.connect(
-        config, sieve=sieve, imap=imap, progress=progress_from_args(args)
+        config, rules=rules, mail=mail, progress=progress_from_args(args)
     )
 
 
@@ -411,10 +410,11 @@ def placement_from_args(args) -> Placement | None:
 
 
 # ----------------------------------------------------------------------------
-def reject_forbidden(args) -> None:
+def reject_forbidden(config, args) -> None:
     """Hand every refused action flag that was given to the engine."""
     engine.reject_actions(
-        name for name in REFUSED_ACTION_FLAGS if getattr(args, name, None)
+        config,
+        (name for name in REFUSED_ACTION_FLAGS if getattr(args, name, None)),
     )
 
 
@@ -936,10 +936,8 @@ def cmd_backup(args) -> int:
         plan = engine.plan_backup(sessions, config, args.output)
 
         if args.dry_run:
-            print(
-                f"[dry-run] would write {rule_count_phrase(plan.source)} to "
-                f"{plan.target}"
-            )
+            count = rule_count_phrase(sessions, plan.source)
+            print(f"[dry-run] would write {count} to {plan.target}")
 
             return 0
 
@@ -948,7 +946,7 @@ def cmd_backup(args) -> int:
         # having a copy of.
         target = engine.execute_backup(plan)
 
-    print(f"wrote {rule_count_phrase(plan.source)} to {target}")
+    print(f"wrote {rule_count_phrase(sessions, plan.source)} to {target}")
 
     return 0
 
@@ -964,9 +962,12 @@ def cmd_restore(args) -> int:
             sessions, backup, args.script, args.activate
         )
 
+        after = rule_count_phrase(sessions, plan.after)
+        before = rule_count_phrase(sessions, plan.before)
+
         print(
-            f"Restore {plan.source} ({rule_count_phrase(plan.after)}) over "
-            f"script {plan.script!r} ({rule_count_phrase(plan.before)}):"
+            f"Restore {plan.source} ({after}) over script {plan.script!r} "
+            f"({before}):"
         )
 
         if not plan.changes:
@@ -1095,9 +1096,9 @@ def cmd_migrate_config(args) -> int:
 
 
 # ----------------------------------------------------------------------------
-def rule_count_phrase(source: str) -> str:
+def rule_count_phrase(provider, source: str) -> str:
     """Describe how many rules a script holds, for the summary line."""
-    count = engine.count_rules(source)
+    count = engine.count_rules(provider, source)
 
     if count is None:
         return "a script mailctl could not parse"
@@ -1110,7 +1111,7 @@ def cmd_folders(args) -> int:
     """List IMAP folders and the detected hierarchy delimiter."""
     config = configure(args)
 
-    with connect(config, args, sieve=False, imap=True) as sessions:
+    with connect(config, args, rules=False, mail=True) as sessions:
         listing = engine.list_folders(sessions)
 
         print(f"Hierarchy delimiter: {listing.delimiter!r}")
@@ -1138,7 +1139,7 @@ def cmd_subscribe(args) -> int:
     config = configure(args)
     subscribe = args.command == "subscribe"
 
-    with connect(config, args, sieve=False, imap=True) as sessions:
+    with connect(config, args, rules=False, mail=True) as sessions:
         plan = engine.plan_subscription(sessions, args.folder, subscribe)
 
         if plan.requested != plan.folder:
@@ -1182,6 +1183,7 @@ def cmd_test(args) -> int:
     state, failure = resolve_password(config)
 
     print(f"Sources:   {', '.join(s.describe() for s in config.consulted)}")
+    print(f"Provider:  {config.provider}  ({origin_of(config, 'provider')})")
     print(f"Host:      {config.host}  ({origin_of(config, 'host')})")
     print(f"User:      {config.user}  ({origin_of(config, 'user')})")
     print(
@@ -1216,7 +1218,9 @@ def cmd_test(args) -> int:
         # enable -- only 'redirect' is a documented MXRoute policy, and a
         # policy is not a capability, so it would not show up here at all.
         print("  Sieve extensions (* = mailctl's own rules can need it):")
-        print_extension_table(engine.report_extensions(sieve, config))
+        print_extension_table(
+            engine.report_extensions(sessions, sieve, config)
+        )
         print(f"\n  active script: {sieve.active or '(none)'}")
         print(f"  other scripts: {', '.join(sieve.others) or '(none)'}")
         print(
@@ -1224,7 +1228,7 @@ def cmd_test(args) -> int:
             "name; it never guesses one.)"
         )
 
-    with connect(config, args, sieve=False, imap=True) as sessions:
+    with connect(config, args, rules=False, mail=True) as sessions:
         imap = engine.probe_imap(sessions)
 
         print("\nIMAP: connected")
@@ -1381,9 +1385,8 @@ def report_filter_sieve(present: bool) -> None:
 # ----------------------------------------------------------------------------
 def cmd_add(args) -> int:
     """Add a rule to the active script, then apply it to existing mail."""
-    reject_forbidden(args)
-
     config = configure(args)
+    reject_forbidden(config, args)
     criteria = criteria_from_args(args)
     criteria.require_terms()
 
@@ -1394,28 +1397,27 @@ def cmd_add(args) -> int:
 def run_add(config, args, criteria: Criteria) -> int:
     """Shared body of ``add`` and ``from-message``."""
     spec = actions_from_args(args)
+    request = RuleRequest(
+        criteria=criteria,
+        actions=spec,
+        name=args.name,
+        script=args.script,
+        replace=args.replace,
+        placement=placement_from_args(args),
+        activate=args.activate,
+    )
 
-    with connect(config, args, imap=not args.no_imap) as sessions:
+    # Before connecting: a rule the provider cannot express costs no login.
+    engine.check_rule(config, request)
+
+    with connect(config, args, mail=not args.no_imap) as sessions:
         folder = prepare_folder(sessions, config, args)
 
         warn_missing_extensions(
             engine.missing_extensions(sessions, spec, folder)
         )
 
-        plan = engine.plan_rule(
-            sessions,
-            config,
-            RuleRequest(
-                criteria=criteria,
-                actions=spec,
-                name=args.name,
-                script=args.script,
-                replace=args.replace,
-                placement=placement_from_args(args),
-                activate=args.activate,
-            ),
-            folder,
-        )
+        plan = engine.plan_rule(sessions, config, request, folder)
 
         print(f"\nRule {plan.name!r} on script {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
@@ -1434,7 +1436,7 @@ def run_add(config, args, criteria: Criteria) -> int:
         else:
             engine.execute_script_change(sessions, config, plan, render_event)
 
-        if sessions.imap is None or args.no_apply:
+        if not sessions.has_mail or args.no_apply:
             if args.no_apply:
                 print("\nSkipping the existing-mail pass (--no-apply).")
 
@@ -1469,14 +1471,13 @@ def unescape_sieve_string(value: str) -> str:
 # ----------------------------------------------------------------------------
 def cmd_apply(args) -> int:
     """Apply criteria to existing mail only; touch no Sieve script."""
-    reject_forbidden(args)
-
     config = configure(args)
+    reject_forbidden(config, args)
     criteria = criteria_from_args(args)
     criteria.require_terms()
     spec = actions_from_args(args)
 
-    with connect(config, args, sieve=False, imap=True) as sessions:
+    with connect(config, args, rules=False, mail=True) as sessions:
         folder = engine.plan_folder(
             sessions,
             config,
@@ -1615,14 +1616,13 @@ def print_message(message, uid: int, folder: str) -> None:
 # ----------------------------------------------------------------------------
 def cmd_from_message(args) -> int:
     """Derive criteria from an existing message, then behave like ``add``."""
-    reject_forbidden(args)
-
     config = configure(args)
+    reject_forbidden(config, args)
 
     if not args.uid and not args.search:
         raise MailctlError("give either --uid N or --search EXPRESSION")
 
-    with connect(config, args, sieve=False, imap=True) as sessions:
+    with connect(config, args, rules=False, mail=True) as sessions:
         picked = engine.pick_message(
             sessions,
             config.source_folder,
@@ -1674,7 +1674,7 @@ def cmd_messages(args) -> int:
     config = configure(args)
     criteria = criteria_from_args(args)
 
-    with connect(config, args, sieve=False, imap=True) as sessions:
+    with connect(config, args, rules=False, mail=True) as sessions:
         listing = engine.list_messages(
             sessions,
             config.source_folder,
@@ -1723,7 +1723,7 @@ def cmd_view(args) -> int:
     """Show one message: headers, text body, and what is attached."""
     config = configure(args)
 
-    with connect(config, args, sieve=False, imap=True) as sessions:
+    with connect(config, args, rules=False, mail=True) as sessions:
         content = engine.read_message(sessions, config.source_folder, args.uid)
 
     if args.raw and not sys.stdout.isatty():
@@ -1825,6 +1825,10 @@ def connection_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
 
     group = parser.add_argument_group("connection")
+    group.add_argument(
+        "--provider",
+        help="the mail host, by provider name; default mxroute",
+    )
     group.add_argument("--host", help="MXRoute server hostname")
     group.add_argument("--user", help="full email address (the username)")
 

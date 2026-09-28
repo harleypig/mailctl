@@ -2,6 +2,7 @@ $ mailctl test -v
 exit: 0
 --- stdout
 Sources:   environment
+Provider:  mxroute  (default)
 Host:      mail.example.com  (environment)
 User:      user@example.com  (environment)
 Password:  set  (MAILCTL_PASSWORD, environment)

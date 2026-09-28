@@ -25,8 +25,11 @@ import pytest
 from mailctl import MailctlError
 from mailctl.cli import actions_from_args, build_parser, reject_forbidden
 from mailctl.components.managesieve import UNIMPLEMENTED_ACTIONS
-from mailctl.engine import sieve_actions
-from mailctl.providers.mxroute.sieve import MXROUTE_FORBIDDEN_ACTIONS
+from mailctl.config import Config
+from mailctl.providers.mxroute.sieve import (
+    MXROUTE_FORBIDDEN_ACTIONS,
+    sieve_actions,
+)
 
 # ############################################################################
 # Helpers
@@ -57,7 +60,9 @@ def test_redirect_is_refused_and_names_the_forwarder_alternative():
     them looking for a Sieve workaround that cannot exist.
     """
     with pytest.raises(MailctlError) as caught:
-        reject_forbidden(parse_add("--redirect", "elsewhere@example.com"))
+        reject_forbidden(
+            Config(), parse_add("--redirect", "elsewhere@example.com")
+        )
 
     message = str(caught.value)
 
@@ -91,7 +96,7 @@ def test_an_unimplemented_action_is_refused_without_claiming_it_is_disabled(
     out for themselves, since nothing MXroute publishes answers it.
     """
     with pytest.raises(MailctlError) as caught:
-        reject_forbidden(parse_add(flag, value))
+        reject_forbidden(Config(), parse_add(flag, value))
 
     message = str(caught.value)
 
@@ -129,13 +134,13 @@ def test_every_refused_action_has_a_flag_the_gate_can_see(name):
     assert getattr(args, name) == "value"
 
     with pytest.raises(MailctlError):
-        reject_forbidden(args)
+        reject_forbidden(Config(), args)
 
 
 # ----------------------------------------------------------------------------
 def test_an_ordinary_add_passes_the_gate():
     """The failure path is only meaningful if the success path is clear."""
-    assert reject_forbidden(parse_add()) is None
+    assert reject_forbidden(Config(), parse_add()) is None
 
 
 # ############################################################################

@@ -24,8 +24,10 @@ from mailctl.components.managesieve import (
     rule_names,
 )
 from mailctl.components.managesieve import client as sieve_client
+from mailctl.config import Config
 from mailctl.criteria import Criteria
-from mailctl.engine import ActionSpec, RuleRequest, Sessions
+from mailctl.engine import ActionSpec, RuleRequest
+from mailctl.providers.mxroute import MxrouteProvider
 from mailctl.providers.mxroute.sieve import parse_script
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
@@ -130,8 +132,8 @@ def fake_sieve(roundcube_script) -> FakeSieveSession:
 
 # ----------------------------------------------------------------------------
 @pytest.fixture
-def sessions(fake_sieve, imap_session) -> Sessions:
-    return Sessions(sieve=fake_sieve, imap=imap_session)
+def sessions(fake_sieve, imap_session) -> MxrouteProvider:
+    return MxrouteProvider(sieve=fake_sieve, imap=imap_session)
 
 
 # ############################################################################
@@ -152,10 +154,11 @@ def test_connect_opens_only_what_was_asked_for_and_tags_progress(
 
     with engine.connect(
         imap_config,
-        sieve=False,
-        imap=True,
+        rules=False,
+        mail=True,
         progress=lambda channel, message: seen.append(channel),
     ) as live:
+        assert isinstance(live, MxrouteProvider)
         assert live.sieve is None
         assert live.imap is not None
 
@@ -167,10 +170,10 @@ def test_connect_opens_only_what_was_asked_for_and_tags_progress(
 # ----------------------------------------------------------------------------
 def test_an_operation_without_its_session_raises_rather_than_crashing():
     with pytest.raises(MailctlError, match="no ManageSieve session"):
-        engine.list_scripts(Sessions())
+        engine.list_scripts(MxrouteProvider())
 
     with pytest.raises(MailctlError, match="no IMAP session"):
-        engine.list_folders(Sessions())
+        engine.list_folders(MxrouteProvider())
 
 
 # ############################################################################
@@ -188,7 +191,7 @@ def test_read_script_takes_the_active_one_and_parses_only_on_demand(
     assert script.rule_names() == ["keep-boss", "bin-the-noise"]
 
     # Showing an unparseable script must still be possible.
-    broken = engine.ScriptText("broken", "if {{{")
+    broken = engine.ScriptText("broken", "if {{{", MxrouteProvider)
 
     with pytest.raises(MailctlError):
         broken.rule_names()
@@ -196,7 +199,7 @@ def test_read_script_takes_the_active_one_and_parses_only_on_demand(
 
 # ----------------------------------------------------------------------------
 def test_reading_with_no_active_script_says_so():
-    empty = Sessions(sieve=FakeSieveSession(active=None))
+    empty = MxrouteProvider(sieve=FakeSieveSession(active=None))
 
     with pytest.raises(MailctlError, match="name one explicitly"):
         engine.read_script(empty)
@@ -252,7 +255,7 @@ def test_a_backup_is_planned_then_written_byte_for_byte(
 def test_a_backup_with_no_active_script_is_refused(imap_config):
     with pytest.raises(MailctlError, match="nothing to back up"):
         engine.plan_backup(
-            Sessions(sieve=FakeSieveSession(active=None)), imap_config
+            MxrouteProvider(sieve=FakeSieveSession(active=None)), imap_config
         )
 
 
@@ -260,8 +263,8 @@ def test_a_backup_with_no_active_script_is_refused(imap_config):
 def test_count_rules_reports_rather_than_raises_on_a_broken_script(
     roundcube_script,
 ):
-    assert engine.count_rules(roundcube_script) == 2
-    assert engine.count_rules("if {{{") is None
+    assert engine.count_rules(MxrouteProvider, roundcube_script) == 2
+    assert engine.count_rules(MxrouteProvider, "if {{{") is None
 
 
 # ############################################################################
@@ -272,31 +275,31 @@ def test_count_rules_reports_rather_than_raises_on_a_broken_script(
 # ----------------------------------------------------------------------------
 def test_redirect_is_refused_with_the_forwarder_pointer():
     with pytest.raises(MailctlError, match=r"(?i)forward"):
-        engine.reject_actions(["redirect"])
+        engine.reject_actions(Config(), ["redirect"])
 
 
 # ----------------------------------------------------------------------------
 def test_an_unimplemented_action_is_refused_as_our_choice():
     with pytest.raises(MailctlError, match="conservative choice of ours"):
-        engine.reject_actions(["vacation"])
+        engine.reject_actions(Config(), ["vacation"])
 
 
 # ----------------------------------------------------------------------------
 def test_nothing_refused_when_nothing_refused_was_asked_for():
-    assert engine.reject_actions([]) is None
+    assert engine.reject_actions(Config(), []) is None
 
 
 # ----------------------------------------------------------------------------
 def test_required_extensions_follow_the_actions():
     spec = ActionSpec(fileinto="Lists", flags=("\\Seen",))
 
-    assert engine.required_extensions(spec, "INBOX.Lists", True) == {
+    assert MxrouteProvider.required_features(spec, "INBOX.Lists", True) == {
         "fileinto",
         "imap4flags",
         "mailbox",
     }
     assert (
-        engine.required_extensions(ActionSpec(discard=True), "", False)
+        MxrouteProvider.required_features(ActionSpec(discard=True), "", False)
         == set()
     )
 
@@ -305,7 +308,7 @@ def test_required_extensions_follow_the_actions():
 def test_a_default_folder_needs_fileinto_like_an_explicit_one(imap_config):
     """The folder can come from config; the rule still files into it."""
     imap_config.default_folder = "Lists"
-    live = Sessions(sieve=FakeSieveSession(caps=["imap4flags"]))
+    live = MxrouteProvider(sieve=FakeSieveSession(caps=["imap4flags"]))
 
     folder = engine.plan_folder(live, imap_config, None)
 
@@ -370,7 +373,7 @@ def test_with_mailbox_and_imap_the_folder_is_made_both_ways(
 # ----------------------------------------------------------------------------
 def test_without_imap_only_sieve_creates_the_folder(fake_sieve, imap_config):
     """--no-imap: nothing can create or subscribe it now (#40)."""
-    live = Sessions(sieve=fake_sieve, imap=None)
+    live = MxrouteProvider(sieve=fake_sieve, imap=None)
 
     plan = engine.plan_folder(live, imap_config, "New", create=True)
 
@@ -383,7 +386,7 @@ def test_without_imap_only_sieve_creates_the_folder(fake_sieve, imap_config):
 def test_without_mailbox_the_folder_is_planned_for_imap_then_created(
     imap_session, imap_config, fake_imap
 ):
-    live = Sessions(FakeSieveSession(caps=NO_MAILBOX), imap_session)
+    live = MxrouteProvider(FakeSieveSession(caps=NO_MAILBOX), imap_session)
 
     plan = engine.plan_folder(
         live, imap_config, "New", create=True, subscribe=False
@@ -412,7 +415,7 @@ def test_creating_a_folder_that_was_not_planned_for_it_is_refused(
 
 # ----------------------------------------------------------------------------
 def test_without_imap_the_delimiter_is_assumed_and_said_so(imap_config):
-    live = Sessions(sieve=FakeSieveSession())
+    live = MxrouteProvider(sieve=FakeSieveSession())
 
     plan = engine.plan_folder(live, imap_config, "Lists/GitHub")
 
@@ -425,7 +428,7 @@ def test_without_imap_the_delimiter_is_assumed_and_said_so(imap_config):
 def test_a_folder_that_cannot_be_created_is_planned_then_refused(
     imap_config,
 ):
-    live = Sessions(sieve=FakeSieveSession(caps=NO_MAILBOX))
+    live = MxrouteProvider(sieve=FakeSieveSession(caps=NO_MAILBOX))
 
     plan = engine.plan_folder(live, imap_config, "New", create=True)
 
@@ -477,7 +480,7 @@ def test_plan_rule_merges_without_touching_the_server(
 def test_on_an_empty_account_the_default_script_name_is_used(
     imap_session, imap_config
 ):
-    live = Sessions(FakeSieveSession(active=None), imap_session)
+    live = MxrouteProvider(FakeSieveSession(active=None), imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = engine.plan_rule(
@@ -498,7 +501,7 @@ def test_an_inactive_old_name_script_is_reused_not_duplicated(
     sieve = FakeSieveSession(
         script="# rule:[old]\n", active=None, others=["mxfilter"]
     )
-    live = Sessions(sieve, imap_session)
+    live = MxrouteProvider(sieve, imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = engine.plan_rule(
@@ -514,7 +517,7 @@ def test_an_inactive_old_name_script_is_reused_not_duplicated(
 def test_an_active_old_name_script_stays_the_one_edited(
     imap_session, imap_config
 ):
-    live = Sessions(FakeSieveSession(active="mxfilter"), imap_session)
+    live = MxrouteProvider(FakeSieveSession(active="mxfilter"), imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = engine.plan_rule(
@@ -570,7 +573,7 @@ def test_the_plan_judges_the_rule_where_it_will_land(sessions, imap_config):
 
 # ----------------------------------------------------------------------------
 def test_missing_extensions_are_read_from_the_server(imap_config):
-    live = Sessions(sieve=FakeSieveSession(caps=["fileinto"]))
+    live = MxrouteProvider(sieve=FakeSieveSession(caps=["fileinto"]))
     spec = ActionSpec(fileinto="Lists", flags=("\\Seen",))
 
     folder = engine.plan_folder(live, imap_config, "Lists")
@@ -647,7 +650,7 @@ def test_removing_from_an_empty_script_or_an_unknown_rule_is_refused(
     with pytest.raises(MailctlError, match="no rule named"):
         engine.plan_removal(sessions, "phantom")
 
-    empty = Sessions(sieve=FakeSieveSession(script=""))
+    empty = MxrouteProvider(sieve=FakeSieveSession(script=""))
 
     with pytest.raises(MailctlError, match="is empty"):
         engine.plan_removal(empty, "keep-boss")
@@ -770,7 +773,7 @@ def test_a_missing_header_is_reported_as_skipped_not_raised():
 
 # ----------------------------------------------------------------------------
 def imap_created_folder_plan(imap_session, imap_config):
-    live = Sessions(FakeSieveSession(caps=NO_MAILBOX), imap_session)
+    live = MxrouteProvider(FakeSieveSession(caps=NO_MAILBOX), imap_session)
     folder = engine.plan_folder(live, imap_config, "New", create=True)
     request = RuleRequest(criteria(), ActionSpec(fileinto="New"))
 
@@ -998,7 +1001,7 @@ def test_a_restore_is_planned_then_backs_up_and_uploads_exact_bytes(
     backup = tmp_path / "old.sieve"
     backup.write_bytes(b'require "fileinto";\r\n# rule:[a]\r\n')
     fake = FakeSieveSession(script="current\n")
-    live = Sessions(sieve=fake)
+    live = MxrouteProvider(sieve=fake)
 
     plan = engine.plan_restore(live, engine.read_backup_file(backup))
 
@@ -1026,7 +1029,7 @@ def test_a_restore_over_an_unparseable_script_is_allowed(
     imap_config.backup_dir = tmp_path / "backups"
     backup = tmp_path / "good.sieve"
     backup.write_text(roundcube_script)
-    live = Sessions(sieve=FakeSieveSession(script="if {{{ broken"))
+    live = MxrouteProvider(sieve=FakeSieveSession(script="if {{{ broken"))
 
     engine.execute_restore(
         live,
@@ -1041,7 +1044,7 @@ def test_a_restore_over_an_unparseable_script_is_allowed(
 def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
     backup = tmp_path / "same.sieve"
     backup.write_text("same\n")
-    live = Sessions(sieve=FakeSieveSession(script="same\n"))
+    live = MxrouteProvider(sieve=FakeSieveSession(script="same\n"))
 
     plan = engine.plan_restore(live, engine.read_backup_file(backup))
 
@@ -1060,7 +1063,7 @@ def test_a_restore_needs_a_readable_file(tmp_path):
 def test_with_nothing_active_a_restore_asks_for_script(tmp_path):
     backup = tmp_path / "b.sieve"
     backup.write_text("x")
-    live = Sessions(sieve=FakeSieveSession(active=None))
+    live = MxrouteProvider(sieve=FakeSieveSession(active=None))
 
     with pytest.raises(MailctlError, match=r"no active script.*--script"):
         engine.plan_restore(live, engine.read_backup_file(backup))
@@ -1075,7 +1078,7 @@ def test_with_nothing_active_a_named_restore_uploads_and_activates(
     backup = tmp_path / "b.sieve"
     backup.write_text("new\n")
     fake = FakeSieveSession(script="old\n", active=None, others=["spare"])
-    live = Sessions(sieve=fake)
+    live = MxrouteProvider(sieve=fake)
 
     plan = engine.plan_restore(
         live, engine.read_backup_file(backup), script="spare"
@@ -1111,7 +1114,7 @@ def test_a_restore_targets_the_named_script_and_leaves_it_inactive(
     backup = tmp_path / "b.sieve"
     backup.write_text("new\n")
     fake = FakeSieveSession(script="old\n", others=["spare"])
-    live = Sessions(sieve=fake)
+    live = MxrouteProvider(sieve=fake)
 
     plan = engine.plan_restore(
         live, engine.read_backup_file(backup), script="spare"
@@ -1131,7 +1134,7 @@ def test_a_restore_targets_the_named_script_and_leaves_it_inactive(
 def test_an_empty_backup_is_refused_unless_allowed(content, tmp_path):
     backup = tmp_path / "empty.sieve"
     backup.write_bytes(content.encode())
-    live = Sessions(sieve=FakeSieveSession(script="old\n"))
+    live = MxrouteProvider(sieve=FakeSieveSession(script="old\n"))
 
     with pytest.raises(MailctlError, match="--allow-empty"):
         engine.read_backup_file(backup)
@@ -1153,7 +1156,7 @@ def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
     backup.write_text("new\n")
     fake = FakeSieveSession(script="old\n")
     fake.reject = True
-    live = Sessions(sieve=fake)
+    live = MxrouteProvider(sieve=fake)
 
     with pytest.raises(MailctlError, match="rejected"):
         engine.execute_restore(
@@ -1193,7 +1196,7 @@ def test_editing_another_script_leaves_the_active_one_running(
 ):
     imap_config.backup_dir = tmp_path
     fake = FakeSieveSession(script=roundcube_script, others=["spare"])
-    live = Sessions(sieve=fake)
+    live = MxrouteProvider(sieve=fake)
 
     plan = engine.plan_removal(live, "keep-boss", script="spare")
 
@@ -1218,7 +1221,7 @@ def test_activate_switches_the_running_script_when_asked(
 ):
     imap_config.backup_dir = tmp_path
     fake = FakeSieveSession(script=roundcube_script, others=["spare"])
-    live = Sessions(sieve=fake, imap=imap_session)
+    live = MxrouteProvider(sieve=fake, imap=imap_session)
 
     if kind == "rule":
         request = RuleRequest(
@@ -1284,11 +1287,11 @@ def test_a_move_changes_the_order_and_nothing_else(
 
     before = {
         r.name: (r.tests, r.actions)
-        for r in engine.read_rule_list(parse_script(plan.before))
+        for r in MxrouteProvider.read_rules(plan.before)
     }
     after = {
         r.name: (r.tests, r.actions)
-        for r in engine.read_rule_list(parse_script(plan.after))
+        for r in MxrouteProvider.read_rules(plan.after)
     }
 
     assert before == after
@@ -1306,7 +1309,7 @@ def test_moving_a_broad_rule_first_reports_what_it_starves(imap_config):
         'if header :contains "to" "@lists.example.com" '
         '{ fileinto "L"; stop; }\n'
     )
-    live = Sessions(sieve=FakeSieveSession(script=script))
+    live = MxrouteProvider(sieve=FakeSieveSession(script=script))
 
     plan = engine.plan_move(live, "all-lists", Placement(PLACE_FIRST))
 
