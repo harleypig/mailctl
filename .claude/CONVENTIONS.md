@@ -269,6 +269,12 @@ what the CLI already exposes, never backfilled into it. Read with the
 paragraph above, this is why the CLI exposing every engine operation is the
 standing state rather than a stopgap.
 
+**Per-folder retention is the shape of automation this means**
+([ICEBOX.md][icebox-retention] › *Per-folder retention — expire mail after N
+days*). Retention only works if it runs repeatedly, and mailctl stays a
+one-shot CLI: a scheduler (cron or a systemd timer) runs it, rather than the
+tool growing a daemon.
+
 One consequence, because automation is the CLI's job: **its output and exit
 codes are a contract a script depends on.** Change them deliberately, never
 as a side effect. The CLI snapshots (TESTS.md) are what make such a change
@@ -930,4 +936,5 @@ will read it.
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i10]: https://github.com/harleypig/mailctl/issues/10
 [i106]: https://github.com/harleypig/mailctl/issues/106
+[icebox-retention]: ../ICEBOX.md#per-folder-retention--expire-mail-after-n-days
 [da495]: https://github.com/harleypig/dotagents/issues/495
