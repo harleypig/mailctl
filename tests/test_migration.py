@@ -10,7 +10,7 @@ stranding anybody silently, and both are tested here:
 * an old setting name present without its new one is reported by name,
   and never by value, since one of them is the password.
 
-The Sieve script created under the old name is ``test_engine.py``'s.
+The Sieve script created under the old name is ``test_utilities_rules.py``'s.
 """
 
 import argparse
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from mailctl import MailctlError, cli, engine
+from mailctl import MailctlError, cli, utilities
 from mailctl.config import (
     LEGACY_ENV_NAMES,
     Config,
@@ -44,9 +44,9 @@ def mode(path: Path) -> int:
 
 
 # ----------------------------------------------------------------------------
-def planned() -> engine.ConfigMigrationPlan:
+def planned() -> utilities.migration.ConfigMigrationPlan:
     """The migration plan, which these tests expect to exist."""
-    plan = engine.plan_config_migration()
+    plan = utilities.migration.plan_config_migration()
 
     assert plan is not None
 
@@ -95,7 +95,10 @@ def test_the_old_directory_is_a_finding_while_the_new_one_is_missing(
 ):
     old, new = dirs
 
-    assert engine.check_config_dir() == engine.ConfigDirPending(old, new)
+    assert (
+        utilities.migration.check_config_dir()
+        == utilities.migration.ConfigDirPending(old, new)
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -103,12 +106,12 @@ def test_there_is_no_finding_once_the_new_directory_exists(dirs, old_setup):
     _old, new = dirs
     new.mkdir()
 
-    assert engine.check_config_dir() is None
+    assert utilities.migration.check_config_dir() is None
 
 
 # ----------------------------------------------------------------------------
 def test_there_is_no_finding_without_an_old_directory(dirs):
-    assert engine.check_config_dir() is None
+    assert utilities.migration.check_config_dir() is None
 
 
 # ----------------------------------------------------------------------------
@@ -156,7 +159,7 @@ def test_migrate_moves_everything_and_keeps_modes(dirs, old_setup):
     assert len(plan.files) == 3
 
     events = []
-    engine.execute_config_migration(plan, events.append)
+    utilities.migration.execute_config_migration(plan, events.append)
 
     assert not old.exists()
     assert (new / "config.toml").read_text() == 'host = "mail.example.com"\n'
@@ -165,8 +168,10 @@ def test_migrate_moves_everything_and_keeps_modes(dirs, old_setup):
     assert mode(new / "config.toml") == 0o644
     assert mode(new / "backups" / "spare.sieve") == 0o600
     assert mode(new / "backups/managesieve-20260101T000000Z.sieve") == 0o600
-    assert sum(isinstance(e, engine.FileMoved) for e in events) == 3
-    assert engine.OldDirRemoved(old) in events
+    assert (
+        sum(isinstance(e, utilities.migration.FileMoved) for e in events) == 3
+    )
+    assert utilities.migration.OldDirRemoved(old) in events
 
 
 # ----------------------------------------------------------------------------
@@ -180,7 +185,7 @@ def test_migrate_merges_into_a_new_directory_that_already_exists(
     (new / "backups" / "mailctl-later.sieve").write_text("new\n")
 
     plan = planned()
-    engine.execute_config_migration(plan)
+    utilities.migration.execute_config_migration(plan)
 
     assert sorted(p.name for p in (new / "backups").iterdir()) == [
         "mailctl-later.sieve",
@@ -202,7 +207,7 @@ def test_migrate_refuses_to_overwrite_anything_at_the_destination(
     assert plan.conflicts == (new / "config.toml",)
 
     with pytest.raises(MailctlError, match="refusing to migrate"):
-        engine.execute_config_migration(plan)
+        utilities.migration.execute_config_migration(plan)
 
     assert (new / "config.toml").read_text() == "mine\n"
     assert (old / "config.toml").exists()
@@ -211,7 +216,7 @@ def test_migrate_refuses_to_overwrite_anything_at_the_destination(
 
 # ----------------------------------------------------------------------------
 def test_migrate_with_no_old_directory_has_nothing_to_plan(dirs):
-    assert engine.plan_config_migration() is None
+    assert utilities.migration.plan_config_migration() is None
 
 
 # ----------------------------------------------------------------------------
@@ -230,7 +235,7 @@ def test_migrate_points_config_paths_at_the_new_directory(dirs, old_setup):
 
     assert [ref.key for ref in plan.references] == ["backup_dir"]
 
-    engine.execute_config_migration(plan)
+    utilities.migration.execute_config_migration(plan)
 
     assert (new / "config.toml").read_text() == (
         "# mine\n"

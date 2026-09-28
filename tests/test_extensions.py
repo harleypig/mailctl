@@ -17,14 +17,14 @@ from typing import cast
 
 import pytest
 
-from mailctl import MailctlError, engine
+from mailctl import MailctlError, engine, utilities
 from mailctl.components.managesieve import SieveSession, emit
 from mailctl.config import FLAG, Source
 from mailctl.criteria import COMPARE_OPS, MATCH_MODES, Criteria
-from mailctl.engine import ActionSpec, RuleRequest
 from mailctl.providers.mxroute import MxrouteProvider
 from mailctl.providers.mxroute import sieve as mxroute_sieve
 from mailctl.providers.mxroute.sieve import merge_rule
+from mailctl.utilities.rules import ActionSpec, RuleRequest
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
 NO_MAILBOX = ["fileinto", "imap4flags"]
@@ -272,10 +272,10 @@ def test_a_rule_needing_a_disabled_extension_is_refused(
 ):
     live = live_sessions(FakeSieveSession(FULL), imap_session)
     disable(imap_config, extension)
-    folder = engine.plan_folder(live, imap_config, spec.fileinto)
+    folder = utilities.folders.plan_folder(live, imap_config, spec.fileinto)
 
     with pytest.raises(MailctlError) as caught:
-        engine.plan_rule(
+        utilities.rules.plan_rule(
             live, imap_config, RuleRequest(criteria(), spec), folder
         )
 
@@ -292,9 +292,9 @@ def test_a_rule_not_needing_the_disabled_extension_goes_ahead(
 ):
     live = live_sessions(FakeSieveSession(FULL), imap_session)
     disable(imap_config, "imap4flags")
-    folder = engine.plan_folder(live, imap_config, "Lists")
+    folder = utilities.folders.plan_folder(live, imap_config, "Lists")
 
-    plan = engine.plan_rule(
+    plan = utilities.rules.plan_rule(
         live, imap_config, RuleRequest(criteria(), ActionSpec("Lists")), folder
     )
 
@@ -311,14 +311,17 @@ def test_execute_refuses_a_plan_the_setting_now_forbids(
     sieve = FakeSieveSession(caps=FULL)
     live = live_sessions(sieve, imap_session)
     request = RuleRequest(criteria(), ActionSpec(flags=("\\Seen",)))
-    plan = engine.plan_rule(
-        live, imap_config, request, engine.plan_folder(live, imap_config, None)
+    plan = utilities.rules.plan_rule(
+        live,
+        imap_config,
+        request,
+        utilities.folders.plan_folder(live, imap_config, None),
     )
 
     disable(imap_config, "imap4flags")
 
     with pytest.raises(MailctlError, match="'imap4flags'"):
-        engine.execute_script_change(live, imap_config, plan)
+        utilities.rules.execute_script_change(live, imap_config, plan)
 
     assert "put_script" not in sieve.names()
 
@@ -332,12 +335,14 @@ def test_with_mailbox_disabled_imap_makes_the_folder_and_the_rule_is_plain(
     live = live_sessions(FakeSieveSession(FULL), imap_session)
     disable(imap_config, "mailbox")
 
-    folder = engine.plan_folder(live, imap_config, "New", create=True)
+    folder = utilities.folders.plan_folder(
+        live, imap_config, "New", create=True
+    )
 
-    assert folder.status == engine.FOLDER_IMAP_CREATE
+    assert folder.status == utilities.folders.FOLDER_IMAP_CREATE
     assert folder.mailbox_disabled_by == FLAG_SOURCE
 
-    plan = engine.plan_rule(
+    plan = utilities.rules.plan_rule(
         live, imap_config, RuleRequest(criteria(), ActionSpec("New")), folder
     )
 
@@ -345,7 +350,7 @@ def test_with_mailbox_disabled_imap_makes_the_folder_and_the_rule_is_plain(
     assert ":create" not in plan.after
     assert "mailbox" not in plan.after
 
-    engine.execute_script_change(live, imap_config, plan)
+    utilities.rules.execute_script_change(live, imap_config, plan)
 
     assert ("create_folder", "INBOX.New") in fake_imap.calls
 
@@ -358,12 +363,14 @@ def test_with_mailbox_disabled_and_no_imap_a_new_folder_is_refused(
     live = live_sessions(FakeSieveSession(FULL))
     disable(imap_config, "mailbox")
 
-    folder = engine.plan_folder(live, imap_config, "New", create=True)
+    folder = utilities.folders.plan_folder(
+        live, imap_config, "New", create=True
+    )
 
-    assert folder.status == engine.FOLDER_UNCREATABLE
+    assert folder.status == utilities.folders.FOLDER_UNCREATABLE
 
     with pytest.raises(MailctlError) as caught:
-        engine.check_folder(folder)
+        utilities.folders.check_folder(folder)
 
     assert "disabled by mailctl" in str(caught.value)
     assert "flag --disable-extension" in str(caught.value)
@@ -376,14 +383,18 @@ def test_disabling_an_extension_the_server_lacks_changes_nothing(
     """The no-op: the plan is the one an unset setting would give."""
     live = live_sessions(FakeSieveSession(NO_MAILBOX), imap_session)
 
-    plain = engine.plan_folder(live, imap_config, "New", create=True)
+    plain = utilities.folders.plan_folder(
+        live, imap_config, "New", create=True
+    )
     disable(imap_config, "mailbox")
-    disabled = engine.plan_folder(live, imap_config, "New", create=True)
+    disabled = utilities.folders.plan_folder(
+        live, imap_config, "New", create=True
+    )
 
     assert disabled == plain
     assert disabled.mailbox_disabled_by is None
 
-    plan = engine.plan_rule(
+    plan = utilities.rules.plan_rule(
         live, imap_config, RuleRequest(criteria(), ActionSpec("New")), disabled
     )
 
@@ -398,8 +409,8 @@ def test_disabling_an_extension_the_server_lacks_changes_nothing(
 # ----------------------------------------------------------------------------
 def report(caps, config):
     """The report as a name -> state mapping, checking its order on the way."""
-    states = engine.report_extensions(
-        MxrouteProvider(), engine.RulesProbe(caps, None, []), config
+    states = utilities.reports.report_extensions(
+        MxrouteProvider(), utilities.reports.RulesProbe(caps, None, []), config
     )
     names = [state.name for state in states]
 

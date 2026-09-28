@@ -1,10 +1,10 @@
 """Command-line interface.
 
 This module is the CLI front-end and nothing else: it parses arguments,
-turns them into the engine's plain inputs, calls ``mailctl.engine``, and
-renders what comes back. Every decision a person makes -- confirming,
-``--dry-run``, ``--yes`` -- is taken here, between the engine's plan and
-its execution.
+turns them into the utilities' plain inputs, calls ``mailctl.utilities``
+against the provider ``mailctl.engine`` opens, and renders what comes
+back. Every decision a person makes -- confirming, ``--dry-run``,
+``--yes`` -- is taken here, between a utility's plan and its execution.
 
 Every mutating subcommand follows the same shape: work out what would
 change, show it, and only then -- after a backup and the server's own
@@ -16,7 +16,7 @@ import re
 import sys
 import traceback
 
-from . import MailctlError, __version__, engine
+from . import MailctlError, __version__, engine, utilities
 from .config import (
     CONFIG_FILE,
     DEFAULT,
@@ -27,21 +27,20 @@ from .config import (
     load_config,
 )
 from .criteria import COMPARE_OPS, MATCH_MODES, Criteria
-from .engine import (
-    DEFAULT_LIST_LIMIT,
-    DEFAULT_MAX_MESSAGES,
+from .rules import CERTAIN
+from .utilities.folders import FolderCreation
+from .utilities.mail import DEFAULT_MAX_MESSAGES
+from .utilities.messages import DEFAULT_LIST_LIMIT, decode_header_value
+from .utilities.rules import (
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
     ActionSpec,
     DisplayDiff,
-    FolderCreation,
     Placement,
     RuleRequest,
-    decode_header_value,
 )
-from .rules import CERTAIN
 
 __all__ = ["build_parser", "main"]
 
@@ -177,7 +176,7 @@ def safe_text(value: str) -> str:
     as they are. Lone surrogates become U+FFFD, since no stream can
     encode them.
     """
-    value = engine.LONE_SURROGATES.sub("\ufffd", value)
+    value = utilities.messages.LONE_SURROGATES.sub("\ufffd", value)
 
     return UNSAFE_CHARACTERS.sub(_escape_character, value)
 
@@ -236,16 +235,18 @@ def connect(config, args, *, rules: bool = True, mail: bool = False):
 # ----------------------------------------------------------------------------
 def render_event(event) -> None:
     """Print one step of a change as the engine reports it."""
-    if isinstance(event, engine.ScriptBackedUp):
+    if isinstance(event, utilities.events.ScriptBackedUp):
         print(f"Backed up current script to {event.path}")
 
-    elif isinstance(event, engine.ScriptUploaded) and event.activated:
+    elif (
+        isinstance(event, utilities.events.ScriptUploaded) and event.activated
+    ):
         print(f"Uploaded and activated script {event.script!r}")
 
-    elif isinstance(event, engine.ScriptUploaded):
+    elif isinstance(event, utilities.events.ScriptUploaded):
         print(f"Uploaded script {event.script!r}; it was not activated")
 
-    elif isinstance(event, engine.FolderCreated):
+    elif isinstance(event, utilities.events.FolderCreated):
         report_folder_creation(event.result)
 
 
@@ -292,7 +293,9 @@ def configure(args):
     config = load_config(args)
     config.prompter = getpass
 
-    warn_about_legacy_settings(engine.check_legacy_settings(config))
+    warn_about_legacy_settings(
+        utilities.migration.check_legacy_settings(config)
+    )
     warn_about_inline_password(args)
 
     return config
@@ -415,7 +418,7 @@ def placement_from_args(args) -> Placement | None:
 # ----------------------------------------------------------------------------
 def reject_forbidden(config, args) -> None:
     """Hand every refused action flag that was given to the engine."""
-    engine.reject_actions(
+    utilities.rules.reject_actions(
         config,
         (name for name in REFUSED_ACTION_FLAGS if getattr(args, name, None)),
     )
@@ -427,9 +430,9 @@ def reject_forbidden(config, args) -> None:
 
 
 # ----------------------------------------------------------------------------
-def show_folder_plan(plan: engine.FolderPlan) -> None:
+def show_folder_plan(plan: utilities.folders.FolderPlan) -> None:
     """Say where filed mail goes, before anything is created."""
-    if plan.status == engine.FOLDER_NONE:
+    if plan.status == utilities.folders.FOLDER_NONE:
         return
 
     if plan.delimiter_assumed:
@@ -453,7 +456,7 @@ def show_folder_plan(plan: engine.FolderPlan) -> None:
         variants = ", ".join(repr(name) for name in plan.case_variants)
         effect = (
             "a second folder will be created beside it"
-            if plan.status != engine.FOLDER_MISSING
+            if plan.status != utilities.folders.FOLDER_MISSING
             else "it does not count"
         )
 
@@ -464,9 +467,9 @@ def show_folder_plan(plan: engine.FolderPlan) -> None:
 
 
 # ----------------------------------------------------------------------------
-def prepare_folder(sessions, config, args) -> engine.FolderPlan:
+def prepare_folder(sessions, config, args) -> utilities.folders.FolderPlan:
     """Plan the rule's target folder, say what it is, and settle it."""
-    plan = engine.plan_folder(
+    plan = utilities.folders.plan_folder(
         sessions,
         config,
         args.fileinto,
@@ -482,7 +485,7 @@ def prepare_folder(sessions, config, args) -> engine.FolderPlan:
 
 
 # ----------------------------------------------------------------------------
-def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
+def settle_folder(sessions, plan: utilities.folders.FolderPlan, args) -> None:
     """Report how the target folder comes to exist, creating it if due.
 
     Nothing is created here. A folder due for IMAP creation is announced
@@ -490,15 +493,15 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
     been shown and decided on -- so a dry run, an abort, or a rejected
     plan leaves no stray folder behind.
     """
-    engine.check_folder(plan)
+    utilities.folders.check_folder(plan)
 
-    if plan.status == engine.FOLDER_MISSING:
+    if plan.status == utilities.folders.FOLDER_MISSING:
         warn(
             f"target folder {plan.folder!r} does not exist. Mail filed there "
             f"may be lost; pass --create-folder to create it."
         )
 
-    elif plan.status == engine.FOLDER_SIEVE_CREATES:
+    elif plan.status == utilities.folders.FOLDER_SIEVE_CREATES:
         print(
             f"Folder {plan.folder!r} will be created by Sieve "
             f"(fileinto :create)"
@@ -524,7 +527,7 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
                 f"run 'mailctl subscribe {plan.folder}'."
             )
 
-    elif plan.status == engine.FOLDER_IMAP_CREATE:
+    elif plan.status == utilities.folders.FOLDER_IMAP_CREATE:
         announce_folder_creation(plan, args.dry_run)
 
         if plan.mailbox_disabled_by is not None:
@@ -534,7 +537,7 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
                 f"({plan.mailbox_disabled_by.describe()})."
             )
 
-    elif plan.status == engine.FOLDER_BOTH_CREATE:
+    elif plan.status == utilities.folders.FOLDER_BOTH_CREATE:
         announce_folder_creation(plan, args.dry_run)
 
         print(
@@ -544,7 +547,9 @@ def settle_folder(sessions, plan: engine.FolderPlan, args) -> None:
 
 
 # ----------------------------------------------------------------------------
-def announce_folder_creation(plan: engine.FolderPlan, dry_run: bool) -> None:
+def announce_folder_creation(
+    plan: utilities.folders.FolderPlan, dry_run: bool
+) -> None:
     """Say that the target folder will be made over IMAP, before it is."""
     if dry_run:
         then = (
@@ -667,9 +672,9 @@ def apply_to_existing(
     after showing it -- the decision to execute lives here, in the
     front-end, and never inside the engine.
     """
-    source = engine.source_folder(sessions, config.source_folder)
+    source = utilities.mail.source_folder(sessions, config.source_folder)
 
-    if engine.mail_pass_is_noop(spec, source, folder.folder):
+    if utilities.mail.mail_pass_is_noop(spec, source, folder.folder):
         print(
             f"\nSkipping the existing-mail pass: the rule leaves matching "
             f"mail in {source!r} as it is, so there is nothing to do."
@@ -679,12 +684,16 @@ def apply_to_existing(
 
     print(f"\nSearching {source!r} for existing matches...")
 
-    plan = engine.plan_mail(sessions, criteria, spec, source, folder.folder)
+    plan = utilities.mail.plan_mail(
+        sessions, criteria, spec, source, folder.folder
+    )
 
     if plan.is_empty:
         print("No existing messages match.")
 
-        if not args.dry_run and engine.folder_pending(sessions, folder):
+        if not args.dry_run and utilities.folders.folder_pending(
+            sessions, folder
+        ):
             print(
                 f"Folder {folder.folder!r} was not created: there is "
                 f"nothing to move into it."
@@ -707,14 +716,14 @@ def apply_to_existing(
 
         return 0
 
-    engine.check_message_cap(plan, args.max_messages)
+    utilities.mail.check_message_cap(plan, args.max_messages)
 
     if not confirm(action_prompt(plan, args.move_threshold), args.yes):
         print("Aborted; no messages were touched.")
 
         return 0
 
-    result = engine.execute_mail(
+    result = utilities.mail.execute_mail(
         sessions, plan, args.max_messages, folder, render_event
     )
 
@@ -799,7 +808,7 @@ def cmd_list(args) -> int:
     config = configure(args)
 
     with connect(config, args) as sessions:
-        active, others = engine.list_scripts(sessions)
+        active, others = utilities.scripts.list_scripts(sessions)
 
         if not active and not others:
             print("No Sieve scripts on the server.")
@@ -821,7 +830,7 @@ def cmd_show(args) -> int:
     config = configure(args)
 
     with connect(config, args) as sessions:
-        script = engine.read_script(sessions, args.name)
+        script = utilities.scripts.read_script(sessions, args.name)
         source = safe_text(script.source)
 
         print(f"# ---- {safe_line(script.name)} ----")
@@ -911,7 +920,7 @@ def cmd_rules(args) -> int:
     config = configure(args)
 
     with connect(config, args) as sessions:
-        report = engine.read_rules(sessions, args.script)
+        report = utilities.rules.read_rules(sessions, args.script)
 
         print(f"Script {report.script!r}:\n")
         print_rules(report.rules)
@@ -936,7 +945,7 @@ def cmd_backup(args) -> int:
     config = configure(args)
 
     with connect(config, args) as sessions:
-        plan = engine.plan_backup(sessions, config, args.output)
+        plan = utilities.backup.plan_backup(sessions, config, args.output)
 
         if args.dry_run:
             count = rule_count_phrase(sessions, plan.source)
@@ -947,7 +956,7 @@ def cmd_backup(args) -> int:
         # Written before the script is parsed: counting its rules is a
         # nicety, and a script too broken to parse is exactly the one worth
         # having a copy of.
-        target = engine.execute_backup(plan)
+        target = utilities.backup.execute_backup(plan)
 
     print(f"wrote {rule_count_phrase(sessions, plan.source)} to {target}")
 
@@ -958,10 +967,10 @@ def cmd_backup(args) -> int:
 def cmd_restore(args) -> int:
     """Replace a script with a backup file, after showing it."""
     config = configure(args)
-    backup = engine.read_backup_file(args.file, args.allow_empty)
+    backup = utilities.backup.read_backup_file(args.file, args.allow_empty)
 
     with connect(config, args) as sessions:
-        plan = engine.plan_restore(
+        plan = utilities.backup.plan_restore(
             sessions, backup, args.script, args.activate
         )
 
@@ -998,7 +1007,7 @@ def cmd_restore(args) -> int:
 
             return 0
 
-        engine.execute_restore(sessions, config, plan, render_event)
+        utilities.backup.execute_restore(sessions, config, plan, render_event)
 
     return 0
 
@@ -1027,30 +1036,33 @@ def warn_about_config_dir(pending) -> None:
 # ----------------------------------------------------------------------------
 def render_migration_event(event) -> None:
     """Print one step of a config migration as the engine reports it."""
-    if isinstance(event, engine.FileMoved):
+    if isinstance(event, utilities.migration.FileMoved):
         print(f"Moved {event.source} -> {event.destination}")
 
-    elif isinstance(event, engine.ReferenceRewritten) and event.rewritten:
+    elif (
+        isinstance(event, utilities.migration.ReferenceRewritten)
+        and event.rewritten
+    ):
         print(
             f"Pointed {event.reference.key} in config.toml at "
             f"{event.reference.replacement}"
         )
 
-    elif isinstance(event, engine.ReferenceRewritten):
+    elif isinstance(event, utilities.migration.ReferenceRewritten):
         warn(
             f"config.toml's {event.reference.key} still points inside the "
             f"old directory and could not be changed as written; set it to "
             f"{event.reference.replacement}"
         )
 
-    elif isinstance(event, engine.OldDirRemoved):
+    elif isinstance(event, utilities.migration.OldDirRemoved):
         print(f"Removed the now-empty {event.path}")
 
 
 # ----------------------------------------------------------------------------
 def cmd_migrate_config(args) -> int:
     """Move the old-name config directory's contents to the new one."""
-    plan = engine.plan_config_migration()
+    plan = utilities.migration.plan_config_migration()
 
     if plan is None:
         print("Nothing to migrate: there is no old config directory.")
@@ -1093,7 +1105,7 @@ def cmd_migrate_config(args) -> int:
 
         return 0
 
-    engine.execute_config_migration(plan, render_migration_event)
+    utilities.migration.execute_config_migration(plan, render_migration_event)
 
     return 0
 
@@ -1101,7 +1113,7 @@ def cmd_migrate_config(args) -> int:
 # ----------------------------------------------------------------------------
 def rule_count_phrase(provider, source: str) -> str:
     """Describe how many rules a script holds, for the summary line."""
-    count = engine.count_rules(provider, source)
+    count = utilities.backup.count_rules(provider, source)
 
     if count is None:
         return "a script mailctl could not parse"
@@ -1115,7 +1127,7 @@ def cmd_folders(args) -> int:
     config = configure(args)
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        listing = engine.list_folders(sessions)
+        listing = utilities.folders.list_folders(sessions)
 
         print(f"Hierarchy delimiter: {listing.delimiter!r}")
         print(
@@ -1143,7 +1155,9 @@ def cmd_subscribe(args) -> int:
     subscribe = args.command == "subscribe"
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        plan = engine.plan_subscription(sessions, args.folder, subscribe)
+        plan = utilities.folders.plan_subscription(
+            sessions, args.folder, subscribe
+        )
 
         if plan.requested != plan.folder:
             print(
@@ -1164,7 +1178,7 @@ def cmd_subscribe(args) -> int:
 
             return 0
 
-        engine.execute_subscription(sessions, plan)
+        utilities.folders.execute_subscription(sessions, plan)
 
     if subscribe:
         print(f"Subscribed to {plan.folder!r}; webmail will show it.")
@@ -1194,7 +1208,7 @@ def cmd_test(args) -> int:
         f"{'  -- see the error below' if failure else ''}"
     )
 
-    for fact in engine.connection_facts(config):
+    for fact in utilities.reports.connection_facts(config):
         origin = origin_of(config, **dict(fact.settings))
         print(f"{fact.label + ':':<10} {fact.text}  ({origin})")
 
@@ -1207,11 +1221,13 @@ def cmd_test(args) -> int:
     if failure is not None:
         raise failure
 
-    words = engine.wording(config)
+    words = utilities.reports.wording(config)
 
     with connect(config, args) as sessions:
-        rules = engine.probe_rules(sessions)
-        extensions = engine.report_extensions(sessions, rules, config)
+        rules = utilities.reports.probe_rules(sessions)
+        extensions = utilities.reports.report_extensions(
+            sessions, rules, config
+        )
 
         print(f"\n{words.rules_service}: connected")
 
@@ -1243,7 +1259,7 @@ def cmd_test(args) -> int:
         )
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        mail = engine.probe_mail(sessions)
+        mail = utilities.reports.probe_mail(sessions)
 
         print(f"\n{words.mail_service}: connected")
         print(f"  delimiter: {mail.delimiter!r}")
@@ -1389,16 +1405,16 @@ def run_add(config, args, criteria: Criteria) -> int:
     )
 
     # Before connecting: a rule the provider cannot express costs no login.
-    engine.check_rule(config, request)
+    utilities.rules.check_rule(config, request)
 
     with connect(config, args, mail=not args.no_imap) as sessions:
         folder = prepare_folder(sessions, config, args)
 
         warn_missing_extensions(
-            engine.missing_extensions(sessions, spec, folder)
+            utilities.rules.missing_extensions(sessions, spec, folder)
         )
 
-        plan = engine.plan_rule(sessions, config, request, folder)
+        plan = utilities.rules.plan_rule(sessions, config, request, folder)
 
         print(f"\nRule {plan.name!r} on script {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
@@ -1415,7 +1431,9 @@ def run_add(config, args, criteria: Criteria) -> int:
             print("\n[dry-run] the script was NOT uploaded.")
 
         else:
-            engine.execute_script_change(sessions, config, plan, render_event)
+            utilities.rules.execute_script_change(
+                sessions, config, plan, render_event
+            )
 
         if not sessions.has_mail or args.no_apply:
             if args.no_apply:
@@ -1438,7 +1456,7 @@ def cmd_apply(args) -> int:
     spec = actions_from_args(args)
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        folder = engine.plan_folder(
+        folder = utilities.folders.plan_folder(
             sessions,
             config,
             args.fileinto,
@@ -1447,15 +1465,15 @@ def cmd_apply(args) -> int:
         )
 
         show_folder_plan(folder)
-        engine.require_mail_action(folder, spec)
+        utilities.mail.require_mail_action(folder, spec)
 
-        if folder.status == engine.FOLDER_MISSING:
+        if folder.status == utilities.folders.FOLDER_MISSING:
             raise MailctlError(
                 f"target folder {folder.folder!r} does not exist; pass "
                 f"--create-folder to create it"
             )
 
-        if folder.status == engine.FOLDER_IMAP_CREATE:
+        if folder.status == utilities.folders.FOLDER_IMAP_CREATE:
             announce_folder_creation(folder, args.dry_run)
 
         print(f"Criteria: {criteria.describe()}")
@@ -1471,7 +1489,7 @@ def cmd_remove_rule(args) -> int:
     config = configure(args)
 
     with connect(config, args) as sessions:
-        plan = engine.plan_removal(
+        plan = utilities.rules.plan_removal(
             sessions, args.rule_name, args.script, args.activate
         )
 
@@ -1490,7 +1508,9 @@ def cmd_remove_rule(args) -> int:
 
             return 0
 
-        engine.execute_script_change(sessions, config, plan, render_event)
+        utilities.rules.execute_script_change(
+            sessions, config, plan, render_event
+        )
 
     return 0
 
@@ -1499,10 +1519,10 @@ def cmd_remove_rule(args) -> int:
 def cmd_move_rule(args) -> int:
     """Move a named rule to a new position, leaving it otherwise unchanged."""
     config = configure(args)
-    engine.check_move(config)
+    utilities.rules.check_move(config)
 
     with connect(config, args) as sessions:
-        plan = engine.plan_move(
+        plan = utilities.rules.plan_move(
             sessions,
             args.rule_name,
             placement_from_args(args),
@@ -1542,7 +1562,9 @@ def cmd_move_rule(args) -> int:
 
             return 0
 
-        engine.execute_script_change(sessions, config, plan, render_event)
+        utilities.rules.execute_script_change(
+            sessions, config, plan, render_event
+        )
 
     return 0
 
@@ -1584,7 +1606,7 @@ def cmd_from_message(args) -> int:
         raise MailctlError("give either --uid N or --search EXPRESSION")
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        picked = engine.pick_message(
+        picked = utilities.mail.pick_message(
             sessions,
             config.source_folder,
             uid=args.uid,
@@ -1602,7 +1624,7 @@ def cmd_from_message(args) -> int:
     # the criteria below cannot answer.
     print_message(picked.headers, picked.uid, config.source_folder)
 
-    derived = engine.derive_criteria(
+    derived = utilities.mail.derive_criteria(
         picked.headers, args.derive, args.match, args.compare
     )
 
@@ -1636,7 +1658,7 @@ def cmd_messages(args) -> int:
     criteria = criteria_from_args(args)
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        listing = engine.list_messages(
+        listing = utilities.messages.list_messages(
             sessions,
             config.source_folder,
             criteria=criteria,
@@ -1685,7 +1707,9 @@ def cmd_view(args) -> int:
     config = configure(args)
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        content = engine.read_message(sessions, config.source_folder, args.uid)
+        content = utilities.messages.read_message(
+            sessions, config.source_folder, args.uid
+        )
 
     if args.raw and not sys.stdout.isatty():
         # Nothing draws a pipe or a file, so hand over the exact bytes:
@@ -2505,7 +2529,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.handler is not cmd_migrate_config:
-            warn_about_config_dir(engine.check_config_dir())
+            warn_about_config_dir(utilities.migration.check_config_dir())
 
         return args.handler(args)
 

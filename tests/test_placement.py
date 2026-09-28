@@ -16,7 +16,7 @@ covers the two things that are not visible in the rendered script:
 
 import pytest
 
-from mailctl import MailctlError, engine
+from mailctl import MailctlError, utilities
 from mailctl.cli import build_parser, placement_from_args
 from mailctl.components.managesieve import (
     PLACE_AFTER,
@@ -200,10 +200,16 @@ def test_naming_the_rule_itself_is_refused_before_the_lookup():
     ("argv", "expected"),
     [
         ([], None),
-        (["--first"], engine.Placement(PLACE_FIRST)),
-        (["--last"], engine.Placement(PLACE_LAST)),
-        (["--before", "Lists"], engine.Placement(PLACE_BEFORE, "Lists")),
-        (["--after", "Lists"], engine.Placement(PLACE_AFTER, "Lists")),
+        (["--first"], utilities.rules.Placement(PLACE_FIRST)),
+        (["--last"], utilities.rules.Placement(PLACE_LAST)),
+        (
+            ["--before", "Lists"],
+            utilities.rules.Placement(PLACE_BEFORE, "Lists"),
+        ),
+        (
+            ["--after", "Lists"],
+            utilities.rules.Placement(PLACE_AFTER, "Lists"),
+        ),
     ],
 )
 def test_each_flag_reaches_the_resolver_as_a_placement(argv, expected):
@@ -228,7 +234,9 @@ def test_from_message_carries_the_same_flags_as_add():
         ["from-message", "--uid", "1", "--before", "Lists"]
     )
 
-    assert placement_from_args(args) == engine.Placement(PLACE_BEFORE, "Lists")
+    assert placement_from_args(args) == utilities.rules.Placement(
+        PLACE_BEFORE, "Lists"
+    )
 
 
 # ----------------------------------------------------------------------------

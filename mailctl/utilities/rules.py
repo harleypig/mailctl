@@ -1,0 +1,520 @@
+"""Rules: checked, read, planned into a script, and uploaded.
+
+Merge, never overwrite: a new rule is merged into the parsed existing
+script, and a parse failure is raised rather than fallen back from
+(ADR 0002). Every upload goes through ``scripts.upload_script``, which
+backs up first.
+"""
+
+import re
+import unicodedata
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+
+from .. import MailctlError
+from ..config import Config
+from ..criteria import Criteria
+
+# The PLACE_* names are re-exported (``X as X``): a front-end builds and
+# renders the neutral model through the utilities alone, never importing a
+# provider or a component.
+from ..providers.base import (
+    PLACE_AFTER as PLACE_AFTER,
+)
+from ..providers.base import (
+    PLACE_BEFORE as PLACE_BEFORE,
+)
+from ..providers.base import (
+    PLACE_FIRST as PLACE_FIRST,
+)
+from ..providers.base import (
+    PLACE_LAST as PLACE_LAST,
+)
+from ..providers.base import (
+    ActionSpec,
+    DisplayDiff,
+    Placement,
+    Provider,
+    action_names,
+    refuse,
+    validate_specifics,
+)
+from ..providers.registry import provider_for
+from ..rules import Analysis, Rule, Shadow, analyze_placement, audit
+from .events import EventSink
+from .folders import FolderPlan, check_folder, realize_folder
+from .scripts import (
+    DEFAULT_SCRIPT_NAME,
+    activates,
+    fetch_active,
+    upload_script,
+)
+
+# ############################################################################
+# Inputs
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class RuleRequest:
+    """A rule to merge into the account's rule set.
+
+    ``script``, ``activate``, and ``placement`` need a provider declaring
+    ``rule_sets`` and ``ordering``. ``specifics`` carries provider-only
+    parameters under namespaced keys, checked against the provider's
+    schema before any network work (:func:`check_rule`).
+    """
+
+    criteria: Criteria
+    actions: ActionSpec
+    name: str | None = None
+    script: str | None = None
+    replace: bool = False
+    placement: Placement | None = None
+    activate: bool = False
+    specifics: Mapping[str, object] = field(default_factory=dict)
+
+
+# ############################################################################
+# Capabilities a request needs
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def check_move(config: Config) -> None:
+    """Refuse moving a rule under a provider without ``ordering``.
+
+    Needs no connection, so a front-end calls it before connecting;
+    :func:`plan_move` holds the same line for any other caller.
+    """
+    require_capability(provider_for(config), "ordering")
+
+
+# ----------------------------------------------------------------------------
+def require_capability(provider: Provider | type[Provider], name: str) -> None:
+    """Refuse work needing a capability the provider does not declare."""
+    if getattr(provider.capabilities, name):
+        return
+
+    raise refuse(
+        provider.name,
+        CAPABILITY_CONSTRUCTS[name],
+        f"it does not declare the {name!r} capability",
+    )
+
+
+# What a request asks for, in words, when it needs each capability.
+CAPABILITY_CONSTRUCTS = {
+    "ordering": "place a rule at a position in evaluation order",
+    "rule_sets": "name or activate one of several rule sets",
+    "stop": "end evaluation after a rule",
+}
+
+
+# ############################################################################
+# Reading rules
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class RulesReport:
+    """A script's rules in evaluation order, and which cannot fire."""
+
+    script: str
+    rules: list[Rule]
+    findings: list[Shadow]
+
+
+# ----------------------------------------------------------------------------
+def read_rules(provider: Provider, script: str | None = None) -> RulesReport:
+    """Read a script's rules and audit their order.
+
+    The audit is about order, so a provider that does not declare
+    ``ordering`` has nothing for it to find.
+    """
+    name = script or provider.active_rule_set()
+
+    if not name:
+        raise MailctlError(
+            "no active script on the server, so there are no rules to "
+            "show. 'mailctl list' shows what the account has."
+        )
+
+    rules = provider.read_rules(provider.read_rule_set(name))
+    findings = audit(rules) if provider.capabilities.ordering else []
+
+    return RulesReport(name, rules, findings)
+
+
+# ############################################################################
+# Actions
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def reject_actions(config: Config, requested: Iterable[str]) -> None:
+    """Refuse actions the configured provider will not emit, and say why.
+
+    Needs no connection, so a front-end calls it before connecting.
+    """
+    provider_for(config).refuse_actions(requested)
+
+
+# ----------------------------------------------------------------------------
+def check_rule(
+    config: Config,
+    request: RuleRequest,
+    provider: Provider | type[Provider] | None = None,
+) -> None:
+    """Refuse a rule the provider cannot express, before any network work.
+
+    Every refusal goes through one error (``providers.base.refuse``) naming
+    the provider, the construct, and why. ``provider`` defaults to the one
+    ``config`` selects; :func:`plan_rule` passes its own.
+    """
+    provider = provider or provider_for(config)
+    caps = provider.capabilities
+
+    folder = request.actions.fileinto or config.default_folder or ""
+    unsupported = action_names(request.actions, folder) - caps.actions
+
+    if unsupported:
+        raise refuse(
+            provider.name,
+            f"emit {', '.join(sorted(unsupported))}",
+            f"it declares only {', '.join(sorted(caps.actions)) or 'none'}",
+        )
+
+    if request.placement is not None:
+        require_capability(provider, "ordering")
+
+    if request.script or request.activate:
+        require_capability(provider, "rule_sets")
+
+    if request.actions.stop:
+        require_capability(provider, "stop")
+
+    validate_specifics(provider.name, caps.specifics, request.specifics)
+
+
+# ----------------------------------------------------------------------------
+def resolve_stop(
+    provider: Provider | type[Provider], spec: ActionSpec
+) -> ActionSpec:
+    """Settle a spec's ``stop`` default from the provider's capabilities.
+
+    None asks for the provider's default, which is to stop where it
+    declares ``stop``: a host that cannot end evaluation is not asked to,
+    so a rule nobody asked to stop is never refused for it. An explicit
+    True or False is left as it was.
+    """
+    if spec.stop is not None:
+        return spec
+
+    return replace(spec, stop=provider.capabilities.stop)
+
+
+# ----------------------------------------------------------------------------
+def default_rule_name(criteria: Criteria) -> str:
+    """Derive a stable rule name from the first criterion.
+
+    Letters and digits in any script are kept (``Café`` gives
+    ``subject-café``): Roundcube's ``# rule:[...]`` marker holds UTF-8, so
+    there is nothing to gain from dropping them. NFC first, so an accent
+    typed as a combining mark stays on its letter instead of becoming a
+    separator.
+    """
+    term = criteria.terms[0]
+
+    value = unicodedata.normalize("NFC", term.value)
+    slug = re.sub(r"[\W_]+", "-", value).strip("-").lower()
+
+    return f"{term.header.lower()}-{slug}"[:60] or DEFAULT_SCRIPT_NAME
+
+
+# ############################################################################
+# Adding and removing rules
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class RulePlan:
+    """A rule merged into the script, not yet uploaded.
+
+    ``actions`` are the provider's own and opaque here; ``summary`` is the
+    provider's rendering of them for a person to read.
+    """
+
+    name: str
+    script: str
+    before: str
+    after: str
+    criteria: Criteria
+    actions: list
+    summary: str
+    placement: Analysis
+    diff: DisplayDiff
+    folder: FolderPlan
+    active: str | None
+    activate: bool
+
+
+@dataclass(frozen=True)
+class RemovalPlan:
+    """A rule taken out of the script, not yet uploaded."""
+
+    rule: str
+    script: str
+    before: str
+    after: str
+    diff: DisplayDiff
+    active: str | None
+    activate: bool
+
+
+@dataclass(frozen=True)
+class MovePlan:
+    """A rule moved within the script, not yet uploaded.
+
+    Positions are 0-based over the whole script. ``placement`` judges the
+    rule where it lands, both ways: what would stop it running, and what it
+    would now stop.
+    """
+
+    rule: str
+    script: str
+    before: str
+    after: str
+    from_index: int
+    to_index: int
+    count: int
+    placement: Analysis
+    diff: DisplayDiff
+    active: str | None
+    activate: bool
+
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        return self.from_index != self.to_index
+
+
+# ----------------------------------------------------------------------------
+def missing_extensions(
+    provider: Provider, spec: ActionSpec, folder: FolderPlan
+) -> list[str]:
+    """Return the extensions the rule needs that the server does not list."""
+    needed = provider.required_features(
+        resolve_stop(provider, spec), folder.folder, folder.use_create
+    )
+
+    return provider.missing_features(needed)
+
+
+# ----------------------------------------------------------------------------
+def placement_analysis(
+    provider: Provider | type[Provider],
+    before: str,
+    name: str,
+    criteria: Criteria,
+    actions: list,
+    placement: Placement | None = None,
+) -> Analysis:
+    """Judge a rule at the position it will actually occupy.
+
+    A rule of the same name is dropped from the comparison set first. With
+    a replace the old copy is being overwritten, so leaving it in would
+    have the new rule shadowed by the version it replaces -- and would put
+    the indexes out by one, since ``position`` counts the other rules only.
+
+    A provider that does not declare ``ordering`` evaluates every rule on
+    its own, so no position can shadow one and the analysis is empty.
+    """
+    if not provider.capabilities.ordering:
+        return Analysis()
+
+    present = provider.read_rules(before)
+    rules = [entry for entry in present if entry.name != name]
+
+    candidate = provider.candidate_rule(name, criteria, actions)
+
+    # Resolved against every name in the script, including the one being
+    # replaced -- that is how "no placement, so leave it where it is" finds
+    # where it currently is.
+    #
+    # NOT rule_from_criteria's index=-1 default: analyze_placement clamps
+    # with max(0, at_index), so a -1 here would mean the FRONT of the
+    # script rather than the end of it.
+    at_index = provider.position(
+        [entry.name for entry in present], placement, name
+    )
+
+    return analyze_placement(rules, candidate, at_index=at_index)
+
+
+# ----------------------------------------------------------------------------
+def plan_rule(
+    provider: Provider,
+    config: Config,
+    request: RuleRequest,
+    folder: FolderPlan,
+) -> RulePlan:
+    """Merge a rule into the active script without uploading it.
+
+    Never overwrites: the rule is merged into the parsed existing script,
+    and a parse failure is raised rather than fallen back from (ADR 0002).
+    A rule the provider cannot express is refused before the script is
+    read (:func:`check_rule`). A rule needing an extension named in
+    ``disabled_extensions`` is refused; the one with a fallback,
+    ``mailbox``, was already dropped by :func:`plan_folder`.
+    """
+    check_rule(config, request, provider)
+    request.criteria.require_terms()
+    check_folder(folder)
+
+    actions = provider.translate_actions(
+        resolve_stop(provider, request.actions),
+        folder.folder,
+        folder.use_create,
+    )
+    provider.check_actions(config, actions)
+    name = request.name or default_rule_name(request.criteria)
+    script, before, active = fetch_active(provider, request.script)
+
+    after = provider.add_rule(
+        before,
+        name,
+        request.criteria,
+        actions,
+        replace=request.replace,
+        placement=request.placement,
+    )
+
+    return RulePlan(
+        name=name,
+        script=script,
+        before=before,
+        after=after,
+        criteria=request.criteria,
+        actions=actions,
+        summary=provider.describe_actions(actions),
+        placement=placement_analysis(
+            provider,
+            before,
+            name,
+            request.criteria,
+            actions,
+            request.placement,
+        ),
+        diff=provider.diff(before, after, script),
+        folder=folder,
+        active=active,
+        activate=activates(script, active, request.activate),
+    )
+
+
+# ----------------------------------------------------------------------------
+def plan_removal(
+    provider: Provider,
+    rule: str,
+    script: str | None = None,
+    activate: bool = False,
+) -> RemovalPlan:
+    """Take a named rule out of the script without uploading the result."""
+    name, before, active = fetch_active(provider, script)
+
+    if not before.strip():
+        raise MailctlError(f"script {name!r} is empty")
+
+    after = provider.remove_rule(before, rule)
+
+    return RemovalPlan(
+        rule,
+        name,
+        before,
+        after,
+        provider.diff(before, after, name),
+        active,
+        activates(name, active, activate),
+    )
+
+
+# ----------------------------------------------------------------------------
+def plan_move(
+    provider: Provider,
+    rule: str,
+    placement: Placement,
+    script: str | None = None,
+    activate: bool = False,
+) -> MovePlan:
+    """Reorder a named rule without restating it, and without uploading.
+
+    Refused, before the script is read, by a provider that does not
+    declare ``ordering``.
+    """
+    require_capability(provider, "ordering")
+
+    name, before, active = fetch_active(provider, script)
+
+    if not before.strip():
+        raise MailctlError(f"script {name!r} is empty")
+
+    after = provider.move_rule(before, rule, placement)
+
+    present = provider.read_rules(before)
+    names = [entry.name for entry in present]
+    from_index = names.index(rule)
+    to_index = provider.position(names, placement, rule)
+
+    candidate = present[from_index]
+    others = present[:from_index] + present[from_index + 1 :]
+
+    return MovePlan(
+        rule=rule,
+        script=name,
+        before=before,
+        after=after,
+        from_index=from_index,
+        to_index=to_index,
+        count=len(present),
+        placement=analyze_placement(others, candidate, at_index=to_index),
+        diff=provider.diff(before, after, name),
+        active=active,
+        activate=activates(name, active, activate),
+    )
+
+
+# ----------------------------------------------------------------------------
+def execute_script_change(
+    provider: Provider,
+    config: Config,
+    plan: RulePlan | RemovalPlan | MovePlan,
+    on_event: EventSink | None = None,
+) -> Path:
+    """Upload a planned rule change; return the backup's path.
+
+    A rule's target folder, when it is planned for IMAP creation, is
+    created here -- after the server has accepted the script and before it
+    is stored -- so neither a dry run nor a rejected script leaves a stray
+    folder, and the rule never goes live pointing at a missing one.
+    """
+    before_put = None
+
+    if isinstance(plan, RulePlan):
+        provider.check_actions(config, plan.actions)
+        folder = plan.folder
+
+        def before_put():
+            realize_folder(provider, folder, on_event)
+
+    return upload_script(
+        provider,
+        config,
+        plan.script,
+        plan.before,
+        plan.after,
+        on_event,
+        before_put,
+        activate=plan.activate,
+    )

@@ -1,5 +1,5 @@
-"""Finding and reading messages: ``engine.list_messages`` and
-``engine.read_message``, over the conftest IMAP double.
+"""Finding and reading messages: ``utilities.messages.list_messages`` and
+``utilities.messages.read_message``, over the conftest IMAP double.
 
 Two properties matter beyond "it returns the right data". Reading must
 never mark a message read -- the double records every SELECT's mode and
@@ -11,7 +11,7 @@ raise on the malformed, mislabelled mail that real mailboxes hold.
 import pytest
 from imapclient.response_parser import parse_fetch_response
 
-from mailctl import MailctlError, engine
+from mailctl import MailctlError, utilities
 from mailctl.components.imap import structure_has_attachment
 from mailctl.criteria import Criteria
 from mailctl.providers.mxroute import MxrouteProvider
@@ -180,7 +180,7 @@ PDF_PART = (
 def test_listing_is_newest_first_and_capped(sessions, fake_imap):
     fake_imap.messages = dict.fromkeys(range(1, 6), PLAIN)
 
-    listing = engine.list_messages(sessions, "INBOX", limit=3)
+    listing = utilities.messages.list_messages(sessions, "INBOX", limit=3)
 
     assert [message.uid for message in listing.messages] == [5, 4, 3]
     assert listing.more is True
@@ -191,7 +191,7 @@ def test_listing_is_newest_first_and_capped(sessions, fake_imap):
 def test_a_listing_that_fits_the_limit_has_no_more(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN, 2: PLAIN}
 
-    listing = engine.list_messages(sessions, "INBOX", limit=2)
+    listing = utilities.messages.list_messages(sessions, "INBOX", limit=2)
 
     assert [message.uid for message in listing.messages] == [2, 1]
     assert listing.more is False
@@ -201,7 +201,7 @@ def test_a_listing_that_fits_the_limit_has_no_more(sessions, fake_imap):
 def test_limit_none_lists_everything(sessions, fake_imap):
     fake_imap.messages = dict.fromkeys(range(1, 31), PLAIN)
 
-    listing = engine.list_messages(sessions, "INBOX", limit=None)
+    listing = utilities.messages.list_messages(sessions, "INBOX", limit=None)
 
     assert len(listing.messages) == 30
     assert listing.more is False
@@ -216,7 +216,7 @@ def test_summaries_carry_size_flags_and_attachments(sessions, fake_imap):
         2: structure(b"(" + PLAIN_STRUCTURE + PDF_PART + b' "mixed")'),
     }
 
-    listing = engine.list_messages(sessions, "INBOX")
+    listing = utilities.messages.list_messages(sessions, "INBOX")
     by_uid = {message.uid: message for message in listing.messages}
 
     assert by_uid[1].flags == ("\\Seen", "\\Flagged")
@@ -235,7 +235,9 @@ def test_criteria_are_rechecked_against_the_headers(sessions, fake_imap):
     criteria = Criteria()
     criteria.add("From", "news@example.com")
 
-    listing = engine.list_messages(sessions, "INBOX", criteria=criteria)
+    listing = utilities.messages.list_messages(
+        sessions, "INBOX", criteria=criteria
+    )
 
     assert [message.uid for message in listing.messages] == [2]
     assert ("search", [["FROM", "news@example.com"]]) in fake_imap.calls
@@ -250,7 +252,7 @@ def test_one_undecodable_subject_does_not_break_the_listing(
         2: rfc822("From: a@example.com", "Subject: =?utf-8?b?G=?=", body="x"),
     }
 
-    listing = engine.list_messages(sessions, "INBOX")
+    listing = utilities.messages.list_messages(sessions, "INBOX")
 
     assert [message.subject for message in listing.messages] == [
         "=?utf-8?b?G=?=",
@@ -262,7 +264,7 @@ def test_one_undecodable_subject_does_not_break_the_listing(
 def test_a_raw_search_is_passed_through(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 
-    engine.list_messages(sessions, "INBOX", search="UNSEEN")
+    utilities.messages.list_messages(sessions, "INBOX", search="UNSEEN")
 
     assert ("search", "UNSEEN") in fake_imap.calls
 
@@ -271,7 +273,9 @@ def test_a_raw_search_is_passed_through(sessions, fake_imap):
 def test_empty_criteria_list_everything(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN, 2: PLAIN}
 
-    listing = engine.list_messages(sessions, "INBOX", criteria=Criteria())
+    listing = utilities.messages.list_messages(
+        sessions, "INBOX", criteria=Criteria()
+    )
 
     assert len(listing.messages) == 2
     assert ("search", "ALL") in fake_imap.calls
@@ -283,20 +287,22 @@ def test_criteria_and_a_raw_search_are_refused_together(sessions):
     criteria.add("From", "x@example.com")
 
     with pytest.raises(MailctlError, match="not both"):
-        engine.list_messages(sessions, criteria=criteria, search="ALL")
+        utilities.messages.list_messages(
+            sessions, criteria=criteria, search="ALL"
+        )
 
 
 # ----------------------------------------------------------------------------
 def test_a_limit_below_one_is_refused(sessions):
     with pytest.raises(MailctlError, match="at least 1"):
-        engine.list_messages(sessions, limit=0)
+        utilities.messages.list_messages(sessions, limit=0)
 
 
 # ----------------------------------------------------------------------------
 def test_the_folder_is_normalized(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 
-    listing = engine.list_messages(sessions, "Lists")
+    listing = utilities.messages.list_messages(sessions, "Lists")
 
     assert listing.folder == "INBOX.Lists"
     assert ("select_folder", "INBOX.Lists", True) in fake_imap.calls
@@ -306,7 +312,7 @@ def test_the_folder_is_normalized(sessions, fake_imap):
 def test_listing_leaves_mail_unread(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN, 2: MULTIPART}
 
-    engine.list_messages(sessions, "INBOX")
+    utilities.messages.list_messages(sessions, "INBOX")
 
     assert_left_unread(fake_imap)
 
@@ -318,7 +324,7 @@ def test_a_uid_expunged_between_search_and_fetch_is_skipped(
     fake_imap.messages = {1: PLAIN, 2: PLAIN}
     monkeypatch.setattr(fake_imap, "search", lambda key: [1, 2, 3])
 
-    listing = engine.list_messages(sessions, "INBOX")
+    listing = utilities.messages.list_messages(sessions, "INBOX")
 
     assert [message.uid for message in listing.messages] == [2, 1]
 
@@ -333,7 +339,7 @@ def test_a_plain_message_is_decoded(sessions, fake_imap):
     fake_imap.messages = {7: PLAIN}
     fake_imap.flags = {7: (b"\\Answered",)}
 
-    content = engine.read_message(sessions, "INBOX", 7)
+    content = utilities.messages.read_message(sessions, "INBOX", 7)
 
     assert content.uid == 7
     assert content.header("subject") == "Café plans"
@@ -352,20 +358,20 @@ def test_a_missing_uid_names_the_uid_and_folder(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 
     with pytest.raises(MailctlError, match="no message with uid 99 in"):
-        engine.read_message(sessions, "INBOX", 99)
+        utilities.messages.read_message(sessions, "INBOX", 99)
 
 
 # ----------------------------------------------------------------------------
 def test_a_uid_below_one_is_refused(sessions):
     with pytest.raises(MailctlError, match="start at 1"):
-        engine.read_message(sessions, "INBOX", 0)
+        utilities.messages.read_message(sessions, "INBOX", 0)
 
 
 # ----------------------------------------------------------------------------
 def test_reading_leaves_the_message_unread(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 
-    engine.read_message(sessions, "INBOX", 1)
+    utilities.messages.read_message(sessions, "INBOX", 1)
 
     assert_left_unread(fake_imap)
 
@@ -374,7 +380,7 @@ def test_reading_leaves_the_message_unread(sessions, fake_imap):
 def test_html_only_mail_is_converted_and_flagged(sessions, fake_imap):
     fake_imap.messages = {1: HTML_ONLY}
 
-    content = engine.read_message(sessions, "INBOX", 1)
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
 
     assert content.body_from_html is True
     assert content.body == "Headline\n\nFirst & best\n\nSecond"
@@ -387,7 +393,7 @@ def test_html_only_mail_is_converted_and_flagged(sessions, fake_imap):
 def test_multipart_prefers_plain_and_lists_attachments(sessions, fake_imap):
     fake_imap.messages = {1: MULTIPART}
 
-    content = engine.read_message(sessions, "INBOX", 1)
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
 
     assert content.body == "Plain version."
     assert content.body_from_html is False
@@ -407,7 +413,7 @@ def test_multipart_prefers_plain_and_lists_attachments(sessions, fake_imap):
 def test_a_declared_legacy_charset_decodes(sessions, fake_imap):
     fake_imap.messages = {1: LATIN1}
 
-    content = engine.read_message(sessions, "INBOX", 1)
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
 
     assert content.body == "Café crème\n"
 
@@ -416,7 +422,7 @@ def test_a_declared_legacy_charset_decodes(sessions, fake_imap):
 def test_an_unknown_charset_falls_back_without_raising(sessions, fake_imap):
     fake_imap.messages = {1: BOGUS_CHARSET}
 
-    content = engine.read_message(sessions, "INBOX", 1)
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
 
     assert content.body == "Caf�\n"
 
@@ -425,7 +431,7 @@ def test_an_unknown_charset_falls_back_without_raising(sessions, fake_imap):
 def test_a_charset_with_a_nul_falls_back_without_raising(sessions, fake_imap):
     fake_imap.messages = {1: NUL_CHARSET}
 
-    content = engine.read_message(sessions, "INBOX", 1)
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
 
     assert content.body == "body\n"
 
@@ -436,7 +442,7 @@ def test_an_unreadable_filename_leaves_the_attachment_unnamed(
 ):
     fake_imap.messages = {1: MIXED_2231}
 
-    content = engine.read_message(sessions, "INBOX", 1)
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
 
     assert content.body == "hi"
     assert [(a.name, a.content_type) for a in content.attachments] == [
@@ -449,7 +455,7 @@ def test_an_undecodable_8bit_header_is_still_printable(sessions, fake_imap):
     """Lone surrogates would raise in whichever front-end printed them."""
     fake_imap.messages = {1: EIGHT_BIT_HEADER}
 
-    content = engine.read_message(sessions, "INBOX", 1)
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
 
     sender = content.header("From")
     sender.encode("utf-8")
@@ -464,8 +470,8 @@ def test_a_raw_utf8_header_reads_as_its_text(sessions, fake_imap):
         1: "From: zoë@exemple.fr\r\nSubject: café\r\n\r\nhi\r\n".encode()
     }
 
-    content = engine.read_message(sessions, "INBOX", 1)
-    listing = engine.list_messages(sessions, "INBOX", limit=1)
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
+    listing = utilities.messages.list_messages(sessions, "INBOX", limit=1)
 
     assert content.header("From") == "zoë@exemple.fr"
     assert content.header("Subject") == "café"
@@ -476,14 +482,16 @@ def test_a_raw_utf8_header_reads_as_its_text(sessions, fake_imap):
 def test_a_folded_header_is_unfolded():
     source = rfc822("Subject: one\r\n two", body="x")
 
-    assert engine.parse_message(source).header("Subject") == "one two"
+    assert (
+        utilities.messages.parse_message(source).header("Subject") == "one two"
+    )
 
 
 # ----------------------------------------------------------------------------
 def test_the_message_folder_is_normalized(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 
-    content = engine.read_message(sessions, "Lists", 1)
+    content = utilities.messages.read_message(sessions, "Lists", 1)
 
     assert content.folder == "INBOX.Lists"
 
