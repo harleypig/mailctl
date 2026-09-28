@@ -4,6 +4,8 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.8.2
+
 BUG FIXES:
 
 * **A new folder goes where the server keeps folders** ([#116]). On a
