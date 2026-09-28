@@ -22,6 +22,7 @@ from .config import (
     ENV_FILE,
     ENVIRONMENT,
     SIEVE_TLS_MODES,
+    Config,
     load_config,
 )
 from .criteria import COMPARE_OPS, MATCH_MODES, Criteria
@@ -381,7 +382,8 @@ def actions_from_args(args) -> ActionSpec:
         discard=args.discard,
         flags=tuple(flags),
         keep=args.keep,
-        stop=not args.no_stop,
+        # None leaves it to the provider: its rules stop where it can.
+        stop=False if args.no_stop else None,
     )
 
 
@@ -619,7 +621,7 @@ def print_script_diff(report: DisplayDiff) -> None:
             "below shows only the rule change; no rule body is altered."
         )
 
-    print("\n--- sieve diff ---")
+    print(f"\n--- {report.label} diff ---")
     # A rule built from a message carries that message's text, and a stored
     # script can hold any bytes: both are untrusted by the time they print.
     print(safe_text(report.text) if report.text.strip() else "(no change)")
@@ -1190,15 +1192,11 @@ def cmd_test(args) -> int:
         f"Password:  {state}{password_origin_suffix(config)}"
         f"{'  -- see the error below' if failure else ''}"
     )
-    print(
-        f"IMAP:      {config.imap_host}:{config.imap_port}  "
-        f"({origin_of(config, host='imap_host', port='imap_port')})"
-    )
-    print(
-        f"Sieve:     {config.host}:{config.sieve_port} "
-        f"(tls={config.sieve_tls})  "
-        f"({origin_of(config, port='sieve_port', tls='sieve_tls')})"
-    )
+
+    for fact in engine.connection_facts(config):
+        origin = origin_of(config, **dict(fact.settings))
+        print(f"{fact.label + ':':<10} {fact.text}  ({origin})")
+
     print(
         f"Folder:    {config.source_folder}  "
         f"({origin_of(config, 'source_folder')})  "
@@ -1208,63 +1206,66 @@ def cmd_test(args) -> int:
     if failure is not None:
         raise failure
 
+    words = engine.wording(config)
+
     with connect(config, args) as sessions:
-        sieve = engine.probe_sieve(sessions)
+        rules = engine.probe_rules(sessions)
+        extensions = engine.report_extensions(sessions, rules, config)
 
-        print("\nManageSieve: connected")
+        print(f"\n{words.rules_service}: connected")
 
-        # Every row is read from this server's CAPABILITY response, not
-        # assumed. Nothing here asserts what MXRoute does or does not
-        # enable -- only 'redirect' is a documented MXRoute policy, and a
-        # policy is not a capability, so it would not show up here at all.
-        print("  Sieve extensions (* = mailctl's own rules can need it):")
-        print_extension_table(
-            engine.report_extensions(sessions, sieve, config)
-        )
-        print(f"\n  active script: {sieve.active or '(none)'}")
-        print(f"  other scripts: {', '.join(sieve.others) or '(none)'}")
+        # Every row is read from the server's own capability listing, not
+        # assumed; a host's policies are not capabilities, so they come
+        # from the provider's notes at the end instead.
+        if extensions:
+            print(
+                f"  {words.extensions} (* = mailctl's own rules can need it):"
+            )
+            print_extension_table(extensions)
+
+        print(f"\n  active script: {rules.active or '(none)'}")
+        print(f"  other scripts: {', '.join(rules.others) or '(none)'}")
         print(
             "  (mailctl always edits the ACTIVE script under its own "
             "name; it never guesses one.)"
         )
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        imap = engine.probe_imap(sessions)
+        mail = engine.probe_mail(sessions)
 
-        print("\nIMAP: connected")
-        print(f"  delimiter: {imap.delimiter!r}")
+        print(f"\n{words.mail_service}: connected")
+        print(f"  delimiter: {mail.delimiter!r}")
         print(
-            f"  folders:   {imap.folder_count} "
-            f"({imap.folder_count - len(imap.unsubscribed)} subscribed)"
+            f"  folders:   {mail.folder_count} "
+            f"({mail.folder_count - len(mail.unsubscribed)} subscribed)"
         )
 
-        if imap.unsubscribed:
+        if mail.unsubscribed:
             print(
                 f"  not subscribed (exist, but webmail will not show them): "
-                f"{', '.join(imap.unsubscribed)}"
+                f"{', '.join(mail.unsubscribed)}"
             )
-        print(
-            f"  MOVE:      {'yes' if imap.has_move else 'no (COPY+EXPUNGE)'}"
-        )
-        print(f"  UIDPLUS:   {'yes' if imap.has_uidplus else 'no'}")
 
-        report_filter_sieve(imap.has_filter_sieve)
+        print_facts(mail.facts)
 
-    print(
-        "\nNote: MXRoute disables the Sieve 'redirect' action as a matter "
-        "of policy (2024-03-21) -- use a panel forwarder, which handles "
-        "SRS properly. That is the only MXRoute restriction mailctl "
-        "asserts; everything else above came from the server."
-    )
-    print(
-        "\nNote: this covers the Sieve stage only. Mail may first pass a "
-        "DirectAdmin panel filter (an Exim filter, run before Sieve) that "
-        "mailctl cannot see or change; a message it drops never reaches "
-        "any Sieve rule. Whether your account has one is unconfirmed -- "
-        "see 'A filtering stage mailctl cannot see' in the README."
-    )
+    for note in words.notes:
+        print(f"\nNote: {note}")
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def print_facts(facts) -> None:
+    """One labelled fact per line, a long one's lines under its first."""
+    for fact in facts:
+        label = f"{fact.label}:"
+        first, *rest = fact.text.split("\n")
+        indent = " " * (3 + max(len(label), 10))
+
+        print(f"  {label:<10} {first}")
+
+        for line in rest:
+            print(f"{indent}{line}")
 
 
 # ----------------------------------------------------------------------------
@@ -1351,38 +1352,6 @@ def password_origin_suffix(config) -> str:
 
 
 # ----------------------------------------------------------------------------
-def report_filter_sieve(present: bool) -> None:
-    """Report whether the server can run Sieve retroactively itself.
-
-    Dovecot's Pigeonhole ``imap_filter_sieve`` plugin advertises
-    ``FILTER=SIEVE``, which lets a client ask the *server* to run a Sieve
-    script over messages matching an IMAP search -- the retroactive pass
-    done properly, server-side. It is experimental and off by default, so
-    it is almost certainly absent here; one CAPABILITY line settles it
-    either way, and an answer on the record beats an assumption.
-    """
-    if present:
-        print(
-            "  FILTER=SIEVE: yes -- this server can apply a Sieve script "
-            "to existing mail itself."
-        )
-        print(
-            "                mailctl still uses its own client-side pass; "
-            "the server-side path is not implemented."
-        )
-
-    else:
-        print(
-            "  FILTER=SIEVE: no -- no server-side retroactive filtering "
-            "(Dovecot imap_filter_sieve is not enabled)."
-        )
-        print(
-            "                mailctl's client-side search-and-move pass "
-            "is the only option here."
-        )
-
-
-# ----------------------------------------------------------------------------
 def cmd_add(args) -> int:
     """Add a rule to the active script, then apply it to existing mail."""
     config = configure(args)
@@ -1421,7 +1390,7 @@ def run_add(config, args, criteria: Criteria) -> int:
 
         print(f"\nRule {plan.name!r} on script {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
-        print(f"  then:  {describe_actions(plan.actions)}")
+        print(f"  then:  {plan.summary}")
 
         # The placement findings come before the diff. A diff shows what
         # changes; it cannot show that the change lands after a rule whose
@@ -1445,27 +1414,6 @@ def run_add(config, args, criteria: Criteria) -> int:
         apply_to_existing(sessions, config, criteria, args, spec, folder)
 
     return 0
-
-
-# ----------------------------------------------------------------------------
-def describe_actions(actions: list[tuple]) -> str:
-    """Render action tuples as a readable summary line.
-
-    Sieve escaping is undone for display: the summary should say
-    ``addflag \\Seen``, which is the flag the user asked for, rather than
-    the ``\\\\Seen`` that has to appear in the script source. The diff
-    printed underneath shows the real source, so nothing is hidden.
-    """
-    return "; ".join(
-        " ".join(unescape_sieve_string(str(part)) for part in action)
-        for action in actions
-    )
-
-
-# ----------------------------------------------------------------------------
-def unescape_sieve_string(value: str) -> str:
-    """Reverse ``escape_sieve_string`` for display purposes only."""
-    return value.replace('\\"', '"').replace("\\\\", "\\")
 
 
 # ----------------------------------------------------------------------------
@@ -1539,6 +1487,7 @@ def cmd_remove_rule(args) -> int:
 def cmd_move_rule(args) -> int:
     """Move a named rule to a new position, leaving it otherwise unchanged."""
     config = configure(args)
+    engine.check_move(config)
 
     with connect(config, args) as sessions:
         plan = engine.plan_move(
@@ -1820,16 +1769,28 @@ def global_parser() -> argparse.ArgumentParser:
 
 
 # ----------------------------------------------------------------------------
-def connection_parser() -> argparse.ArgumentParser:
-    """Flags shared by every subcommand that connects to the server."""
+def connection_parser(
+    offer: engine.ProviderCapabilities,
+) -> argparse.ArgumentParser:
+    """Flags shared by every subcommand that connects to the server.
+
+    The provider's own connection settings are offered only when ``offer``
+    -- its declared capabilities -- names them, with the help it gives.
+    """
     parser = argparse.ArgumentParser(add_help=False)
+
+    def setting(name: str) -> dict:
+        if name not in offer.settings:
+            return {"help": argparse.SUPPRESS}
+
+        return {"help": offer.settings[name]} if offer.settings[name] else {}
 
     group = parser.add_argument_group("connection")
     group.add_argument(
         "--provider",
         help="the mail host, by provider name; default mxroute",
     )
-    group.add_argument("--host", help="MXRoute server hostname")
+    group.add_argument("--host", **setting("host"))
     group.add_argument("--user", help="full email address (the username)")
 
     # One credential, given one way. Three equally explicit instructions
@@ -1866,11 +1827,18 @@ def connection_parser() -> argparse.ArgumentParser:
         "the config file, and lose to a flag. A file setting "
         "MAILCTL_PASSWORD must be mode 0600 (or 0400)",
     )
-    group.add_argument("--imap-host", dest="imap_host")
-    group.add_argument("--imap-port", dest="imap_port", type=int)
-    group.add_argument("--sieve-port", dest="sieve_port", type=int)
+    group.add_argument("--imap-host", dest="imap_host", **setting("imap_host"))
     group.add_argument(
-        "--sieve-tls", dest="sieve_tls", choices=SIEVE_TLS_MODES
+        "--imap-port", dest="imap_port", type=int, **setting("imap_port")
+    )
+    group.add_argument(
+        "--sieve-port", dest="sieve_port", type=int, **setting("sieve_port")
+    )
+    group.add_argument(
+        "--sieve-tls",
+        dest="sieve_tls",
+        choices=SIEVE_TLS_MODES,
+        **setting("sieve_tls"),
     )
     group.add_argument(
         "--backup-dir",
@@ -1887,7 +1855,9 @@ def connection_parser() -> argparse.ArgumentParser:
         help="never emit this Sieve extension, even if the server "
         "advertises it; repeatable, and replaces "
         "MAILCTL_DISABLED_EXTENSIONS / disabled_extensions for this run. "
-        "'mailctl test' lists the names",
+        "'mailctl test' lists the names"
+        if offer.extensions
+        else argparse.SUPPRESS,
     )
 
     return parser
@@ -1934,7 +1904,9 @@ def criteria_parser() -> argparse.ArgumentParser:
 
 
 # ----------------------------------------------------------------------------
-def action_parser() -> argparse.ArgumentParser:
+def action_parser(
+    offer: engine.ProviderCapabilities,
+) -> argparse.ArgumentParser:
     """The action flags shared by add / apply / from-message."""
     parser = argparse.ArgumentParser(add_help=False)
 
@@ -1958,7 +1930,9 @@ def action_parser() -> argparse.ArgumentParser:
         "--no-stop",
         dest="no_stop",
         action="store_true",
-        help="let later rules run too (omit the 'stop' action)",
+        help="let later rules run too (omit the 'stop' action)"
+        if offer.stop
+        else argparse.SUPPRESS,
     )
     group.add_argument(
         "--create-folder",
@@ -2037,12 +2011,22 @@ def mail_safety_parser() -> argparse.ArgumentParser:
 
 
 # ----------------------------------------------------------------------------
-def build_parser() -> argparse.ArgumentParser:
-    """Construct the full argument parser."""
+def build_parser(
+    offer: engine.ProviderCapabilities | None = None,
+) -> argparse.ArgumentParser:
+    """Construct the full argument parser.
+
+    ``offer`` is the selected provider's declared capabilities
+    (:func:`provider_offer`); what it does not declare is not offered --
+    left out of help and usage, though still parsed, so that giving it
+    anyway reaches the engine's refusal naming the provider rather than
+    argparse's "unrecognized arguments". None is the default provider.
+    """
+    offer = offer or engine.capabilities_for(Config())
     common = global_parser()
-    connection = connection_parser()
+    connection = connection_parser(offer)
     criteria = criteria_parser()
-    actions = action_parser()
+    actions = action_parser(offer)
     safety = safety_parser()
     mail_safety = mail_safety_parser()
 
@@ -2065,19 +2049,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+    listed = []
 
-    listing = subparsers.add_parser(
+    def command(name: str, offered: bool = True, **kwargs):
+        """Add a subcommand, listed in help only when offered.
+
+        argparse lists a subcommand in help only when it is given
+        ``help``, so an unoffered one is added without it and left out of
+        the choices shown in usage.
+        """
+        if offered:
+            listed.append(name)
+
+        else:
+            kwargs.pop("help", None)
+
+        return subparsers.add_parser(name, **kwargs)
+
+    listing = command(
         "list", parents=[common, connection], help="list Sieve scripts"
     )
     listing.set_defaults(handler=cmd_list)
 
-    show = subparsers.add_parser(
+    show = command(
         "show", parents=[common, connection], help="print a Sieve script"
     )
     show.add_argument("name", nargs="?", help="script name; default active")
     show.set_defaults(handler=cmd_show)
 
-    rules = subparsers.add_parser(
+    rules = command(
         "rules",
         parents=[common, connection],
         help="show the rules in order, and which cannot fire",
@@ -2089,7 +2089,7 @@ def build_parser() -> argparse.ArgumentParser:
     rules.add_argument("--script", help="script name; default active")
     rules.set_defaults(handler=cmd_rules)
 
-    backup = subparsers.add_parser(
+    backup = command(
         "backup",
         parents=[common, connection],
         help="save the active script to a file",
@@ -2118,7 +2118,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     backup.set_defaults(handler=cmd_backup)
 
-    restore = subparsers.add_parser(
+    restore = command(
         "restore",
         parents=[common, connection, safety],
         help="upload a backup file over the active script, or --script",
@@ -2147,7 +2147,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     restore.set_defaults(handler=cmd_restore)
 
-    folders = subparsers.add_parser(
+    folders = command(
         "folders", parents=[common, connection], help="list IMAP folders"
     )
     folders.set_defaults(handler=cmd_folders)
@@ -2156,7 +2156,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("subscribe", "show a folder in webmail (IMAP SUBSCRIBE)"),
         ("unsubscribe", "hide a folder from webmail; it keeps its mail"),
     ):
-        toggle = subparsers.add_parser(
+        toggle = command(
             name,
             parents=[common, connection],
             help=summary,
@@ -2175,27 +2175,27 @@ def build_parser() -> argparse.ArgumentParser:
         )
         toggle.set_defaults(handler=cmd_subscribe)
 
-    test = subparsers.add_parser(
+    test = command(
         "test",
         parents=[common, connection],
         help="check reachability, change nothing",
     )
     test.set_defaults(handler=cmd_test)
 
-    add = subparsers.add_parser(
+    add = command(
         "add",
         parents=[common, connection, criteria, actions, safety, mail_safety],
         help="add a rule and apply it to existing mail",
     )
-    _add_rule_flags(add)
+    _add_rule_flags(add, offer)
     add.set_defaults(handler=cmd_add)
 
-    from_message = subparsers.add_parser(
+    from_message = command(
         "from-message",
         parents=[common, connection, criteria, actions, safety, mail_safety],
         help="derive criteria from a message, then add the rule",
     )
-    _add_rule_flags(from_message)
+    _add_rule_flags(from_message, offer)
     from_message.add_argument("--uid", type=int, help="message UID to read")
     from_message.add_argument(
         "--search", help="IMAP search expression selecting one message"
@@ -2208,7 +2208,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     from_message.set_defaults(handler=cmd_from_message)
 
-    apply_cmd = subparsers.add_parser(
+    apply_cmd = command(
         "apply",
         parents=[common, connection, criteria, actions, safety, mail_safety],
         help="apply criteria to existing mail only",
@@ -2219,7 +2219,7 @@ def build_parser() -> argparse.ArgumentParser:
     apply_cmd.add_argument("--delimiter", help=argparse.SUPPRESS)
     apply_cmd.set_defaults(handler=cmd_apply, no_imap=False)
 
-    messages = subparsers.add_parser(
+    messages = command(
         "messages",
         parents=[common, connection, criteria],
         help="list the newest messages in a folder",
@@ -2240,7 +2240,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     messages.set_defaults(handler=cmd_messages)
 
-    view = subparsers.add_parser(
+    view = command(
         "view",
         parents=[common, connection],
         help="show one message, without marking it read",
@@ -2264,7 +2264,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     view.set_defaults(handler=cmd_view)
 
-    remove = subparsers.add_parser(
+    remove = command(
         "remove-rule",
         parents=[common, connection, safety],
         help="remove a named rule from the active script",
@@ -2274,8 +2274,9 @@ def build_parser() -> argparse.ArgumentParser:
     remove.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
     remove.set_defaults(handler=cmd_remove_rule)
 
-    move = subparsers.add_parser(
+    move = command(
         "move-rule",
+        offer.ordering,
         parents=[common, connection, safety],
         help="move a named rule to a new position, unchanged",
         description="Reorder one rule without restating it: only its "
@@ -2318,7 +2319,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     move.set_defaults(handler=cmd_move_rule)
 
-    migrate = subparsers.add_parser(
+    migrate = command(
         "migrate-config",
         parents=[common],
         help="move config and backups from the old mxfilter directory",
@@ -2342,18 +2343,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate.set_defaults(handler=cmd_migrate_config)
 
+    subparsers.metavar = "{" + ",".join(listed) + "}"
+
     return parser
 
 
 # ----------------------------------------------------------------------------
-def _add_rule_flags(parser: argparse.ArgumentParser) -> None:
-    """Attach the rule-authoring flags shared by add and from-message."""
+def _add_rule_flags(
+    parser: argparse.ArgumentParser, offer: engine.ProviderCapabilities
+) -> None:
+    """Attach the rule-authoring flags shared by add and from-message.
+
+    Placement needs a provider declaring ``ordering``, and naming or
+    activating a script one declaring ``rule_sets``; unoffered, each is
+    hidden from help and still refused by name if given.
+    """
+
+    def offered(capability: str, text: str) -> str:
+        return text if getattr(offer, capability) else argparse.SUPPRESS
+
     group = parser.add_argument_group("rule")
     group.add_argument(
         "--name", help="rule name; derived from criteria if omitted"
     )
-    group.add_argument("--script", help="script name; default active")
-    group.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
+    group.add_argument(
+        "--script", help=offered("rule_sets", "script name; default active")
+    )
+    group.add_argument(
+        "--activate",
+        action="store_true",
+        help=offered("rule_sets", ACTIVATE_HELP),
+    )
     group.add_argument(
         "--replace",
         action="store_true",
@@ -2389,27 +2409,34 @@ def _add_rule_flags(parser: argparse.ArgumentParser) -> None:
         "--first",
         dest="place_first",
         action="store_true",
-        help="put the rule before every existing rule",
+        help=offered("ordering", "put the rule before every existing rule"),
     )
     where.add_argument(
         "--last",
         dest="place_last",
         action="store_true",
-        help="put the rule after every existing rule (the default). With "
-        "--replace this MOVES an existing rule to the end; without it, "
-        "the rule is simply appended as always",
+        help=offered(
+            "ordering",
+            "put the rule after every existing rule (the default). With "
+            "--replace this MOVES an existing rule to the end; without it, "
+            "the rule is simply appended as always",
+        ),
     )
     where.add_argument(
         "--before",
         dest="place_before",
         metavar="NAME",
-        help="put the rule immediately before the rule named NAME",
+        help=offered(
+            "ordering", "put the rule immediately before the rule named NAME"
+        ),
     )
     where.add_argument(
         "--after",
         dest="place_after",
         metavar="NAME",
-        help="put the rule immediately after the rule named NAME",
+        help=offered(
+            "ordering", "put the rule immediately after the rule named NAME"
+        ),
     )
 
 
@@ -2419,9 +2446,38 @@ def _add_rule_flags(parser: argparse.ArgumentParser) -> None:
 
 
 # ----------------------------------------------------------------------------
+def provider_offer(
+    argv: list[str] | None,
+) -> engine.ProviderCapabilities | None:
+    """The selected provider's capabilities, read ahead of the real parse.
+
+    The subcommand parsers are built from what the provider declares, so
+    the provider has to be known first: a first pass reads only
+    ``--provider`` and ``--env-file`` and resolves the provider through the
+    same ladder as every other setting. Anything that stops it -- an
+    unknown provider, an unreadable env file -- is the run's to report,
+    not help's, so this falls back to None and the default provider's
+    offer, and the real parse and run say what went wrong.
+    """
+    first = argparse.ArgumentParser(
+        add_help=False, allow_abbrev=False, exit_on_error=False
+    )
+    first.add_argument("--provider")
+    first.add_argument("--env-file", dest="env_file", nargs="?", const=".env")
+
+    try:
+        known, _rest = first.parse_known_args(argv)
+
+        return engine.capabilities_for(load_config(known))
+
+    except (argparse.ArgumentError, SystemExit, MailctlError):
+        return None
+
+
+# ----------------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, dispatch, and turn failures into diagnostics."""
-    parser = build_parser()
+    parser = build_parser(provider_offer(argv))
     args = parser.parse_args(argv)
 
     # --no-subscribe only shapes a folder this run creates. Accepting it

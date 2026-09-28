@@ -21,7 +21,7 @@ from functools import partial
 from pathlib import Path
 
 from ... import MailctlError
-from ...components.imap import ImapSession
+from ...components.imap import ImapSession, normalize_folder
 from ...components.managesieve import (
     SieveSession,
     backup_script,
@@ -43,6 +43,7 @@ from ..base import (
     DeliveryCreate,
     DisplayDiff,
     ExtensionState,
+    Fact,
     FolderCreation,
     FolderListing,
     MailActionPlan,
@@ -52,9 +53,17 @@ from ..base import (
     Progress,
     Provider,
     ProviderCapabilities,
+    Wording,
 )
+from . import records
 from . import sieve as mxroute_sieve
-from .imap import imap_session
+from .imap import capability_facts, imap_session
+
+# The delimiter guessed when there is no folder list to read one from
+# (--no-imap). Maildir++'s, the layout observed on MXroute; with a
+# session the delimiter is always read, never assumed.
+ASSUMED_DELIMITER = "."
+
 
 __all__ = ["MxrouteProvider"]
 
@@ -75,6 +84,31 @@ class MxrouteProvider(Provider):
         rule_sets=True,
         actions=frozenset((FILEINTO, DISCARD, FLAG, KEEP)),
         extensions=True,
+        settings={
+            "host": "MXRoute server hostname",
+            "imap_host": "",
+            "imap_port": "",
+            "sieve_port": "",
+            "sieve_tls": "",
+        },
+    )
+
+    wording = Wording(
+        rules_service="ManageSieve",
+        mail_service="IMAP",
+        extensions="Sieve extensions",
+        notes=(
+            "MXRoute disables the Sieve 'redirect' action as a matter of "
+            "policy (2024-03-21) -- use a panel forwarder, which handles "
+            "SRS properly. That is the only MXRoute restriction mailctl "
+            "asserts; everything else above came from the server.",
+            "this covers the Sieve stage only. Mail may first pass a "
+            "DirectAdmin panel filter (an Exim filter, run before Sieve) "
+            "that mailctl cannot see or change; a message it drops never "
+            "reaches any Sieve rule. Whether your account has one is "
+            "unconfirmed -- see 'A filtering stage mailctl cannot see' in "
+            "the README.",
+        ),
     )
 
     # ------------------------------------------------------------------------
@@ -134,6 +168,11 @@ class MxrouteProvider(Provider):
     @classmethod
     def check_actions(cls, config: Config, actions: list) -> None:
         mxroute_sieve.check_rule_extensions(config, actions)
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def describe_actions(cls, actions: list) -> str:
+        return mxroute_sieve.describe_actions(actions)
 
     # ------------------------------------------------------------------------
     @classmethod
@@ -230,7 +269,7 @@ class MxrouteProvider(Provider):
     def position(
         cls, names: list[str], placement: Placement | None, name: str
     ) -> int:
-        return resolve_position(names, placement, name)
+        return resolve_position(names, records.placement(placement), name)
 
     # ------------------------------------------------------------------------
     @classmethod
@@ -240,7 +279,11 @@ class MxrouteProvider(Provider):
     # ------------------------------------------------------------------------
     @classmethod
     def raw_diff(cls, before: str, after: str, name: str) -> DisplayDiff:
-        return DisplayDiff(script_diff(before, after, name), reformats=False)
+        return DisplayDiff(
+            script_diff(before, after, name),
+            reformats=False,
+            label=records.DIFF_LABEL,
+        )
 
     # ------------------------------------------------------------------------
     @classmethod
@@ -248,6 +291,44 @@ class MxrouteProvider(Provider):
         cls, advertised: list[str], config: Config
     ) -> list[ExtensionState]:
         return mxroute_sieve.report_extensions(advertised, config)
+
+    # ########################################################################
+    # Folders, offline
+    # ########################################################################
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def assumed_folder(
+        cls, name: str, delimiter: str | None
+    ) -> tuple[str, str]:
+        assumed = delimiter or ASSUMED_DELIMITER
+
+        return normalize_folder(name, assumed, None), assumed
+
+    # ########################################################################
+    # Describing the host, offline
+    # ########################################################################
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def connection_facts(cls, config: Config) -> list[Fact]:
+        return [
+            Fact(
+                "IMAP",
+                f"{config.imap_host}:{config.imap_port}",
+                (("host", "imap_host"), ("port", "imap_port")),
+            ),
+            Fact(
+                "Sieve",
+                f"{config.host}:{config.sieve_port} (tls={config.sieve_tls})",
+                (("port", "sieve_port"), ("tls", "sieve_tls")),
+            ),
+        ]
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def mail_facts(cls, capabilities: list[str]) -> list[Fact]:
+        return capability_facts(capabilities)
 
     # ########################################################################
     # Backups, offline
@@ -367,7 +448,9 @@ class MxrouteProvider(Provider):
 
     # ------------------------------------------------------------------------
     def create_folder(self, folder: str, subscribe: bool) -> FolderCreation:
-        return self._imap().create_folder(folder, subscribe=subscribe)
+        return records.folder_creation(
+            self._imap().create_folder(folder, subscribe=subscribe)
+        )
 
     # ------------------------------------------------------------------------
     def subscribe(self, folder: str) -> None:
@@ -386,17 +469,21 @@ class MxrouteProvider(Provider):
         flags: list[str],
         discard: bool,
     ) -> MailActionPlan:
-        return self._imap().plan_actions(
-            criteria,
-            source=source,
-            destination=destination,
-            flags=flags,
-            discard=discard,
+        return records.mail_plan(
+            self._imap().plan_actions(
+                criteria,
+                source=source,
+                destination=destination,
+                flags=flags,
+                discard=discard,
+            )
         )
 
     # ------------------------------------------------------------------------
     def apply_mail(self, plan: MailActionPlan) -> MailActionResult:
-        return self._imap().execute(plan)
+        return records.mail_result(
+            self._imap().execute(records.session_plan(plan))
+        )
 
     # ------------------------------------------------------------------------
     def search_messages(self, folder: str, expression: str) -> list[int]:
@@ -415,9 +502,11 @@ class MxrouteProvider(Provider):
         expression: str | None,
         limit: int | None,
     ) -> tuple[list[MessageSummary], bool]:
-        return self._imap().list_messages(
+        summaries, more = self._imap().list_messages(
             folder, criteria=criteria, expression=expression, limit=limit
         )
+
+        return [records.message_summary(item) for item in summaries], more
 
     # ------------------------------------------------------------------------
     def message_source(

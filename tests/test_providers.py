@@ -23,6 +23,7 @@ import difflib
 import email
 import inspect
 import json
+import re
 from contextlib import contextmanager
 from typing import cast
 
@@ -43,7 +44,7 @@ from mailctl.config import (
 )
 from mailctl.criteria import Criteria
 from mailctl.engine import ActionSpec, RuleRequest
-from mailctl.providers import registry
+from mailctl.providers import model, registry
 from mailctl.providers.base import (
     DISCARD,
     FILEINTO,
@@ -51,6 +52,7 @@ from mailctl.providers.base import (
     OPERATIONS,
     DeliveryCreate,
     DisplayDiff,
+    Fact,
     FolderCreation,
     FolderListing,
     MailActionPlan,
@@ -60,6 +62,7 @@ from mailctl.providers.base import (
     Provider,
     ProviderCapabilities,
     Specific,
+    Wording,
     declined,
 )
 from mailctl.providers.base import (
@@ -94,6 +97,12 @@ class FakeProvider(Provider):
 
     name = "fake"
     capabilities = FULL
+    wording = Wording(
+        rules_service="Fake rules",
+        mail_service="Fake mail",
+        extensions="Fake extensions",
+        notes=("the fake host keeps its rules as JSON.",),
+    )
     opened = 0
 
     # ------------------------------------------------------------------------
@@ -138,6 +147,18 @@ class FakeProvider(Provider):
     @classmethod
     def check_actions(cls, config, actions):
         pass
+
+    @classmethod
+    def describe_actions(cls, actions):
+        return ", ".join(actions)
+
+    @classmethod
+    def connection_facts(cls, config):
+        return [Fact("Fake", "fake.example", (("host", "host"),))]
+
+    @classmethod
+    def mail_facts(cls, capabilities):
+        return [Fact("Labels", "yes\nevery folder is a label")]
 
     @classmethod
     def candidate_rule(cls, name, criteria, actions):
@@ -223,7 +244,7 @@ class FakeProvider(Provider):
             before.splitlines(), after.splitlines(), name, name, lineterm=""
         )
 
-        return DisplayDiff("\n".join(lines), reformats=False)
+        return DisplayDiff("\n".join(lines), reformats=False, label="json")
 
     @classmethod
     def raw_diff(cls, before, after, name):
@@ -232,6 +253,12 @@ class FakeProvider(Provider):
     @classmethod
     def report_extensions(cls, advertised, config):
         return []
+
+    # -- folders, offline ----------------------------------------------------
+
+    @classmethod
+    def assumed_folder(cls, name, delimiter):
+        return name.replace("/", delimiter or "."), delimiter or "."
 
     # -- backups, offline ----------------------------------------------------
 
@@ -386,6 +413,20 @@ class UnorderedProvider(FakeProvider):
         """No position to resolve."""
 
 
+class StoplessProvider(FakeProvider):
+    """The fake again, on a host where nothing ends evaluation early."""
+
+    name = "stopless"
+    capabilities = ProviderCapabilities(
+        ordering=True,
+        stop=False,
+        rule_sets=True,
+        actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
+        extensions=False,
+    )
+    opened = 0
+
+
 # ----------------------------------------------------------------------------
 def _stored(name: str, sender: str) -> dict:
     return {"name": name, "from": sender, "actions": ["file:x", "stop"]}
@@ -395,7 +436,7 @@ def _stored(name: str, sender: str) -> dict:
 @pytest.fixture
 def fakes(monkeypatch):
     """Register both fakes for the test, and zero their counters."""
-    for provider in (FakeProvider, UnorderedProvider):
+    for provider in (FakeProvider, UnorderedProvider, StoplessProvider):
         monkeypatch.setitem(registry.PROVIDERS, provider.name, provider)
         monkeypatch.setattr(provider, "opened", 0)
 
@@ -546,7 +587,12 @@ def test_the_operation_list_is_the_interface():
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "provider",
-    [*registry.PROVIDERS.values(), FakeProvider, UnorderedProvider],
+    [
+        *registry.PROVIDERS.values(),
+        FakeProvider,
+        UnorderedProvider,
+        StoplessProvider,
+    ],
     ids=lambda provider: provider.name,
 )
 def test_every_provider_implements_or_declines_every_operation(provider):
@@ -865,6 +911,49 @@ def test_mxroute_declares_no_specifics_so_any_is_refused():
 
 
 # ############################################################################
+# mxroute hands back the neutral model, never its components' records
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_mxroute_translates_every_record_it_returns(
+    fake_imap, imap_session, roundcube_script
+):
+    """The components keep records of their own; the engine gets the
+    model's. A record passed through untranslated would still work -- the
+    fields agree -- which is why only the type can show it."""
+    fake_imap.messages = {7: github_message(7)}
+    provider = MxrouteProvider(
+        sieve=rule_session(roundcube_script), imap=imap_session
+    )
+    criteria = Criteria()
+    criteria.add("From", GITHUB)
+
+    diff = provider.diff(roundcube_script, roundcube_script, "managesieve")
+    raw = provider.raw_diff(roundcube_script, "", "managesieve")
+    plan = provider.select_mail(criteria, "INBOX", "INBOX.Lists", [], False)
+    result = provider.apply_mail(plan)
+    created = provider.create_folder("INBOX.New", subscribe=True)
+    listed, _more = provider.list_messages(
+        "INBOX", criteria=criteria, expression=None, limit=None
+    )
+
+    assert type(diff) is model.DisplayDiff
+    assert type(raw) is model.DisplayDiff
+    assert (diff.label, raw.label) == ("sieve", "sieve")
+    assert type(plan) is model.MailActionPlan
+    assert plan.count == 1
+    assert {type(message) for message in plan.messages} == {
+        model.MessageSummary
+    }
+    assert type(result) is model.MailActionResult
+    assert result.moved == 1
+    assert type(created) is model.FolderCreation
+    assert listed
+    assert {type(message) for message in listed} == {model.MessageSummary}
+
+
+# ############################################################################
 # What mxroute declares
 # ############################################################################
 
@@ -910,3 +999,359 @@ def test_an_unordered_host_plans_a_rule_with_no_placement_findings(
 
     assert not plan.placement
     assert provider.rule_names(plan.after) == ["narrow", "from-example-com"]
+
+
+# ############################################################################
+# The stop default is the provider's (#99)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def github_rule(**actions) -> RuleRequest:
+    criteria = Criteria()
+    criteria.add("From", GITHUB)
+
+    return RuleRequest(
+        criteria=criteria, actions=ActionSpec(fileinto="Lists", **actions)
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_host_without_stop_plans_a_default_rule(fakes, tmp_path):
+    """A rule nobody asked to stop is not refused for lacking stop."""
+    provider = StoplessProvider()
+    request = github_rule()
+    folder = engine.plan_folder(provider, Config(), "Lists")
+
+    engine.check_rule(Config(provider="stopless"), request)
+    plan = engine.plan_rule(provider, Config(), request, folder)
+
+    assert plan.actions == ["file:INBOX.Lists"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_host_with_stop_still_stops_by_default():
+    """mxroute's rules end evaluation unless --no-stop says otherwise."""
+    folder = engine.plan_folder(
+        MxrouteProvider(), Config(), "Lists", delimiter="."
+    )
+    spec = engine.resolve_stop(MxrouteProvider, ActionSpec(fileinto="Lists"))
+    actions = MxrouteProvider.translate_actions(spec, folder.folder, False)
+
+    assert spec.stop is True
+    assert actions[-1] == ("stop",)
+
+
+# ----------------------------------------------------------------------------
+def test_asking_a_host_without_stop_to_stop_is_refused(fakes):
+    """An explicit request is still one the provider has to honour."""
+    with pytest.raises(MailctlError) as caught:
+        engine.check_rule(Config(provider="stopless"), github_rule(stop=True))
+
+    assert str(caught.value) == (
+        "the stopless provider cannot end evaluation after a rule: it does "
+        "not declare the 'stop' capability"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_cli_adds_a_default_rule_on_a_host_without_stop(fakes, capsys):
+    code = cli.main(
+        [
+            "add",
+            "--provider",
+            "stopless",
+            "--from",
+            GITHUB,
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--no-apply",
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert code == 0, captured.err
+    assert '"actions": ["file:INBOX.Lists"]}]' in captured.out
+
+
+# ############################################################################
+# The host's own wording is the provider's data (#99)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_diff_and_its_actions_are_shown_in_the_hosts_own_words(
+    fakes, capsys
+):
+    """No Sieve heading and no Sieve tuple rendering on a JSON host."""
+    code = cli.main(
+        [
+            "add",
+            "--provider",
+            "fake",
+            "--from",
+            GITHUB,
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--no-apply",
+        ]
+    )
+
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "  then:  file:INBOX.Lists, stop\n" in out
+    assert "\n--- json diff ---\n" in out
+    assert "sieve" not in out.lower()
+
+
+# ----------------------------------------------------------------------------
+def test_the_test_report_is_laid_out_from_the_providers_data(
+    fakes, capsys, monkeypatch
+):
+    """Service names, capability facts, and closing notes are all the
+    provider's; nothing about MXroute or Sieve is left in the CLI."""
+    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
+
+    code = cli.main(["test", "--provider", "fake"])
+
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "\nFake:      fake.example  (default)\n" in out
+    assert "\nFake rules: connected\n" in out
+    assert "\nFake mail: connected\n" in out
+    assert "\n  Labels:    yes\n             every folder is a label\n" in out
+    assert "\nNote: the fake host keeps its rules as JSON.\n" in out
+    assert "extensions" not in out
+    assert "sieve" not in out.lower()
+    assert "MXRoute" not in out
+    assert "Exim" not in out
+
+
+# ############################################################################
+# disabled_extensions belongs to a provider that declares extensions (#99)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_disabled_extensions_is_refused_by_a_host_without_extensions(
+    fakes, monkeypatch
+):
+    """A setting the provider has no use for is an error, never ignored."""
+    monkeypatch.setenv("MAILCTL_DISABLED_EXTENSIONS", "mailbox")
+    monkeypatch.setenv("MAILCTL_PROVIDER", "stopless")
+    config = load_config(argparse.Namespace())
+
+    with pytest.raises(MailctlError) as caught, engine.connect(config):
+        pass
+
+    assert str(caught.value) == (
+        "the stopless provider cannot take disabled_extensions (from "
+        "environment): it does not declare the 'extensions' capability"
+    )
+    assert StoplessProvider.opened == 0
+
+
+# ----------------------------------------------------------------------------
+def test_an_empty_disabled_extensions_is_no_request_at_all(fakes):
+    """Nothing disabled asks nothing of the provider."""
+    with engine.connect(Config(provider="stopless")) as live:
+        assert live.name == "stopless"
+
+
+# ----------------------------------------------------------------------------
+def test_the_cli_refuses_disable_extension_for_such_a_host(fakes, capsys):
+    code = cli.main(
+        ["list", "--provider", "stopless", "--disable-extension", "mailbox"]
+    )
+
+    assert code == 1
+    assert (
+        "the stopless provider cannot take disabled_extensions (from flag "
+        "--disable-extension)" in capsys.readouterr().err
+    )
+    assert StoplessProvider.opened == 0
+
+
+# ----------------------------------------------------------------------------
+def test_mxroute_still_takes_disabled_extensions(monkeypatch):
+    """The owner of the setting: accepted, and its names still checked."""
+    config = Config(disabled_extensions=frozenset({"mailbox"}))
+
+    MxrouteProvider.validate(config)
+
+    with pytest.raises(MailctlError, match="unknown Sieve extension"):
+        MxrouteProvider.validate(
+            Config(disabled_extensions=frozenset({"nope"}))
+        )
+
+
+# ############################################################################
+# Help offers only what the selected provider declares (#26, #99)
+# ############################################################################
+
+PLACEMENT_FLAGS = ("--first", "--last", "--before", "--after")
+
+# Flags hidden for reasons that have nothing to do with the provider:
+# refused actions, accepted only to explain the refusal, and apply's
+# undocumented --delimiter.
+ALWAYS_HIDDEN = {"--redirect", "--notify", "--vacation", "--delimiter"}
+
+
+class BareProvider(FakeProvider):
+    """The fake with no connection settings, no ordering, no extensions."""
+
+    name = "bare"
+    capabilities = ProviderCapabilities(
+        ordering=False,
+        stop=False,
+        rule_sets=True,
+        actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
+        extensions=False,
+        declined=frozenset(("move_rule", "position")),
+    )
+    opened = 0
+
+    move_rule = UnorderedProvider.move_rule
+    position = UnorderedProvider.position
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def bare(fakes, monkeypatch):
+    monkeypatch.setitem(registry.PROVIDERS, BareProvider.name, BareProvider)
+    monkeypatch.setattr(BareProvider, "opened", 0)
+
+
+# ----------------------------------------------------------------------------
+def help_text(capsys, *argv: str) -> str:
+    """What ``mailctl ARGV --help`` prints."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main([*argv, "--help"])
+
+    assert stopped.value.code == 0
+
+    return capsys.readouterr().out
+
+
+# ----------------------------------------------------------------------------
+def offered_flags(parser: argparse.ArgumentParser) -> dict[str, set[str]]:
+    """Every subcommand's flags, split into shown and hidden."""
+    subparsers = next(
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    found = {"shown": set(), "hidden": set()}
+
+    for sub in subparsers.choices.values():
+        for action in sub._actions:
+            key = "hidden" if action.help == argparse.SUPPRESS else "shown"
+            found[key].update(action.option_strings)
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def test_mxroute_declares_everything_so_nothing_is_hidden():
+    """Its help is the help every earlier version printed."""
+    flags = offered_flags(cli.build_parser())
+
+    assert flags["hidden"] - {"--verbose", "--debug"} == ALWAYS_HIDDEN
+    assert {*PLACEMENT_FLAGS, "--no-stop", "--disable-extension"} <= (
+        flags["shown"]
+    )
+    assert {"--host", "--sieve-port", "--sieve-tls", "--imap-host"} <= (
+        flags["shown"]
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_placement_is_not_offered_without_ordering(bare, capsys):
+    text = help_text(capsys, "add", "--provider", "bare")
+
+    for flag in PLACEMENT_FLAGS:
+        assert flag not in text
+
+    assert "--name" in text
+
+
+# ----------------------------------------------------------------------------
+def test_move_rule_is_not_listed_without_ordering(bare, capsys, monkeypatch):
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    text = help_text(capsys)
+    usage = text.split("\n\n")[0]
+
+    # remove-rule contains the name, so it is matched as a whole word.
+    assert not re.search(r"(?<![\w-])move-rule", text)
+    assert "remove-rule" in usage
+
+
+# ----------------------------------------------------------------------------
+def test_no_stop_is_not_offered_without_stop(bare, capsys):
+    assert "--no-stop" not in help_text(capsys, "add", "--provider", "bare")
+    assert "--no-stop" in help_text(capsys, "add")
+
+
+# ----------------------------------------------------------------------------
+def test_disable_extension_is_not_offered_without_extensions(bare, capsys):
+    text = help_text(capsys, "list", "--provider", "bare")
+
+    assert "--disable-extension" not in text
+
+
+# ----------------------------------------------------------------------------
+def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
+    """A host that reads no --sieve-port does not offer one, and its help
+    says nothing about MXroute."""
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    text = help_text(capsys, "list")
+
+    for flag in ("--sieve-port", "--sieve-tls", "--imap-host", "--host "):
+        assert flag not in text
+
+    assert "MXRoute" not in text
+    assert "--user" in text
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "refusal"),
+    [
+        (
+            ["add", "--from", GITHUB, "--fileinto", "L", "--first"],
+            "'ordering'",
+        ),
+        (["move-rule", "x", "--first"], "'ordering'"),
+        (["list", "--sieve-port", "4190"], "flag --sieve-port"),
+        (["list", "--disable-extension", "mailbox"], "disabled_extensions"),
+    ],
+    ids=["placement", "move-rule", "connection-flag", "disable-extension"],
+)
+def test_a_hidden_option_given_anyway_is_refused_by_name(
+    bare, capsys, argv, refusal
+):
+    """Refusal stays the backstop: named, and before any connection."""
+    assert cli.main([*argv, "--provider", "bare"]) == 1
+
+    error = capsys.readouterr().err
+
+    assert "the bare provider cannot" in error
+    assert refusal in error
+    assert BareProvider.opened == 0
+
+
+# ----------------------------------------------------------------------------
+def test_an_unreadable_selection_falls_back_to_offering_everything(
+    capsys, monkeypatch
+):
+    """Help is never where a bad setting is reported; the run is."""
+    monkeypatch.setenv("MAILCTL_PROVIDER", "no-such-provider")
+
+    assert "--first" in help_text(capsys, "add")

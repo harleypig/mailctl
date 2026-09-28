@@ -28,7 +28,7 @@ import re
 
 import pytest
 
-from mailctl import MailctlError
+from mailctl import MailctlError, engine
 from mailctl.cli import build_parser, print_placement
 from mailctl.components.managesieve import (
     PLACE_AFTER,
@@ -812,7 +812,7 @@ def test_replacing_a_rule_does_not_report_it_shadowing_itself(capsys):
             "Announce",
             _criteria("to", "@lists.example.com"),
             BROAD_ACTIONS,
-            Placement(PLACE_FIRST),
+            engine.Placement(PLACE_FIRST),
         )
     )
 

@@ -23,9 +23,7 @@ from ...components.managesieve import (
     KNOWN_EXTENSIONS,
     REQUIRED_EXTENSIONS,
     UNIMPLEMENTED_ACTIONS,
-    DisplayDiff,
     NameDialect,
-    Placement,
     SieveAuthenticationError,
     SieveConnectionError,
     SieveSession,
@@ -43,7 +41,8 @@ from ...config import (
 )
 from ...criteria import Criteria, escape_sieve_string
 from ...rules import Rule, rule_from_criteria
-from ..base import ActionSpec, ExtensionState
+from ..base import ActionSpec, DisplayDiff, ExtensionState, Placement
+from . import records
 
 __all__ = [
     "MXROUTE_FORBIDDEN_ACTIONS",
@@ -52,6 +51,7 @@ __all__ = [
     "candidate_rule",
     "check_disabled_extensions",
     "check_rule_extensions",
+    "describe_actions",
     "display_diff",
     "merge_rule",
     "move_rule",
@@ -190,6 +190,27 @@ def _action_tuples(spec: ActionSpec, folder: str, use_create: bool) -> list:
         actions.append(("keep",))
 
     return actions
+
+
+# ----------------------------------------------------------------------------
+def describe_actions(actions: list) -> str:
+    """Render action tuples as a readable summary line.
+
+    Sieve escaping is undone for display: the summary should say
+    ``addflag \\Seen``, which is the flag the user asked for, rather than
+    the ``\\\\Seen`` that has to appear in the script source. The diff
+    printed underneath shows the real source, so nothing is hidden.
+    """
+    return "; ".join(
+        " ".join(_unescape_sieve_string(str(part)) for part in action)
+        for action in actions
+    )
+
+
+# ----------------------------------------------------------------------------
+def _unescape_sieve_string(value: str) -> str:
+    """Reverse ``escape_sieve_string`` for display purposes only."""
+    return value.replace('\\"', '"').replace("\\\\", "\\")
 
 
 # ----------------------------------------------------------------------------
@@ -378,7 +399,7 @@ def merge_rule(
         actions,
         matchtype,
         replace,
-        placement,
+        records.placement(placement),
         ROUNDCUBE_DIALECT,
     )
 
@@ -392,13 +413,17 @@ def remove_rule(existing: str, name: str) -> str:
 # ----------------------------------------------------------------------------
 def move_rule(existing: str, name: str, placement: Placement) -> str:
     """``managesieve.move_rule``, with Roundcube's rule names."""
-    return _script.move_rule(existing, name, placement, ROUNDCUBE_DIALECT)
+    return _script.move_rule(
+        existing, name, records.placement(placement), ROUNDCUBE_DIALECT
+    )
 
 
 # ----------------------------------------------------------------------------
 def display_diff(before: str, after: str, name: str = "sieve") -> DisplayDiff:
     """``managesieve.display_diff``, with Roundcube's rule names."""
-    return _script.display_diff(before, after, name, ROUNDCUBE_DIALECT)
+    return records.display_diff(
+        _script.display_diff(before, after, name, ROUNDCUBE_DIALECT)
+    )
 
 
 # ############################################################################

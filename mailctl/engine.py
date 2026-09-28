@@ -28,12 +28,14 @@ import stat
 import tomllib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from html.parser import HTMLParser
 from pathlib import Path
 
 from . import MailctlError
 from .config import (
+    CONNECTION_SETTINGS,
+    FLAG,
     Config,
     LegacySetting,
     Source,
@@ -62,6 +64,7 @@ from .providers.base import (
     ActionSpec,
     DisplayDiff,
     ExtensionState,
+    Fact,
     FolderCreation,
     FolderListing,
     MailActionPlan,
@@ -70,10 +73,10 @@ from .providers.base import (
     Placement,
     Progress,
     Provider,
+    ProviderCapabilities,
+    Wording,
     action_names,
-    case_variant_hint,
     decode_header_value,
-    normalize_folder,
     refuse,
     same_folder,
     validate_specifics,
@@ -176,12 +179,68 @@ def connect(
     unknown provider or a setting it refuses costs no connection.
     """
     provider = provider_for(config)
+    check_settings(provider, config)
     provider.validate(config)
 
     with provider.open(
         config, rules=rules, mail=mail, progress=progress
     ) as live:
         yield live
+
+
+# ----------------------------------------------------------------------------
+def check_settings(provider: type[Provider], config: Config) -> None:
+    """Refuse a setting the provider has no use for, rather than ignore it.
+
+    A connection flag the provider does not read would be a switch that
+    looks like it took effect and did not. So would ``disabled_extensions``
+    anywhere but a provider that declares ``extensions``, since it narrows
+    the extensions a provider emits. An ambient connection setting -- one
+    from the environment or the config file -- may serve another provider,
+    so only a flag is refused.
+    """
+    for name in CONNECTION_SETTINGS:
+        origin = config.sources.get(name)
+
+        if (
+            origin is not None
+            and origin.kind == FLAG
+            and name not in provider.capabilities.settings
+        ):
+            raise refuse(
+                provider.name,
+                f"take {origin.describe()}",
+                f"it does not read the {name!r} setting",
+            )
+
+    if config.disabled_extensions and not provider.capabilities.extensions:
+        origin = config.sources.get("disabled_extensions")
+        where = f" (from {origin.describe()})" if origin is not None else ""
+
+        raise refuse(
+            provider.name,
+            f"take disabled_extensions{where}",
+            "it does not declare the 'extensions' capability",
+        )
+
+
+# ----------------------------------------------------------------------------
+def capabilities_for(config: Config) -> ProviderCapabilities:
+    """What the provider ``config`` selects declares; needs no connection.
+
+    A front-end reads this to offer only what that provider can do.
+    """
+    return provider_for(config).capabilities
+
+
+# ----------------------------------------------------------------------------
+def check_move(config: Config) -> None:
+    """Refuse moving a rule under a provider without ``ordering``.
+
+    Needs no connection, so a front-end calls it before connecting;
+    :func:`plan_move` holds the same line for any other caller.
+    """
+    require_capability(provider_for(config), "ordering")
 
 
 # ----------------------------------------------------------------------------
@@ -237,8 +296,8 @@ class RulesReport:
 
 
 @dataclass(frozen=True)
-class SieveProbe:
-    """What the ManageSieve server says about itself."""
+class RulesProbe:
+    """What the rule half says about itself, and its rule sets."""
 
     capabilities: list[str]
     active: str | None
@@ -246,35 +305,18 @@ class SieveProbe:
 
 
 @dataclass(frozen=True)
-class ImapProbe:
-    """What the IMAP server says about itself."""
+class MailProbe:
+    """What the mail half says about itself, and its folder shape.
+
+    ``facts`` is what its advertised capabilities mean for mailctl, in the
+    provider's words.
+    """
 
     capabilities: list[str]
     delimiter: str
     folder_count: int
     unsubscribed: list[str] = field(default_factory=list)
-
-    # ------------------------------------------------------------------------
-    @property
-    def has_move(self) -> bool:
-        return "MOVE" in self.capabilities
-
-    # ------------------------------------------------------------------------
-    @property
-    def has_uidplus(self) -> bool:
-        return "UIDPLUS" in self.capabilities
-
-    # ------------------------------------------------------------------------
-    @property
-    def has_filter_sieve(self) -> bool:
-        """Whether Dovecot's ``imap_filter_sieve`` is enabled.
-
-        Detection only: mailctl has no FILTER=SIEVE code path.
-        """
-        return any(
-            item.upper().startswith("FILTER=SIEVE")
-            for item in self.capabilities
-        )
+    facts: list[Fact] = field(default_factory=list)
 
 
 # ----------------------------------------------------------------------------
@@ -322,25 +364,43 @@ def list_folders(provider: Provider) -> FolderListing:
 
 
 # ----------------------------------------------------------------------------
-def probe_sieve(provider: Provider) -> SieveProbe:
+def probe_rules(provider: Provider) -> RulesProbe:
     """Read what the rule half advertises, and its rule-set listing."""
     capabilities = provider.rules_capabilities()
     active, others = provider.list_rule_sets()
 
-    return SieveProbe(capabilities, active, others)
+    return RulesProbe(capabilities, active, others)
 
 
 # ----------------------------------------------------------------------------
-def probe_imap(provider: Provider) -> ImapProbe:
+def probe_mail(provider: Provider) -> MailProbe:
     """Read what the mail half advertises, and its folder shape."""
     listing = list_folders(provider)
+    capabilities = provider.mail_capabilities()
 
-    return ImapProbe(
-        provider.mail_capabilities(),
+    return MailProbe(
+        capabilities,
         listing.delimiter,
         len(listing.folders),
         listing.unsubscribed,
+        provider.mail_facts(capabilities),
     )
+
+
+# ----------------------------------------------------------------------------
+def wording(config: Config) -> Wording:
+    """The words the configured provider's host is described in.
+
+    Needs no connection. A front-end fills its report from this rather
+    than writing one host's names and policies into itself.
+    """
+    return provider_for(config).wording
+
+
+# ----------------------------------------------------------------------------
+def connection_facts(config: Config) -> list[Fact]:
+    """Where the configured provider connects, as ``config`` resolves it."""
+    return provider_for(config).connection_facts(config)
 
 
 # ############################################################################
@@ -350,7 +410,7 @@ def probe_imap(provider: Provider) -> ImapProbe:
 
 # ----------------------------------------------------------------------------
 def report_extensions(
-    provider: Provider, probe: SieveProbe, config: Config
+    provider: Provider, probe: RulesProbe, config: Config
 ) -> list[ExtensionState]:
     """One state per extension mailctl knows or the server lists, by name.
 
@@ -385,6 +445,24 @@ class SubscriptionPlan:
 
 
 # ----------------------------------------------------------------------------
+def case_variant_hint(variants: list[str]) -> str:
+    """A sentence naming a missing folder's case variants, or nothing.
+
+    For an error about a folder that is missing: the likeliest reason is
+    that the one meant is spelled with different case.
+    """
+    if not variants:
+        return ""
+
+    listed = ", ".join(repr(folder) for folder in variants)
+
+    return (
+        f"{listed} {'exists' if len(variants) == 1 else 'exist'}, but "
+        f"folder names are case-sensitive. "
+    )
+
+
+# ----------------------------------------------------------------------------
 def plan_subscription(
     provider: Provider, name: str, subscribe: bool
 ) -> SubscriptionPlan:
@@ -398,7 +476,7 @@ def plan_subscription(
     folder = provider.normalize(name)
     subscribed_now = provider.is_subscribed(folder)
 
-    hint = case_variant_hint(folder, provider.case_variants(folder))
+    hint = case_variant_hint(provider.case_variants(folder))
 
     if subscribe and not provider.exists(folder):
         raise MailctlError(
@@ -1030,6 +1108,23 @@ def check_rule(
 
 
 # ----------------------------------------------------------------------------
+def resolve_stop(
+    provider: Provider | type[Provider], spec: ActionSpec
+) -> ActionSpec:
+    """Settle a spec's ``stop`` default from the provider's capabilities.
+
+    None asks for the provider's default, which is to stop where it
+    declares ``stop``: a host that cannot end evaluation is not asked to,
+    so a rule nobody asked to stop is never refused for it. An explicit
+    True or False is left as it was.
+    """
+    if spec.stop is not None:
+        return spec
+
+    return replace(spec, stop=provider.capabilities.stop)
+
+
+# ----------------------------------------------------------------------------
 def default_rule_name(criteria: Criteria) -> str:
     """Derive a stable rule name from the first criterion."""
     term = criteria.terms[0]
@@ -1049,7 +1144,7 @@ class FolderPlan:
     """Where filed mail goes, and how that folder comes to exist.
 
     ``delimiter_assumed`` is true when there was no IMAP session to read
-    the delimiter from, so the Maildir++ heuristic was used instead.
+    the delimiter from, so the provider's assumed one was used instead.
 
     ``case_variants`` holds existing folders that differ from ``folder``
     only in case. Folder names are case-sensitive, so none of them is the
@@ -1119,8 +1214,7 @@ def plan_folder(
         return FolderPlan("", "", "", False, FOLDER_NONE, subscribe)
 
     if not mail:
-        assumed = delimiter or "."
-        folder = normalize_folder(requested, assumed, None)
+        folder, assumed = provider.assumed_folder(requested, delimiter)
 
     else:
         assumed = provider.delimiter()
@@ -1224,7 +1318,11 @@ def realize_folder(
 
 @dataclass(frozen=True)
 class RulePlan:
-    """A rule merged into the script, not yet uploaded."""
+    """A rule merged into the script, not yet uploaded.
+
+    ``actions`` are the provider's own and opaque here; ``summary`` is the
+    provider's rendering of them for a person to read.
+    """
 
     name: str
     script: str
@@ -1232,6 +1330,7 @@ class RulePlan:
     after: str
     criteria: Criteria
     actions: list
+    summary: str
     placement: Analysis
     diff: DisplayDiff
     folder: FolderPlan
@@ -1335,7 +1434,9 @@ def missing_extensions(
     provider: Provider, spec: ActionSpec, folder: FolderPlan
 ) -> list[str]:
     """Return the extensions the rule needs that the server does not list."""
-    needed = provider.required_features(spec, folder.folder, folder.use_create)
+    needed = provider.required_features(
+        resolve_stop(provider, spec), folder.folder, folder.use_create
+    )
 
     return provider.missing_features(needed)
 
@@ -1402,7 +1503,9 @@ def plan_rule(
     check_folder(folder)
 
     actions = provider.translate_actions(
-        request.actions, folder.folder, folder.use_create
+        resolve_stop(provider, request.actions),
+        folder.folder,
+        folder.use_create,
     )
     provider.check_actions(config, actions)
     name = request.name or default_rule_name(request.criteria)
@@ -1424,6 +1527,7 @@ def plan_rule(
         after=after,
         criteria=request.criteria,
         actions=actions,
+        summary=provider.describe_actions(actions),
         placement=placement_analysis(
             provider,
             before,

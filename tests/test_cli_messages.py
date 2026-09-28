@@ -20,7 +20,7 @@ import sys
 import pytest
 
 from mailctl import cli
-from mailctl.components.imap import MessageSummary
+from mailctl.engine import MessageSummary
 
 ESC = "\x1b"
 

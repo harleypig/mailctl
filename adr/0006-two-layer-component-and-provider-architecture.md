@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-09-27
-- Amended: 2026-09-27, at step 4 (see *Amendment*)
+- Amended: 2026-09-27, at step 4 and again for #99 (see *Amendment*)
 - Supersedes the open questions of [#26][i26]; recorded for epic [#92][i92].
 
 ## Context
@@ -356,6 +356,23 @@ That is why the `imap` session subscribes explicitly and re-reads `LSUB` to
 confirm it, for every server. It is also why `dovecot.py` carries no quirk
 yet.
 
+### The neutral model is layer 2's, and the offer is enforced (#99)
+
+Three readings, settled after step 4 ([#99][i99]):
+
+- **The neutral model is defined in the provider layer.** Step 4
+  re-exported the placement, diff, folder, and message records from the
+  components. They are now defined in `providers/model.py`, which, like
+  the interface, imports nothing from layer 1. A component keeps its own
+  records, and each provider translates.
+- **"The core offers only what the selected provider declares" hides,
+  and does not remove.** The CLI reads the provider first, then builds
+  its options from the capabilities. An option the provider does not
+  declare is left out of help and usage, but still parses, so it meets
+  the engine's refusal. The refusal is the backstop for every front-end.
+- **Connection settings are declared as capability data.** Each provider
+  names the connection settings it reads, and only those are offered.
+
 ## Based on
 
 - [#26][i26] — the provider interface's settled position, and the
@@ -388,6 +405,7 @@ yet.
 [i91]: https://github.com/harleypig/mailctl/issues/91
 [i92]: https://github.com/harleypig/mailctl/issues/92
 [i95]: https://github.com/harleypig/mailctl/issues/95
+[i99]: https://github.com/harleypig/mailctl/issues/99
 [pr98]: https://github.com/harleypig/mailctl/pull/98
 [src-sievelib]: https://github.com/tonioo/sievelib
 [src-imapclient]: https://github.com/mjs/imapclient

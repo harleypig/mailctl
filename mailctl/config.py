@@ -55,6 +55,18 @@ DEFAULT_PROVIDER = "mxroute"
 
 SIEVE_TLS_MODES = ("starttls", "ssl", "none")
 
+# The settings that say where and how a provider connects. Which of them a
+# provider reads is its own declaration (ProviderCapabilities.settings);
+# the rest -- the account, the password, where backups go -- every
+# provider reads.
+CONNECTION_SETTINGS = (
+    "host",
+    "imap_host",
+    "imap_port",
+    "sieve_port",
+    "sieve_tls",
+)
+
 # The one prefix an env file is read for. Anything else in the file belongs
 # to some other program sharing it, and is ignored rather than refused.
 ENV_PREFIX = "MAILCTL_"
@@ -246,9 +258,10 @@ class Config:
     source_folder: str = DEFAULT_SOURCE_FOLDER
     backup_dir: Path = field(default_factory=lambda: default_backup_dir())
 
-    # Sieve extensions mailctl must not emit, lower-cased, whatever the
-    # server advertises. Which names are known is the engine's to judge,
-    # since the engine owns what gets emitted; this only parses the list.
+    # Rule-language extensions mailctl must not emit, lower-cased, whatever
+    # the server advertises. The provider owns it: one that declares
+    # 'extensions' judges which names are known, and any other refuses the
+    # setting outright. This only parses the list.
     disabled_extensions: frozenset[str] = frozenset()
 
     # The three credential flags. argparse makes them mutually exclusive,

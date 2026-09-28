@@ -80,6 +80,9 @@ fixture required before anything writes to one is still outstanding
      round, `engine.py` and `cli.py` import no component, and the engine
      reaches a provider only through `providers.base` and
      `providers.registry`, with no provider's name in its code.
+     `providers/base.py` and `providers/model.py` import no component
+     either, and every model type is the neutral model's own class, not
+     one borrowed from layer 1 ([#99][i99]).
    - **Providers** (`test_providers.py`) — every registered provider
      implements or explicitly declines every operation of `Provider`, and
      declines exactly what its capabilities say. The `provider` setting
@@ -87,7 +90,15 @@ fixture required before anything writes to one is still outstanding
      anything connects. A fake second provider, registered for the test,
      is driven through the engine's representative operations and receives
      the same calls, in the same shape, as `mxroute`. A capability it
-     declines is refused before it is opened.
+     declines is refused before it is opened. `mxroute` hands back the
+     neutral records, never its components'. Fakes without a capability
+     pin what that removes ([#99][i99]): without `stop` a default rule
+     still plans; without `ordering` the placement flags and `move-rule`
+     are not offered in help and are refused by name if given; without
+     `extensions` `disabled_extensions` is refused; a connection flag the
+     provider does not read is hidden and refused; and `add` and `test`
+     under a fake carry its own wording, with nothing about Sieve or
+     MXroute. `mxroute`'s help hides nothing but the always-hidden flags.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
@@ -147,3 +158,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
+[i99]: https://github.com/harleypig/mailctl/issues/99

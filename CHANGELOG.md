@@ -4,6 +4,17 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+NOTES:
+
+* **The provider layer no longer assumes Sieve on MXroute** ([#99]). The
+  records the engine speaks are the provider layer's own rather than the
+  Sieve and IMAP libraries'. What `mailctl test`, a diff heading, and a
+  rule summary say about the host now comes from the provider. A rule's
+  `stop` default follows what the provider can do. Help offers only the
+  options the selected provider supports, and `disabled_extensions` is
+  accepted only by a provider that has extensions. For MXroute nothing
+  changes: every command prints, accepts, and helps exactly as before.
+
 ## 0.7.1
 
 NOTES:
@@ -651,4 +662,5 @@ NOTES:
 [#91]: https://github.com/harleypig/mailctl/issues/91
 [#92]: https://github.com/harleypig/mailctl/issues/92
 [#106]: https://github.com/harleypig/mailctl/issues/106
+[#99]: https://github.com/harleypig/mailctl/issues/99
 [ADR 0006]: adr/0006-two-layer-component-and-provider-architecture.md
