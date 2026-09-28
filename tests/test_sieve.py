@@ -19,20 +19,21 @@ from mailctl.components.managesieve import (
     PLACE_FIRST,
     PLACE_LAST,
     Placement,
-    backup_script,
+    backup_path,
     rule_names,
     script_diff,
 )
 from mailctl.components.managesieve import script as script_module
 from mailctl.config import Config, load_config
 from mailctl.criteria import Criteria, escape_sieve_string
-from mailctl.providers.mxroute import sieve as mxroute_sieve
+from mailctl.providers.mxroute import managesieve as mxroute_managesieve
 from mailctl.providers.mxroute.sieve import (
     merge_rule,
     parse_script,
     remove_rule,
     render_script,
 )
+from mailctl.utilities.backup_files import write_backup
 
 # ############################################################################
 # Helpers
@@ -1125,7 +1126,7 @@ def test_backup_writes_the_exact_bytes_the_server_had(tmp_path):
     """Restoring must not need mailctl, so the file is a plain copy."""
     text = 'require ["fileinto"];\n# untouched\n'
 
-    target = backup_script(text, "roundcube", tmp_path / "backups")
+    target = write_backup(text, backup_path("roundcube", tmp_path / "backups"))
 
     assert target.parent == tmp_path / "backups"
     assert target.name.startswith("roundcube-")
@@ -1136,7 +1137,9 @@ def test_backup_writes_the_exact_bytes_the_server_had(tmp_path):
 # ----------------------------------------------------------------------------
 def test_backup_sanitizes_a_script_name_with_path_separators(tmp_path):
     """A server-supplied script name must not be able to escape the dir."""
-    target = backup_script("x", "../../etc/passwd", tmp_path / "backups")
+    target = write_backup(
+        "x", backup_path("../../etc/passwd", tmp_path / "backups")
+    )
 
     assert target.parent == tmp_path / "backups"
     assert "/" not in target.name
@@ -1153,7 +1156,7 @@ def test_backup_failure_raises_rather_than_losing_the_upload_guard(tmp_path):
     blocker.write_text("not a directory")
 
     with pytest.raises(MailctlError, match="could not write backup"):
-        backup_script("x", "active", blocker / "backups")
+        write_backup("x", backup_path("active", blocker / "backups"))
 
 
 # ############################################################################
@@ -1164,7 +1167,9 @@ def test_backup_failure_raises_rather_than_losing_the_upload_guard(tmp_path):
 # ----------------------------------------------------------------------------
 def test_the_hint_calls_the_port_the_default_only_when_it_is():
     """4190 + starttls from the built-in default is described as such."""
-    hint = mxroute_sieve._connection_hint(load_config(argparse.Namespace()))
+    hint = mxroute_managesieve._connection_hint(
+        load_config(argparse.Namespace())
+    )
 
     assert "4190 + starttls is the RFC 5804 / Dovecot default" in hint
 
@@ -1173,7 +1178,7 @@ def test_the_hint_calls_the_port_the_default_only_when_it_is():
 def test_the_hint_names_where_a_typed_port_and_mode_came_from():
     """#55: typed values were reported as "the RFC 5804 / Dovecot default"."""
     config = load_config(argparse.Namespace(sieve_port=1, sieve_tls="none"))
-    hint = mxroute_sieve._connection_hint(config)
+    hint = mxroute_managesieve._connection_hint(config)
 
     assert "is the RFC 5804 / Dovecot default" not in hint
     assert "port 1 (flag --sieve-port)" in hint
@@ -1184,7 +1189,7 @@ def test_the_hint_names_where_a_typed_port_and_mode_came_from():
 # ----------------------------------------------------------------------------
 def test_the_hint_does_not_guess_for_a_config_built_by_hand():
     """No recorded source is not the same as a default one."""
-    hint = mxroute_sieve._connection_hint(
+    hint = mxroute_managesieve._connection_hint(
         Config(sieve_port=1, sieve_tls="none")
     )
 

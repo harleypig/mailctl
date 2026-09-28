@@ -6,10 +6,11 @@ over a session is in the ``test_utilities_*`` files.
 """
 
 import pytest
+from utilities_support import mxroute
 
 from mailctl import MailctlError, engine, utilities
 from mailctl.components.managesieve import client as sieve_client
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.providers.mxroute import MXROUTE, MxrouteTransport
 
 # ############################################################################
 # connect
@@ -33,9 +34,11 @@ def test_connect_opens_only_what_was_asked_for_and_tags_progress(
         mail=True,
         progress=lambda channel, message: seen.append(channel),
     ) as live:
-        assert isinstance(live, MxrouteProvider)
-        assert live.sieve is None
-        assert live.imap is not None
+        assert isinstance(live, engine.Session)
+        assert live.provider is MXROUTE
+        assert isinstance(live.transport, MxrouteTransport)
+        assert live.transport.sieve is None
+        assert live.transport.imap is not None
 
     assert opened == []
     assert seen and set(seen) == {"imap"}
@@ -45,7 +48,7 @@ def test_connect_opens_only_what_was_asked_for_and_tags_progress(
 # ----------------------------------------------------------------------------
 def test_an_operation_without_its_session_raises_rather_than_crashing():
     with pytest.raises(MailctlError, match="no ManageSieve session"):
-        utilities.scripts.list_scripts(MxrouteProvider())
+        utilities.scripts.list_scripts(mxroute())
 
     with pytest.raises(MailctlError, match="no IMAP session"):
-        utilities.folders.list_folders(MxrouteProvider())
+        utilities.folders.list_folders(mxroute())

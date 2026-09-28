@@ -10,12 +10,12 @@ conftest, so folder normalization and planning run for real.
 """
 
 import pytest
-from utilities_support import FakeSieveSession, criteria
+from utilities_support import FakeSieveSession, criteria, mxroute
 
 from mailctl import MailctlError, utilities
 from mailctl.components.managesieve import rule_names
 from mailctl.config import Config
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.providers.mxroute import MxrouteDialect
 from mailctl.providers.mxroute.sieve import (
     merge_rule,
     parse_script,
@@ -73,13 +73,13 @@ def test_nothing_refused_when_nothing_refused_was_asked_for():
 def test_required_extensions_follow_the_actions():
     spec = ActionSpec(fileinto="Lists", flags=("\\Seen",))
 
-    assert MxrouteProvider.required_features(spec, "INBOX.Lists", True) == {
+    assert MxrouteDialect.required_features(spec, "INBOX.Lists", True) == {
         "fileinto",
         "imap4flags",
         "mailbox",
     }
     assert (
-        MxrouteProvider.required_features(ActionSpec(discard=True), "", False)
+        MxrouteDialect.required_features(ActionSpec(discard=True), "", False)
         == set()
     )
 
@@ -88,7 +88,7 @@ def test_required_extensions_follow_the_actions():
 def test_a_default_folder_needs_fileinto_like_an_explicit_one(imap_config):
     """The folder can come from config; the rule still files into it."""
     imap_config.default_folder = "Lists"
-    live = MxrouteProvider(sieve=FakeSieveSession(caps=["imap4flags"]))
+    live = mxroute(sieve=FakeSieveSession(caps=["imap4flags"]))
 
     folder = utilities.folders.plan_folder(live, imap_config, None)
 
@@ -182,7 +182,7 @@ def test_plan_rule_merges_without_touching_the_server(
 def test_on_an_empty_account_the_default_script_name_is_used(
     imap_session, imap_config
 ):
-    live = MxrouteProvider(FakeSieveSession(active=None), imap_session)
+    live = mxroute(FakeSieveSession(active=None), imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = utilities.rules.plan_rule(
@@ -203,7 +203,7 @@ def test_an_inactive_old_name_script_is_reused_not_duplicated(
     sieve = FakeSieveSession(
         script="# rule:[old]\n", active=None, others=["mxfilter"]
     )
-    live = MxrouteProvider(sieve, imap_session)
+    live = mxroute(sieve, imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = utilities.rules.plan_rule(
@@ -219,7 +219,7 @@ def test_an_inactive_old_name_script_is_reused_not_duplicated(
 def test_an_active_old_name_script_stays_the_one_edited(
     imap_session, imap_config
 ):
-    live = MxrouteProvider(FakeSieveSession(active="mxfilter"), imap_session)
+    live = mxroute(FakeSieveSession(active="mxfilter"), imap_session)
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = utilities.rules.plan_rule(
@@ -275,7 +275,7 @@ def test_the_plan_judges_the_rule_where_it_will_land(sessions, imap_config):
 
 # ----------------------------------------------------------------------------
 def test_missing_extensions_are_read_from_the_server(imap_config):
-    live = MxrouteProvider(sieve=FakeSieveSession(caps=["fileinto"]))
+    live = mxroute(sieve=FakeSieveSession(caps=["fileinto"]))
     spec = ActionSpec(fileinto="Lists", flags=("\\Seen",))
 
     folder = utilities.folders.plan_folder(live, imap_config, "Lists")
@@ -356,7 +356,7 @@ def test_removing_from_an_empty_script_or_an_unknown_rule_is_refused(
     with pytest.raises(MailctlError, match="no rule named"):
         utilities.rules.plan_removal(sessions, "phantom")
 
-    empty = MxrouteProvider(sieve=FakeSieveSession(script=""))
+    empty = mxroute(sieve=FakeSieveSession(script=""))
 
     with pytest.raises(MailctlError, match="is empty"):
         utilities.rules.plan_removal(empty, "keep-boss")
@@ -389,7 +389,7 @@ def test_editing_another_script_leaves_the_active_one_running(
 ):
     imap_config.backup_dir = tmp_path
     fake = FakeSieveSession(script=roundcube_script, others=["spare"])
-    live = MxrouteProvider(sieve=fake)
+    live = mxroute(sieve=fake)
 
     plan = utilities.rules.plan_removal(live, "keep-boss", script="spare")
 
@@ -418,7 +418,7 @@ def test_activate_switches_the_running_script_when_asked(
 ):
     imap_config.backup_dir = tmp_path
     fake = FakeSieveSession(script=roundcube_script, others=["spare"])
-    live = MxrouteProvider(sieve=fake, imap=imap_session)
+    live = mxroute(sieve=fake, imap=imap_session)
 
     if kind == "rule":
         request = RuleRequest(
@@ -457,7 +457,7 @@ def test_with_no_active_script_the_edited_one_is_activated(
     sessions, imap_config, tmp_path
 ):
     imap_config.backup_dir = tmp_path
-    sessions.sieve.active = None
+    sessions.transport.sieve.active = None
     request = RuleRequest(criteria(), ActionSpec(fileinto="Lists"))
 
     plan = utilities.rules.plan_rule(
@@ -466,7 +466,7 @@ def test_with_no_active_script_the_edited_one_is_activated(
 
     assert plan.activate
     utilities.rules.execute_script_change(sessions, imap_config, plan)
-    assert sessions.sieve.calls[-1] == ("set_active", plan.script)
+    assert sessions.transport.sieve.calls[-1] == ("set_active", plan.script)
 
 
 # ############################################################################
@@ -492,11 +492,11 @@ def test_a_move_changes_the_order_and_nothing_else(
 
     before = {
         r.name: (r.tests, r.actions)
-        for r in MxrouteProvider.read_rules(plan.before)
+        for r in MxrouteDialect.read_rules(plan.before)
     }
     after = {
         r.name: (r.tests, r.actions)
-        for r in MxrouteProvider.read_rules(plan.after)
+        for r in MxrouteDialect.read_rules(plan.after)
     }
 
     assert before == after
@@ -514,7 +514,7 @@ def test_moving_a_broad_rule_first_reports_what_it_starves(imap_config):
         'if header :contains "to" "@lists.example.com" '
         '{ fileinto "L"; stop; }\n'
     )
-    live = MxrouteProvider(sieve=FakeSieveSession(script=script))
+    live = mxroute(sieve=FakeSieveSession(script=script))
 
     plan = utilities.rules.plan_move(live, "all-lists", Placement(PLACE_FIRST))
 

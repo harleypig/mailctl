@@ -1,9 +1,10 @@
 """The session: the configured provider, chosen, checked, opened, closed.
 
 ``connect`` resolves which provider ``config`` selects, refuses a setting
-it has no use for, lets it validate the rest, and opens the halves a
-command needs -- all before any work is done, so a bad configuration
-costs no connection. The work itself is in ``mailctl.utilities``.
+it has no use for, lets its dialect validate the rest, and opens the
+halves of its transport a command needs -- all before any work is done, so
+a bad configuration costs no connection. It yields a :class:`Session`, and
+the work itself is in ``mailctl.utilities``.
 
 The session never touches a protocol. It works against one ``Provider``
 (``mailctl.providers.base``), chosen by the ``provider`` setting, and never
@@ -12,10 +13,69 @@ asks which provider it has.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from .config import CONNECTION_SETTINGS, FLAG, Config
-from .providers.base import Progress, Provider, ProviderCapabilities, refuse
+from .providers.base import (
+    Dialect,
+    Progress,
+    Provider,
+    ProviderCapabilities,
+    Transport,
+    Wording,
+    refuse,
+)
 from .providers.registry import provider_for
+
+# ############################################################################
+# The session
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class Session:
+    """One provider, opened: its offline dialect and its live transport.
+
+    What a utility works against. The dialect, the name, and the
+    capabilities are the provider's, so a utility that needs no connection
+    takes the ``Provider`` itself instead and reads the same attributes.
+    """
+
+    provider: Provider
+    transport: Transport
+
+    # ------------------------------------------------------------------------
+    @property
+    def name(self) -> str:
+        return self.provider.name
+
+    # ------------------------------------------------------------------------
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        return self.provider.capabilities
+
+    # ------------------------------------------------------------------------
+    @property
+    def dialect(self) -> type[Dialect]:
+        return self.provider.dialect
+
+    # ------------------------------------------------------------------------
+    @property
+    def wording(self) -> Wording:
+        return self.provider.wording
+
+    # ------------------------------------------------------------------------
+    @property
+    def has_rules(self) -> bool:
+        """Whether the transport's rule half is connected."""
+        return self.transport.has_rules
+
+    # ------------------------------------------------------------------------
+    @property
+    def has_mail(self) -> bool:
+        """Whether the transport's mail half is connected."""
+        return self.transport.has_mail
+
 
 # ############################################################################
 # The provider
@@ -30,7 +90,7 @@ def connect(
     rules: bool = True,
     mail: bool = False,
     progress: Progress | None = None,
-) -> Iterator[Provider]:
+) -> Iterator[Session]:
     """Open the requested halves of the configured provider, then close them.
 
     ``rules`` is the half that stores rules, ``mail`` the half that holds
@@ -39,16 +99,16 @@ def connect(
     """
     provider = provider_for(config)
     check_settings(provider, config)
-    provider.validate(config)
+    provider.dialect.validate(config)
 
-    with provider.open(
+    with provider.transport.open(
         config, rules=rules, mail=mail, progress=progress
-    ) as live:
-        yield live
+    ) as transport:
+        yield Session(provider, transport)
 
 
 # ----------------------------------------------------------------------------
-def check_settings(provider: type[Provider], config: Config) -> None:
+def check_settings(provider: Provider, config: Config) -> None:
     """Refuse a setting the provider has no use for, rather than ignore it.
 
     A connection flag the provider does not read would be a switch that

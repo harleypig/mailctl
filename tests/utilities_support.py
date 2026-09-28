@@ -6,6 +6,8 @@ Not a test module. The fixtures built on these -- ``fake_sieve`` and
 
 from mailctl import MailctlError
 from mailctl.criteria import Criteria
+from mailctl.engine import Session
+from mailctl.providers.mxroute import MXROUTE, MxrouteTransport
 
 FULL = ["fileinto", "imap4flags", "mailbox"]
 NO_MAILBOX = ["fileinto", "imap4flags"]
@@ -36,10 +38,6 @@ class FakeSieveSession:
     # ------------------------------------------------------------------------
     def capabilities(self):
         return list(self.caps)
-
-    # ------------------------------------------------------------------------
-    def missing_extensions(self, required):
-        return sorted(name for name in required if name not in self.caps)
 
     # ------------------------------------------------------------------------
     def list_scripts(self):
@@ -81,3 +79,12 @@ def criteria(header="From", value="noreply@github.com") -> Criteria:
     built.add(header, value)
 
     return built
+
+
+# ----------------------------------------------------------------------------
+def mxroute(sieve=None, imap=None) -> Session:
+    """An ``mxroute`` session over two layer-1 sessions or stand-ins.
+
+    Either may be None, for a half that was not opened.
+    """
+    return Session(MXROUTE, MxrouteTransport(sieve=sieve, imap=imap))

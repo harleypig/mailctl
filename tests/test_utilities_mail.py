@@ -167,7 +167,7 @@ def test_a_missing_header_is_reported_as_skipped_not_raised():
 def test_the_mail_pass_creates_its_folder_once_and_only_on_execute(
     sessions, imap_config, mailbox
 ):
-    sessions.sieve = None
+    sessions.transport.sieve = None
     folder = utilities.folders.plan_folder(
         sessions, imap_config, "New", create=True
     )

@@ -11,11 +11,11 @@ from dataclasses import dataclass, field
 
 from .. import MailctlError
 from ..criteria import Criteria
+from ..engine import Session
 from ..providers.base import (
     ActionSpec,
     MailActionPlan,
     MailActionResult,
-    Provider,
     decode_header_value,
     same_folder,
 )
@@ -56,19 +56,19 @@ def mail_pass_is_noop(spec: ActionSpec, source: str, destination: str) -> bool:
 
 
 # ----------------------------------------------------------------------------
-def source_folder(provider: Provider, name: str) -> str:
+def source_folder(session: Session, name: str) -> str:
     """Normalize the folder the existing-mail pass reads from.
 
     The same normalization the target gets, so ``--folder Lists/X`` and
     ``--fileinto Lists/X`` are recognised as one folder, and the search
     selects the server's real name for it.
     """
-    return provider.normalize(name)
+    return session.transport.normalize(name)
 
 
 # ----------------------------------------------------------------------------
 def plan_mail(
-    provider: Provider,
+    session: Session,
     criteria: Criteria,
     spec: ActionSpec,
     source: str,
@@ -81,7 +81,7 @@ def plan_mail(
     """
     criteria.require_terms()
 
-    return provider.select_mail(
+    return session.transport.select_mail(
         criteria, source, destination, list(spec.flags), spec.discard
     )
 
@@ -112,7 +112,7 @@ def check_message_cap(plan: MailActionPlan, max_messages: int) -> None:
 
 # ----------------------------------------------------------------------------
 def execute_mail(
-    provider: Provider,
+    session: Session,
     plan: MailActionPlan,
     max_messages: int = DEFAULT_MAX_MESSAGES,
     folder: FolderPlan | None = None,
@@ -126,9 +126,9 @@ def execute_mail(
     check_message_cap(plan, max_messages)
 
     if folder is not None:
-        realize_folder(provider, folder, on_event)
+        realize_folder(session, folder, on_event)
 
-    return provider.apply_mail(plan)
+    return session.transport.apply_mail(plan)
 
 
 # ############################################################################
@@ -160,7 +160,7 @@ class DerivedCriteria:
 
 # ----------------------------------------------------------------------------
 def pick_message(
-    provider: Provider,
+    session: Session,
     folder: str,
     uid: int | None = None,
     search: str | None = None,
@@ -169,7 +169,7 @@ def pick_message(
     candidates = 1
 
     if uid is None:
-        uids = provider.search_messages(folder, search or "")
+        uids = session.transport.search_messages(folder, search or "")
 
         if not uids:
             raise MailctlError(f"no message in {folder!r} matched {search!r}")
@@ -177,7 +177,7 @@ def pick_message(
         candidates = len(uids)
         uid = max(uids)
 
-    headers = provider.message_headers(folder, uid)
+    headers = session.transport.message_headers(folder, uid)
 
     return PickedMessage(uid, folder, headers, candidates)
 

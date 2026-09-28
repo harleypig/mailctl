@@ -15,6 +15,7 @@ from pathlib import Path
 from .. import MailctlError
 from ..config import Config
 from ..criteria import Criteria
+from ..engine import Session
 
 # The PLACE_* names are re-exported (``X as X``): a front-end builds and
 # renders the neutral model through the utilities alone, never importing a
@@ -92,7 +93,7 @@ def check_move(config: Config) -> None:
 
 
 # ----------------------------------------------------------------------------
-def require_capability(provider: Provider | type[Provider], name: str) -> None:
+def require_capability(provider: Provider | Session, name: str) -> None:
     """Refuse work needing a capability the provider does not declare."""
     if getattr(provider.capabilities, name):
         return
@@ -127,13 +128,13 @@ class RulesReport:
 
 
 # ----------------------------------------------------------------------------
-def read_rules(provider: Provider, script: str | None = None) -> RulesReport:
+def read_rules(session: Session, script: str | None = None) -> RulesReport:
     """Read a script's rules and audit their order.
 
     The audit is about order, so a provider that does not declare
     ``ordering`` has nothing for it to find.
     """
-    name = script or provider.active_rule_set()
+    name = script or session.transport.active_rule_set()
 
     if not name:
         raise MailctlError(
@@ -141,8 +142,8 @@ def read_rules(provider: Provider, script: str | None = None) -> RulesReport:
             "show. 'mailctl list' shows what the account has."
         )
 
-    rules = provider.read_rules(provider.read_rule_set(name))
-    findings = audit(rules) if provider.capabilities.ordering else []
+    rules = session.dialect.read_rules(session.transport.read_rule_set(name))
+    findings = audit(rules) if session.capabilities.ordering else []
 
     return RulesReport(name, rules, findings)
 
@@ -158,14 +159,14 @@ def reject_actions(config: Config, requested: Iterable[str]) -> None:
 
     Needs no connection, so a front-end calls it before connecting.
     """
-    provider_for(config).refuse_actions(requested)
+    provider_for(config).dialect.refuse_actions(requested)
 
 
 # ----------------------------------------------------------------------------
 def check_rule(
     config: Config,
     request: RuleRequest,
-    provider: Provider | type[Provider] | None = None,
+    provider: Provider | Session | None = None,
 ) -> None:
     """Refuse a rule the provider cannot express, before any network work.
 
@@ -199,9 +200,7 @@ def check_rule(
 
 
 # ----------------------------------------------------------------------------
-def resolve_stop(
-    provider: Provider | type[Provider], spec: ActionSpec
-) -> ActionSpec:
+def resolve_stop(provider: Provider | Session, spec: ActionSpec) -> ActionSpec:
     """Settle a spec's ``stop`` default from the provider's capabilities.
 
     None asks for the provider's default, which is to stop where it
@@ -302,19 +301,21 @@ class MovePlan:
 
 # ----------------------------------------------------------------------------
 def missing_extensions(
-    provider: Provider, spec: ActionSpec, folder: FolderPlan
+    session: Session, spec: ActionSpec, folder: FolderPlan
 ) -> list[str]:
     """Return the extensions the rule needs that the server does not list."""
-    needed = provider.required_features(
-        resolve_stop(provider, spec), folder.folder, folder.use_create
+    needed = session.dialect.required_features(
+        resolve_stop(session, spec), folder.folder, folder.use_create
     )
 
-    return provider.missing_features(needed)
+    return session.dialect.missing_features(
+        needed, session.transport.rules_capabilities()
+    )
 
 
 # ----------------------------------------------------------------------------
 def placement_analysis(
-    provider: Provider | type[Provider],
+    provider: Provider | Session,
     before: str,
     name: str,
     criteria: Criteria,
@@ -334,10 +335,11 @@ def placement_analysis(
     if not provider.capabilities.ordering:
         return Analysis()
 
-    present = provider.read_rules(before)
+    dialect = provider.dialect
+    present = dialect.read_rules(before)
     rules = [entry for entry in present if entry.name != name]
 
-    candidate = provider.candidate_rule(name, criteria, actions)
+    candidate = dialect.candidate_rule(name, criteria, actions)
 
     # Resolved against every name in the script, including the one being
     # replaced -- that is how "no placement, so leave it where it is" finds
@@ -346,7 +348,7 @@ def placement_analysis(
     # NOT rule_from_criteria's index=-1 default: analyze_placement clamps
     # with max(0, at_index), so a -1 here would mean the FRONT of the
     # script rather than the end of it.
-    at_index = provider.position(
+    at_index = dialect.position(
         [entry.name for entry in present], placement, name
     )
 
@@ -355,7 +357,7 @@ def placement_analysis(
 
 # ----------------------------------------------------------------------------
 def plan_rule(
-    provider: Provider,
+    session: Session,
     config: Config,
     request: RuleRequest,
     folder: FolderPlan,
@@ -369,20 +371,21 @@ def plan_rule(
     ``disabled_extensions`` is refused; the one with a fallback,
     ``mailbox``, was already dropped by :func:`plan_folder`.
     """
-    check_rule(config, request, provider)
+    check_rule(config, request, session)
     request.criteria.require_terms()
     check_folder(folder)
 
-    actions = provider.translate_actions(
-        resolve_stop(provider, request.actions),
+    dialect = session.dialect
+    actions = dialect.translate_actions(
+        resolve_stop(session, request.actions),
         folder.folder,
         folder.use_create,
     )
-    provider.check_actions(config, actions)
+    dialect.check_actions(config, actions)
     name = request.name or default_rule_name(request.criteria)
-    script, before, active = fetch_active(provider, request.script)
+    script, before, active = fetch_active(session, request.script)
 
-    after = provider.add_rule(
+    after = dialect.add_rule(
         before,
         name,
         request.criteria,
@@ -398,16 +401,16 @@ def plan_rule(
         after=after,
         criteria=request.criteria,
         actions=actions,
-        summary=provider.describe_actions(actions),
+        summary=dialect.describe_actions(actions),
         placement=placement_analysis(
-            provider,
+            session,
             before,
             name,
             request.criteria,
             actions,
             request.placement,
         ),
-        diff=provider.diff(before, after, script),
+        diff=dialect.diff(before, after, script),
         folder=folder,
         active=active,
         activate=activates(script, active, request.activate),
@@ -416,25 +419,25 @@ def plan_rule(
 
 # ----------------------------------------------------------------------------
 def plan_removal(
-    provider: Provider,
+    session: Session,
     rule: str,
     script: str | None = None,
     activate: bool = False,
 ) -> RemovalPlan:
     """Take a named rule out of the script without uploading the result."""
-    name, before, active = fetch_active(provider, script)
+    name, before, active = fetch_active(session, script)
 
     if not before.strip():
         raise MailctlError(f"script {name!r} is empty")
 
-    after = provider.remove_rule(before, rule)
+    after = session.dialect.remove_rule(before, rule)
 
     return RemovalPlan(
         rule,
         name,
         before,
         after,
-        provider.diff(before, after, name),
+        session.dialect.diff(before, after, name),
         active,
         activates(name, active, activate),
     )
@@ -442,7 +445,7 @@ def plan_removal(
 
 # ----------------------------------------------------------------------------
 def plan_move(
-    provider: Provider,
+    session: Session,
     rule: str,
     placement: Placement,
     script: str | None = None,
@@ -453,19 +456,20 @@ def plan_move(
     Refused, before the script is read, by a provider that does not
     declare ``ordering``.
     """
-    require_capability(provider, "ordering")
+    require_capability(session, "ordering")
 
-    name, before, active = fetch_active(provider, script)
+    name, before, active = fetch_active(session, script)
 
     if not before.strip():
         raise MailctlError(f"script {name!r} is empty")
 
-    after = provider.move_rule(before, rule, placement)
+    dialect = session.dialect
+    after = dialect.move_rule(before, rule, placement)
 
-    present = provider.read_rules(before)
+    present = dialect.read_rules(before)
     names = [entry.name for entry in present]
     from_index = names.index(rule)
-    to_index = provider.position(names, placement, rule)
+    to_index = dialect.position(names, placement, rule)
 
     candidate = present[from_index]
     others = present[:from_index] + present[from_index + 1 :]
@@ -479,7 +483,7 @@ def plan_move(
         to_index=to_index,
         count=len(present),
         placement=analyze_placement(others, candidate, at_index=to_index),
-        diff=provider.diff(before, after, name),
+        diff=dialect.diff(before, after, name),
         active=active,
         activate=activates(name, active, activate),
     )
@@ -487,7 +491,7 @@ def plan_move(
 
 # ----------------------------------------------------------------------------
 def execute_script_change(
-    provider: Provider,
+    session: Session,
     config: Config,
     plan: RulePlan | RemovalPlan | MovePlan,
     on_event: EventSink | None = None,
@@ -502,14 +506,14 @@ def execute_script_change(
     before_put = None
 
     if isinstance(plan, RulePlan):
-        provider.check_actions(config, plan.actions)
+        session.dialect.check_actions(config, plan.actions)
         folder = plan.folder
 
         def before_put():
-            realize_folder(provider, folder, on_event)
+            realize_folder(session, folder, on_event)
 
     return upload_script(
-        provider,
+        session,
         config,
         plan.script,
         plan.before,

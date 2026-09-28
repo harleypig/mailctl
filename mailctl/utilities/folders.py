@@ -8,7 +8,8 @@ from dataclasses import dataclass
 
 from .. import MailctlError
 from ..config import Config, Source
-from ..providers.base import FolderCreation, FolderListing, Provider
+from ..engine import Session
+from ..providers.base import FolderCreation, FolderListing
 from .events import EventSink, FolderCreated
 
 # Folder plan outcomes.
@@ -27,9 +28,9 @@ FOLDER_UNCREATABLE = "uncreatable"
 
 
 # ----------------------------------------------------------------------------
-def list_folders(provider: Provider) -> FolderListing:
+def list_folders(session: Session) -> FolderListing:
     """Return the folder list, sorted, with the delimiter."""
-    return provider.list_folders()
+    return session.transport.list_folders()
 
 
 # ############################################################################
@@ -74,7 +75,7 @@ def case_variant_hint(variants: list[str]) -> str:
 
 # ----------------------------------------------------------------------------
 def plan_subscription(
-    provider: Provider, name: str, subscribe: bool
+    session: Session, name: str, subscribe: bool
 ) -> SubscriptionPlan:
     """Work out a subscription change without making it.
 
@@ -83,43 +84,44 @@ def plan_subscription(
     unsubscribing does not, since a subscription can outlive its folder and
     removing that stale entry is a legitimate thing to want.
     """
-    folder = provider.normalize(name)
-    subscribed_now = provider.is_subscribed(folder)
+    transport = session.transport
+    folder = transport.normalize(name)
+    subscribed_now = transport.is_subscribed(folder)
 
-    hint = case_variant_hint(provider.case_variants(folder))
+    hint = case_variant_hint(transport.case_variants(folder))
 
-    if subscribe and not provider.exists(folder):
+    if subscribe and not transport.exists(folder):
         raise MailctlError(
             f"no folder named {folder!r} on the server, so there is nothing "
             f"to subscribe to. {hint}'mailctl folders' lists what exists."
         )
 
-    if not subscribe and not subscribed_now and not provider.exists(folder):
+    if not subscribe and not subscribed_now and not transport.exists(folder):
         raise MailctlError(
             f"no folder or subscription named {folder!r} on the server. "
             f"{hint}'mailctl folders' lists what exists."
         )
 
     return SubscriptionPlan(
-        name, folder, provider.delimiter(), subscribe, subscribed_now
+        name, folder, transport.delimiter(), subscribe, subscribed_now
     )
 
 
 # ----------------------------------------------------------------------------
-def execute_subscription(provider: Provider, plan: SubscriptionPlan) -> None:
+def execute_subscription(session: Session, plan: SubscriptionPlan) -> None:
     """Apply a subscription plan; a plan that changes nothing does nothing.
 
-    The provider confirms a subscription took effect, so a server that
+    The transport confirms a subscription took effect, so a server that
     answers OK without acting on it raises here.
     """
     if not plan.changes:
         return
 
     if plan.subscribe:
-        provider.subscribe(plan.folder)
+        session.transport.subscribe(plan.folder)
 
     else:
-        provider.unsubscribe(plan.folder)
+        session.transport.unsubscribe(plan.folder)
 
 
 # ############################################################################
@@ -168,7 +170,7 @@ class FolderPlan:
 
 # ----------------------------------------------------------------------------
 def plan_folder(
-    provider: Provider,
+    session: Session,
     config: Config,
     requested: str | None,
     *,
@@ -196,17 +198,18 @@ def plan_folder(
     folder.
     """
     requested = requested or config.default_folder or ""
-    mail = provider.has_mail
+    transport = session.transport
+    mail = transport.has_mail
 
     if not requested:
         return FolderPlan("", "", "", False, FOLDER_NONE, subscribe)
 
     if not mail:
-        folder, assumed = provider.assumed_folder(requested, delimiter)
+        folder, assumed = session.dialect.assumed_folder(requested, delimiter)
 
     else:
-        assumed = provider.delimiter()
-        folder = provider.normalize(requested)
+        assumed = transport.delimiter()
+        folder = transport.normalize(requested)
 
     shape = {
         "requested": requested,
@@ -216,13 +219,16 @@ def plan_folder(
         "subscribe": subscribe,
     }
 
-    if mail and provider.exists(folder):
+    if mail and transport.exists(folder):
         return FolderPlan(status=FOLDER_EXISTS, **shape)
 
     if mail:
-        shape["case_variants"] = tuple(provider.case_variants(folder))
+        shape["case_variants"] = tuple(transport.case_variants(folder))
 
-    delivery = provider.delivery_create(config)
+    delivery = session.dialect.delivery_create(
+        config,
+        transport.rules_capabilities() if transport.has_rules else None,
+    )
     has_mailbox = delivery.usable
 
     if delivery.disabled_by is not None:
@@ -261,7 +267,7 @@ def check_folder(plan: FolderPlan) -> None:
 
 
 # ----------------------------------------------------------------------------
-def create_folder(provider: Provider, plan: FolderPlan) -> FolderCreation:
+def create_folder(session: Session, plan: FolderPlan) -> FolderCreation:
     """Create the planned folder over IMAP, subscribing unless declined."""
     if not plan.imap_creates:
         raise MailctlError(
@@ -269,18 +275,20 @@ def create_folder(provider: Provider, plan: FolderPlan) -> FolderCreation:
             f"({plan.status})"
         )
 
-    return provider.create_folder(plan.folder, subscribe=plan.subscribe)
+    return session.transport.create_folder(
+        plan.folder, subscribe=plan.subscribe
+    )
 
 
 # ----------------------------------------------------------------------------
-def folder_pending(provider: Provider, plan: FolderPlan) -> bool:
+def folder_pending(session: Session, plan: FolderPlan) -> bool:
     """Whether a folder planned for IMAP creation has not been made yet."""
-    return plan.imap_creates and not provider.exists(plan.folder)
+    return plan.imap_creates and not session.transport.exists(plan.folder)
 
 
 # ----------------------------------------------------------------------------
 def realize_folder(
-    provider: Provider, plan: FolderPlan, on_event: EventSink | None = None
+    session: Session, plan: FolderPlan, on_event: EventSink | None = None
 ) -> FolderCreation | None:
     """Create a folder planned for IMAP creation, once.
 
@@ -288,10 +296,10 @@ def realize_folder(
     earlier execute step already made -- ``add`` creates it before the
     upload, and its existing-mail pass must not try again.
     """
-    if not folder_pending(provider, plan):
+    if not folder_pending(session, plan):
         return None
 
-    result = create_folder(provider, plan)
+    result = create_folder(session, plan)
 
     if on_event:
         on_event(FolderCreated(result))

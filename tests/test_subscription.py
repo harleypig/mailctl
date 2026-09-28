@@ -22,6 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 from imapclient.exceptions import IMAPClientError
+from utilities_support import mxroute
 
 from mailctl import MailctlError, utilities
 from mailctl.cli import (
@@ -31,7 +32,6 @@ from mailctl.cli import (
     report_folder_creation,
 )
 from mailctl.components.imap import FolderCreation
-from mailctl.providers.mxroute import MxrouteProvider
 from mailctl.providers.mxroute.imap import new_imap_session
 
 NEW_FOLDER = "INBOX.Lists.GitHub"
@@ -66,7 +66,7 @@ def sieve_without_mailbox():
     one subscription applies to -- ``fileinto :create`` leaves the creating
     to the server at delivery time.
     """
-    return SimpleNamespace(missing_extensions=lambda needed: set(needed))
+    return SimpleNamespace(capabilities=lambda: [])
 
 
 # ############################################################################
@@ -364,7 +364,7 @@ def test_ensure_folder_subscribes_and_reports_it(
     imap_session, imap_config, fake_imap, capsys
 ):
     """The default path, from the flags a user actually types."""
-    live = MxrouteProvider(sieve_without_mailbox(), imap_session)
+    live = mxroute(sieve_without_mailbox(), imap_session)
     plan = prepare_folder(live, imap_config, add_args())
 
     utilities.folders.realize_folder(live, plan, render_event)
@@ -379,7 +379,7 @@ def test_ensure_folder_subscribes_and_reports_it(
 def test_ensure_folder_honours_no_subscribe_and_says_what_it_cost(
     imap_session, imap_config, fake_imap, capsys
 ):
-    live = MxrouteProvider(sieve_without_mailbox(), imap_session)
+    live = mxroute(sieve_without_mailbox(), imap_session)
     plan = prepare_folder(live, imap_config, add_args("--no-subscribe"))
 
     utilities.folders.realize_folder(live, plan, render_event)
@@ -394,7 +394,7 @@ def test_ensure_folder_creates_nothing_on_a_dry_run(
 ):
     """Showing before changing: the same rule the rest of the tool follows."""
     prepare_folder(
-        MxrouteProvider(sieve_without_mailbox(), imap_session),
+        mxroute(sieve_without_mailbox(), imap_session),
         imap_config,
         add_args("--dry-run"),
     )
@@ -413,7 +413,7 @@ def test_planning_a_real_run_creates_nothing_before_the_decision(
     an abort, a rejected upload, or a failed merge could stop it -- which
     left a stray folder behind whenever the change went no further.
     """
-    live = MxrouteProvider(sieve_without_mailbox(), imap_session)
+    live = mxroute(sieve_without_mailbox(), imap_session)
 
     prepare_folder(live, imap_config, add_args())
 

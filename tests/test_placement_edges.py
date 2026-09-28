@@ -40,7 +40,7 @@ from mailctl.components.managesieve import (
     rule_names,
 )
 from mailctl.criteria import Criteria
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.providers.mxroute import MXROUTE
 from mailctl.providers.mxroute.sieve import (
     merge_rule,
     parse_script,
@@ -777,7 +777,7 @@ def test_the_warning_describes_the_position_the_rule_will_occupy(
     """
     print_placement(
         placement_analysis(
-            MxrouteProvider,
+            MXROUTE,
             NARROW_SCRIPT,
             "Lists",
             _criteria("to", "@lists.example.com"),
@@ -807,7 +807,7 @@ def test_replacing_a_rule_does_not_report_it_shadowing_itself(capsys):
     """
     print_placement(
         placement_analysis(
-            MxrouteProvider,
+            MXROUTE,
             NARROW_SCRIPT,
             "Announce",
             _criteria("to", "@lists.example.com"),

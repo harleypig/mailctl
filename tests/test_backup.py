@@ -18,16 +18,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from utilities_support import mxroute
 
 from mailctl import cli, utilities
-from mailctl.components.managesieve import (
-    backup_path,
-    resolve_backup_target,
-    write_backup,
-)
+from mailctl.components.managesieve import backup_path, resolve_backup_target
 from mailctl.components.managesieve import client as sieve_client
 from mailctl.config import Config, default_backup_dir, load_config
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.utilities.backup_files import write_backup
 
 # A script whose bytes are awkward on purpose: CRLF endings, as the CRLF
 # protocol that fetched it produces, and no trailing newline. A text-mode
@@ -232,7 +229,7 @@ def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
     )
 
     utilities.scripts.upload_script(
-        MxrouteProvider(sieve=session),
+        mxroute(sieve=session),
         load_config(SimpleNamespace()),
         "managesieve",
         CRLF_SCRIPT,

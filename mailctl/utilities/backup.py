@@ -5,12 +5,14 @@ replaces rather than merges (ADR 0005), and it still backs up what it
 replaces first.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from .. import MailctlError
 from ..config import Config, expand_path
+from ..engine import Session
 from ..providers.base import DisplayDiff, Provider
+from .backup_files import write_backup
 from .events import EventSink
 from .scripts import activates, fetch_active, upload_script
 
@@ -26,15 +28,14 @@ class BackupPlan:
     script: str
     source: str
     target: Path
-    provider: Provider | type[Provider] = field(compare=False, repr=False)
 
 
 # ----------------------------------------------------------------------------
 def plan_backup(
-    provider: Provider, config: Config, output: str | None = None
+    session: Session, config: Config, output: str | None = None
 ) -> BackupPlan:
     """Fetch the active script and resolve where its copy goes."""
-    name = provider.active_rule_set()
+    name = session.transport.active_rule_set()
 
     if not name:
         raise MailctlError(
@@ -42,29 +43,27 @@ def plan_backup(
             "up. 'mailctl list' shows what the account has."
         )
 
-    source = provider.read_rule_set(name)
-    target = provider.backup_target(output, name, config.backup_dir)
+    source = session.transport.read_rule_set(name)
+    target = session.dialect.backup_target(output, name, config.backup_dir)
 
-    return BackupPlan(name, source, target, provider)
+    return BackupPlan(name, source, target)
 
 
 # ----------------------------------------------------------------------------
 def execute_backup(plan: BackupPlan) -> Path:
     """Write the server's exact bytes to the planned target."""
-    return plan.provider.write_backup(plan.source, plan.target)
+    return write_backup(plan.source, plan.target)
 
 
 # ----------------------------------------------------------------------------
-def count_rules(
-    provider: Provider | type[Provider], source: str
-) -> int | None:
+def count_rules(provider: Provider | Session, source: str) -> int | None:
     """Return how many rules a script holds, or None if it will not parse.
 
     A script too broken to parse is the one most worth backing up, so this
     reports rather than raises.
     """
     try:
-        return len(provider.rule_names(source))
+        return len(provider.dialect.rule_names(source))
 
     except MailctlError:
         return None
@@ -142,7 +141,7 @@ def read_backup_file(
 
 # ----------------------------------------------------------------------------
 def plan_restore(
-    provider: Provider,
+    session: Session,
     backup: BackupFile,
     script: str | None = None,
     activate: bool = False,
@@ -157,7 +156,7 @@ def plan_restore(
     so overwriting it loses nothing (ADR 0005).
     """
     source, after = backup.path, backup.text
-    name, before, active = fetch_active(provider, script)
+    name, before, active = fetch_active(session, script)
 
     # Not a guess at a name: with nothing active there is no "the script"
     # to mean, and the recovery case is served by naming one, which is
@@ -174,7 +173,7 @@ def plan_restore(
         script=name,
         before=before,
         after=after,
-        diff=provider.raw_diff(before, after, name),
+        diff=session.dialect.raw_diff(before, after, name),
         active=active,
         activate=activates(name, active, activate),
     )
@@ -182,7 +181,7 @@ def plan_restore(
 
 # ----------------------------------------------------------------------------
 def execute_restore(
-    provider: Provider,
+    session: Session,
     config: Config,
     plan: RestorePlan,
     on_event: EventSink | None = None,
@@ -196,7 +195,7 @@ def execute_restore(
         return None
 
     return upload_script(
-        provider,
+        session,
         config,
         plan.script,
         plan.before,

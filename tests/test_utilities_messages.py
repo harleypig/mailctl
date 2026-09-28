@@ -10,11 +10,12 @@ raise on the malformed, mislabelled mail that real mailboxes hold.
 
 import pytest
 from imapclient.response_parser import parse_fetch_response
+from utilities_support import mxroute
 
 from mailctl import MailctlError, utilities
 from mailctl.components.imap import structure_has_attachment
 from mailctl.criteria import Criteria
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.engine import Session
 
 # ############################################################################
 # Messages
@@ -127,8 +128,8 @@ EIGHT_BIT_HEADER = rfc822(
 
 # ----------------------------------------------------------------------------
 @pytest.fixture
-def sessions(imap_session) -> MxrouteProvider:
-    return MxrouteProvider(imap=imap_session)
+def sessions(imap_session) -> Session:
+    return mxroute(imap=imap_session)
 
 
 # ----------------------------------------------------------------------------

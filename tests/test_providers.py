@@ -2,20 +2,22 @@
 
 Three things are held here.
 
-* **Every registered provider answers every operation.** Each one either
-  implements an operation of ``Provider`` or explicitly declines it, and
-  what it declines is exactly what its capabilities say it declines. This
-  is the exhaustiveness an in-tree ABC gives in place of a compiler.
+* **Every registered provider answers every operation.** Each half -- the
+  dialect and the transport (ADR 0007) -- either implements an operation
+  of its interface or explicitly declines it, and what the two decline is
+  exactly what the provider's capabilities say it declines. This is the
+  exhaustiveness an in-tree ABC gives in place of a compiler.
 * **The ``provider`` setting** climbs the same ladder as every other
   setting, with provenance, and an unknown name is refused naming the
   known ones -- before any connection.
-* **Adding a provider needs no engine change.** A fake second provider,
-  registered for the test, is driven through the engine's representative
-  operations; the calls the engine makes on it are recorded and compared
-  with the calls it makes on ``mxroute``. They are the same calls in the
-  same shape, because the engine reads capabilities and never asks which
-  provider it has. A capability the fake declines is refused at
-  validation, before anything that would be network work.
+* **Adding a provider needs no utility change.** A fake second provider,
+  registered for the test, is driven through the utilities'
+  representative operations; the calls they make on its dialect and its
+  transport are recorded and compared with the calls they make on
+  ``mxroute``'s. They are the same calls in the same shape, because the
+  utilities read capabilities and never ask which provider they have. A
+  capability the fake declines is refused at validation, before anything
+  that would be network work.
 """
 
 import argparse
@@ -25,9 +27,11 @@ import inspect
 import json
 import re
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import cast
 
 import pytest
+from utilities_support import mxroute
 
 from mailctl import MailctlError, cli, engine, utilities
 from mailctl.components.managesieve import SieveSession
@@ -43,13 +47,17 @@ from mailctl.config import (
     load_config,
 )
 from mailctl.criteria import Criteria
+from mailctl.engine import Session
 from mailctl.providers import model, registry
 from mailctl.providers.base import (
+    DIALECT_OPERATIONS,
     DISCARD,
     FILEINTO,
     KEEP,
     OPERATIONS,
+    TRANSPORT_OPERATIONS,
     DeliveryCreate,
+    Dialect,
     DisplayDiff,
     Fact,
     FolderCreation,
@@ -61,13 +69,14 @@ from mailctl.providers.base import (
     Provider,
     ProviderCapabilities,
     Specific,
+    Transport,
     Wording,
     declined,
 )
 from mailctl.providers.base import (
     FLAG as FLAG_ACTION,
 )
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.providers.mxroute import MXROUTE, MxrouteDialect, MxrouteTransport
 from mailctl.rules import rule_from_criteria
 from mailctl.utilities.rules import ActionSpec, RuleRequest
 
@@ -87,38 +96,22 @@ FULL = ProviderCapabilities(
 )
 
 
-class FakeProvider(Provider):
+class FakeDialect(Dialect):
     """A host with nothing in common with MXroute but the interface.
 
-    Rule sets are JSON, not Sieve; the mailbox is a dict. Every call the
-    engine makes can be answered offline, and ``opened`` counts
-    connections, which is what "before any network work" is checked on.
+    Rule sets are JSON, not Sieve, and every call is answered offline.
     """
 
     name = "fake"
-    capabilities = FULL
     wording = Wording(
         rules_service="Fake rules",
         mail_service="Fake mail",
         extensions="Fake extensions",
         notes=("the fake host keeps its rules as JSON.",),
     )
-    opened = 0
 
-    # ------------------------------------------------------------------------
-    def __init__(self, rules=True, mail=True):
-        self.rules_on = rules
-        self.mail_on = mail
-        self.scripts = {"main": json.dumps([_stored("keep-boss", "boss")])}
-        self.active = "main"
-        self.folders = ["INBOX", "INBOX.Lists"]
-        self.subscribed = list(self.folders)
-        self.messages = {
-            7: {"FROM": [GITHUB], "SUBJECT": ["hello"]},
-            8: {"FROM": ["someone@example.com"], "SUBJECT": ["hi"]},
-        }
+    # -- refusals and requirements -------------------------------------------
 
-    # ------------------------------------------------------------------------
     @classmethod
     def validate(cls, config):
         pass
@@ -145,6 +138,14 @@ class FakeProvider(Provider):
         return set()
 
     @classmethod
+    def missing_features(cls, needed, advertised):
+        return []
+
+    @classmethod
+    def delivery_create(cls, config, advertised):
+        return DeliveryCreate(False)
+
+    @classmethod
     def check_actions(cls, config, actions):
         pass
 
@@ -153,27 +154,12 @@ class FakeProvider(Provider):
         return ", ".join(actions)
 
     @classmethod
-    def connection_facts(cls, config):
-        return [Fact("Fake", "fake.example", (("host", "host"),))]
-
-    @classmethod
-    def mail_facts(cls, capabilities):
-        return [Fact("Labels", "yes\nevery folder is a label")]
-
-    @classmethod
     def candidate_rule(cls, name, criteria, actions):
         return rule_from_criteria(
             name, criteria, tuple(actions), stops="stop" in actions
         )
 
-    @classmethod
-    @contextmanager
-    def open(cls, config, *, rules, mail, progress=None):
-        cls.opened += 1
-
-        yield cls(rules=rules, mail=mail)
-
-    # -- rule sets, offline --------------------------------------------------
+    # -- rule sets -----------------------------------------------------------
 
     @classmethod
     def rule_names(cls, source):
@@ -254,30 +240,65 @@ class FakeProvider(Provider):
     def report_extensions(cls, advertised, config):
         return []
 
-    # -- folders, offline ----------------------------------------------------
+    # -- backups -------------------------------------------------------------
+
+    @classmethod
+    def backup_path(cls, name, backup_dir):
+        return backup_dir / f"{name}.json"
+
+    @classmethod
+    def backup_target(cls, output, name, backup_dir):
+        return cls.backup_path(name, backup_dir)
+
+    # -- folders -------------------------------------------------------------
 
     @classmethod
     def assumed_folder(cls, name, delimiter):
         return name.replace("/", delimiter or "."), delimiter or "."
 
-    # -- backups, offline ----------------------------------------------------
+    # -- describing the host -------------------------------------------------
 
     @classmethod
-    def backup_target(cls, output, name, backup_dir):
-        return backup_dir / f"{name}.json"
+    def connection_facts(cls, config):
+        return [Fact("Fake", "fake.example", (("host", "host"),))]
 
     @classmethod
-    def write_backup(cls, source, target):
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(source)
+    def mail_facts(cls, capabilities):
+        return [Fact("Labels", "yes\nevery folder is a label")]
 
-        return target
 
+class FakeTransport(Transport):
+    """The fake host's servers: the rule sets and the mailbox are dicts.
+
+    ``opened`` counts connections, which is what "before any network work"
+    is checked on.
+    """
+
+    name = "fake"
+    opened = 0
+
+    # ------------------------------------------------------------------------
+    def __init__(self, rules=True, mail=True):
+        self.rules_on = rules
+        self.mail_on = mail
+        self.scripts = {"main": json.dumps([_stored("keep-boss", "boss")])}
+        self.active = "main"
+        self.folders = ["INBOX", "INBOX.Lists"]
+        self.subscribed = list(self.folders)
+        self.messages = {
+            7: {"FROM": [GITHUB], "SUBJECT": ["hello"]},
+            8: {"FROM": ["someone@example.com"], "SUBJECT": ["hi"]},
+        }
+
+    # ------------------------------------------------------------------------
     @classmethod
-    def backup(cls, source, name, backup_dir):
-        return cls.write_backup(source, backup_dir / f"{name}.json")
+    @contextmanager
+    def open(cls, config, *, rules, mail, progress=None):
+        cls.opened += 1
 
-    # -- connected: rules ----------------------------------------------------
+        yield cls(rules=rules, mail=mail)
+
+    # -- the rule half -------------------------------------------------------
 
     @property
     def has_rules(self):
@@ -285,12 +306,6 @@ class FakeProvider(Provider):
 
     def rules_capabilities(self):
         return []
-
-    def missing_features(self, needed):
-        return []
-
-    def delivery_create(self, config):
-        return DeliveryCreate(False)
 
     def list_rule_sets(self):
         return (self.active, [n for n in self.scripts if n != self.active])
@@ -310,7 +325,7 @@ class FakeProvider(Provider):
     def activate_rule_set(self, name):
         self.active = name
 
-    # -- connected: mail -----------------------------------------------------
+    # -- the mail half -------------------------------------------------------
 
     @property
     def has_mail(self):
@@ -377,19 +392,13 @@ class FakeProvider(Provider):
         return b"", ()
 
 
-class UnorderedProvider(FakeProvider):
+FAKE = Provider("fake", FULL, FakeDialect, FakeTransport)
+
+
+class UnorderedDialect(FakeDialect):
     """The fake again, with every rule evaluated on its own."""
 
     name = "unordered"
-    capabilities = ProviderCapabilities(
-        ordering=False,
-        stop=True,
-        rule_sets=True,
-        actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
-        extensions=False,
-        declined=frozenset(("move_rule", "position")),
-    )
-    opened = 0
 
     @classmethod
     def add_rule(cls, source, name, criteria, actions, *, replace, placement):
@@ -413,18 +422,49 @@ class UnorderedProvider(FakeProvider):
         """No position to resolve."""
 
 
-class StoplessProvider(FakeProvider):
+class UnorderedTransport(FakeTransport):
+    name = "unordered"
+    opened = 0
+
+
+UNORDERED = Provider(
+    "unordered",
+    ProviderCapabilities(
+        ordering=False,
+        stop=True,
+        rule_sets=True,
+        actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
+        extensions=False,
+        declined=frozenset(("move_rule", "position")),
+    ),
+    UnorderedDialect,
+    UnorderedTransport,
+)
+
+
+class StoplessDialect(FakeDialect):
     """The fake again, on a host where nothing ends evaluation early."""
 
     name = "stopless"
-    capabilities = ProviderCapabilities(
+
+
+class StoplessTransport(FakeTransport):
+    name = "stopless"
+    opened = 0
+
+
+STOPLESS = Provider(
+    "stopless",
+    ProviderCapabilities(
         ordering=True,
         stop=False,
         rule_sets=True,
         actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
         extensions=False,
-    )
-    opened = 0
+    ),
+    StoplessDialect,
+    StoplessTransport,
+)
 
 
 # ----------------------------------------------------------------------------
@@ -433,45 +473,59 @@ def _stored(name: str, sender: str) -> dict:
 
 
 # ----------------------------------------------------------------------------
+def fake_session(provider: Provider = FAKE) -> Session:
+    """A fake provider's session, both halves connected."""
+    return Session(provider, provider.transport())
+
+
+# ----------------------------------------------------------------------------
+def fake_transport(session: Session) -> FakeTransport:
+    """A fake session's transport, typed as the fake it is."""
+    return cast(FakeTransport, session.transport)
+
+
+# ----------------------------------------------------------------------------
 @pytest.fixture
 def fakes(monkeypatch):
-    """Register both fakes for the test, and zero their counters."""
-    for provider in (FakeProvider, UnorderedProvider, StoplessProvider):
+    """Register the fakes for the test, and zero their counters."""
+    for provider in (FAKE, UNORDERED, STOPLESS):
         monkeypatch.setitem(registry.PROVIDERS, provider.name, provider)
-        monkeypatch.setattr(provider, "opened", 0)
+        monkeypatch.setattr(provider.transport, "opened", 0)
 
 
 # ############################################################################
-# Recording the engine's calls
+# Recording the utilities' calls
 # ############################################################################
 
 
-class Recorder:
-    """Wrap a provider and write down every operation the engine calls.
+class RecordedHalf:
+    """One half of a provider, writing down every operation called on it.
 
-    Each call is kept as its name and its shape: the type of each
+    Each call is kept as its half and name, and its shape: the type of each
     positional argument and the names of the keyword ones. Attributes that
-    are data (``name``, ``capabilities``, the ``has_*`` properties) pass
-    straight through unrecorded -- reading them is how the engine is meant
+    are data (``name``, ``wording``, the ``has_*`` properties) pass
+    straight through unrecorded -- reading them is how a utility is meant
     to decide, so they are not part of what must match.
     """
 
     # ------------------------------------------------------------------------
-    def __init__(self, provider):
-        self._provider = provider
-        self.calls: list[tuple] = []
+    def __init__(self, half, label: str, operations, calls: list):
+        self._half = half
+        self._label = label
+        self._operations = operations
+        self._calls = calls
 
     # ------------------------------------------------------------------------
     def __getattr__(self, attribute):
-        value = getattr(self._provider, attribute)
+        value = getattr(self._half, attribute)
 
-        if attribute not in OPERATIONS or not callable(value):
+        if attribute not in self._operations or not callable(value):
             return value
 
         def record(*args, **kwargs):
-            self.calls.append(
+            self._calls.append(
                 (
-                    attribute,
+                    f"{self._label}.{attribute}",
                     tuple(type(arg).__name__ for arg in args),
                     tuple(sorted(kwargs)),
                 )
@@ -480,6 +534,26 @@ class Recorder:
             return value(*args, **kwargs)
 
         return record
+
+
+class Recorder:
+    """A session whose dialect and transport both record their calls."""
+
+    # ------------------------------------------------------------------------
+    def __init__(self, session: Session):
+        self.calls: list[tuple] = []
+
+        dialect = RecordedHalf(
+            session.dialect, "dialect", DIALECT_OPERATIONS, self.calls
+        )
+        transport = RecordedHalf(
+            session.transport, "transport", TRANSPORT_OPERATIONS, self.calls
+        )
+
+        self.session = Session(
+            replace(session.provider, dialect=cast(type[Dialect], dialect)),
+            cast(Transport, transport),
+        )
 
 
 class RuleSession:
@@ -491,13 +565,6 @@ class RuleSession:
 
     def capabilities(self):
         return ["fileinto", "imap4flags", "mailbox"]
-
-    def missing_extensions(self, required):
-        return sorted(name for name in required if name not in self.caps)
-
-    @property
-    def caps(self):
-        return self.capabilities()
 
     def list_scripts(self):
         return ("managesieve", [])
@@ -533,27 +600,26 @@ def github_message(uid: int) -> bytes:
 
 
 # ----------------------------------------------------------------------------
-def drive(recorded: Provider | Recorder, config: Config) -> None:
-    """The representative engine operations, as a front-end runs them."""
-    provider = cast(Provider, recorded)
+def drive(session: Session, config: Config) -> None:
+    """The representative utility operations, as a front-end runs them."""
     criteria = Criteria()
     criteria.add("From", GITHUB)
     spec = ActionSpec(fileinto="Lists")
     request = RuleRequest(criteria=criteria, actions=spec, name="github")
 
-    folder = utilities.folders.plan_folder(provider, config, spec.fileinto)
-    utilities.rules.missing_extensions(provider, spec, folder)
-    plan = utilities.rules.plan_rule(provider, config, request, folder)
-    utilities.rules.execute_script_change(provider, config, plan)
+    folder = utilities.folders.plan_folder(session, config, spec.fileinto)
+    utilities.rules.missing_extensions(session, spec, folder)
+    plan = utilities.rules.plan_rule(session, config, request, folder)
+    utilities.rules.execute_script_change(session, config, plan)
 
-    utilities.scripts.list_scripts(provider)
-    utilities.rules.read_rules(provider)
+    utilities.scripts.list_scripts(session)
+    utilities.rules.read_rules(session)
 
-    source = utilities.mail.source_folder(provider, "INBOX")
+    source = utilities.mail.source_folder(session, "INBOX")
     mail = utilities.mail.plan_mail(
-        provider, criteria, spec, source, folder.folder
+        session, criteria, spec, source, folder.folder
     )
-    utilities.mail.execute_mail(provider, mail, folder=folder)
+    utilities.mail.execute_mail(session, mail, folder=folder)
 
 
 # ############################################################################
@@ -562,70 +628,86 @@ def drive(recorded: Provider | Recorder, config: Config) -> None:
 
 
 # ----------------------------------------------------------------------------
-def declined_operations(provider: type[Provider]) -> set[str]:
-    """The operations a provider marks with ``declined``."""
+def declined_operations(provider: Provider) -> set[str]:
+    """The operations either half of a provider marks with ``declined``."""
     found = set()
 
-    for operation in OPERATIONS:
-        member = inspect.getattr_static(provider, operation)
-        function = getattr(member, "__func__", None) or getattr(
-            member, "fget", member
-        )
+    for half, operations in (
+        (provider.dialect, DIALECT_OPERATIONS),
+        (provider.transport, TRANSPORT_OPERATIONS),
+    ):
+        for operation in operations:
+            member = inspect.getattr_static(half, operation)
+            function = getattr(member, "__func__", None) or getattr(
+                member, "fget", member
+            )
 
-        if getattr(function, "__declined__", False):
-            found.add(operation)
+            if getattr(function, "__declined__", False):
+                found.add(operation)
 
     return found
 
 
 # ----------------------------------------------------------------------------
-def test_the_operation_list_is_the_interface():
-    """A list that drifted from the ABC would check the wrong set."""
-    assert set(OPERATIONS) == Provider.__abstractmethods__
-    assert {"select_mail", "add_rule", "open", "validate"} <= set(OPERATIONS)
+def test_the_operation_lists_are_the_interface():
+    """A list that drifted from its ABC would check the wrong set."""
+    assert set(DIALECT_OPERATIONS) == Dialect.__abstractmethods__
+    assert set(TRANSPORT_OPERATIONS) == Transport.__abstractmethods__
+    assert not set(DIALECT_OPERATIONS) & set(TRANSPORT_OPERATIONS)
+    assert set(OPERATIONS) == set(DIALECT_OPERATIONS) | set(
+        TRANSPORT_OPERATIONS
+    )
+    assert {"add_rule", "validate", "diff"} <= set(DIALECT_OPERATIONS)
+    assert {"select_mail", "open", "store_rule_set"} <= set(
+        TRANSPORT_OPERATIONS
+    )
     assert len(OPERATIONS) > 40
 
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "provider",
-    [
-        *registry.PROVIDERS.values(),
-        FakeProvider,
-        UnorderedProvider,
-        StoplessProvider,
-    ],
+    [*registry.PROVIDERS.values(), FAKE, UNORDERED, STOPLESS],
     ids=lambda provider: provider.name,
 )
 def test_every_provider_implements_or_declines_every_operation(provider):
-    """No abstract operation is left, and what is declined is declared."""
-    assert not provider.__abstractmethods__
+    """No abstract operation is left in either half, both halves carry the
+    provider's name, and what is declined is declared."""
+    assert not provider.dialect.__abstractmethods__
+    assert not provider.transport.__abstractmethods__
+    assert provider.dialect.name == provider.transport.name == provider.name
     assert declined_operations(provider) == provider.capabilities.declined
 
 
 # ----------------------------------------------------------------------------
 def test_the_check_would_catch_a_missing_or_undeclared_operation():
-    """Known positives: a gap is abstract, and an undeclared decline shows."""
+    """Known positives: a gap in either half is abstract, and an
+    undeclared decline shows."""
 
-    class Gap(Provider):
+    class GapDialect(Dialect):
         name = "gap"
-        capabilities = FULL
 
-    assert "select_mail" in Gap.__abstractmethods__
+    class GapTransport(Transport):
+        name = "gap"
 
-    class Undeclared(FakeProvider):
+    assert "add_rule" in GapDialect.__abstractmethods__
+    assert "select_mail" in GapTransport.__abstractmethods__
+
+    class Undeclared(FakeDialect):
         @classmethod
         @declined
         def position(cls, names, placement, name):
             """Declined without saying so in the capabilities."""
 
-    assert declined_operations(Undeclared) != Undeclared.capabilities.declined
+    undeclared = replace(FAKE, dialect=Undeclared)
+
+    assert declined_operations(undeclared) != FULL.declined
 
 
 # ----------------------------------------------------------------------------
 def test_a_declined_operation_refuses_through_the_one_error():
     with pytest.raises(MailctlError, match="the unordered provider cannot"):
-        UnorderedProvider.position(["a"], None, "a")
+        UnorderedDialect.position(["a"], None, "a")
 
 
 # ############################################################################
@@ -639,7 +721,7 @@ def test_mxroute_is_registered_and_is_the_default():
 
     assert config.provider == "mxroute"
     assert config.sources["provider"] == Source(DEFAULT)
-    assert registry.provider_for(config) is MxrouteProvider
+    assert registry.provider_for(config) is MXROUTE
 
 
 # ----------------------------------------------------------------------------
@@ -677,7 +759,7 @@ def test_the_provider_setting_climbs_the_ladder(
 
     assert config.provider == "fake"
     assert config.sources["provider"] == expected
-    assert registry.provider_for(config) is FakeProvider
+    assert registry.provider_for(config) is FAKE
 
 
 # ----------------------------------------------------------------------------
@@ -686,7 +768,9 @@ def test_an_unknown_provider_is_refused_naming_the_known_ones(monkeypatch):
     config = load_config(argparse.Namespace())
     opened = []
     monkeypatch.setattr(
-        MxrouteProvider, "open", classmethod(lambda *a, **k: opened.append(1))
+        MxrouteTransport,
+        "open",
+        classmethod(lambda *a, **k: opened.append(1)),
     )
 
     with (
@@ -713,54 +797,60 @@ def test_the_cli_takes_the_provider_flag_and_refuses_an_unknown_one(capsys):
 
 
 # ############################################################################
-# A second provider needs no engine change
+# A second provider needs no utility change
 # ############################################################################
 
 
 # ----------------------------------------------------------------------------
-def test_the_engine_makes_the_same_calls_whichever_provider_it_has(
+def test_the_utilities_make_the_same_calls_whichever_provider_they_have(
     fake_imap, imap_session, imap_config, roundcube_script, fakes, tmp_path
 ):
-    """The heart of it: identical calls, identical shapes."""
+    """The heart of it: identical calls, identical shapes, on each half."""
     imap_config.backup_dir = tmp_path / "backups"
     fake_imap.messages = {7: github_message(7), 8: github_message(8)}
 
-    mxroute = Recorder(
-        MxrouteProvider(
-            sieve=rule_session(roundcube_script), imap=imap_session
-        )
+    real = Recorder(
+        mxroute(sieve=rule_session(roundcube_script), imap=imap_session)
     )
-    fake = Recorder(FakeProvider())
+    fake = Recorder(fake_session())
 
-    drive(mxroute, imap_config)
-    drive(fake, imap_config)
+    drive(real.session, imap_config)
+    drive(fake.session, imap_config)
 
-    assert len(mxroute.calls) > 15
+    mxroute_calls = real.calls
+    halves = {call[0].split(".")[0] for call in mxroute_calls}
+
+    assert len(mxroute_calls) > 15
+    assert halves == {"dialect", "transport"}
     assert [call[0] for call in fake.calls] == [
-        call[0] for call in mxroute.calls
+        call[0] for call in mxroute_calls
     ]
-    assert fake.calls == mxroute.calls
+    assert fake.calls == mxroute_calls
 
 
 # ----------------------------------------------------------------------------
-def test_the_proof_would_see_the_engine_branch_on_the_provider(
+def test_the_proof_would_see_a_utility_branch_on_the_provider(
     fake_imap, imap_session, imap_config, roundcube_script, fakes, tmp_path
 ):
-    """Known positive: one extra call on one provider is a difference."""
+    """Known positive: one extra call on either half is a difference."""
     imap_config.backup_dir = tmp_path / "backups"
 
-    mxroute = Recorder(
-        MxrouteProvider(
-            sieve=rule_session(roundcube_script), imap=imap_session
+    for extra in ("transport", "dialect"):
+        real = Recorder(
+            mxroute(sieve=rule_session(roundcube_script), imap=imap_session)
         )
-    )
-    fake = Recorder(FakeProvider())
+        fake = Recorder(fake_session())
 
-    drive(mxroute, imap_config)
-    drive(fake, imap_config)
-    fake.list_rule_sets()
+        drive(real.session, imap_config)
+        drive(fake.session, imap_config)
 
-    assert fake.calls != mxroute.calls
+        if extra == "transport":
+            fake.session.transport.list_rule_sets()
+
+        else:
+            fake.session.dialect.rule_names("[]")
+
+        assert fake.calls != real.calls, extra
 
 
 # ----------------------------------------------------------------------------
@@ -769,11 +859,11 @@ def test_the_fake_really_stored_the_rule_and_moved_the_mail(
 ):
     """The fake is a working host, not a recorder of no-ops."""
     imap_config.backup_dir = tmp_path / "backups"
-    provider = FakeProvider()
+    session = fake_session()
 
-    drive(provider, imap_config)
+    drive(session, imap_config)
 
-    assert provider.rule_names(provider.scripts["main"]) == [
+    assert FakeDialect.rule_names(fake_transport(session).scripts["main"]) == [
         "keep-boss",
         "github",
     ]
@@ -798,7 +888,7 @@ def test_a_declined_capability_is_refused_before_any_connection(fakes):
         "the unordered provider cannot place a rule at a position in "
         "evaluation order: it does not declare the 'ordering' capability"
     )
-    assert UnorderedProvider.opened == 0
+    assert UnorderedTransport.opened == 0
 
 
 # ----------------------------------------------------------------------------
@@ -810,15 +900,15 @@ def test_plan_rule_refuses_it_before_touching_the_provider(fakes):
         actions=ActionSpec(fileinto="Lists"),
         placement=Placement("first"),
     )
-    recorder = Recorder(UnorderedProvider())
-    provider = cast(Provider, recorder)
-    folder = utilities.folders.plan_folder(FakeProvider(), Config(), "Lists")
+    recorder = Recorder(fake_session(UNORDERED))
+    session = recorder.session
+    folder = utilities.folders.plan_folder(fake_session(), Config(), "Lists")
 
     with pytest.raises(MailctlError, match="'ordering'"):
-        utilities.rules.plan_rule(provider, Config(), request, folder)
+        utilities.rules.plan_rule(session, Config(), request, folder)
 
     with pytest.raises(MailctlError, match="'ordering'"):
-        utilities.rules.plan_move(provider, "keep-boss", Placement("first"))
+        utilities.rules.plan_move(session, "keep-boss", Placement("first"))
 
     assert recorder.calls == []
 
@@ -840,19 +930,19 @@ def test_the_cli_refuses_it_before_connecting(fakes, capsys):
 
     assert code == 1
     assert "'ordering' capability" in capsys.readouterr().err
-    assert UnorderedProvider.opened == 0
+    assert UnorderedTransport.opened == 0
 
 
 # ----------------------------------------------------------------------------
 def test_without_ordering_no_position_can_shadow_a_rule(fakes):
     """The audit is about order; an unordered host has nothing to find."""
-    provider = UnorderedProvider()
-    provider.scripts["main"] = json.dumps(
+    session = fake_session(UNORDERED)
+    fake_transport(session).scripts["main"] = json.dumps(
         [_stored("broad", "example.com"), _stored("narrow", "a@example.com")]
     )
 
-    assert utilities.rules.read_rules(provider).findings == []
-    assert utilities.rules.read_rules(FakeProvider()).findings == []
+    assert utilities.rules.read_rules(session).findings == []
+    assert utilities.rules.read_rules(fake_session()).findings == []
 
 
 # ----------------------------------------------------------------------------
@@ -928,18 +1018,20 @@ def test_mxroute_translates_every_record_it_returns(
     model's. A record passed through untranslated would still work -- the
     fields agree -- which is why only the type can show it."""
     fake_imap.messages = {7: github_message(7)}
-    provider = MxrouteProvider(
+    transport = MxrouteTransport(
         sieve=rule_session(roundcube_script), imap=imap_session
     )
     criteria = Criteria()
     criteria.add("From", GITHUB)
 
-    diff = provider.diff(roundcube_script, roundcube_script, "managesieve")
-    raw = provider.raw_diff(roundcube_script, "", "managesieve")
-    plan = provider.select_mail(criteria, "INBOX", "INBOX.Lists", [], False)
-    result = provider.apply_mail(plan)
-    created = provider.create_folder("INBOX.New", subscribe=True)
-    listed, _more = provider.list_messages(
+    diff = MxrouteDialect.diff(
+        roundcube_script, roundcube_script, "managesieve"
+    )
+    raw = MxrouteDialect.raw_diff(roundcube_script, "", "managesieve")
+    plan = transport.select_mail(criteria, "INBOX", "INBOX.Lists", [], False)
+    result = transport.apply_mail(plan)
+    created = transport.create_folder("INBOX.New", subscribe=True)
+    listed, _more = transport.list_messages(
         "INBOX", criteria=criteria, expression=None, limit=None
     )
 
@@ -965,7 +1057,7 @@ def test_mxroute_translates_every_record_it_returns(
 
 # ----------------------------------------------------------------------------
 def test_mxroute_capabilities_are_what_sieve_over_managesieve_offers():
-    caps = MxrouteProvider.capabilities
+    caps = MXROUTE.capabilities
 
     assert (caps.ordering, caps.stop, caps.rule_sets, caps.extensions) == (
         True,
@@ -992,18 +1084,23 @@ def test_the_redirect_policy_is_the_providers_not_the_engines(fakes):
 def test_an_unordered_host_plans_a_rule_with_no_placement_findings(
     fakes, tmp_path
 ):
-    """Without ``ordering`` the engine never asks where a rule would land."""
+    """Without ``ordering`` no utility asks where a rule would land."""
     criteria = Criteria()
     criteria.add("From", "example.com")
     request = RuleRequest(criteria=criteria, actions=ActionSpec(keep=True))
-    provider = UnorderedProvider()
-    provider.scripts["main"] = json.dumps([_stored("narrow", "a@example.com")])
-    folder = utilities.folders.plan_folder(provider, Config(), None)
+    session = fake_session(UNORDERED)
+    fake_transport(session).scripts["main"] = json.dumps(
+        [_stored("narrow", "a@example.com")]
+    )
+    folder = utilities.folders.plan_folder(session, Config(), None)
 
-    plan = utilities.rules.plan_rule(provider, Config(), request, folder)
+    plan = utilities.rules.plan_rule(session, Config(), request, folder)
 
     assert not plan.placement
-    assert provider.rule_names(plan.after) == ["narrow", "from-example-com"]
+    assert UnorderedDialect.rule_names(plan.after) == [
+        "narrow",
+        "from-example-com",
+    ]
 
 
 # ############################################################################
@@ -1024,12 +1121,12 @@ def github_rule(**actions) -> RuleRequest:
 # ----------------------------------------------------------------------------
 def test_a_host_without_stop_plans_a_default_rule(fakes, tmp_path):
     """A rule nobody asked to stop is not refused for lacking stop."""
-    provider = StoplessProvider()
+    session = fake_session(STOPLESS)
     request = github_rule()
-    folder = utilities.folders.plan_folder(provider, Config(), "Lists")
+    folder = utilities.folders.plan_folder(session, Config(), "Lists")
 
     utilities.rules.check_rule(Config(provider="stopless"), request)
-    plan = utilities.rules.plan_rule(provider, Config(), request, folder)
+    plan = utilities.rules.plan_rule(session, Config(), request, folder)
 
     assert plan.actions == ["file:INBOX.Lists"]
 
@@ -1038,12 +1135,10 @@ def test_a_host_without_stop_plans_a_default_rule(fakes, tmp_path):
 def test_a_host_with_stop_still_stops_by_default():
     """mxroute's rules end evaluation unless --no-stop says otherwise."""
     folder = utilities.folders.plan_folder(
-        MxrouteProvider(), Config(), "Lists", delimiter="."
+        mxroute(), Config(), "Lists", delimiter="."
     )
-    spec = utilities.rules.resolve_stop(
-        MxrouteProvider, ActionSpec(fileinto="Lists")
-    )
-    actions = MxrouteProvider.translate_actions(spec, folder.folder, False)
+    spec = utilities.rules.resolve_stop(MXROUTE, ActionSpec(fileinto="Lists"))
+    actions = MxrouteDialect.translate_actions(spec, folder.folder, False)
 
     assert spec.stop is True
     assert actions[-1] == ("stop",)
@@ -1162,7 +1257,7 @@ def test_disabled_extensions_is_refused_by_a_host_without_extensions(
         "the stopless provider cannot take disabled_extensions (from "
         "environment): it does not declare the 'extensions' capability"
     )
-    assert StoplessProvider.opened == 0
+    assert StoplessTransport.opened == 0
 
 
 # ----------------------------------------------------------------------------
@@ -1183,7 +1278,7 @@ def test_the_cli_refuses_disable_extension_for_such_a_host(fakes, capsys):
         "the stopless provider cannot take disabled_extensions (from flag "
         "--disable-extension)" in capsys.readouterr().err
     )
-    assert StoplessProvider.opened == 0
+    assert StoplessTransport.opened == 0
 
 
 # ----------------------------------------------------------------------------
@@ -1191,10 +1286,10 @@ def test_mxroute_still_takes_disabled_extensions(monkeypatch):
     """The owner of the setting: accepted, and its names still checked."""
     config = Config(disabled_extensions=frozenset({"mailbox"}))
 
-    MxrouteProvider.validate(config)
+    MxrouteDialect.validate(config)
 
     with pytest.raises(MailctlError, match="unknown Sieve extension"):
-        MxrouteProvider.validate(
+        MxrouteDialect.validate(
             Config(disabled_extensions=frozenset({"nope"}))
         )
 
@@ -1211,29 +1306,38 @@ PLACEMENT_FLAGS = ("--first", "--last", "--before", "--after")
 ALWAYS_HIDDEN = {"--redirect", "--notify", "--vacation", "--delimiter"}
 
 
-class BareProvider(FakeProvider):
-    """The fake with no connection settings, no ordering, no extensions."""
+class BareDialect(UnorderedDialect):
+    """The unordered fake's dialect, on a host with nothing else either."""
 
     name = "bare"
-    capabilities = ProviderCapabilities(
+
+
+class BareTransport(FakeTransport):
+    name = "bare"
+    opened = 0
+
+
+# The fake with no connection settings, no ordering, no extensions.
+BARE = Provider(
+    "bare",
+    ProviderCapabilities(
         ordering=False,
         stop=False,
         rule_sets=True,
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
         declined=frozenset(("move_rule", "position")),
-    )
-    opened = 0
-
-    move_rule = UnorderedProvider.move_rule
-    position = UnorderedProvider.position
+    ),
+    BareDialect,
+    BareTransport,
+)
 
 
 # ----------------------------------------------------------------------------
 @pytest.fixture
 def bare(fakes, monkeypatch):
-    monkeypatch.setitem(registry.PROVIDERS, BareProvider.name, BareProvider)
-    monkeypatch.setattr(BareProvider, "opened", 0)
+    monkeypatch.setitem(registry.PROVIDERS, BARE.name, BARE)
+    monkeypatch.setattr(BareTransport, "opened", 0)
 
 
 # ----------------------------------------------------------------------------
@@ -1353,7 +1457,7 @@ def test_a_hidden_option_given_anyway_is_refused_by_name(
 
     assert "the bare provider cannot" in error
     assert refusal in error
-    assert BareProvider.opened == 0
+    assert BareTransport.opened == 0
 
 
 # ----------------------------------------------------------------------------

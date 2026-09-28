@@ -3,54 +3,49 @@
 The layer-1 ``managesieve`` library knows the protocol and Sieve. What
 lives here is what MXroute has decided or ships: ``redirect`` refused in
 favour of its forwarders, rule names in the dialect of Roundcube (the
-webmail it runs), connection advice for its undocumented ManageSieve port,
-and the mapping from mailctl's ``Config`` to a session.
+webmail it runs), and ``disabled_extensions`` checked against what a rule
+needs.
 
 It is also where the provider's translation to Sieve happens: a neutral
-``ActionSpec`` becomes Sieve action tuples, and ``disabled_extensions`` is
-checked against what those tuples need. ``MxrouteProvider``
-(``provider.py``) presents all of it behind the provider interface.
+``ActionSpec`` becomes Sieve action tuples, and a neutral placement or diff
+crosses to and from the component's own records. All of it is offline: it
+is the dialect's (``dialect.py``), and the ManageSieve connection is the
+transport's (``managesieve.py``).
 """
 
 import re
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Iterable
+from typing import overload
 
 from sievelib import factory
 
 from ... import MailctlError
-from ...components.managesieve import (
+from ...components.managesieve import script as _script
+from ...components.managesieve.emit import (
     KNOWN_EXTENSIONS,
     REQUIRED_EXTENSIONS,
+    emitted_extensions,
+)
+from ...components.managesieve.script import (
+    SIEVELIB_NAME_MARKER,
     UNIMPLEMENTED_ACTIONS,
     NameDialect,
-    SieveAuthenticationError,
-    SieveConnectionError,
-    SieveSession,
-    emitted_extensions,
     rewrite_hash_comments,
 )
-from ...components.managesieve import script as _script
-from ...components.managesieve.script import SIEVELIB_NAME_MARKER
-from ...config import (
-    DEFAULT,
-    DEFAULT_SIEVE_PORT,
-    DEFAULT_SIEVE_TLS,
-    Config,
-    Source,
-)
+from ...config import DEFAULT, Config, Source
 from ...criteria import Criteria, escape_sieve_string
 from ...rules import Rule, rule_from_criteria
 from ..base import ActionSpec, DisplayDiff, ExtensionState, Placement
-from . import records
 
 __all__ = [
+    "DIFF_LABEL",
     "MXROUTE_FORBIDDEN_ACTIONS",
     "ROUNDCUBE_DIALECT",
     "ROUNDCUBE_NAME_MARKER",
     "candidate_rule",
     "check_disabled_extensions",
     "check_rule_extensions",
+    "component_placement",
     "describe_actions",
     "display_diff",
     "merge_rule",
@@ -62,8 +57,10 @@ __all__ = [
     "report_extensions",
     "required_extensions",
     "sieve_actions",
-    "sieve_session",
 ]
+
+# What a diff of this host's rule set is called: a Sieve script.
+DIFF_LABEL = "sieve"
 
 # Confirmed disabled by MXRoute, from MXroute's own blog (2024-03-22):
 # they "decided to disable the ability for users to create redirect sieve
@@ -399,7 +396,7 @@ def merge_rule(
         actions,
         matchtype,
         replace,
-        records.placement(placement),
+        component_placement(placement),
         ROUNDCUBE_DIALECT,
     )
 
@@ -414,122 +411,30 @@ def remove_rule(existing: str, name: str) -> str:
 def move_rule(existing: str, name: str, placement: Placement) -> str:
     """``managesieve.move_rule``, with Roundcube's rule names."""
     return _script.move_rule(
-        existing, name, records.placement(placement), ROUNDCUBE_DIALECT
+        existing, name, component_placement(placement), ROUNDCUBE_DIALECT
     )
 
 
 # ----------------------------------------------------------------------------
 def display_diff(before: str, after: str, name: str = "sieve") -> DisplayDiff:
     """``managesieve.display_diff``, with Roundcube's rule names."""
-    return records.display_diff(
-        _script.display_diff(before, after, name, ROUNDCUBE_DIALECT)
-    )
+    diff = _script.display_diff(before, after, name, ROUNDCUBE_DIALECT)
 
-
-# ############################################################################
-# The session, from mailctl's configuration
-# ############################################################################
+    return DisplayDiff(diff.text, diff.reformats, DIFF_LABEL)
 
 
 # ----------------------------------------------------------------------------
-@contextmanager
-def sieve_session(
-    config: Config,
-    progress: Callable[[str], None] | None = None,
-) -> Iterator[SieveSession]:
-    """Open a ManageSieve session for ``config`` and close it afterwards.
-
-    A failure to connect or log in gains MXroute's advice: it documents
-    neither its ManageSieve port nor its TLS mode, and it expects the full
-    email address as the username.
-    """
-    config.require("host", "user")
-
-    session = SieveSession(
-        host=config.host,
-        port=config.sieve_port,
-        username=config.user,
-        password=config.password,
-        tls=config.sieve_tls,
-        progress=progress,
-    )
-
-    try:
-        session.open()
-
-    except SieveConnectionError as exc:
-        raise MailctlError(f"{exc} {_connection_hint(config)}") from exc
-
-    except SieveAuthenticationError as exc:
-        raise MailctlError(
-            f"ManageSieve authentication failed for {config.user!r} "
-            f"(password {config.password_state()}). MXRoute expects the "
-            f"FULL email address as the username, e.g. "
-            f"you@yourdomain.com."
-        ) from exc
-
-    try:
-        yield session
-
-    finally:
-        session.close()
+@overload
+def component_placement(value: Placement) -> _script.Placement: ...
 
 
-DEFAULT_PORT_AND_TLS = f"{DEFAULT_SIEVE_PORT} + {DEFAULT_SIEVE_TLS}"
+@overload
+def component_placement(value: None) -> None: ...
 
 
-# ----------------------------------------------------------------------------
-def _connection_hint(config: Config) -> str:
-    """Return a hint tuned to the port and TLS mode that failed.
+def component_placement(value: Placement | None) -> _script.Placement | None:
+    """A neutral placement, as the ManageSieve component takes it."""
+    if value is None:
+        return None
 
-    MXRoute documents neither a ManageSieve port nor whether it speaks
-    STARTTLS or implicit TLS. 4190 is the IANA-registered port (RFC 5804)
-    and the Dovecot default, which makes it the right default and not a
-    verified fact -- so a failure has to say that plainly instead of
-    implying the user mistyped something.
-
-    It calls the pair the default only when both actually came from the
-    built-in default; a value somebody configured is named with where it
-    was configured instead.
-    """
-    origins = [
-        config.sources.get(name) for name in ("sieve_port", "sieve_tls")
-    ]
-
-    if all(
-        origin is not None and origin.kind == DEFAULT for origin in origins
-    ):
-        used = (
-            f"{config.sieve_port} + {config.sieve_tls} is the RFC 5804 / "
-            f"Dovecot default, not a documented MXRoute setting."
-        )
-
-    else:
-        port, tls = (
-            f" ({origin.describe()})" if origin is not None else ""
-            for origin in origins
-        )
-        used = (
-            f"this attempt used port {config.sieve_port}{port} and TLS mode "
-            f"{config.sieve_tls}{tls}; the RFC 5804 / Dovecot default is "
-            f"{DEFAULT_PORT_AND_TLS}."
-        )
-
-    hints = [
-        f"MXRoute does not publish its ManageSieve port or TLS mode; {used}"
-    ]
-
-    if config.sieve_tls == "starttls":
-        hints.append("Try --sieve-tls ssl (implicit TLS) as the alternative.")
-
-    else:
-        hints.append("Try --sieve-tls starttls as the alternative.")
-
-    hints.append(
-        "Also confirm the hostname (the panel's Email Clients page shows it; "
-        "it is per-account, the same as your primary MX record), that "
-        f"outbound {config.sieve_port} is not blocked, and if all else "
-        f"fails ask MXRoute support which port and TLS mode to use."
-    )
-
-    return " ".join(hints)
+    return _script.Placement(value.where, value.anchor)
