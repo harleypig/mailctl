@@ -15,6 +15,7 @@ the [issue tracker][issues], and deliberate "not now" deferrals in
 | [0004](0004-adopt-go-sieve-as-the-evaluation-engine.md) | Adopt `migadu/go-sieve` as the Sieve evaluation engine |
 | [0005](0005-restore-may-replace-an-unparseable-script.md) | `restore` may replace a script mxfilter cannot parse |
 | [0006](0006-two-layer-component-and-provider-architecture.md) | Two layers: protocol component libraries under per-host providers |
+| [0007](0007-interfaces-utilities-session-provider-layering.md) | Four layers: interfaces, utilities, session, provider (dialect + transport) |
 
 [madr]: https://adr.github.io/madr/
 
