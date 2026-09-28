@@ -10,10 +10,10 @@ layers exist to undo.
 The wrapped library is per component: ``imap`` importing ``sievelib`` would
 tie the Gmail provider, which has no Sieve, to a library it never uses.
 
-The line runs the other way too. The engine and the CLI import no
-layer-1 module at all, and the engine reaches a provider only through the
-interface and the registry, never naming one -- which is what lets a
-second provider be added with no engine change.
+The line runs the other way too. The engine, the utilities, and the CLI
+import no layer-1 module at all, and the engine and the utilities reach a
+provider only through the interface and the registry, never naming one --
+which is what lets a second provider be added with no engine change.
 
 The check resolves relative imports to absolute names first, because
 ``from ...config import Config`` and ``from mailctl.config import Config``
@@ -224,10 +224,20 @@ def test_the_guard_allows_what_the_imap_component_may_use(source):
 # The engine and the CLI talk to a provider, never to a component
 # ############################################################################
 
+# The utilities, walked rather than listed, so a new one is held to the
+# engine's line the day it lands.
+UTILITY_FILES = {
+    f"utilities/{path.stem}": path
+    for path in sorted((PACKAGE / "utilities").glob("*.py"))
+}
+
+# The work: the session and the utilities. Each may reach a provider only
+# through the interface and the registry, so it can never name one.
+WORK_FILES = {"engine": PACKAGE / "engine.py", **UTILITY_FILES}
+
 # The front of the tree. Each may reach the protocols only through a
-# provider; the engine may reach a provider only through the interface and
-# the registry, so it can never name one.
-FRONT_FILES = {"engine": PACKAGE / "engine.py", "cli": PACKAGE / "cli.py"}
+# provider.
+FRONT_FILES = {**WORK_FILES, "cli": PACKAGE / "cli.py"}
 
 ENGINE_PROVIDER_MODULES = {
     "mailctl.providers.base",
@@ -290,22 +300,34 @@ def provider_name_literals(source: str) -> list[str]:
 
 
 # ----------------------------------------------------------------------------
+def test_the_walk_finds_the_utility_modules():
+    """A walk that found nothing would pass the guards below vacuously."""
+    assert "utilities/rules" in UTILITY_FILES
+    assert "utilities/mail" in UTILITY_FILES
+    assert "utilities/__init__" in UTILITY_FILES
+
+
+# ----------------------------------------------------------------------------
 @pytest.mark.parametrize("front", sorted(FRONT_FILES))
 def test_the_front_imports_no_component(front):
     path = FRONT_FILES[front]
-    found = component_imports(path.read_text(encoding="utf-8"), "mailctl")
+    found = component_imports(
+        path.read_text(encoding="utf-8"), package_of(path)
+    )
 
     assert found == [], (
-        f"{front}.py imports {found}; the engine and the CLI reach a "
-        f"protocol only through a provider (ADR 0006)"
+        f"{front}.py imports {found}; the engine, the utilities, and the "
+        f"CLI reach a protocol only through a provider (ADR 0006)"
     )
 
 
 # ----------------------------------------------------------------------------
-def test_the_engine_reaches_providers_only_through_the_interface():
-    source = FRONT_FILES["engine"].read_text(encoding="utf-8")
+@pytest.mark.parametrize("work", sorted(WORK_FILES))
+def test_the_engine_reaches_providers_only_through_the_interface(work):
+    path = WORK_FILES[work]
+    source = path.read_text(encoding="utf-8")
 
-    assert provider_imports(source, "mailctl") == []
+    assert provider_imports(source, package_of(path)) == []
     assert provider_name_literals(source) == []
 
 
@@ -412,8 +434,9 @@ def test_the_neutral_model_imports_no_component(neutral):
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize("name", MODEL_TYPES)
 def test_every_model_type_is_defined_in_the_neutral_model(name):
-    """The engine's and the interface's copy is the model's own class."""
-    from mailctl import engine
+    """The engine's, the utilities', and the interface's copy is the
+    model's own class."""
+    from mailctl import engine, utilities
     from mailctl.providers import base, model
 
     record = getattr(model, name)
@@ -421,8 +444,12 @@ def test_every_model_type_is_defined_in_the_neutral_model(name):
     assert record.__module__ == "mailctl.providers.model"
     assert getattr(base, name) is record
 
-    if hasattr(engine, name):
-        assert getattr(engine, name) is record
+    for module in (
+        engine,
+        *(getattr(utilities, n) for n in utilities.__all__),
+    ):
+        if hasattr(module, name):
+            assert getattr(module, name) is record
 
 
 # ----------------------------------------------------------------------------
