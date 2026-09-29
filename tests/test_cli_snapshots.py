@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 from imapclient.exceptions import IMAPClientError
 
-from mailctl import cli
+from mailctl import __version__, cli
 from mailctl.components.managesieve import client as sieve_client
 
 SNAPSHOTS = Path(__file__).parent / "snapshots" / "cli"
@@ -358,6 +358,27 @@ PROBE = {
     "imap_caps": {"ID", "IMAP4REV1", "MOVE", "NAMESPACE", "UIDPLUS"},
 }
 
+# A server mailctl has no module for (#39), naming the account, the host,
+# and a folder where a careless report would repeat them: OWNER is the
+# logged-in user (RFC 5804), and the rest are a server being chatty.
+UNKNOWN = {
+    "sieve_extra": (
+        b'"IMPLEMENTATION" "Acme Sieve 1.0"\r\n'
+        b'"OWNER" "user@example.com"\r\n'
+        b'"X-HOST" "mail.example.com 192.0.2.7"\r\n'
+        b'"X-HOSTILE" "\x1b[31mred\x07"\r\n'
+    ),
+    "imap_caps": {"ID", "IMAP4REV1", "NAMESPACE", "UIDPLUS"},
+    "imap_id": (
+        (
+            b"name",
+            b"Acme IMAP",
+            b"support-url",
+            b"https://mail.example.com/help/Lists",
+        ),
+    ),
+}
+
 # ----------------------------------------------------------------------------
 # Baselines (#18, #19). 'presave' runs 'save-baseline --yes' against the same
 # fakes first, and 'baseline_edit' then changes the saved file: a function
@@ -488,6 +509,13 @@ HOSTILE = {
     "probe-json": (["probe", "--json"], PROBE),
     # --verbose's chatter goes to stderr, so stdout stays one document.
     "probe-json-verbose": (["probe", "--json", "-v"], PROBE),
+    # #39: a server with no module is named, and --report prints a body
+    # with the account, host, folders, and script left out; a known one
+    # has nothing to report, and --report is not a JSON document.
+    "probe-unknown": (["probe"], UNKNOWN),
+    "probe-report": (["probe", "--report"], UNKNOWN),
+    "probe-report-known": (["probe", "--report"], PROBE),
+    "probe-report-json": (["probe", "--report", "--json"], UNKNOWN),
     # #151: a document escapes what a sender or a script wrote, as the
     # filter document does, rather than carrying it raw.
     "rules-hostile-json": (["rules", "--json"], {"script": HOSTILE_SCRIPT}),
@@ -1982,6 +2010,9 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     if "counts" in options:
         imap.counts = options["counts"]
 
+    if "imap_id" in options:
+        imap.id_response = options["imap_id"]
+
     for folder, subscribed in options.get("folders", ()):
         imap.listing.append(((), b".", folder.encode()))
 
@@ -2040,6 +2071,10 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         text = text.replace("\r", "\\r")
 
         text = re.sub(r"\d{8}T\d{6}(\.\d+)?Z?", "<STAMP>", text)
+
+        # 'probe --report' dates itself by the day, and names this mailctl.
+        text = re.sub(r"(Probed: )\d{4}-\d\d-\d\d", r"\1<DATE>", text)
+        text = text.replace(f"mailctl `{__version__}`", "mailctl `<VERSION>`")
 
         # 'probe' dates itself, extended form.
         return re.sub(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", "<STAMP>", text)

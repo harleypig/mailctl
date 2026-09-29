@@ -72,6 +72,11 @@ DRIFT_SERIOUS_EXIT = 4
 DRIFT_VERSION = 1
 PREVIEW_LIMIT = 20
 
+# Where 'probe --report' tells the user to file what it printed. mailctl
+# only ever prints the body; the user reads it and files it themselves.
+ISSUES = "harleypig/mailctl"
+NEW_ISSUE_URL = f"https://github.com/{ISSUES}/issues/new"
+
 # Formatted with the provider's Wording, which names the rule language.
 ACTIVATE_HELP = (
     "make the script the active one, the one {rule_language} runs. Without "
@@ -1860,6 +1865,7 @@ def cmd_test(args) -> int:
             "  (mailctl always edits the ACTIVE script under its own "
             "name; it never guesses one.)"
         )
+        unrecognised = utilities.server_report.unrecognised_servers(sessions)
 
     with connect(config, args, rules=False, mail=True) as sessions:
         mail = utilities.reports.probe_mail(sessions)
@@ -1878,6 +1884,16 @@ def cmd_test(args) -> int:
             )
 
         print_facts(mail.facts)
+        unrecognised += utilities.server_report.unrecognised_servers(sessions)
+
+    if unrecognised:
+        services = " or the ".join(
+            service_word(words, half) for half in unrecognised
+        )
+        print(
+            f"\nServers:   mailctl does not recognise the {services} "
+            f"server -- 'mailctl probe --report' prints a redacted issue body"
+        )
 
     print_baseline_summary(config, args)
 
@@ -1927,12 +1943,22 @@ def cmd_probe(args) -> int:
     config = configure(args)
     words = utilities.reports.wording(config)
 
-    # With --json only the document goes to stdout, so a script can read
-    # it whole; --verbose's protocol chatter goes to stderr instead.
-    progress = progress_from_args(args, sys.stderr if args.json else None)
+    # With --json or --report only the document goes to stdout, so it can
+    # be read or saved whole; --verbose's chatter goes to stderr instead.
+    document = args.json or args.report
+    progress = progress_from_args(args, sys.stderr if document else None)
 
     with engine.connect(config, mail=True, progress=progress) as sessions:
-        record = utilities.reports.probe_servers(sessions, config)
+        if args.report:
+            report = utilities.server_report.build_server_report(
+                sessions, config
+            )
+
+        else:
+            record = utilities.reports.probe_servers(sessions, config)
+
+    if args.report:
+        return print_server_report(report, words)
 
     if args.json:
         args.stdout.write(utilities.reports.dump_probe(record))
@@ -1941,6 +1967,59 @@ def cmd_probe(args) -> int:
 
     print_probe(record, words)
     print("\n--json prints it as a versioned document.")
+
+    unrecognised = utilities.server_report.unrecognised_halves(
+        record.rules, record.mail
+    )
+
+    if unrecognised:
+        services = " or the ".join(
+            service_word(words, half) for half in unrecognised
+        )
+        print(
+            f"\nmailctl does not recognise the {services} server, so it "
+            f"works with the plain protocol there. --report prints a "
+            f"redacted issue body to tell us about it."
+        )
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def service_word(words, half: str) -> str:
+    """The provider's name for one half."""
+    if half == utilities.server_report.RULES:
+        return words.rules_service
+
+    return words.mail_service
+
+
+# ----------------------------------------------------------------------------
+def print_server_report(report, words) -> int:
+    """The redacted issue body on stdout; how to file it on stderr."""
+    if report is None:
+        print(
+            f"mailctl recognises the {words.rules_service} and "
+            f"{words.mail_service} servers here; there is nothing to "
+            f"report.",
+            file=sys.stderr,
+        )
+
+        return 0
+
+    body = utilities.server_report.render_server_report(report)
+
+    # The body holds what the servers sent; safe_text keeps it from acting
+    # on the terminal it is printed to.
+    sys.stdout.write(safe_text(body))
+    print(
+        f"\nNothing was sent. Read the report above, remove anything you "
+        f"would rather not share, then file it at {NEW_ISSUE_URL} titled "
+        f"{safe_line(report.title)!r}; with the GitHub CLI and the body "
+        f"saved to FILE:\n  gh issue create -R {ISSUES} --title "
+        f"{shlex.quote(safe_line(report.title))} --body-file FILE",
+        file=sys.stderr,
+    )
 
     return 0
 
@@ -3931,11 +4010,19 @@ def build_parser(
         "server differ only in the time. Nothing is changed, and no "
         "credential is printed.",
     )
-    probe.add_argument(
+    shape = probe.add_mutually_exclusive_group()
+    shape.add_argument(
         "--json",
         action="store_true",
         help="print it as a versioned JSON document, for storing and "
         "comparing",
+    )
+    shape.add_argument(
+        "--report",
+        action="store_true",
+        help="where a server is one mailctl does not recognise, print a "
+        "redacted issue body to report it: no address, host, folder or "
+        "script name, or credential. Nothing is sent",
     )
     probe.set_defaults(handler=cmd_probe)
 

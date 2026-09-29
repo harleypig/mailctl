@@ -176,6 +176,8 @@ layer may call.
   - `migration.py` — what the rename from `mxfilter` left behind.
   - `reports.py` — the probes behind `mailctl test`, the provider's wording
     and connection facts, and each extension's state.
+  - `server_report.py` — which servers no module recognised, and the
+    redacted issue body `probe --report` prints for them ([#39][i39]).
   - `events.py` — the steps of a change, as a front-end is told of them.
 - `mailctl/engine.py` — **the session**. `connect(config)` resolves the
   provider the configuration selects, refuses a setting it has no use for,
@@ -1204,6 +1206,7 @@ will read it.
 [i13]: https://github.com/harleypig/mailctl/issues/13
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i10]: https://github.com/harleypig/mailctl/issues/10
+[i39]: https://github.com/harleypig/mailctl/issues/39
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147

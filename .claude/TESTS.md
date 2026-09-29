@@ -60,9 +60,9 @@ where every write path is proved first.
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
      `scripts`, `backup`, `baseline`, `flags`, `folders`,
-     `folder_rename`, `mail`, `messages`, `optimize`, `senders`, and
-     `reports` under `mailctl/utilities/`; a backup's bytes on disk are
-     `test_backup.py`,
+     `folder_rename`, `mail`, `messages`, `optimize`, `senders`,
+     `reports`, and `server_report` under `mailctl/utilities/`; a backup's
+     bytes on disk are `test_backup.py`,
      and the migration utility `test_migration.py`) —
      every plan and execute step driven with plain inputs over a session,
      as any front-end would call it. The safety
@@ -71,7 +71,10 @@ where every write path is proved first.
      rule is merged rather than written over, and a mail plan over the
      `--max-messages` ceiling is refused whole. `test_utilities_mail.py`
      also holds the re-check narrowing the host's search to what the rule
-     matches. The fakes they share are `tests/utilities_support.py`.
+     matches. `test_utilities_server_report.py` pins the redaction: servers
+     echo a sentinel address, host, folder, and script name back, and none
+     of them, the password, or the script's text may reach the report
+     ([#39][i39]). The fakes they share are `tests/utilities_support.py`.
    - **The session** (`test_engine.py`) — only what is about the
      connection: a half opens the first time a utility uses it and never if
      the command did not ask for it; a read the server cut off is sent once
@@ -211,7 +214,8 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   alone and together ([#152][i152]). Its dates are counted from the day it
   runs, so it means the same whenever it does. Reads are here too: `probe
   --json` checked against what the server says about itself, and against
-  printing the password; `folders --counts --json` checked against each
+  printing the password; this server being a recognised one, `probe
+  --report` finding nothing to report ([#39][i39]); `folders --counts --json` checked against each
   folder's own `STATUS`, leaving every message unread ([#157][i157]); and
   `senders` in `test_senders.py` ([#160][i160]), counting each address and its
   unread exactly, grouping by domain and List-Id, refusing above its ceiling,
@@ -377,5 +381,6 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i154]: https://github.com/harleypig/mailctl/issues/154
 [i49]: https://github.com/harleypig/mailctl/issues/49
 [i157]: https://github.com/harleypig/mailctl/issues/157
+[i39]: https://github.com/harleypig/mailctl/issues/39
 [i159]: https://github.com/harleypig/mailctl/issues/159
 [i160]: https://github.com/harleypig/mailctl/issues/160

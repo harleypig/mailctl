@@ -586,11 +586,16 @@ class ServerDescription:
     * ``after_login`` -- whether ``capabilities`` was read once logged in.
       A server may advertise a different list before and after, so two
       lists read at different stages are not evidence of a change.
+    * ``software`` -- the server software mailctl recognised it as, or
+      None where it matched none and the plain protocol is assumed. This
+      is what this mailctl made of the server, not something the server
+      said, so a probe document does not store it.
     """
 
     identity: tuple[tuple[str, str], ...]
     capabilities: tuple[Capability, ...]
     after_login: bool
+    software: str | None = None
 
 
 # The kinds of namespace a mail server reports, in the order it reports

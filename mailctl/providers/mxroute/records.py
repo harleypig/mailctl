@@ -10,7 +10,9 @@ the dialect (``sieve.py``).
 """
 
 from ...components.imap import messages as imap_records
+from ...components.imap import servers as imap_servers
 from ...components.imap import status as imap_status
+from ...components.managesieve import servers as sieve_servers
 from ...components.managesieve.capabilities import Capabilities
 from .. import model
 
@@ -108,7 +110,7 @@ def rules_server(value: Capabilities) -> model.ServerDescription:
     sievelib reads it on connecting and again after STARTTLS, and never
     after AUTHENTICATE, so it is the list from before login. The identity
     is the ``IMPLEMENTATION`` line, which is how ManageSieve names its
-    software.
+    software, and the software is the server module it selects.
     """
     identity = (
         (("implementation", value.implementation),)
@@ -120,6 +122,9 @@ def rules_server(value: Capabilities) -> model.ServerDescription:
         identity,
         tuple(model.Capability(name, text) for name, text in value.entries),
         after_login=False,
+        software=_recognised(
+            sieve_servers.select_server(value), sieve_servers.PLAIN
+        ),
     )
 
 
@@ -130,13 +135,23 @@ def mail_server(
     """The IMAP ``ID`` and ``CAPABILITY`` answers, as the neutral one.
 
     The session logs in before anything asks for capabilities, so
-    IMAPClient's list is the one from after login.
+    IMAPClient's list is the one from after login. The software is the
+    server module the ``ID`` answer selects.
     """
     return model.ServerDescription(
         tuple(identity.items()),
         tuple(model.Capability(name) for name in capabilities),
         after_login=True,
+        software=_recognised(
+            imap_servers.select_server(identity), imap_servers.PLAIN
+        ),
     )
+
+
+# ----------------------------------------------------------------------------
+def _recognised(profile, plain) -> str | None:
+    """A selected server module's name; None for the plain fallback."""
+    return None if profile == plain else profile.name
 
 
 # ----------------------------------------------------------------------------

@@ -1,0 +1,66 @@
+$ mailctl probe --report
+exit: 0
+--- stdout
+## Unrecognised server
+
+mailctl `<VERSION>`, provider `mxroute`, does not recognise the ManageSieve or the IMAP server, so it works with the plain protocol there.
+
+- Probed: <DATE>
+- IMAP: `<host>:993`
+- Sieve: `<host>:4190 (tls=starttls)`
+
+### ManageSieve
+
+- Recognised as: `none`
+- Identity:
+  - implementation: `Acme Sieve 1.0`
+- Capabilities, read before login:
+  - `IMPLEMENTATION Acme Sieve 1.0`
+  - `OWNER <redacted>`
+  - `SIEVE fileinto imap4flags mailbox regex`
+  - `X-HOST <host> <ip>`
+  - `X-HOSTILE \x1b[31mred\x07`
+- Sieve extensions:
+  - `fileinto`
+  - `imap4flags`
+  - `mailbox`
+  - `regex`
+- Active Sieve script: yes
+- Sieve scripts: 1
+
+### IMAP
+
+- Recognised as: `none`
+- Identity:
+  - name: `Acme IMAP`
+  - support-url: `https://<host>/help/<name>`
+- Capabilities, read after login:
+  - `ID`
+  - `IMAP4REV1`
+  - `NAMESPACE`
+  - `UIDPLUS`
+- Delimiter: `.`
+- Namespaces:
+  - personal: prefix `INBOX.`, delimiter `.`
+- Folders: 3
+
+## Left out
+
+Replaced wherever they appeared: the account's address, its domain and local part, the configured hosts, folder and Sieve script names, and anything shaped like an address or an IPv4 address. An account capability's value is redacted. Never read: the password, any Sieve script's text, and any message.
+
+--- stderr
+
+Nothing was sent. Read the report above, remove anything you would rather not share, then file it at https://github.com/harleypig/mailctl/issues/new titled 'Unrecognised server: ManageSieve Acme Sieve 1.0; IMAP Acme IMAP'; with the GitHub CLI and the body saved to FILE:
+  gh issue create -R harleypig/mailctl --title 'Unrecognised server: ManageSieve Acme Sieve 1.0; IMAP Acme IMAP' --body-file FILE
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

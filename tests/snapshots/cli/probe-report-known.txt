@@ -1,0 +1,17 @@
+$ mailctl probe --report
+exit: 0
+--- stdout
+
+--- stderr
+mailctl recognises the ManageSieve and IMAP servers here; there is nothing to report.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

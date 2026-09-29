@@ -101,3 +101,34 @@ def test_probe_prints_no_credential_and_changes_nothing(account):
     assert password not in human.out + human.err
     assert password not in document.out + document.err
     assert (account.script("managesieve"), account.active_script()) == before
+
+
+# ----------------------------------------------------------------------------
+def test_a_known_server_has_no_unknown_server_report(account):
+    """#39: the report is offered only for a server no module matches.
+
+    Red if a Dovecot and Pigeonhole the libraries' own clients identify
+    are reported as unrecognised by 'probe', 'probe --report', or 'test',
+    or if the report path prints a credential. The unknown path is driven
+    offline, since this server is a known one."""
+    password = account.server.password_file.read_text().strip()
+
+    with account.sieve() as client:
+        implementation = client.get_implementation()
+
+    with account.imap() as client:
+        fields = client.id_()[0]
+
+    assert "pigeonhole" in implementation.lower()
+    assert b"dovecot" in b" ".join(fields[1::2]).lower()
+
+    report = account.run("probe", "--report")
+    human = account.run("probe")
+    test = account.run("test")
+
+    assert report.code == human.code == test.code == 0, report.err
+    assert report.out == ""
+    assert "nothing to report" in report.err
+    assert "does not recognise" not in human.out
+    assert "does not recognise" not in test.out
+    assert password not in report.out + report.err
