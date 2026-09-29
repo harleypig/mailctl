@@ -26,6 +26,17 @@ NOTES:
   rough first cut -- moved from the IMAP code into the mail utility. Every
   command's output is byte-for-byte what it was.
 
+* **The session can stay open, and survives the server dropping it**
+  ([#135]). A session now connects each server the first time it is
+  needed rather than all at once, so a front-end that keeps running can
+  hold one open. If the server has closed an idle connection, a read
+  reconnects and tries once more on its own. A write that fails is
+  reported and never sent again, because it may already have taken
+  effect. Calls on one connection take turns, and fetching messages
+  always selects the folder it names instead of relying on the last one
+  selected. The CLI still connects what each command needs up front, and
+  its output is byte-for-byte what it was.
+
 ## 0.8.4
 
 NOTES:
@@ -786,3 +797,4 @@ NOTES:
 [#130]: https://github.com/harleypig/mailctl/pull/130
 [#133]: https://github.com/harleypig/mailctl/issues/133
 [#134]: https://github.com/harleypig/mailctl/issues/134
+[#135]: https://github.com/harleypig/mailctl/issues/135

@@ -8,12 +8,9 @@ rather than taken on trust. That detection is mandatory, not an
 optimization: guessing wrong files mail into a folder nobody reads.
 """
 
-from dataclasses import dataclass
-
 from ... import MailctlError
 
 __all__ = [
-    "FolderCreation",
     "case_variant_hint",
     "case_variants",
     "normalize_folder",
@@ -141,23 +138,3 @@ def normalize_folder(
         return candidate
 
     return delimiter.join([*parent, *components])
-
-
-@dataclass(frozen=True)
-class FolderCreation:
-    """What creating a folder actually achieved.
-
-    Creating and subscribing are two IMAP operations, so they can disagree:
-    the folder can exist while the subscription that makes it visible does
-    not. Reporting them as one boolean would lose exactly the case this
-    record exists for, so the outcome is returned rather than reduced to
-    "it worked".
-
-    ``subscribed`` false with an empty ``subscribe_error`` means the caller
-    declined to subscribe; with an error it means the attempt failed. The
-    folder exists either way -- mail filed there will arrive.
-    """
-
-    folder: str
-    subscribed: bool
-    subscribe_error: str = ""

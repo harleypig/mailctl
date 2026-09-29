@@ -1,23 +1,37 @@
-"""The session: the configured provider, chosen, checked, opened, closed.
+"""The session: the configured provider, chosen, checked, opened, kept.
 
 ``connect`` resolves which provider ``config`` selects, refuses a setting
-it has no use for, lets its dialect validate the rest, and opens the
-halves of its transport a command needs -- all before any work is done, so
-a bad configuration costs no connection. It yields a :class:`Session`, and
-the work itself is in ``mailctl.utilities``.
+it has no use for, and lets its dialect validate the rest -- all before
+anything connects, so a bad configuration costs no connection. It yields a
+:class:`Session`, and the work itself is in ``mailctl.utilities``.
+
+A session connects each half of the transport the first time a utility
+uses it, keeps it for as long as the session lives, and closes what it
+opened when it ends. The CLI's session lives for one command; a front-end
+that keeps running keeps one open, one per user, since a session owns its
+connections and nothing here is shared between sessions.
 
 The session never touches a protocol. It works against one ``Provider``
 (``mailctl.providers.base``), chosen by the ``provider`` setting, and never
-asks which provider it has.
+asks which provider it has: what it does around each call -- connect,
+serialise, re-connect -- it reads from the transport interface's own
+classification of that call.
 """
 
-from collections.abc import Iterator
+import threading
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from typing import Any, cast
 
 from .config import CONNECTION_SETTINGS, FLAG, Config
 from .providers.base import (
+    CONNECTION,
+    MAIL,
+    READ,
+    RULES,
+    TRANSPORT_KINDS,
     Dialect,
+    Operation,
     Progress,
     Provider,
     ProviderCapabilities,
@@ -32,17 +46,35 @@ from .providers.registry import provider_for
 # ############################################################################
 
 
-@dataclass(frozen=True)
 class Session:
-    """One provider, opened: its offline dialect and its live transport.
+    """One provider, in use: its offline dialect and its live transport.
 
-    What a utility works against. The dialect, the name, and the
-    capabilities are the provider's, so a utility that needs no connection
-    takes the ``Provider`` itself instead and reads the same attributes.
+    What a utility works against. ``transport`` is the provider's
+    transport as the session guards it: each call connects its half first
+    if need be, waits its turn on that half's connection, and -- a read
+    only -- is sent once more on a fresh connection if the server had
+    dropped the old one. A write that fails is never sent again, because
+    it may have landed; the failure is the caller's to report.
+
+    ``rules`` and ``mail`` say which halves this session may connect; a
+    half it may not behaves as one that is not there.
     """
 
-    provider: Provider
-    transport: Transport
+    # ------------------------------------------------------------------------
+    def __init__(
+        self,
+        provider: Provider,
+        transport: Transport,
+        *,
+        rules: bool = True,
+        mail: bool = True,
+    ):
+        self.provider = provider
+        self.connection = transport
+        self.transport = cast(Transport, _Guarded(self))
+        self._allowed = {RULES: rules, MAIL: mail}
+        self._locks = {RULES: threading.RLock(), MAIL: threading.RLock()}
+        self._opened: list[str] = []
 
     # ------------------------------------------------------------------------
     @property
@@ -67,14 +99,143 @@ class Session:
     # ------------------------------------------------------------------------
     @property
     def has_rules(self) -> bool:
-        """Whether the transport's rule half is connected."""
-        return self.transport.has_rules
+        """Whether this session has a rule half, connected or not yet."""
+        return self._allowed[RULES] and self.connection.has_rules
 
     # ------------------------------------------------------------------------
     @property
     def has_mail(self) -> bool:
-        """Whether the transport's mail half is connected."""
-        return self.transport.has_mail
+        """Whether this session has a mail half, connected or not yet."""
+        return self._allowed[MAIL] and self.connection.has_mail
+
+    # ------------------------------------------------------------------------
+    @property
+    def opened(self) -> tuple[str, ...]:
+        """The halves this session connected, in the order it did."""
+        return tuple(self._opened)
+
+    # ------------------------------------------------------------------------
+    def open_all(self) -> None:
+        """Connect every half this session may, mail first, now rather
+        than on first use.
+
+        Mail goes first so a login failure there is reported before any
+        rule traffic.
+        """
+        for half in (MAIL, RULES):
+            with self._locks[half]:
+                self._open(half)
+
+    # ------------------------------------------------------------------------
+    def _open(self, half: str) -> None:
+        """Connect ``half`` the first time it is used, if it may be."""
+        if half in self._opened or not self._allowed[half]:
+            return
+
+        self.connection.connect(half)
+        self._opened.append(half)
+
+    # ------------------------------------------------------------------------
+    def _has(self, half: str) -> bool:
+        """Whether ``half`` can be connected (again) in this session."""
+        return self.has_rules if half == RULES else self.has_mail
+
+    # ------------------------------------------------------------------------
+    def _forget(self, half: str) -> None:
+        """Let go of a connection the server has dropped."""
+        if half in self._opened:
+            self._opened.remove(half)
+
+        self.connection.disconnect(half)
+
+    # ------------------------------------------------------------------------
+    def call(self, name: str, operation: Operation, *args, **kwargs) -> Any:
+        """Run one transport operation the way its kind requires.
+
+        One call at a time per half: a front-end that serves several
+        requests at once shares one connection per half, and IMAP and
+        ManageSieve are both one command after another. A read the server
+        cut off is re-sent once on a fresh connection; a second failure,
+        like any write's, is raised.
+        """
+        half = cast(str, operation.half)
+
+        with self._locks[half]:
+            for attempt in (1, 2):
+                self._open(half)
+
+                try:
+                    return getattr(self.connection, name)(*args, **kwargs)
+
+                except Exception as error:
+                    if not self.connection.dropped(error):
+                        raise
+
+                    self._forget(half)
+
+                    if (
+                        operation.kind != READ
+                        or attempt == 2
+                        or not self._has(half)
+                    ):
+                        raise
+
+        raise AssertionError("unreachable")
+
+    # ------------------------------------------------------------------------
+    def close(self) -> None:
+        """Close every half this session connected, last opened first."""
+        while self._opened:
+            half = self._opened.pop()
+
+            with self._locks[half]:
+                self.connection.disconnect(half)
+
+
+class _Guarded:
+    """A transport as a session hands it to the utilities.
+
+    Every classified read or write goes through :meth:`Session.call`; the
+    rest -- the ``has_*`` answers, which are the session's, and anything
+    that is not an operation -- is the transport's own.
+    """
+
+    _session: Session
+
+    # ------------------------------------------------------------------------
+    def __init__(self, session: Session):
+        object.__setattr__(self, "_session", session)
+
+    # ------------------------------------------------------------------------
+    @property
+    def has_rules(self) -> bool:
+        return self._session.has_rules
+
+    # ------------------------------------------------------------------------
+    @property
+    def has_mail(self) -> bool:
+        return self._session.has_mail
+
+    # ------------------------------------------------------------------------
+    def __getattr__(self, name: str) -> Any:
+        session = self._session
+        operation = TRANSPORT_KINDS.get(name)
+
+        if operation is None or operation.kind == CONNECTION:
+            return getattr(session.connection, name)
+
+        run: Callable[..., Any] = session.call
+
+        def guarded(*args, **kwargs):
+            return run(name, operation, *args, **kwargs)
+
+        guarded.__name__ = name
+
+        return guarded
+
+    # ------------------------------------------------------------------------
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(self._session.connection, name, value)
 
 
 # ############################################################################
@@ -88,23 +249,38 @@ def connect(
     config: Config,
     *,
     rules: bool = True,
-    mail: bool = False,
+    mail: bool = True,
     progress: Progress | None = None,
+    eager: bool = False,
 ) -> Iterator[Session]:
-    """Open the requested halves of the configured provider, then close them.
+    """A session on the configured provider, closed when the block ends.
 
     ``rules`` is the half that stores rules, ``mail`` the half that holds
-    messages and folders. The configuration is validated first, so an
-    unknown provider or a setting it refuses costs no connection.
+    messages and folders; each says whether the session may connect it,
+    and it connects only when first used -- unless ``eager``, when both
+    are connected before the block starts, as :meth:`Session.open_all`
+    does. The configuration is validated first, so an unknown provider or
+    a setting it refuses costs no connection.
     """
     provider = provider_for(config)
     check_settings(provider, config)
     provider.dialect.validate(config)
 
-    with provider.transport.open(
-        config, rules=rules, mail=mail, progress=progress
-    ) as transport:
-        yield Session(provider, transport)
+    session = Session(
+        provider,
+        provider.transport.open(config, progress=progress),
+        rules=rules,
+        mail=mail,
+    )
+
+    try:
+        if eager:
+            session.open_all()
+
+        yield session
+
+    finally:
+        session.close()
 
 
 # ----------------------------------------------------------------------------

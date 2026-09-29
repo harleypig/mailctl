@@ -39,17 +39,22 @@ from .capabilities import Capabilities, parse_capabilities
 from .servers import ServerProfile, select_server
 
 __all__ = [
+    "CONNECTION_CLOSED",
     "DEFAULT_TIMEOUT",
     "Revealable",
     "SieveAuthenticationError",
     "SieveClient",
     "SieveConnectionError",
     "SieveSession",
+    "connection_lost",
 ]
 
 # sievelib's own hard-coded read timeout, in seconds, so a caller that sets
 # nothing sees no change.
 DEFAULT_TIMEOUT = 5.0
+
+# What the client raises when the server said BYE or the socket hit EOF.
+CONNECTION_CLOSED = "Connection closed by server"
 
 # The prefix Python gives a private attribute of sievelib's ``Client``.
 _SIEVELIB_PRIVATE = "_Client__"
@@ -130,7 +135,7 @@ class SieveClient(Client):
             return line
 
         if status[1] == b"BYE":
-            raise SieveProtocolError("Connection closed by server")
+            raise SieveProtocolError(CONNECTION_CLOSED)
 
         if status[1] == b"NO":
             self._private("parse_error")(status[2])
@@ -258,7 +263,7 @@ class SieveClient(Client):
         code, text = match[1], match[2]
 
         if code == b"BYE":
-            raise SieveProtocolError("Connection closed by server")
+            raise SieveProtocolError(CONNECTION_CLOSED)
 
         if code == b"NO" and text:
             self._private("parse_error")(text)
@@ -281,7 +286,7 @@ class SieveClient(Client):
             ) from exc
 
         if not data:
-            raise SieveProtocolError("Connection closed by server")
+            raise SieveProtocolError(CONNECTION_CLOSED)
 
         buffer = self._private("read_buffer")
         setattr(self, _SIEVELIB_PRIVATE + "read_buffer", buffer + data)
@@ -312,6 +317,32 @@ class SieveClient(Client):
             self._fill()
 
         return self._take(size)
+
+
+# ----------------------------------------------------------------------------
+def connection_lost(error: BaseException) -> bool:
+    """Whether ``error``, or anything that caused it, is the connection
+    going away -- a BYE such as an idle timeout, an EOF, a reset -- rather
+    than the server refusing a command.
+
+    The client reports a BYE or an EOF as :data:`CONNECTION_CLOSED`, a
+    failed send arrives as an ``OSError``, and this session wraps either in
+    ``MailctlError`` with the original as its cause.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = error
+
+    while current is not None and id(current) not in seen:
+        if isinstance(current, OSError) or (
+            isinstance(current, SieveProtocolError)
+            and str(current) == CONNECTION_CLOSED
+        ):
+            return True
+
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+
+    return False
 
 
 class SieveSession:
@@ -446,15 +477,6 @@ class SieveSession:
     def capabilities(self) -> list[str]:
         """Return the Sieve extensions the server advertises."""
         return list(self.server_capabilities().sieve_extensions)
-
-    # ------------------------------------------------------------------------
-    def missing_extensions(self, required: set[str]) -> list[str]:
-        """Return the requested extensions the server does not advertise."""
-        advertised = {name.lower() for name in self.capabilities()}
-
-        return sorted(
-            name for name in required if name.lower() not in advertised
-        )
 
     # ------------------------------------------------------------------------
     def list_scripts(self) -> tuple[str | None, list[str]]:

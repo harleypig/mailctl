@@ -25,16 +25,14 @@ from collections.abc import Callable
 from typing import Protocol
 
 from imapclient import IMAPClient
-from imapclient.exceptions import IMAPClientError, LoginError
+from imapclient.exceptions import (
+    IMAPClientAbortError,
+    IMAPClientError,
+    LoginError,
+)
 
 from ... import MailctlError
-from .folders import (
-    FolderCreation,
-    case_variant_hint,
-    case_variants,
-    normalize_folder,
-    same_folder,
-)
+from .folders import case_variant_hint, same_folder
 from .messages import (
     FetchedMessage,
     MailActionPlan,
@@ -53,6 +51,7 @@ __all__ = [
     "ImapSession",
     "ImapTLSError",
     "Revealable",
+    "connection_lost",
 ]
 
 # Every FETCH item here leaves \Seen alone. BODY[...] and RFC822 /
@@ -98,6 +97,29 @@ class ImapAuthenticationError(MailctlError):
         self.reason = reason
 
 
+# ----------------------------------------------------------------------------
+def connection_lost(error: BaseException) -> bool:
+    """Whether ``error``, or anything that caused it, is the connection
+    going away -- a BYE such as an autologout, an EOF, a reset -- rather
+    than the server refusing a command.
+
+    imaplib reports all of those as its ``abort``, a socket failure it did
+    not catch arrives as an ``OSError``, and this session wraps either in
+    ``MailctlError`` with the original as its cause.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = error
+
+    while current is not None and id(current) not in seen:
+        if isinstance(current, IMAPClientAbortError | OSError):
+            return True
+
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+
+    return False
+
+
 class ImapSession:
     """A connected IMAP client scoped to one account."""
 
@@ -134,6 +156,8 @@ class ImapSession:
         self._subscribed: list[str] = []
         self._prefix: str | None = None
         self._server: ServerProfile | None = None
+        # The folder the server has selected on this connection, if any.
+        self._selected: str | None = None
 
     # ------------------------------------------------------------------------
     def __enter__(self) -> "ImapSession":
@@ -191,6 +215,7 @@ class ImapSession:
             raise MailctlError(f"IMAP error -- {exc}") from exc
 
         self.client = client
+        self._selected = None
         self._read_folders()
         self._read_namespace()
         self._log(
@@ -209,6 +234,7 @@ class ImapSession:
             self.client.logout()
 
         self.client = None
+        self._selected = None
 
     # ------------------------------------------------------------------------
     def _require_client(self) -> IMAPClient:
@@ -392,26 +418,6 @@ class ImapSession:
         return self._server
 
     # ------------------------------------------------------------------------
-    def normalize(self, name: str) -> str:
-        """Normalize a folder name against this server's naming."""
-        return normalize_folder(
-            name, self._delimiter, self._folders, self._prefix
-        )
-
-    # ------------------------------------------------------------------------
-    def exists(self, folder: str) -> bool:
-        """Whether a (already normalized) folder exists, matched exactly
-        except for ``INBOX`` (``same_folder``)."""
-        return any(
-            same_folder(candidate, folder) for candidate in self._folders
-        )
-
-    # ------------------------------------------------------------------------
-    def case_variants(self, folder: str) -> list[str]:
-        """Existing folders that differ from ``folder`` only in case."""
-        return case_variants(folder, self._folders)
-
-    # ------------------------------------------------------------------------
     def is_subscribed(self, folder: str) -> bool:
         """Whether a (already normalized) folder is subscribed to.
 
@@ -469,21 +475,8 @@ class ImapSession:
         self._read_folders()
 
     # ------------------------------------------------------------------------
-    def create_folder(
-        self, folder: str, subscribe: bool = True
-    ) -> FolderCreation:
-        """Create a folder, subscribe to it, and report what happened.
-
-        Subscribing is the default because a folder made to be a
-        ``fileinto`` target is by definition one the user is meant to see;
-        an unsubscribed one receives mail that never appears in webmail.
-
-        A failed subscription does **not** undo the creation and does not
-        raise: the folder exists and mail filed there will arrive, so
-        tearing it back down would trade a visibility problem for a data
-        one. The outcome is returned instead, for the caller to say out
-        loud.
-        """
+    def create_folder(self, folder: str) -> None:
+        """Create a folder, as named; subscribing to it is a second step."""
         client = self._require_client()
         self._log(f"creating folder {folder!r}")
 
@@ -496,19 +489,6 @@ class ImapSession:
             ) from exc
 
         self._read_folders()
-
-        if not subscribe:
-            return FolderCreation(folder=folder, subscribed=False)
-
-        try:
-            self.subscribe(folder)
-
-        except MailctlError as exc:
-            return FolderCreation(
-                folder=folder, subscribed=False, subscribe_error=str(exc)
-            )
-
-        return FolderCreation(folder=folder, subscribed=True)
 
     # ------------------------------------------------------------------------
     def search_uids(self, criteria: SearchCriteria, folder: str) -> list[int]:
@@ -546,7 +526,7 @@ class ImapSession:
     def fetch_headers(
         self, uids: list[int], folder: str
     ) -> list[FetchedMessage]:
-        """Fetch the headers and date of ``uids`` in the selected folder.
+        """Fetch the headers and date of ``uids`` in ``folder``.
 
         Returned in UID order, one per message the server still has. A
         broad search can return far more candidates than --max-messages
@@ -554,6 +534,7 @@ class ImapSession:
         is chunked for the same line-length reason as the bulk writes.
         """
         client = self._require_client()
+        self._ensure_selected(folder)
         fetched = {}
 
         # Announces the caller's narrowing, which follows this fetch; the
@@ -578,13 +559,14 @@ class ImapSession:
     def fetch_summaries(
         self, uids: list[int], folder: str
     ) -> list[FetchedMessage]:
-        """Fetch what a listing shows of ``uids``, in the selected folder.
+        """Fetch what a listing shows of ``uids`` in ``folder``.
 
         One FETCH of headers, date, size, flags, and structure; returned in
         the order asked for, one per message the server still has -- a UID
         a search returned and the fetch did not was expunged in between.
         """
         client = self._require_client()
+        self._ensure_selected(folder)
 
         try:
             fetched = client.fetch(uids, SUMMARY_ITEMS)
@@ -672,6 +654,9 @@ class ImapSession:
         """Select a folder, naming it in the error if it is missing."""
         client = self._require_client()
 
+        # A failed SELECT leaves nothing selected (RFC 3501 6.3.1).
+        self._selected = None
+
         try:
             client.select_folder(folder, readonly=readonly)
 
@@ -681,6 +666,22 @@ class ImapSession:
                 f"{case_variant_hint(folder, self._folders)}Run 'mailctl "
                 f"folders' to see the exact names this server uses."
             ) from exc
+
+        self._selected = folder
+
+    # ------------------------------------------------------------------------
+    def _ensure_selected(self, folder: str) -> None:
+        """Select ``folder`` read-only unless this connection has it
+        selected already.
+
+        A fetch names its folder rather than trusting whatever the last
+        call left selected: another caller, or a reconnect, may have
+        changed it. Skipping the SELECT only when the folder is already
+        the selected one keeps the wire what it was for the search and
+        fetch that run back to back.
+        """
+        if self._selected != folder:
+            self._select(folder, readonly=True)
 
     # ------------------------------------------------------------------------
     def add_flags(self, uids: list[int], flags: list[str]) -> None:

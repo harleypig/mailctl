@@ -13,9 +13,9 @@ from .client import (
     ImapSession,
     ImapTLSError,
     Revealable,
+    connection_lost,
 )
 from .folders import (
-    FolderCreation,
     case_variant_hint,
     case_variants,
     normalize_folder,
@@ -37,7 +37,6 @@ from .search import SearchCriteria
 __all__ = [
     "BULK_CHUNK",
     "FetchedMessage",
-    "FolderCreation",
     "ImapAuthenticationError",
     "ImapConnectionError",
     "ImapSession",
@@ -50,6 +49,7 @@ __all__ = [
     "SearchCriteria",
     "case_variant_hint",
     "case_variants",
+    "connection_lost",
     "decode_header_value",
     "normalize_folder",
     "same_folder",
