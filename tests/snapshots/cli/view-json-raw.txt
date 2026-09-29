@@ -1,20 +1,18 @@
-$ mailctl mark 1 --read --unread
+$ mailctl view 4 --json --raw
 exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mailctl mark [-h] [--verbose] [--debug] [--provider PROVIDER]
+usage: mailctl view [-h] [--verbose] [--debug] [--provider PROVIDER]
                     [--host HOST] [--user USER]
                     [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
                     [--env-file [PATH]] [--imap-host IMAP_HOST]
                     [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
                     [--sieve-tls {starttls,ssl,none}]
                     [--backup-dir BACKUP_DIR] [--disable-extension NAME]
-                    [--dry-run] [--yes] [--json] [--folder FOLDER]
-                    [--read | --unread] [--flag | --unflag] [--keyword K]
-                    [--no-keyword K]
-                    UID [UID ...]
-mailctl mark: error: argument --unread: not allowed with argument --read
+                    [--folder FOLDER] [--headers-only | --raw | --json]
+                    uid
+mailctl view: error: argument --raw: not allowed with argument --json
 
 --- sieve calls
 --- imap calls

@@ -1,0 +1,41 @@
+$ mailctl rules --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "script": "managesieve",
+  "rules": [
+    {
+      "position": 1,
+      "name": "bad\u001b[31mname",
+      "disabled": false,
+      "stops": true,
+      "combinator": "anyof",
+      "tests": [
+        {
+          "header": "Subject",
+          "match_type": "contains",
+          "keys": [
+            "x\u001b]0;pwn\u0007y"
+          ],
+          "comparator": "i;ascii-casemap"
+        }
+      ],
+      "actions": [
+        "fileinto",
+        "stop"
+      ],
+      "unmodelled": []
+    }
+  ],
+  "findings": []
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

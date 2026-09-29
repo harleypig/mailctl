@@ -1,0 +1,27 @@
+$ mailctl restore <TMP>/restore.sieve --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "restore",
+    "changes": false,
+    "diff": null,
+    "source": "<TMP>/restore.sieve",
+    "rules_before": 2,
+    "rules_after": 2,
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

@@ -1,0 +1,13 @@
+$ mailctl mark 1 98 99 --flag --dry-run --json
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 1, "error": {"message": "no message with uid 98, 99 in 'INBOX'; nothing was marked"}}
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (1, 98, 99))
+('logout',)

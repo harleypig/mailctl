@@ -1,0 +1,64 @@
+$ mailctl rules --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "script": "managesieve",
+  "rules": [
+    {
+      "position": 1,
+      "name": "keep-boss",
+      "disabled": true,
+      "stops": true,
+      "combinator": "allof",
+      "tests": [
+        {
+          "header": "From",
+          "match_type": "contains",
+          "keys": [
+            "boss@example.com"
+          ],
+          "comparator": "i;ascii-casemap"
+        }
+      ],
+      "actions": [
+        "fileinto",
+        "setflag",
+        "stop"
+      ],
+      "unmodelled": []
+    },
+    {
+      "position": 2,
+      "name": "bin-the-noise",
+      "disabled": false,
+      "stops": true,
+      "combinator": "anyof",
+      "tests": [
+        {
+          "header": "Subject",
+          "match_type": "contains",
+          "keys": [
+            "newsletter"
+          ],
+          "comparator": "i;ascii-casemap"
+        }
+      ],
+      "actions": [
+        "fileinto",
+        "stop"
+      ],
+      "unmodelled": []
+    }
+  ],
+  "findings": []
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

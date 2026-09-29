@@ -1,0 +1,34 @@
+$ mailctl view 9 --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "message": {
+    "uid": 9,
+    "folder": "INBOX",
+    "size": 68,
+    "flags": [],
+    "headers": [
+      {
+        "name": "From",
+        "value": "m@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Inv\u001b]0;pwn\u0007oice"
+      }
+    ],
+    "body": "b\n",
+    "body_from_html": false,
+    "attachments": []
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (9,))
+('logout',)

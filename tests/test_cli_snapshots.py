@@ -17,6 +17,7 @@ and read the diff before committing it.
 """
 
 import io
+import json
 import os
 import re
 import sys
@@ -378,10 +379,216 @@ HOSTILE = {
     "probe-json": (["probe", "--json"], PROBE),
     # --verbose's chatter goes to stderr, so stdout stays one document.
     "probe-json-verbose": (["probe", "--json", "-v"], PROBE),
+    # #151: a document escapes what a sender or a script wrote, as the
+    # filter document does, rather than carrying it raw.
+    "rules-hostile-json": (["rules", "--json"], {"script": HOSTILE_SCRIPT}),
+    "search-hostile-json": (
+        ["search", "--json"],
+        {"mail": {9: HOSTILE_SUBJECT}},
+    ),
+    "view-hostile-json": (
+        ["view", "9", "--json"],
+        {"mail": {9: HOSTILE_SUBJECT}},
+    ),
+}
+
+# A broad rule ahead of a narrow one it covers, so the narrow one never
+# runs: the finding 'rules --json' reports.
+BROAD_THEN_NARROW = """require ["fileinto"];
+# rule:[all-lists]
+if header :contains "to" "@lists.example.com"
+{
+\tfileinto "INBOX.Lists";
+\tstop;
+}
+# rule:[announce]
+if header :contains "to" "announce@lists.example.com"
+{
+\tfileinto "INBOX.Announce";
+\tstop;
+}
+"""
+
+# #151: --json on the data commands and on every write command's --dry-run
+# plan; --uids-only on search. Each pins a document's shape.
+JSON_SCENARIOS = {
+    "mark-dry-json": (
+        ["mark", "1", "2", "--read", "--flag", "--dry-run", "--json"],
+        MARKED,
+    ),
+    "mark-already-json": (
+        ["mark", "1", "--read", "--dry-run", "--json"],
+        MARKED,
+    ),
+    "mark-missing-json": (
+        ["mark", "1", "98", "99", "--flag", "--dry-run", "--json"],
+        MARKED,
+    ),
+    "mark-json-nodry": (["mark", "2", "--flag", "--yes", "--json"], MARKED),
+    "list-json": (["list", "--json"], {"others": {"spare": ONE_RULE}}),
+    "list-empty-json": (["list", "--json"], {"active": None}),
+    # Progress is said on the way, so it goes to stderr with the rest.
+    "list-verbose-json": (["list", "--verbose", "--json"], {}),
+    "folders-json": (["folders", "--json"], {}),
+    "rules-json": (["rules", "--json"], {}),
+    "rules-findings-json": (
+        ["rules", "--json"],
+        {"script": BROAD_THEN_NARROW},
+    ),
+    "rules-disabled-json": (["rules", "--json"], {"script": DISABLED_BOSS}),
+    "search-json": (["search", "--json"], MAIL),
+    "search-limit-json": (["search", "--json", "--limit", "2"], MAIL),
+    "search-none-json": (["search", "--json", "--from", "nobody@x.y"], {}),
+    "search-like-json": (["search", "--like", "3", "--json"], {}),
+    "search-uids-only": (["search", "--uids-only"], MAIL),
+    "search-uids-only-from": (["search", "--uids-only", *GITHUB], {}),
+    "search-uids-only-none": (
+        ["search", "--uids-only", "--from", "nobody@x.y"],
+        {},
+    ),
+    "search-uids-only-json": (["search", "--uids-only", "--json"], {}),
+    "search-uids-only-build-filter": (
+        ["search", "--uids-only", "--build-filter", *GITHUB],
+        {},
+    ),
+    "search-like-uids-only": (["search", "--like", "3", "--uids-only"], {}),
+    "view-json": (["view", "4", "--json"], MAIL),
+    "view-html-json": (["view", "5", "--json"], MAIL),
+    "view-attachment-json": (["view", "6", "--json"], {"mail": {6: SPOOFED}}),
+    "view-missing-json": (["view", "99", "--json"], MAIL),
+    "view-json-raw": (["view", "4", "--json", "--raw"], MAIL),
+    "add-dry-json": (
+        ["add", *GITHUB, "--fileinto", "Lists", "--dry-run", "--json"],
+        {},
+    ),
+    "add-dry-imapcreate-json": (
+        [
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists/GitHub",
+            "--create-folder",
+            "--mark-read",
+            "--dry-run",
+            "--json",
+        ],
+        {},
+    ),
+    "add-like-json": (
+        ["add", "--like", "2", "--fileinto", "Lists", "--dry-run", "--json"],
+        {},
+    ),
+    "add-json-nodry": (["add", *GITHUB, "--fileinto", "Lists", "--json"], {}),
+    "add-json-refused": (
+        ["add", *GITHUB, "--redirect", "a@b.c", "--dry-run", "--json"],
+        {},
+    ),
+    "apply-dry-json": (
+        ["apply", *GITHUB, "--fileinto", "Lists", "--dry-run", "--json"],
+        {},
+    ),
+    "apply-dry-overcap-json": (
+        [
+            "apply",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--max-messages",
+            "1",
+            "--dry-run",
+            "--json",
+        ],
+        {},
+    ),
+    "apply-nomatch-json": (
+        [
+            "apply",
+            "--from",
+            "nobody@x.y",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--json",
+        ],
+        {},
+    ),
+    "apply-keep-only-json": (
+        ["apply", *GITHUB, "--keep", "--dry-run", "--json"],
+        {},
+    ),
+    "apply-json-nodry": (
+        ["apply", *GITHUB, "--fileinto", "Lists", "--yes", "--json"],
+        {},
+    ),
+    "remove-dry-json": (
+        ["remove-rule", "keep-boss", "--dry-run", "--json"],
+        {},
+    ),
+    "remove-unknown-json": (
+        ["remove-rule", "phantom", "--dry-run", "--json"],
+        {},
+    ),
+    "move-dry-json": (
+        ["move-rule", "bin-the-noise", "--first", "--dry-run", "--json"],
+        {},
+    ),
+    "move-noop-json": (
+        ["move-rule", "keep-boss", "--first", "--dry-run", "--json"],
+        {},
+    ),
+    "move-starves-json": (
+        ["move-rule", "all-lists", "--first", "--dry-run", "--json"],
+        {"script": NARROW_THEN_BROAD},
+    ),
+    "disable-dry-json": (
+        ["disable-rule", "keep-boss", "--dry-run", "--json"],
+        {},
+    ),
+    "enable-dry-json": (
+        ["enable-rule", "keep-boss", "--dry-run", "--json"],
+        {"script": DISABLED_BOSS},
+    ),
+    "enable-already-json": (
+        ["enable-rule", "keep-boss", "--dry-run", "--json"],
+        {},
+    ),
+    "create-folder-dry-json": (
+        ["create-folder", "Lists/GitHub/New", "--dry-run", "--json"],
+        {},
+    ),
+    "create-folder-exists-json": (
+        ["create-folder", "Lists", "--dry-run", "--json"],
+        {},
+    ),
+    "subscribe-dry-json": (
+        ["subscribe", "INBOX.spam", "--dry-run", "--json"],
+        {},
+    ),
+    "subscribe-already-json": (
+        ["subscribe", "Lists", "--dry-run", "--json"],
+        {},
+    ),
+    "unsubscribe-dry-json": (
+        ["unsubscribe", "Lists", "--dry-run", "--json"],
+        {},
+    ),
+    "restore-dry-json": (
+        ["restore", "<FILE>", "--dry-run", "--json"],
+        {"file": ONE_RULE},
+    ),
+    "restore-identical-json": (
+        ["restore", "<FILE>", "--dry-run", "--json"],
+        {"file": "SAME"},
+    ),
+    "restore-json-nodry": (
+        ["restore", "<FILE>", "--yes", "--json"],
+        {"file": ONE_RULE},
+    ),
 }
 
 SCENARIOS = {
     **HOSTILE,
+    **JSON_SCENARIOS,
     "search": (["search"], MAIL),
     "search-from": (["search", *GITHUB], MAIL),
     "search-limit": (["search", "--limit", "2"], MAIL),
@@ -1318,6 +1525,93 @@ def test_probe_never_prints_the_password(
     assert logins == [True]
     assert "exit: 0" in actual
     assert sentinel not in actual
+
+
+# ----------------------------------------------------------------------------
+def outputs(record: str) -> tuple[str, str, str]:
+    """The exit, stdout, and stderr of a rendered scenario."""
+    head, rest = record.split("\n--- stdout\n", 1)
+    stdout, rest = rest.split("\n--- stderr\n", 1)
+    stderr = rest.split("\n--- sieve calls", 1)[0]
+
+    return head.splitlines()[-1].removeprefix("exit: "), stdout, stderr
+
+
+MACHINE = sorted(
+    name
+    for name, (argv, _) in SCENARIOS.items()
+    if "--json" in argv or "--uids-only" in argv
+)
+
+
+# ----------------------------------------------------------------------------
+def test_the_machine_output_scenarios_are_found():
+    """Vacuous if the filter matched nothing."""
+    assert "folders-json" in MACHINE
+    assert "search-uids-only" in MACHINE
+    assert "add-json-nodry" in MACHINE
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", MACHINE)
+def test_stdout_holds_only_the_data(
+    name, fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """#151: under --json stdout is one document and nothing else, and a
+    failure is one JSON line, the last on stderr; under --uids-only stdout
+    is UIDs alone."""
+    argv, options = SCENARIOS[name]
+    code, stdout, stderr = outputs(
+        run_scenario(
+            argv, options, fake_imap, roundcube_script, monkeypatch, tmp_path
+        )
+    )
+
+    if code.startswith("SystemExit"):
+        # argparse's own usage error, before any output is chosen.
+        assert stdout == ""
+
+    elif "--uids-only" in argv and code == "0":
+        assert all(line.isdigit() for line in stdout.splitlines()), stdout
+
+    elif code == "0":
+        assert json.loads(stdout)["version"] == 1
+
+    elif "--json" not in argv:
+        # --uids-only is not JSON, so neither is its failure.
+        assert stdout == ""
+        assert stderr.startswith("mailctl: ")
+
+    else:
+        assert stdout == ""
+
+        failure = json.loads(stderr.rstrip("\n").splitlines()[-1])
+
+        assert failure["version"] == 1
+        assert set(failure) == {"version", "error"}
+        assert failure["error"]["message"]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", MACHINE)
+def test_no_output_carries_the_password(
+    name, fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """A Secret is never serialised: the password each run is given
+    appears nowhere it prints, document or error."""
+    sentinel = "s3ntinel-VALUE-never-shown-151"
+    argv, options = SCENARIOS[name]
+
+    record = run_scenario(
+        argv,
+        {**options, "password": sentinel},
+        fake_imap,
+        roundcube_script,
+        monkeypatch,
+        tmp_path,
+    )
+
+    assert sentinel not in record
 
 
 # ----------------------------------------------------------------------------

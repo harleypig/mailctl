@@ -1,0 +1,64 @@
+$ mailctl add --from noreply@github.com --fileinto Lists --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "add",
+    "changes": true,
+    "diff": {
+      "label": "sieve",
+      "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -11,3 +11,8 @@\n     fileinto \"INBOX.Noise\";\n     stop;\n }\n+# rule:[from-noreply-github-com]\n+if anyof (header :contains \"From\" \"noreply@github.com\") {\n+    fileinto \"INBOX.Lists\";\n+    stop;\n+}\n",
+      "reformats": true
+    },
+    "rule": "from-noreply-github-com",
+    "criteria": {
+      "match": "any",
+      "compare": "contains",
+      "terms": [
+        {
+          "header": "From",
+          "value": "noreply@github.com"
+        }
+      ]
+    },
+    "actions": {
+      "fileinto": "Lists",
+      "discard": false,
+      "flags": [],
+      "keep": false,
+      "stop": null
+    },
+    "folder": {
+      "requested": "Lists",
+      "folder": "INBOX.Lists",
+      "delimiter": ".",
+      "delimiter_assumed": false,
+      "status": "exists",
+      "subscribe": true,
+      "case_variants": [],
+      "mailbox_disabled_by": null
+    },
+    "missing_extensions": [],
+    "placement": {
+      "dead_on_arrival": [],
+      "starves": []
+    },
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

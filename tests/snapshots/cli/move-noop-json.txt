@@ -1,0 +1,32 @@
+$ mailctl move-rule keep-boss --first --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "move-rule",
+    "changes": false,
+    "diff": null,
+    "rule": "keep-boss",
+    "from_position": 1,
+    "to_position": 1,
+    "count": 2,
+    "placement": {
+      "dead_on_arrival": [],
+      "starves": []
+    },
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

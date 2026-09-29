@@ -1,0 +1,9 @@
+$ mailctl apply --from noreply@github.com --keep --dry-run --json
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 1, "error": {"message": "nothing to do -- use --fileinto, --discard, --mark-read, or --flag"}}
+
+--- sieve calls
+--- imap calls

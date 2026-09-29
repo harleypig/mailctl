@@ -1,0 +1,29 @@
+$ mailctl create-folder Lists --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "create-folder",
+    "changes": false,
+    "folder": {
+      "requested": "Lists",
+      "folder": "INBOX.Lists",
+      "delimiter": ".",
+      "delimiter_assumed": false,
+      "status": "exists",
+      "subscribe": true,
+      "case_variants": [],
+      "mailbox_disabled_by": null
+    },
+    "subscribed_now": true,
+    "missing_parents": []
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

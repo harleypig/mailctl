@@ -12,11 +12,12 @@ validation -- change it. ``--dry-run`` stops after the "show it" step.
 """
 
 import argparse
+import contextlib
 import re
 import sys
 import traceback
 
-from . import MailctlError, __version__, engine, utilities
+from . import MailctlError, __version__, engine, json_output, utilities
 from .config import (
     CONFIG_FILE,
     DEFAULT,
@@ -61,6 +62,14 @@ ACTIVATE_HELP = (
 # --folder has no argparse default: one there would outrank
 # MAILCTL_SOURCE_FOLDER and source_folder in the config file (#63).
 FOLDER_DEFAULT_HELP = "default: source_folder from the config, else INBOX"
+
+# --json's help: a reading command prints its result, a write command its
+# --dry-run plan. The shapes are listed in README.md > Output for scripts.
+JSON_HELP = "print the result as a JSON document, and nothing else on stdout"
+JSON_PLAN_HELP = (
+    "with --dry-run, print the plan as a JSON document, and nothing else on "
+    "stdout; refused without --dry-run"
+)
 
 # The action flags refused with an explanation rather than an argparse
 # "unrecognized arguments" error; see action_parser.
@@ -125,6 +134,14 @@ MARK_LEGEND = "N unread, F flagged, R replied, D deleted, @ attachment"
 def warn(message: str) -> None:
     """Print a warning to stderr so it survives a piped stdout."""
     print(f"warning: {message}", file=sys.stderr)
+
+
+# ----------------------------------------------------------------------------
+def emit_json(args, document: dict) -> int:
+    """Write a --json document to the real stdout; see ``main``."""
+    args.stdout.write(json_output.dumps(document))
+
+    return 0
 
 
 # ----------------------------------------------------------------------------
@@ -803,6 +820,9 @@ def apply_to_existing(
     """
     source = utilities.mail.source_folder(sessions, config.source_folder)
 
+    if args.json:
+        return emit_mail_plan(sessions, criteria, args, spec, folder, source)
+
     if utilities.mail.mail_pass_is_noop(spec, source, folder.folder):
         print(
             f"\nSkipping the existing-mail pass: the rule leaves matching "
@@ -859,6 +879,37 @@ def apply_to_existing(
     report_result(result, plan)
 
     return result.moved or result.deleted or result.flagged
+
+
+# ----------------------------------------------------------------------------
+def emit_mail_plan(sessions, criteria, args, spec, folder, source) -> int:
+    """``apply --dry-run --json``: the existing-mail plan as a document.
+
+    A pass the actions make pointless plans nothing, and says so as
+    ``changes`` false with no messages, rather than searching.
+    """
+    noop = utilities.mail.mail_pass_is_noop(spec, source, folder.folder)
+    mail = (
+        None
+        if noop
+        else utilities.mail.plan_mail(
+            sessions, criteria, spec, source, folder.folder
+        )
+    )
+
+    return emit_json(
+        args,
+        json_output.plan(
+            "apply",
+            changes=bool(mail and mail.count),
+            criteria=criteria.to_dict(),
+            actions=json_output.actions(spec),
+            folder=json_output.folder_plan(folder),
+            max_messages=args.max_messages,
+            over_limit=bool(mail and mail.count > args.max_messages),
+            mail=None if mail is None else json_output.mail_plan(mail),
+        ),
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -938,6 +989,9 @@ def cmd_list(args) -> int:
 
     with connect(config, args) as sessions:
         active, others = utilities.scripts.list_scripts(sessions)
+
+        if args.json:
+            return emit_json(args, json_output.scripts(active, others))
 
         if not active and not others:
             print("No Sieve scripts on the server.")
@@ -1052,6 +1106,9 @@ def cmd_rules(args) -> int:
     with connect(config, args) as sessions:
         report = utilities.rules.read_rules(sessions, args.script)
 
+        if args.json:
+            return emit_json(args, json_output.rules_report(report))
+
         print(f"Script {report.script!r}:\n")
         print_rules(report.rules)
 
@@ -1103,6 +1160,21 @@ def cmd_restore(args) -> int:
         plan = utilities.backup.plan_restore(
             sessions, backup, args.script, args.activate
         )
+
+        if args.json:
+            count = utilities.backup.count_rules
+
+            return emit_json(
+                args,
+                json_output.plan(
+                    "restore",
+                    **json_output.change(plan.changes, plan.diff),
+                    source=str(plan.source),
+                    rules_before=count(sessions, plan.before),
+                    rules_after=count(sessions, plan.after),
+                    **json_output.activation(plan),
+                ),
+            )
 
         after = rule_count_phrase(sessions, plan.after)
         before = rule_count_phrase(sessions, plan.before)
@@ -1259,6 +1331,9 @@ def cmd_folders(args) -> int:
     with connect(config, args, rules=False, mail=True) as sessions:
         listing = utilities.folders.list_folders(sessions)
 
+        if args.json:
+            return emit_json(args, json_output.folder_listing(listing))
+
         print(f"Hierarchy delimiter: {listing.delimiter!r}")
         print(
             f"{len(listing.folders)} folder(s), "
@@ -1288,6 +1363,20 @@ def cmd_subscribe(args) -> int:
         plan = utilities.folders.plan_subscription(
             sessions, args.folder, subscribe
         )
+
+        if args.json:
+            return emit_json(
+                args,
+                json_output.plan(
+                    args.command,
+                    changes=plan.changes,
+                    requested=plan.requested,
+                    folder=plan.folder,
+                    delimiter=plan.delimiter,
+                    subscribe=plan.subscribe,
+                    subscribed_now=plan.subscribed_now,
+                ),
+            )
 
         if plan.requested != plan.folder:
             print(
@@ -1333,6 +1422,18 @@ def cmd_create_folder(args) -> int:
             sessions, args.folder, args.subscribe
         )
         target = plan.target
+
+        if args.json:
+            return emit_json(
+                args,
+                json_output.plan(
+                    "create-folder",
+                    changes=not plan.exists,
+                    folder=json_output.folder_plan(target),
+                    subscribed_now=plan.subscribed_now,
+                    missing_parents=list(plan.missing_parents),
+                ),
+            )
 
         if target.requested != target.folder:
             print(
@@ -1526,7 +1627,7 @@ def cmd_probe(args) -> int:
         record = utilities.reports.probe_servers(sessions, config)
 
     if args.json:
-        sys.stdout.write(utilities.reports.dump_probe(record))
+        args.stdout.write(utilities.reports.dump_probe(record))
 
         return 0
 
@@ -1718,13 +1819,29 @@ def cmd_add(args) -> int:
 
         folder = prepare_folder(sessions, config, args)
 
-        warn_missing_extensions(
-            utilities.rules.missing_extensions(sessions, spec, folder)
-        )
+        missing = utilities.rules.missing_extensions(sessions, spec, folder)
+
+        warn_missing_extensions(missing)
 
         plan = utilities.rules.plan_rule(
             sessions, config, rule_request(args, criteria, spec), folder
         )
+
+        if args.json:
+            return emit_json(
+                args,
+                json_output.plan(
+                    "add",
+                    **json_output.change(plan.before != plan.after, plan.diff),
+                    rule=plan.name,
+                    criteria=criteria.to_dict(),
+                    actions=json_output.actions(spec),
+                    folder=json_output.folder_plan(folder),
+                    missing_extensions=list(missing),
+                    placement=json_output.placement(plan.placement),
+                    **json_output.activation(plan),
+                ),
+            )
 
         print(f"\nRule {plan.name!r} on script {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
@@ -1820,6 +1937,17 @@ def cmd_remove_rule(args) -> int:
             sessions, args.rule_name, args.script, args.activate
         )
 
+        if args.json:
+            return emit_json(
+                args,
+                json_output.plan(
+                    "remove-rule",
+                    **json_output.change(plan.before != plan.after, plan.diff),
+                    rule=plan.rule,
+                    **json_output.activation(plan),
+                ),
+            )
+
         print_script_diff(plan.diff)
         print_activation(plan)
 
@@ -1856,6 +1984,21 @@ def cmd_move_rule(args) -> int:
             args.script,
             args.activate,
         )
+
+        if args.json:
+            return emit_json(
+                args,
+                json_output.plan(
+                    "move-rule",
+                    **json_output.change(plan.changes, plan.diff),
+                    rule=plan.rule,
+                    from_position=plan.from_index + 1,
+                    to_position=plan.to_index + 1,
+                    count=plan.count,
+                    placement=json_output.placement(plan.placement),
+                    **json_output.activation(plan),
+                ),
+            )
 
         if not plan.changes:
             print(
@@ -1908,6 +2051,18 @@ def cmd_switch_rule(args) -> int:
         plan = utilities.rules.plan_switch(
             sessions, args.rule_name, args.enable, args.script, args.activate
         )
+
+        if args.json:
+            return emit_json(
+                args,
+                json_output.plan(
+                    args.command,
+                    **json_output.change(plan.changes, plan.diff),
+                    rule=plan.rule,
+                    enable=plan.enable,
+                    **json_output.activation(plan),
+                ),
+            )
 
         if not plan.changes:
             print(
@@ -1988,8 +2143,11 @@ def cmd_search(args) -> int:
     if args.derive is not None and args.like is None:
         raise MailctlError("--derive needs --like UID")
 
-    if args.json and not args.build_filter:
-        raise MailctlError("--json needs --build-filter")
+    if args.uids_only and (args.json or args.build_filter):
+        raise MailctlError(
+            "--uids-only prints a listing's UIDs; it cannot be combined with "
+            "--json or --build-filter"
+        )
 
     if args.raw and (args.build_filter or args.like is not None):
         raise MailctlError(
@@ -1999,7 +2157,7 @@ def cmd_search(args) -> int:
 
     if args.like is None:
         if args.build_filter:
-            return print_filter(criteria, args.json)
+            return print_filter(args, criteria)
 
         with connect(config, args, rules=False, mail=True) as sessions:
             listing = utilities.messages.list_messages(
@@ -2010,9 +2168,9 @@ def cmd_search(args) -> int:
                 limit=args.limit,
             )
 
-        return print_listing(listing)
+        return show_listing(args, listing)
 
-    # With --json only the filter goes to stdout, so what identifies the
+    # With --json only the document goes to stdout, so what identifies the
     # message goes to stderr, where a person still sees it.
     shown = sys.stderr if args.json else None
 
@@ -2023,7 +2181,7 @@ def cmd_search(args) -> int:
             if not args.json:
                 print()
 
-            return print_filter(like.criteria, args.json)
+            return print_filter(args, like.criteria)
 
         print(f"\nCriteria: {like.criteria.describe()}\n")
 
@@ -2035,11 +2193,11 @@ def cmd_search(args) -> int:
             limit=args.limit,
         )
 
-    return print_listing(listing)
+    return show_listing(args, listing)
 
 
 # ----------------------------------------------------------------------------
-def print_filter(criteria: Criteria, as_json: bool) -> int:
+def print_filter(args, criteria: Criteria) -> int:
     """Print the filter criteria make, and save nothing."""
     if not criteria:
         raise MailctlError(
@@ -2047,8 +2205,8 @@ def print_filter(criteria: Criteria, as_json: bool) -> int:
             "flags (--from/--to/--cc/--subject/--list-id/--header)"
         )
 
-    if as_json:
-        sys.stdout.write(dump_filter(criteria))
+    if args.json:
+        args.stdout.write(dump_filter(criteria))
 
         return 0
 
@@ -2057,6 +2215,20 @@ def print_filter(criteria: Criteria, as_json: bool) -> int:
     print("\n--json prints it as a filter document.")
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def show_listing(args, listing) -> int:
+    """Hand a search's listing over in the form asked for."""
+    if args.json:
+        return emit_json(args, json_output.message_listing(listing))
+
+    if args.uids_only:
+        args.stdout.writelines(f"{item.uid}\n" for item in listing.messages)
+
+        return 0
+
+    return print_listing(listing)
 
 
 # ----------------------------------------------------------------------------
@@ -2106,6 +2278,9 @@ def cmd_view(args) -> int:
         content = utilities.messages.read_message(
             sessions, config.source_folder, args.uid
         )
+
+    if args.json:
+        return emit_json(args, json_output.message(content))
 
     if args.raw and not sys.stdout.isatty():
         # Nothing draws a pipe or a file, so hand over the exact bytes:
@@ -2182,6 +2357,9 @@ def cmd_mark(args) -> int:
         plan = utilities.flags.plan_mark(
             sessions, config.source_folder, args.uids, add, remove
         )
+
+        if args.json:
+            return emit_json(args, json_output.mark_plan(plan))
 
         print_mark_plan(plan)
 
@@ -2510,6 +2688,8 @@ def safety_parser() -> argparse.ArgumentParser:
     group.add_argument(
         "--yes", action="store_true", help="skip confirmation prompts"
     )
+    group.add_argument("--json", action="store_true", help=JSON_PLAN_HELP)
+
     return parser
 
 
@@ -2605,6 +2785,7 @@ def build_parser(
     listing = command(
         "list", parents=[common, connection], help="list Sieve scripts"
     )
+    listing.add_argument("--json", action="store_true", help=JSON_HELP)
     listing.set_defaults(handler=cmd_list)
 
     show = command(
@@ -2624,6 +2805,7 @@ def build_parser(
         "changed.",
     )
     rules.add_argument("--script", help="script name; default active")
+    rules.add_argument("--json", action="store_true", help=JSON_HELP)
     rules.set_defaults(handler=cmd_rules)
 
     backup = command(
@@ -2687,6 +2869,7 @@ def build_parser(
     folders = command(
         "folders", parents=[common, connection], help="list IMAP folders"
     )
+    folders.add_argument("--json", action="store_true", help=JSON_HELP)
     folders.set_defaults(handler=cmd_folders)
 
     for name, summary in (
@@ -2710,6 +2893,7 @@ def build_parser(
             action="store_true",
             help="say what would change; change nothing",
         )
+        toggle.add_argument("--json", action="store_true", help=JSON_PLAN_HELP)
         toggle.set_defaults(handler=cmd_subscribe)
 
     create_folder = command(
@@ -2777,6 +2961,7 @@ def build_parser(
         action="store_true",
         help="show the diff; upload nothing",
     )
+    add.add_argument("--json", action="store_true", help=JSON_PLAN_HELP)
     _add_rule_flags(add, offer)
     add.set_defaults(handler=cmd_add)
 
@@ -2842,7 +3027,14 @@ def build_parser(
     search.add_argument(
         "--json",
         action="store_true",
-        help="with --build-filter, print it as a filter document",
+        help="print the listing as a JSON document; with --build-filter, "
+        "the filter document",
+    )
+    search.add_argument(
+        "--uids-only",
+        dest="uids_only",
+        action="store_true",
+        help="print only the listed messages' UIDs, one per line",
     )
     search.set_defaults(handler=cmd_search)
 
@@ -2868,6 +3060,7 @@ def build_parser(
         help="print the full RFC 822 source: escaped on a terminal, the "
         "exact bytes into a pipe or file ('--raw > msg.eml')",
     )
+    shape.add_argument("--json", action="store_true", help=JSON_HELP)
     view.set_defaults(handler=cmd_view)
 
     mark = command(
@@ -3211,26 +3404,47 @@ def main(argv: list[str] | None = None) -> int:
             "folder that already exists, use 'mailctl unsubscribe FOLDER'"
         )
 
+    # --json and --uids-only keep stdout for the data alone: the data goes
+    # to args.stdout, the stdout this run started with, and everything said
+    # on the way -- progress, a folder's resolution, the message --like read
+    # -- is sent to stderr, where a person still sees it.
+    args.stdout = sys.stdout
+    machine = getattr(args, "json", False) or getattr(args, "uids_only", False)
+
     try:
         if args.handler is not cmd_migrate_config:
             warn_about_config_dir(utilities.migration.check_config_dir())
 
-        return args.handler(args)
+        # A document on stdout leaves no room for a confirmation prompt, so
+        # a write command prints its plan and stops.
+        if (
+            getattr(args, "json", False)
+            and getattr(args, "dry_run", None) is False
+        ):
+            raise MailctlError(
+                "--json prints a write command's plan, so it needs --dry-run"
+            )
+
+        if not machine:
+            return args.handler(args)
+
+        with contextlib.redirect_stdout(sys.stderr):
+            return args.handler(args)
 
     except MailctlError as exc:
         if args.debug:
             traceback.print_exc()
 
-        # The core breaks a long message into lines with bare newlines and
-        # leaves the layout here; indent them under the prefix.
-        message = str(exc).replace("\n", "\n  ")
-
-        print(f"mailctl: {message}", file=sys.stderr)
+        report_failure(args, str(exc))
 
         return 1
 
     except KeyboardInterrupt:
-        print("\nInterrupted.", file=sys.stderr)
+        if getattr(args, "json", False):
+            report_failure(args, "interrupted")
+
+        else:
+            print("\nInterrupted.", file=sys.stderr)
 
         return 130
 
@@ -3238,10 +3452,28 @@ def main(argv: list[str] | None = None) -> int:
         if args.debug:
             traceback.print_exc()
 
-        print(
-            f"mailctl: unexpected {type(exc).__name__}: {exc} "
+        report_failure(
+            args,
+            f"unexpected {type(exc).__name__}: {exc} "
             f"(re-run with --debug for a traceback)",
-            file=sys.stderr,
         )
 
         return 1
+
+
+# ----------------------------------------------------------------------------
+def report_failure(args, message: str) -> None:
+    """Say on stderr why the run failed: as one line of JSON under --json,
+    the last line stderr holds."""
+    if getattr(args, "json", False):
+        document = json_output.error(message)
+
+        sys.stderr.write(json_output.dumps(document, indent=None))
+
+        return
+
+    # The core breaks a long message into lines with bare newlines and
+    # leaves the layout here; indent them under the prefix.
+    message = message.replace("\n", "\n  ")
+
+    print(f"mailctl: {message}", file=sys.stderr)

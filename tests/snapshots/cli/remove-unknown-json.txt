@@ -1,0 +1,14 @@
+$ mailctl remove-rule phantom --dry-run --json
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 1, "error": {"message": "no rule named 'phantom' in the active script. Known rules: keep-boss, bin-the-noise"}}
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

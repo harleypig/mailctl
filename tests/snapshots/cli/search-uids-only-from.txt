@@ -1,0 +1,15 @@
+$ mailctl search --uids-only --from noreply@github.com
+exit: 0
+--- stdout
+2
+1
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (3, 2, 1))
+('logout',)

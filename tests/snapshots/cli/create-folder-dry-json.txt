@@ -1,0 +1,31 @@
+$ mailctl create-folder Lists/GitHub/New --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "create-folder",
+    "changes": true,
+    "folder": {
+      "requested": "Lists/GitHub/New",
+      "folder": "INBOX.Lists.GitHub.New",
+      "delimiter": ".",
+      "delimiter_assumed": false,
+      "status": "imap-create",
+      "subscribe": true,
+      "case_variants": [],
+      "mailbox_disabled_by": null
+    },
+    "subscribed_now": false,
+    "missing_parents": [
+      "INBOX.Lists.GitHub"
+    ]
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

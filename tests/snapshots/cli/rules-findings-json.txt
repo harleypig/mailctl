@@ -1,0 +1,70 @@
+$ mailctl rules --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "script": "managesieve",
+  "rules": [
+    {
+      "position": 1,
+      "name": "all-lists",
+      "disabled": false,
+      "stops": true,
+      "combinator": "anyof",
+      "tests": [
+        {
+          "header": "To",
+          "match_type": "contains",
+          "keys": [
+            "@lists.example.com"
+          ],
+          "comparator": "i;ascii-casemap"
+        }
+      ],
+      "actions": [
+        "fileinto",
+        "stop"
+      ],
+      "unmodelled": []
+    },
+    {
+      "position": 2,
+      "name": "announce",
+      "disabled": false,
+      "stops": true,
+      "combinator": "anyof",
+      "tests": [
+        {
+          "header": "To",
+          "match_type": "contains",
+          "keys": [
+            "announce@lists.example.com"
+          ],
+          "comparator": "i;ascii-casemap"
+        }
+      ],
+      "actions": [
+        "fileinto",
+        "stop"
+      ],
+      "unmodelled": []
+    }
+  ],
+  "findings": [
+    {
+      "certainty": "certain",
+      "broad": "all-lists",
+      "narrow": "announce",
+      "reason": "'all-lists' carries stop and its conditions cover every case 'announce' tests for"
+    }
+  ]
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

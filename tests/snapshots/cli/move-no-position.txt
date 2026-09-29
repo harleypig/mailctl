@@ -10,7 +10,8 @@ usage: mailctl move-rule [-h] [--verbose] [--debug] [--provider PROVIDER]
                          [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
                          [--sieve-tls {starttls,ssl,none}]
                          [--backup-dir BACKUP_DIR] [--disable-extension NAME]
-                         [--dry-run] [--yes] [--script SCRIPT] [--activate]
+                         [--dry-run] [--yes] [--json] [--script SCRIPT]
+                         [--activate]
                          (--first | --last | --before OTHER | --after OTHER)
                          NAME
 mailctl move-rule: error: one of the arguments --first --last --before --after is required

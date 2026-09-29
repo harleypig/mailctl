@@ -1,0 +1,56 @@
+$ mailctl view 4 --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "message": {
+    "uid": 4,
+    "folder": "INBOX",
+    "size": 591,
+    "flags": [],
+    "headers": [
+      {
+        "name": "From",
+        "value": "Boss <boss@example.com>"
+      },
+      {
+        "name": "To",
+        "value": "user@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Q3 report \u2014 draft"
+      },
+      {
+        "name": "Date",
+        "value": "Wed, 4 Feb 2026 09:00:00 +0000"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Content-Type",
+        "value": "multipart/mixed; boundary=\"outer\""
+      }
+    ],
+    "body": "Numbers attached.\n\n-- Boss",
+    "body_from_html": false,
+    "attachments": [
+      {
+        "name": "q3.pdf",
+        "content_type": "application/pdf",
+        "size": 9
+      }
+    ]
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (4,))
+('logout',)

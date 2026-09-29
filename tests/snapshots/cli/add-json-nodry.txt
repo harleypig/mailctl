@@ -1,0 +1,9 @@
+$ mailctl add --from noreply@github.com --fileinto Lists --json
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 1, "error": {"message": "--json prints a write command's plan, so it needs --dry-run"}}
+
+--- sieve calls
+--- imap calls

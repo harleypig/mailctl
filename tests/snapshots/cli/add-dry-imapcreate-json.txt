@@ -1,0 +1,68 @@
+$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --mark-read --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "add",
+    "changes": true,
+    "diff": {
+      "label": "sieve",
+      "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -1,4 +1,4 @@\n-require [\"fileinto\", \"imap4flags\"];\n+require [\"fileinto\", \"imap4flags\", \"mailbox\"];\n \n # rule:[keep-boss]\n if header :contains \"from\" \"boss@example.com\" {\n@@ -11,3 +11,9 @@\n     fileinto \"INBOX.Noise\";\n     stop;\n }\n+# rule:[from-noreply-github-com]\n+if anyof (header :contains \"From\" \"noreply@github.com\") {\n+    addflag \"\\\\Seen\";\n+    fileinto :create \"INBOX.Lists.GitHub\";\n+    stop;\n+}\n",
+      "reformats": true
+    },
+    "rule": "from-noreply-github-com",
+    "criteria": {
+      "match": "any",
+      "compare": "contains",
+      "terms": [
+        {
+          "header": "From",
+          "value": "noreply@github.com"
+        }
+      ]
+    },
+    "actions": {
+      "fileinto": "Lists/GitHub",
+      "discard": false,
+      "flags": [
+        "\\Seen"
+      ],
+      "keep": false,
+      "stop": null
+    },
+    "folder": {
+      "requested": "Lists/GitHub",
+      "folder": "INBOX.Lists.GitHub",
+      "delimiter": ".",
+      "delimiter_assumed": false,
+      "status": "imap-and-sieve-create",
+      "subscribe": true,
+      "case_variants": [],
+      "mailbox_disabled_by": null
+    },
+    "missing_extensions": [],
+    "placement": {
+      "dead_on_arrival": [],
+      "starves": []
+    },
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
+[dry-run] would create IMAP folder 'INBOX.Lists.GitHub' and subscribe to it
+  The rule also says 'fileinto :create', so Sieve recreates the folder if it is ever deleted.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

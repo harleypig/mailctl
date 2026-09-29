@@ -140,6 +140,8 @@ layer may call.
 - `mailctl/cli.py` — **interface**: the CLI front-end. Argument parsing,
   turning flags into utility inputs, opening a session for the command, and
   rendering and confirming what the utilities return.
+- `mailctl/json_output.py` — **interface**: the documents the CLI's
+  `--json` prints, one explicit mapping per neutral record.
 - `mailctl/utilities/` — **utilities**: every piece of work the tool does,
   host-independent, for any front-end and against any provider, one module
   per subject. The safety policy lives here.
@@ -451,7 +453,10 @@ transport operations ([#150][i150]).
 
 **`--json` is offered where the output is data a script consumes**
 ([#151][i151]). A report for a person, such as `test`, offers none, and its
-layout is not a contract; the contract is its exit code.
+layout is not a contract; the contract is its exit code. On a write command
+`--json` prints the `--dry-run` plan and is refused without `--dry-run`,
+since a document on stdout leaves no room for a prompt; stdout holds the
+document alone, and a failure is one JSON line on stderr.
 
 ## Providers
 
