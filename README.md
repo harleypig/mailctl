@@ -179,6 +179,13 @@ mailctl test --env-file
 mailctl probe
 mailctl probe --json > probe-$(date -u +%F).json
 
+# Save what the servers say now as this host's baseline, in
+# $XDG_CONFIG_HOME/mailctl/baselines/<host>.json (mode 0600, no
+# credential). Saving again shows what changed and asks. Saving writes a
+# local file only.
+mailctl save-baseline
+mailctl show-baseline
+
 # What does this server call its folders, and which does webmail show?
 mailctl folders
 

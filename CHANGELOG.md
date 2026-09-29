@@ -67,6 +67,17 @@ FEATURES:
   `--reverse` without `--sort`, and `--sort` with `--build-filter`, are
   refused.
 
+* **`mailctl save-baseline` and `mailctl show-baseline` record what the
+  servers say, per host** ([#18]). `save-baseline` probes both servers, as
+  `mailctl probe` does, and saves the result to
+  `$XDG_CONFIG_HOME/mailctl/baselines/<host>.json`, mode 0600: what
+  describes the server once, and the active script per account. The first
+  save just writes it; replacing one shows what changed and the file's
+  diff, then asks (`--yes`, `--dry-run`). Only the local file is written,
+  and it holds no credential. `show-baseline` prints it; `--json` prints the
+  file as stored. A file that is damaged or from another version is refused
+  by name and left alone.
+
 * **`mailctl probe` prints what a provider record needs** ([#101]). It
   reads both servers and changes nothing: the date and time in UTC, where
   each half connects, each server's identity (IMAP `ID`, ManageSieve
@@ -1053,6 +1064,7 @@ NOTES:
 [#150]: https://github.com/harleypig/mailctl/issues/150
 [#101]: https://github.com/harleypig/mailctl/issues/101
 [#152]: https://github.com/harleypig/mailctl/issues/152
+[#18]: https://github.com/harleypig/mailctl/issues/18
 [#153]: https://github.com/harleypig/mailctl/issues/153
 [#155]: https://github.com/harleypig/mailctl/issues/155
 [#147]: https://github.com/harleypig/mailctl/issues/147

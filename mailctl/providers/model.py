@@ -38,6 +38,7 @@ __all__ = [
     "CountSupport",
     "DeliveryCreate",
     "DisplayDiff",
+    "DriftTerms",
     "ExtensionState",
     "Fact",
     "FetchedMessage",
@@ -563,6 +564,27 @@ class Namespace:
     kind: str
     prefix: str
     delimiter: str | None
+
+
+@dataclass(frozen=True)
+class DriftTerms:
+    """What a host's capability lists mean when one is compared with another.
+
+    * ``relied`` -- mail-half capabilities mailctl behaves differently
+      without, so their coming or going is serious rather than
+      informational.
+    * ``account`` -- capabilities that describe the logged-in account
+      rather than the server; a baseline keeps them apart, and a drift
+      check does not compare them.
+    * ``carriers`` -- rule-half capabilities whose value is the extension
+      list, compared extension by extension rather than as one value.
+
+    Names are upper-case; capability names compare without regard to case.
+    """
+
+    relied: frozenset[str] = frozenset()
+    account: frozenset[str] = frozenset()
+    carriers: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

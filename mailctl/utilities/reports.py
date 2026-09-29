@@ -9,12 +9,15 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from .. import MailctlError
 from ..config import Config
 from ..engine import Session
 from ..providers.base import (
     NAMESPACE_KINDS,
+    Capability,
     ExtensionState,
     Fact,
+    Namespace,
     ProbeRecord,
     ServerDescription,
     Wording,
@@ -25,6 +28,9 @@ from .folders import list_folders
 # The version of the document ``dump_probe`` writes. Raise it when a key
 # changes meaning or goes away; a stored baseline says which it was.
 PROBE_VERSION = 1
+
+# How a probe document writes a time: UTC, to the second.
+TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 # ############################################################################
 # Probing the account
@@ -154,9 +160,24 @@ def dump_probe(record: ProbeRecord) -> str:
     record. Only ``taken`` and the ``endpoints`` (the hosts configured)
     vary between two probes of an unchanged server.
     """
+    return dump_document(probe_document(record))
+
+
+# ----------------------------------------------------------------------------
+def dump_document(document: dict) -> str:
+    """``document`` as JSON text, one value per line, ending in a newline."""
+    # What a server sends may hold anything. ensure_ascii (the default)
+    # escapes everything outside printable ASCII, which leaves nothing a
+    # terminal would act on; do not turn it off.
+    return json.dumps(document, indent=2, ensure_ascii=True) + "\n"
+
+
+# ----------------------------------------------------------------------------
+def probe_document(record: ProbeRecord) -> dict:
+    """A probe as the plain data ``dump_probe`` writes out."""
     document = {
         "version": PROBE_VERSION,
-        "taken": record.taken.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "taken": record.taken.strftime(TIME_FORMAT),
         "provider": record.provider,
         "endpoints": [
             {"label": fact.label, "value": fact.text}
@@ -187,10 +208,7 @@ def dump_probe(record: ProbeRecord) -> str:
             ],
         }
 
-    # What a server sends may hold anything. ensure_ascii (the default)
-    # escapes everything outside printable ASCII, which leaves nothing a
-    # terminal would act on; do not turn it off.
-    return json.dumps(document, indent=2, ensure_ascii=True) + "\n"
+    return document
 
 
 # ----------------------------------------------------------------------------
@@ -203,6 +221,117 @@ def _server_document(value: ServerDescription) -> dict:
             for item in value.capabilities
         ],
     }
+
+
+# ----------------------------------------------------------------------------
+def load_probe(document: object) -> ProbeRecord:
+    """Read a document ``probe_document`` wrote back into a record.
+
+    Strict: another version, a missing key, or a value of the wrong type
+    is refused with ``MailctlError`` saying which, rather than read as
+    something it is not.
+    """
+    if not isinstance(document, dict):
+        raise MailctlError("not a probe document: not a JSON object")
+
+    version = document.get("version")
+
+    if version != PROBE_VERSION:
+        raise MailctlError(
+            f"probe document version {version!r}; this mailctl reads "
+            f"version {PROBE_VERSION}"
+        )
+
+    try:
+        return _load_probe(document)
+
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise MailctlError(
+            f"not a probe document: {type(exc).__name__}: {exc}"
+        ) from exc
+
+
+# ----------------------------------------------------------------------------
+def _load_probe(document: dict) -> ProbeRecord:
+    taken = datetime.strptime(
+        _typed(document["taken"], str), TIME_FORMAT
+    ).replace(tzinfo=UTC)
+    rules = mail = None
+    extensions: tuple[str, ...] = ()
+    active = delimiter = None
+    namespaces: tuple[Namespace, ...] = ()
+
+    if document["rules"] is not None:
+        section = _typed(document["rules"], dict)
+        rules = _load_server(section)
+        extensions = tuple(
+            _typed(name, str) for name in _typed(section["extensions"], list)
+        )
+        active = _typed(section["active_rule_set"], str, None)
+
+    if document["mail"] is not None:
+        section = _typed(document["mail"], dict)
+        mail = _load_server(section)
+        delimiter = _typed(section["delimiter"], str, None)
+        namespaces = tuple(
+            Namespace(
+                _kind(space["kind"]),
+                _typed(space["prefix"], str),
+                _typed(space["delimiter"], str, None),
+            )
+            for space in _typed(section["namespaces"], list)
+        )
+
+    return ProbeRecord(
+        taken=taken,
+        provider=_typed(document["provider"], str),
+        endpoints=tuple(
+            Fact(_typed(item["label"], str), _typed(item["value"], str))
+            for item in _typed(document["endpoints"], list)
+        ),
+        rules=rules,
+        extensions=extensions,
+        active_rule_set=active,
+        mail=mail,
+        delimiter=delimiter,
+        namespaces=namespaces,
+    )
+
+
+# ----------------------------------------------------------------------------
+def _load_server(section: dict) -> ServerDescription:
+    identity = _typed(section["identity"], dict)
+
+    return ServerDescription(
+        tuple(
+            (_typed(name, str), _typed(value, str))
+            for name, value in identity.items()
+        ),
+        tuple(
+            Capability(
+                _typed(item["name"], str), _typed(item["value"], str, None)
+            )
+            for item in _typed(section["capabilities"], list)
+        ),
+        _typed(section["capabilities_after_login"], bool),
+    )
+
+
+# ----------------------------------------------------------------------------
+def _kind(value: object) -> str:
+    if value not in NAMESPACE_KINDS:
+        raise ValueError(f"unknown namespace kind {value!r}")
+
+    return value
+
+
+# ----------------------------------------------------------------------------
+def _typed(value, kind: type, *others):
+    """``value``, if it is a ``kind`` or one of ``others`` (None allowed)."""
+    if isinstance(value, kind) or any(value is other for other in others):
+        return value
+
+    raise TypeError(f"expected {kind.__name__}, got {type(value).__name__}")
 
 
 # ----------------------------------------------------------------------------

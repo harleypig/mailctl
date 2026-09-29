@@ -16,6 +16,7 @@ Regenerate after an intended change with::
 and read the diff before committing it.
 """
 
+import contextlib
 import io
 import json
 import os
@@ -354,6 +355,76 @@ PROBE = {
     "imap_caps": {"ID", "IMAP4REV1", "MOVE", "NAMESPACE", "UIDPLUS"},
 }
 
+# ----------------------------------------------------------------------------
+# Baselines (#18, #19). 'presave' runs 'save-baseline --yes' against the same
+# fakes first, and 'baseline_edit' then changes the saved file: a function
+# given the parsed document, which edits it in place or returns the text to
+# write instead. Every edit moves the saved times back, so a save's diff
+# does not depend on the clock.
+OLD = "2026-01-01T00:00:00Z"
+
+
+# ----------------------------------------------------------------------------
+def aged(document):
+    document["server"]["taken"] = OLD
+
+    for account in document["accounts"].values():
+        account["taken"] = OLD
+
+
+# ----------------------------------------------------------------------------
+def drifted(document):
+    """Everything a check can report, from the stored side.
+
+    Live has no 'fileinto' (the scenario's caps), which the active script
+    requires; the stored side had it, lacked 'regex', saw another
+    delimiter, namespace, active script, IMAP ID, ManageSieve SASL, and a
+    hostile capability value, and lacked MOVE, which mailctl relies on.
+    """
+    aged(document)
+    rules, mail = document["server"]["rules"], document["server"]["mail"]
+    rules["extensions"] = ["fileinto", "imap4flags", "mailbox"]
+    rules["identity"] = {"implementation": "Dovecot Pigeonhole 2.3"}
+
+    for item in rules["capabilities"]:
+        if item["name"] == "SASL":
+            item["value"] = "PLAIN LOGIN"
+
+        if item["name"] == "X-HOSTILE":
+            item["value"] = "calm"
+
+    mail["capabilities"] = [
+        item for item in mail["capabilities"] if item["name"] != "MOVE"
+    ] + [{"name": "QUOTA", "value": None}]
+    mail["identity"] = {"name": "Dovecot", "version": "2.3.21"}
+    mail["delimiter"] = "/"
+    mail["namespaces"] = [{"kind": "personal", "prefix": "", "delimiter": "/"}]
+    document["server"]["endpoints"][0]["value"] = "old.example.com:993"
+    document["accounts"]["user@example.com"]["active_rule_set"] = "old"
+
+
+# ----------------------------------------------------------------------------
+def only_added(document):
+    """The stored side lacked 'regex': informational drift only."""
+    aged(document)
+    document["server"]["rules"]["extensions"].remove("regex")
+
+
+# ----------------------------------------------------------------------------
+def other_account(document):
+    aged(document)
+    accounts = document["accounts"]
+    accounts["other@example.com"] = accounts.pop("user@example.com")
+
+
+BASELINE = {**PROBE, "presave": True, "baseline_edit": aged}
+DRIFTED = {
+    **PROBE,
+    "caps": ["imap4flags", "mailbox", "regex"],
+    "presave": True,
+    "baseline_edit": drifted,
+}
+
 HOSTILE = {
     "add-like-hostile": (
         [
@@ -617,6 +688,30 @@ JSON_SCENARIOS = {
 SCENARIOS = {
     **HOSTILE,
     **JSON_SCENARIOS,
+    # #18: a baseline saved, shown, and replaced; only a local file is
+    # written, so no scenario here has a write among its server calls.
+    "save-baseline": (["save-baseline"], PROBE),
+    "save-baseline-dry": (["save-baseline", "--dry-run"], PROBE),
+    "save-baseline-unchanged": (["save-baseline", "--yes"], BASELINE),
+    "save-baseline-notty": (["save-baseline"], DRIFTED),
+    "save-baseline-yes": (["save-baseline", "--yes"], DRIFTED),
+    "save-baseline-other-account": (
+        ["save-baseline", "--yes"],
+        {**BASELINE, "baseline_edit": other_account},
+    ),
+    "save-baseline-corrupt": (
+        ["save-baseline", "--yes"],
+        {**BASELINE, "baseline_edit": lambda document: "{not json\n"},
+    ),
+    "show-baseline": (["show-baseline"], BASELINE),
+    "show-baseline-json": (["show-baseline", "--json"], BASELINE),
+    "show-baseline-none": (["show-baseline"], PROBE),
+    # #151: a failure under --json is one JSON line on stderr.
+    "show-baseline-none-json": (["show-baseline", "--json"], PROBE),
+    "show-baseline-other-account": (
+        ["show-baseline"],
+        {**BASELINE, "baseline_edit": other_account},
+    ),
     "search": (["search"], MAIL),
     "search-from": (["search", *GITHUB], MAIL),
     "search-limit": (["search", "--limit", "2"], MAIL),
@@ -1518,6 +1613,7 @@ SCENARIOS = {
         {"caps": ["FileInto", "fileinto", "Body", "imap4flags"]},
     ),
     "test-no-extensions": (["test"], {"caps": []}),
+    "save-baseline-drift-dry": (["save-baseline", "--dry-run"], DRIFTED),
     "add-disabled-mailbox": (
         [
             "add",
@@ -1584,6 +1680,36 @@ class Stdout(io.TextIOWrapper):
 
 
 # ----------------------------------------------------------------------------
+def save_baseline(edit, sieve, imap) -> None:
+    """Save a baseline through the CLI, then edit it; forget its calls."""
+    quiet = io.StringIO()
+
+    with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+        code = cli.main(["save-baseline", "--yes"])
+
+    assert code == 0, quiet.getvalue()
+
+    path = (
+        Path(os.environ["XDG_CONFIG_HOME"])
+        / "mailctl"
+        / "baselines"
+        / "mail.example.com.json"
+    )
+
+    if edit is not None:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        text = edit(document)
+
+        if text is None:
+            text = json.dumps(document, indent=2) + "\n"
+
+        path.write_text(text, encoding="utf-8")
+
+    sieve.calls.clear()
+    imap.calls.clear()
+
+
+# ----------------------------------------------------------------------------
 def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     """Run one invocation and render everything observable as text.
 
@@ -1640,6 +1766,9 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         "MAILCTL_PASSWORD", options.get("password", "not-a-real-password")
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(options.get("stdin", "")))
+
+    if options.get("presave"):
+        save_baseline(options.get("baseline_edit"), sieve, imap)
 
     out, err = Stdout(tty=options.get("tty", False)), io.StringIO()
     monkeypatch.setattr(sys, "stdout", out)
@@ -1848,6 +1977,72 @@ def test_no_output_carries_the_password(
     )
 
     assert sentinel not in record
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "options"),
+    [
+        (["save-baseline"], PROBE),
+        (["save-baseline", "--yes", "-v"], DRIFTED),
+        (["show-baseline"], BASELINE),
+    ],
+    ids=lambda value: " ".join(value) if isinstance(value, list) else "",
+)
+def test_a_baseline_never_holds_or_prints_the_password(
+    argv, options, fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """#18: nothing of the credential reaches the saved file, stdout, or
+    stderr. The login is checked to have been handed the sentinel, so the
+    absence is not vacuous."""
+    sentinel = "s3ntinel-BASELINE-never-shown-7e0a"
+    logins = []
+    login = fake_imap.login
+
+    def recording_login(user, password):
+        logins.append(password == sentinel)
+        login(user, password)
+
+    monkeypatch.setattr(fake_imap, "login", recording_login)
+
+    actual = run_scenario(
+        argv,
+        {**options, "password": sentinel},
+        fake_imap,
+        roundcube_script,
+        monkeypatch,
+        tmp_path,
+    )
+    saved = tmp_path / "config" / "mailctl" / "baselines"
+    files = list(saved.glob("*.json"))
+
+    assert logins and all(logins)
+    assert files, "no baseline file was written -- the check reads nothing"
+    assert sentinel not in actual
+
+    for path in files:
+        assert sentinel not in path.read_text(encoding="utf-8")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["show-baseline", "--json"],
+    ],
+    ids=" ".join,
+)
+def test_a_baseline_json_document_is_all_of_stdout(
+    argv, fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """Red if anything but the document reaches stdout -- --verbose's
+    protocol chatter included -- so a script can parse it whole."""
+    actual = run_scenario(
+        argv, DRIFTED, fake_imap, roundcube_script, monkeypatch, tmp_path
+    )
+    stdout = actual.split("--- stdout\n", 1)[1].split("\n--- stderr", 1)[0]
+
+    assert json.loads(stdout)["version"] == 1
 
 
 # ----------------------------------------------------------------------------

@@ -152,7 +152,11 @@ layer may call.
     uploaded. `upload_script` is the one upload path, and takes the backup
     first.
   - `backup.py` — backing up the active script, and restoring one.
-  - `backup_files.py` — writing a backup's exact bytes to disk.
+  - `backup_files.py` — writing a backup's exact bytes to disk, and a
+    baseline's.
+  - `baseline.py` — a saved probe per host, and drift from it: the
+    comparison is a pure function over two probe records and what the
+    active script requires.
   - `flags.py` — marking messages read, flagged, or with keywords: a
     read-only plan of what changes per message, then separate add and
     remove writes.
@@ -240,6 +244,9 @@ layer may call.
     the header fetch its caller re-checks against, flags, the move with its
     COPY + EXPUNGE fallback (ADR 0006's I3), and `BODY.PEEK` reads under
     `EXAMINE`. The re-check itself is the mail utility's.
+  - `imap/capabilities.py` — the capabilities the session behaves
+    differently without, derived from its `has_capability` checks and held
+    to them by `tests/test_imap.py`; offline.
   - `imap/folders.py` — folder names normalized against a reported
     delimiter, and case variants; offline.
   - `imap/messages.py` — message summaries, the existing-mail plan and its
@@ -700,6 +707,8 @@ account, recorded with the command, the date, and the server's hostname:
   lists, so two probes of an unchanged server differ only in the time.
 - **`mailctl test`** adds the folder and subscription counts and what
   `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean for mailctl.
+- **`mailctl save-baseline`** stores the probe as the host's baseline
+  ([#18][i18]).
 - **`make testlive`** is the live tier's read-only smoke tests. It
   confirms the port, the TLS mode, and the delimiter.
 - **`make livecheck`** runs the read-only CLI checks against the account
@@ -708,12 +717,12 @@ account, recorded with the command, the date, and the server's hostname:
 A probe never prints the password. It is held to the same bar as a debug
 shim (*Credentials*).
 
-**The automated form is [#18][i18] and [#19][i19], and neither is built.**
-[#18][i18] is a machine-readable, dated capability baseline per host.
-[#19][i19] compares the live server against it and reports drift. Once
-they exist, a probe is *capture a baseline*, and the record cites the
-baseline instead of transcribing it. Until then, the record is the
-baseline, in prose.
+**The automated form is half built.** [#18][i18] is
+`save-baseline`: the probe, dated, in
+`$XDG_CONFIG_HOME/mailctl/baselines/<host>.json`, the server's part once
+and the active script per account. [#19][i19], comparing the live server
+against it and reporting drift, is not built. The file is on one machine
+and is not versioned, so the record still transcribes what a probe saw.
 
 ### Discover, don't hardcode
 

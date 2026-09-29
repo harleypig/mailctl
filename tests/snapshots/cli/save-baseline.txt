@@ -1,0 +1,17 @@
+$ mailctl save-baseline
+exit: 0
+--- stdout
+Saved the baseline for mail.example.com, taken <STAMP>, to <TMP>/config/mailctl/baselines/mail.example.com.json.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

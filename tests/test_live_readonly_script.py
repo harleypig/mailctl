@@ -61,6 +61,7 @@ MUTATING = [
     "move-rule",
     "remove-rule",
     "restore",
+    "save-baseline",
     "subscribe",
     "unsubscribe",
 ]

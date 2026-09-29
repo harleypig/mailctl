@@ -59,6 +59,7 @@ from .model import (
     CountSupport,
     DeliveryCreate,
     DisplayDiff,
+    DriftTerms,
     ExtensionState,
     Fact,
     FetchedMessage,
@@ -108,6 +109,7 @@ __all__ = [
     "DeliveryCreate",
     "Dialect",
     "DisplayDiff",
+    "DriftTerms",
     "ExtensionState",
     "Fact",
     "FetchedMessage",
@@ -388,6 +390,14 @@ class Dialect(ABC):
 
     @classmethod
     @abstractmethod
+    def rule_set_requires(cls, source: str) -> list[str]:
+        """The host features a stored rule set declares it needs, sorted.
+
+        Raises ``MailctlError`` where the rule set will not parse.
+        """
+
+    @classmethod
+    @abstractmethod
     def add_rule(
         cls,
         source: str,
@@ -521,6 +531,11 @@ class Dialect(ABC):
         """Whether a mail half advertising ``capabilities`` orders a search
         itself, so :meth:`Transport.sort_messages` may be asked; where it
         does not, the utilities order what they fetched."""
+
+    @classmethod
+    @abstractmethod
+    def drift_terms(cls) -> DriftTerms:
+        """How to read a change between two probes of this host."""
 
 
 # ############################################################################

@@ -11,6 +11,7 @@ the transport's (``transport.py``).
 from collections.abc import Iterable
 from pathlib import Path
 
+from ...components.imap.capabilities import CHECKED_CAPABILITIES
 from ...components.imap.folders import normalize_folder
 from ...components.imap.status import LIST_STATUS, STATUS_SIZE
 from ...components.managesieve.backup import (
@@ -31,6 +32,7 @@ from ..base import (
     DeliveryCreate,
     Dialect,
     DisplayDiff,
+    DriftTerms,
     ExtensionState,
     Fact,
     FolderListing,
@@ -161,6 +163,12 @@ class MxrouteDialect(Dialect):
     @classmethod
     def read_rules(cls, source: str) -> list[Rule]:
         return read_rules(mxroute_sieve.parse_script(source))
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def rule_set_requires(cls, source: str) -> list[str]:
+        """The script's ``require`` line, as extension names."""
+        return sorted(mxroute_sieve.parse_script(source).requires)
 
     # ------------------------------------------------------------------------
     @classmethod
@@ -311,6 +319,19 @@ class MxrouteDialect(Dialect):
     @classmethod
     def sorts_messages(cls, capabilities: list[str]) -> bool:
         return "SORT" in {item.upper() for item in capabilities}
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def drift_terms(cls) -> DriftTerms:
+        """ManageSieve lists the extensions in its ``SIEVE`` capability and
+        names the logged-in user in ``OWNER`` (RFC 5804). IMAP's relied-on
+        names are the ones the IMAP component checks, the two
+        ``count_support`` reads, and the one ``sorts_messages`` reads."""
+        return DriftTerms(
+            relied=CHECKED_CAPABILITIES | {LIST_STATUS, STATUS_SIZE, "SORT"},
+            account=frozenset({"OWNER"}),
+            carriers=frozenset({"SIEVE"}),
+        )
 
 
 # ----------------------------------------------------------------------------

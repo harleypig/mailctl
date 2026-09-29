@@ -1,0 +1,9 @@
+$ mailctl save-baseline --yes
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: the baseline <TMP>/config/mailctl/baselines/mail.example.com.json cannot be read: it is not JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1)). It was left as it is; move it aside and run 'mailctl save-baseline' to take a new one.
+
+--- sieve calls
+--- imap calls

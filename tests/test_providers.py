@@ -61,6 +61,7 @@ from mailctl.providers.base import (
     DeliveryCreate,
     Dialect,
     DisplayDiff,
+    DriftTerms,
     Fact,
     FetchedMessage,
     FolderListing,
@@ -178,6 +179,10 @@ class FakeDialect(Dialect):
     @classmethod
     def rule_names(cls, source):
         return [entry["name"] for entry in json.loads(source or "[]")]
+
+    @classmethod
+    def rule_set_requires(cls, source):
+        return []
 
     @classmethod
     def read_rules(cls, source):
@@ -316,6 +321,10 @@ class FakeDialect(Dialect):
     @classmethod
     def sorts_messages(cls, capabilities):
         return "ORDERED" in capabilities
+
+    @classmethod
+    def drift_terms(cls):
+        return DriftTerms(relied=frozenset({"LABELS"}))
 
 
 class FakeTransport(Transport):
