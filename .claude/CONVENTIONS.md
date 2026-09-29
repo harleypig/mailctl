@@ -188,7 +188,8 @@ layer may call.
     and connection facts, and each extension's state.
   - `server_report.py` — which servers no module recognised, and the
     redacted issue body `probe --report` prints for them ([#39][i39]).
-  - `events.py` — the steps of a change, as a front-end is told of them.
+  - `events.py` — the steps of a change, as a front-end is told of them,
+    and `ServerAlert` re-exported for a front-end to recognise one.
   - `uids.py` — a UID kept between runs, pinned to the folder's
     UIDVALIDITY and refused, before it is used, once the folder has been
     renumbered ([#204][i204]).
@@ -210,7 +211,8 @@ layer may call.
     both.
   - `model.py` — the provider-neutral model the utilities speak:
     `ActionSpec`, `Placement`, `DisplayDiff`, the folder and message
-    records, and the host's own words as data (`Wording`, `Fact`). It and
+    records, the host's own words as data (`Wording`, `Fact`), and an
+    alert the server sent (`ServerAlert`). It and
     `base.py` import nothing from layer 1 (`tests/test_layer_purity.py`).
   - `registry.py` — `PROVIDERS`, every provider by name, and
     `provider_for(config)`.
@@ -268,7 +270,12 @@ layer may call.
     originals where they are (`copy_messages`, for a rule that keeps its
     mail), `BODY.PEEK` reads under `EXAMINE`, and the UIDVALIDITY each
     `SELECT` or `EXAMINE` reports, kept for the selected folder so reading
-    it costs no round trip. The re-check itself is the mail utility's.
+    it costs no round trip. Every `ALERT` the server sends once TLS is up
+    goes to `progress`, read by wrapping imaplib's response reader. The
+    re-check itself is the mail utility's.
+  - `imap/alerts.py` — `ServerAlert`, the component's record of an
+    `ALERT`, and whether a response line carries one and what it says;
+    offline.
   - `imap/capabilities.py` — the capabilities the session behaves
     differently without, derived from its `has_capability` checks and held
     to them by `tests/test_imap.py`; offline.
@@ -371,8 +378,12 @@ first; `cli.py` should only gain parsing and rendering.
 `--verbose` protocol chatter leaves `SieveSession` and `ImapSession` through
 a `progress` callback, and the steps of a change (backup written, script
 uploaded, folder created) leave the utilities through an `on_event`
-callback; the CLI decides whether and how to show either. Do not add a
-second output path beside them.
+callback; the CLI decides whether and how to show either. The same
+`progress` callback carries a `ServerAlert` when an IMAP server sends an
+`ALERT` (`providers.base.Progress`), and the CLI shows each one on stderr
+with or without `--verbose`, the same text once per run, since RFC 9051
+section 7.1 has a client present it; ManageSieve defines no alert. Do not
+add a second output path beside them.
 
 **A core message names no front-end's flag or command.** It states the
 condition and carries a `MailctlError` code, which the front-end renders
@@ -585,8 +596,8 @@ fails before any login or password prompt (decided on [#137][i137]).
   `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, `disable`, its
   `actions`, `extensions`, `raw_query`, `mark`, `folder_counts`,
   `uidvalidity`, its namespaced `specifics` with their schema, the
-  connection `settings` it reads, and the operations it `declined`. The utilities read those and never
-  ask which provider they have.
+  connection `settings` it reads, and the operations it `declined`. The
+  utilities read those and never ask which provider they have.
 - **Refused before any network work.** `utilities.rules.check_rule`
   refuses a rule the provider cannot express, through one error naming the
   provider, the construct, and why.
@@ -624,15 +635,15 @@ fails before any login or password prompt (decided on [#137][i137]).
   `raw_query`, `search`'s `--raw`; without `mark`, `mark`; without
   `folder_counts`, `folders`'s `--counts`; without `uidvalidity`,
   `--uidvalidity`. The connection flags (`--host`, `--imap-*`, `--sieve-*`)
-  are offered only where
-  `ProviderCapabilities.settings` names them, with the help it gives —
-  they keep their names and their `MAILCTL_*` variables, being `mxroute`'s
-  connection options. An unoffered option is **hidden, not
-  removed**: given anyway it still parses and meets the refusal below the
-  front-end naming the provider, which stays the backstop for every front-end.
-  A first pass that cannot resolve a provider falls back to the default
-  provider's offer, and the run reports the problem. `mxroute` declares
-  everything, so its help is what it always was.
+  are offered only where `ProviderCapabilities.settings` names them, with
+  the help it gives — they keep their names and their `MAILCTL_*`
+  variables, being `mxroute`'s connection options. An unoffered option is
+  **hidden, not removed**: given anyway it still parses and meets the
+  refusal below the front-end naming the provider, which stays the
+  backstop for every front-end. A first pass that cannot resolve a
+  provider falls back to the default provider's offer, and the run reports
+  the problem. `mxroute` declares everything, so its help is what it
+  always was.
 - **A setting belongs to the provider that can use it.**
   `disabled_extensions` keeps its name and its ladder, but only a provider
   declaring `extensions` takes it; any other refuses it, before
