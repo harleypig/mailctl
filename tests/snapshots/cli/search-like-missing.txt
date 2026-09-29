@@ -1,0 +1,13 @@
+$ mailctl search --like 99
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: no message with uid 99 in 'INBOX'
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (99,))
+('logout',)

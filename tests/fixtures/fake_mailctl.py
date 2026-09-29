@@ -14,6 +14,9 @@ faults to inject, so a test can watch a check go red:
 - ``bad-marker``      -- a ``# rule:[`` marker ``show`` cannot close
 - ``backup-writes``   -- ``backup --dry-run`` writes its file anyway
 - ``backup-writes-elsewhere`` -- it writes some other file beside it
+- ``like-drops-source`` -- ``search --like`` does not list its own message
+- ``filter-on-stdout`` -- ``--build-filter --json`` shows the message on
+  stdout, ahead of the document
 """
 
 import json
@@ -135,12 +138,47 @@ def folders() -> str:
     return "\n".join(lines) + "\n"
 
 
+FILTER = """\
+{
+  "version": 1,
+  "criteria": {
+    "match": "any",
+    "compare": "contains",
+    "terms": [
+      {
+        "header": "From",
+        "value": "news@example.com"
+      }
+    ]
+  }
+}
+"""
+
+
 # ----------------------------------------------------------------------------
 def search() -> str:
+    like = option("--like")
+    shown = (
+        f"Message uid {like} in 'INBOX':\n"
+        "  From:    News <news@example.com>\n"
+        "  Subject: Weekly\n"
+    )
+
+    if like and "--build-filter" in ARGV:
+        if "filter-on-stdout" in BREAK:
+            return shown + "\n" + FILTER
+
+        sys.stderr.write(shown)
+
+        return FILTER
+
     read_uid = STATE.read_text() if STATE.exists() else ""
     rows = []
 
     for uid in (5, 4, 3, 2, 1):
+        if like == str(uid) and "like-drops-source" in BREAK:
+            continue
+
         unread = uid != 1 and "no-unread" not in BREAK
         mark = "N" if unread and str(uid) != read_uid else ""
         rows.append(
@@ -155,6 +193,11 @@ def search() -> str:
     )
     legend = "Marks: N unread, F flagged, R replied, D deleted, @ attachment"
     lines = [
+        *(
+            [shown, "Criteria: From contains 'news@example.com'", ""]
+            if like
+            else []
+        ),
         f"{len(rows)} message(s) in 'INBOX', newest first:",
         header,
         *rows,

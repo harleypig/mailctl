@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from email.message import Message
 
 from .. import MailctlError
-from ..criteria import Criteria
+from ..criteria import Criteria, merge_criteria
 from ..engine import Session
 from ..providers.base import (
     ActionSpec,
@@ -218,6 +218,20 @@ class DerivedCriteria:
     skipped: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class LikeMessage:
+    """Criteria for mail like one message, and that message.
+
+    ``criteria`` is what was derived from the message merged with the
+    criteria given outright; ``skipped`` names the headers asked for that
+    the message did not have.
+    """
+
+    message: PickedMessage
+    criteria: Criteria
+    skipped: list[str] = field(default_factory=list)
+
+
 # ----------------------------------------------------------------------------
 def pick_message(
     session: Session,
@@ -279,6 +293,45 @@ def derive_criteria(
         criteria.add(header, extract_value(header, raw))
 
     return DerivedCriteria(criteria, skipped)
+
+
+# ----------------------------------------------------------------------------
+def criteria_like(
+    session: Session,
+    folder: str,
+    uid: int,
+    explicit: Criteria | None = None,
+    derive: str = "auto",
+) -> LikeMessage:
+    """Criteria matching mail like message ``uid`` in ``folder``, read-only.
+
+    The criteria are derived from the message's headers as ``derive``
+    says, then merged with ``explicit`` by ``merge_criteria``: a header
+    given outright replaces what was derived for it, and ``match`` and
+    ``compare`` are the explicit ones. The folder is normalized against
+    the server's list; the message is not marked read. The result is not
+    validated, so the caller can report ``skipped`` before
+    ``require_terms`` refuses an empty set.
+    """
+    if uid < 1:
+        raise MailctlError(f"message UIDs start at 1, not {uid}")
+
+    explicit = explicit if explicit is not None else Criteria()
+
+    transport = session.transport
+    folder = session.dialect.normalize(folder, transport.list_folders())
+
+    headers = transport.message_headers(folder, uid)
+
+    derived = derive_criteria(
+        headers, derive, explicit.match, explicit.compare
+    )
+
+    return LikeMessage(
+        PickedMessage(uid, folder, headers),
+        merge_criteria(derived.criteria, explicit),
+        derived.skipped,
+    )
 
 
 # ----------------------------------------------------------------------------

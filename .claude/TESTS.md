@@ -23,7 +23,9 @@ where every write path is proved first.
    interesting logic:
    - `criteria` — a criteria set translated to Sieve **and** to IMAP `SEARCH`,
      including the cases where the two differ and the client-side re-check
-     closes the gap.
+     closes the gap; criteria from a message merged with flags; and the
+     filter document round-tripping, holding nothing a terminal acts on,
+     and refusing each malformed shape by name.
    - `sieve` (`test_sieve.py`, through the MXroute dialect) — parse an
      existing script, merge a rule into it, render it back, and confirm
      rules the tool did not write survive — their bodies and names, with

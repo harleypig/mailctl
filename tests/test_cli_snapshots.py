@@ -256,8 +256,9 @@ SPOOFED = (
 
 # Message- and script-derived text carrying terminal escapes: an OSC title
 # change in a Subject that 'from-message --derive subject' copies into the
-# rule, and colour sequences in a stored script's rule name, test, and
-# folder, which 'show' and 'rules' print back.
+# rule and 'search --like --build-filter' into the filter, and colour
+# sequences in a stored script's rule name, test, and folder, which 'show'
+# and 'rules' print back.
 HOSTILE_SUBJECT = (
     b"From: m@example.com\r\n"
     b"Subject: =?utf-8?q?Inv=1B]0;pwn=07oice?=\r\n"
@@ -288,6 +289,22 @@ HOSTILE = {
         ],
         {"mail": {9: HOSTILE_SUBJECT}},
     ),
+    "search-like-hostile": (
+        ["search", "--like", "9", "--derive", "subject", "--build-filter"],
+        {"mail": {9: HOSTILE_SUBJECT}},
+    ),
+    "search-like-hostile-json": (
+        [
+            "search",
+            "--like",
+            "9",
+            "--derive",
+            "subject",
+            "--build-filter",
+            "--json",
+        ],
+        {"mail": {9: HOSTILE_SUBJECT}},
+    ),
     "show-hostile": (["show"], {"script": HOSTILE_SCRIPT}),
     "rules-hostile": (["rules"], {"script": HOSTILE_SCRIPT}),
 }
@@ -301,6 +318,35 @@ SCENARIOS = {
     "search-both": (["search", *GITHUB, "--raw", "ALL"], MAIL),
     "search-none": (["search", "--from", "nobody@x.y"], MAIL),
     "search-folder": (["search", "--folder", "Lists"], MAIL),
+    # #148: --like pre-fills the criteria from a message; a flag replaces
+    # what was derived for its header, and --build-filter saves nothing.
+    "search-like": (["search", "--like", "3"], {}),
+    "search-like-combined": (
+        ["search", "--like", "2", "--subject", "Issue", "--match", "all"],
+        {},
+    ),
+    "search-like-override": (
+        ["search", "--like", "3", "--list-id", "other.example.com"],
+        {},
+    ),
+    "search-like-missing": (["search", "--like", "99"], {}),
+    "search-like-derive-missing": (
+        ["search", "--like", "2", "--derive", "cc"],
+        {},
+    ),
+    "search-like-raw": (["search", "--like", "3", "--raw", "ALL"], {}),
+    "search-derive-alone": (["search", "--derive", "from"], {}),
+    "search-build-filter": (["search", "--build-filter", *GITHUB], {}),
+    "search-build-filter-json": (
+        ["search", "--build-filter", "--json", *GITHUB],
+        {},
+    ),
+    "search-like-build-filter-json": (
+        ["search", "--like", "3", "--build-filter", "--json"],
+        {},
+    ),
+    "search-build-filter-nothing": (["search", "--build-filter"], {}),
+    "search-json-alone": (["search", "--json", *GITHUB], {}),
     # #63: source_folder in the config file is where --folder defaults to.
     "search-config-folder": (
         ["search"],

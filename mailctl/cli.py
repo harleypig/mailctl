@@ -26,7 +26,7 @@ from .config import (
     Config,
     load_config,
 )
-from .criteria import COMPARE_OPS, MATCH_MODES, Criteria
+from .criteria import COMPARE_OPS, MATCH_MODES, Criteria, dump_filter
 from .rules import CERTAIN
 from .utilities.folders import FolderCreation
 from .utilities.mail import DEFAULT_MAX_MESSAGES
@@ -1677,7 +1677,7 @@ def cmd_move_rule(args) -> int:
 
 
 # ----------------------------------------------------------------------------
-def print_message(message, uid: int, folder: str) -> None:
+def print_message(message, uid: int, folder: str, file=None) -> None:
     """Show the message a rule is about to be derived from.
 
     The UID is dug out of webmail by hand, so a mistyped digit otherwise
@@ -1690,7 +1690,7 @@ def print_message(message, uid: int, folder: str) -> None:
     ordinary, and a row reading "(none)" would add noise to the block whose
     whole job is to be scanned quickly.
     """
-    print(f"Message uid {uid} in {folder!r}:")
+    print(f"Message uid {uid} in {folder!r}:", file=file)
 
     for header in IDENTIFYING_HEADERS:
         raw = message.get(header)
@@ -1700,7 +1700,7 @@ def print_message(message, uid: int, folder: str) -> None:
 
         value = clip(decode_header_value(raw), HEADER_WIDTH)
 
-        print(f"  {header + ':':<9}{value}")
+        print(f"  {header + ':':<9}{value}", file=file)
 
 
 # ----------------------------------------------------------------------------
@@ -1760,19 +1760,110 @@ def status_marks(message) -> str:
 
 # ----------------------------------------------------------------------------
 def cmd_search(args) -> int:
-    """List the newest messages in a folder, optionally filtered."""
+    """List the newest messages in a folder, optionally filtered; or, with
+    --build-filter, print the filter the criteria make."""
     config = configure(args)
     criteria = criteria_from_args(args)
 
+    if args.derive is not None and args.like is None:
+        raise MailctlError("--derive needs --like UID")
+
+    if args.json and not args.build_filter:
+        raise MailctlError("--json needs --build-filter")
+
+    if args.raw and (args.build_filter or args.like is not None):
+        raise MailctlError(
+            "--raw is a query, not criteria; it cannot be combined with "
+            "--like or --build-filter"
+        )
+
+    if args.like is None:
+        if args.build_filter:
+            return print_filter(criteria, args.json)
+
+        with connect(config, args, rules=False, mail=True) as sessions:
+            listing = utilities.messages.list_messages(
+                sessions,
+                config.source_folder,
+                criteria=criteria,
+                raw=args.raw,
+                limit=args.limit,
+            )
+
+        return print_listing(listing)
+
+    # With --json only the filter goes to stdout, so what identifies the
+    # message goes to stderr, where a person still sees it.
+    shown = sys.stderr if args.json else None
+
     with connect(config, args, rules=False, mail=True) as sessions:
-        listing = utilities.messages.list_messages(
+        like = utilities.mail.criteria_like(
             sessions,
             config.source_folder,
-            criteria=criteria,
+            args.like,
+            criteria,
+            args.derive or "auto",
+        )
+
+        # Shown before anything else: it is the answer to "is this the
+        # message I meant?", which the criteria cannot give.
+        print_message(
+            like.message.headers, like.message.uid, like.message.folder, shown
+        )
+
+        for header in like.skipped:
+            warn(f"message has no {header!r} header; skipping it")
+
+        if not like.criteria:
+            raise MailctlError(
+                f"nothing to derive from uid {like.message.uid}: it has "
+                f"none of the headers asked for "
+                f"({', '.join(like.skipped)})"
+            )
+
+        if args.build_filter:
+            if not args.json:
+                print()
+
+            return print_filter(like.criteria, args.json)
+
+        print(f"\nCriteria: {like.criteria.describe()}\n")
+
+        listing = utilities.messages.list_messages(
+            sessions,
+            like.message.folder,
+            criteria=like.criteria,
             raw=args.raw,
             limit=args.limit,
         )
 
+    return print_listing(listing)
+
+
+# ----------------------------------------------------------------------------
+def print_filter(criteria: Criteria, as_json: bool) -> int:
+    """Print the filter criteria make, and save nothing."""
+    if not criteria:
+        raise MailctlError(
+            "--build-filter needs criteria: give --like UID, or criteria "
+            "flags (--from/--to/--cc/--subject/--list-id/--header)"
+        )
+
+    if as_json:
+        sys.stdout.write(dump_filter(criteria))
+
+        return 0
+
+    print("Filter (criteria only; nothing was saved):")
+    print(f"  when:  {criteria.describe()}")
+    print("\n--json prints it as a filter document.")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def print_listing(listing) -> int:
+    """Print a search's listing, newest first."""
     if not listing.messages:
         print(f"No messages found in {safe_line(listing.folder)!r}.")
 
@@ -2405,6 +2496,29 @@ def build_parser(
         type=int,
         default=DEFAULT_LIST_LIMIT,
         help=f"show at most N messages; default {DEFAULT_LIST_LIMIT}",
+    )
+    search.add_argument(
+        "--like",
+        type=int,
+        metavar="UID",
+        help="pre-fill the criteria from this message in --folder; a "
+        "criteria flag replaces what was derived for its header",
+    )
+    search.add_argument(
+        "--derive",
+        help="with --like, headers to derive from, comma separated "
+        "(default: auto -- List-Id if present, else From)",
+    )
+    search.add_argument(
+        "--build-filter",
+        action="store_true",
+        help="print the filter the criteria make instead of searching; "
+        "saves nothing",
+    )
+    search.add_argument(
+        "--json",
+        action="store_true",
+        help="with --build-filter, print it as a filter document",
     )
     search.set_defaults(handler=cmd_search)
 

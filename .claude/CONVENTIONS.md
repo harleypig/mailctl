@@ -135,7 +135,8 @@ layer may call.
 - `mailctl/criteria.py` — the shared criteria model, translated **both** to
   Sieve tests and to IMAP `SEARCH`. One model, two backends — this is what
   keeps the two halves in agreement. It is the **input model** every
-  front-end builds, so syntax sugar belongs here (*The core returns data*).
+  front-end builds, so syntax sugar belongs here (*The core returns data*),
+  and so does the filter document, the model as JSON.
 - `mailctl/cli.py` — **interface**: the CLI front-end. Argument parsing,
   turning flags into utility inputs, opening a session for the command, and
   rendering and confirming what the utilities return.
@@ -388,10 +389,12 @@ make such a change visible.
 
 **This is the target, and most of it is not built yet.** The decisions are
 the operator's, 2026-09-28 ([#145][i145]); the implementing issues are
-[#147][i147] through [#155][i155]. Until they land the CLI still has
-`from-message`, and `add` still runs the existing-mail pass after it saves
-the rule. Where this section and the CLI disagree, the CLI is what runs
-and this is where it is going.
+[#147][i147] through [#155][i155]. Until [#149][i149] lands the CLI
+still has `from-message`, and `add` still runs the existing-mail pass
+after it saves the rule. `from-message` goes only once `add --like` and
+`apply --like` exist, so no release lacks a way to write a filter from a
+message (decided on [#148][i148]). Where this section and the CLI
+disagree, the CLI is what runs and this is where it is going.
 
 **Read and write are separate at every layer.** A command, a utility, and a
 transport operation each either changes the server or does not, even where
@@ -422,7 +425,13 @@ keeps the two in step.
 
 - `--like UID` pre-fills the criteria from a message, and `--build-filter
   [--json]` prints the filter those criteria make and saves nothing
-  ([#148][i148]). `from-message` is folded into `search --like`, `add
+  ([#148][i148]). A criteria flag given with `--like` replaces what was
+  derived for its own header and adds any other; `--match` and
+  `--compare` govern the whole set (`criteria.merge_criteria`). The
+  `--json` form is the filter document `add --filter` and `apply
+  --filter` read: versioned, criteria only, written and read by
+  `criteria.dump_filter` / `load_filter`, which refuse a version or a key
+  they do not know. `from-message` is folded into `search --like`, `add
   --like`, and `apply --like`.
 - `--raw QUERY` is the escape hatch, a query in the host's own search
   language. Each provider declares it, and it is offered only where

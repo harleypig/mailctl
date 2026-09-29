@@ -1,0 +1,31 @@
+$ mailctl search --like 3 --build-filter --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "criteria": {
+    "match": "any",
+    "compare": "contains",
+    "terms": [
+      {
+        "header": "List-Id",
+        "value": "dev.lists.example.com"
+      }
+    ]
+  }
+}
+
+--- stderr
+Message uid 3 in 'INBOX':
+  Date:    Tue, 3 Feb 2026 04:05:06 +0000
+  From:    Someone <list@lists.example.com>
+  To:      user@example.com
+  Subject: Digest
+  List-Id: Some list <dev.lists.example.com>
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (3,))
+('logout',)

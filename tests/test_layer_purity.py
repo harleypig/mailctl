@@ -1256,6 +1256,7 @@ KNOWN_READERS = (
     "folders.plan_folder",
     "folders.plan_folder_creation",
     "folders.plan_subscription",
+    "mail.criteria_like",
     "mail.plan_mail",
     "messages.list_messages",
     "messages.read_message",

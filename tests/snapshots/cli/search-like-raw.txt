@@ -1,0 +1,9 @@
+$ mailctl search --like 3 --raw ALL
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --raw is a query, not criteria; it cannot be combined with --like or --build-filter
+
+--- sieve calls
+--- imap calls

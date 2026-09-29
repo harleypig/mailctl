@@ -1,0 +1,28 @@
+$ mailctl search --like 9 --derive subject --build-filter --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "criteria": {
+    "match": "any",
+    "compare": "contains",
+    "terms": [
+      {
+        "header": "Subject",
+        "value": "Inv\u001b]0;pwn\u0007oice"
+      }
+    ]
+  }
+}
+
+--- stderr
+Message uid 9 in 'INBOX':
+  From:    m@example.com
+  Subject: Inv\x1b]0;pwn\x07oice
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (9,))
+('logout',)

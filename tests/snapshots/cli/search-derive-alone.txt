@@ -1,0 +1,9 @@
+$ mailctl search --derive from
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --derive needs --like UID
+
+--- sieve calls
+--- imap calls

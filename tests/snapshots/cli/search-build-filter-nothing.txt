@@ -1,0 +1,9 @@
+$ mailctl search --build-filter
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --build-filter needs criteria: give --like UID, or criteria flags (--from/--to/--cc/--subject/--list-id/--header)
+
+--- sieve calls
+--- imap calls

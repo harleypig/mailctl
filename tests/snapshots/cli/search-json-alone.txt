@@ -1,0 +1,9 @@
+$ mailctl search --json --from noreply@github.com
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --json needs --build-filter
+
+--- sieve calls
+--- imap calls

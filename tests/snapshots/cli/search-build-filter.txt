@@ -1,0 +1,12 @@
+$ mailctl search --build-filter --from noreply@github.com
+exit: 0
+--- stdout
+Filter (criteria only; nothing was saved):
+  when:  From contains 'noreply@github.com'
+
+--json prints it as a filter document.
+
+--- stderr
+
+--- sieve calls
+--- imap calls

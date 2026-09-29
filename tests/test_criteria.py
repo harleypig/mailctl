@@ -8,16 +8,23 @@ assert both renderings of the *same* object rather than testing each side
 on its own.
 """
 
+import json
+import re
+
 import pytest
 
 from mailctl import MailctlError
 from mailctl.criteria import (
     COMPARE_OPS,
+    FILTER_VERSION,
     MATCH_MODES,
     Criteria,
     Term,
+    dump_filter,
     escape_sieve_string,
+    load_filter,
     longest_literal,
+    merge_criteria,
     sieve_pattern_to_regex,
 )
 
@@ -539,3 +546,191 @@ def test_a_glob_spans_a_newline():
 )
 def test_longest_literal_picks_the_longest_wildcard_free_run(pattern, literal):
     assert longest_literal(pattern) == literal
+
+
+# ############################################################################
+# Merging derived criteria with explicit ones (search --like)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def make(*pairs, match="any", compare="contains") -> Criteria:
+    criteria = Criteria(match=match, compare=compare)
+
+    for header, value in pairs:
+        criteria.add(header, value)
+
+    return criteria
+
+
+# ----------------------------------------------------------------------------
+def test_a_header_given_outright_replaces_what_was_derived_for_it():
+    merged = merge_criteria(
+        make(("List-Id", "dev.x.org")), make(("list-id", "other.x.org"))
+    )
+
+    assert merged.terms == [Term("List-Id", "other.x.org")]
+
+
+# ----------------------------------------------------------------------------
+def test_other_derived_headers_are_kept_ahead_of_the_explicit_ones():
+    merged = merge_criteria(
+        make(("From", "a@x.org"), ("Cc", "b@x.org")),
+        make(("cc", "c@x.org"), ("Subject", "Hi")),
+    )
+
+    assert merged.terms == [
+        Term("From", "a@x.org"),
+        Term("Cc", "c@x.org"),
+        Term("Subject", "Hi"),
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_match_and_compare_are_the_explicit_criteria_s():
+    merged = merge_criteria(
+        make(("From", "a@x.org")), make(match="all", compare="is")
+    )
+
+    assert (merged.match, merged.compare) == ("all", "is")
+    assert merged.terms == [Term("From", "a@x.org")]
+
+
+# ----------------------------------------------------------------------------
+def test_merging_changes_neither_input():
+    derived = make(("From", "a@x.org"))
+    explicit = make(("From", "b@x.org"))
+
+    merge_criteria(derived, explicit)
+
+    assert derived.terms == [Term("From", "a@x.org")]
+    assert explicit.terms == [Term("From", "b@x.org")]
+
+
+# ############################################################################
+# The filter document
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("match", MATCH_MODES)
+@pytest.mark.parametrize("compare", COMPARE_OPS)
+def test_a_filter_document_round_trips(match, compare):
+    criteria = make(
+        ("List-Id", "dev.x.org"),
+        ("X-Tag", 'quote " and \\ backslash'),
+        ("Subject", "Caf\u00e9"),
+        match=match,
+        compare=compare,
+    )
+
+    assert load_filter(dump_filter(criteria)) == criteria
+
+
+# ----------------------------------------------------------------------------
+def test_the_document_is_versioned_and_carries_criteria_only():
+    document = json.loads(dump_filter(make(("From", "a@x.org"))))
+
+    assert document == {
+        "version": FILTER_VERSION,
+        "criteria": {
+            "match": "any",
+            "compare": "contains",
+            "terms": [{"header": "From", "value": "a@x.org"}],
+        },
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_a_filter_with_no_criteria_is_never_written():
+    with pytest.raises(MailctlError, match="no criteria given"):
+        dump_filter(Criteria())
+
+
+# ----------------------------------------------------------------------------
+def test_the_document_holds_nothing_a_terminal_acts_on():
+    text = dump_filter(make(("Subject", "a\x1b]0;t\x07b\x7fc\u202ed")))
+
+    assert all(" " <= char <= "~" for char in text.replace("\n", ""))
+    assert load_filter(text).terms[0].value == "a\x1b]0;t\x07b\x7fc\u202ed"
+
+
+# ----------------------------------------------------------------------------
+def test_match_and_compare_default_as_their_flags_do():
+    text = json.dumps(
+        {
+            "version": 1,
+            "criteria": {"terms": [{"header": "from", "value": "a"}]},
+        }
+    )
+
+    assert load_filter(text) == make(("From", "a"))
+
+
+# ----------------------------------------------------------------------------
+def document(**criteria) -> str:
+    body = {"terms": [{"header": "From", "value": "a"}], **criteria}
+
+    return json.dumps({"version": 1, "criteria": body})
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        pytest.param("{", "not valid JSON", id="not-json"),
+        pytest.param("[]", "document must be a JSON object", id="not-object"),
+        pytest.param('{"criteria": {}}', "lacks version", id="no-version"),
+        pytest.param(
+            json.dumps({"version": 2, "criteria": {}}),
+            "unsupported version 2",
+            id="future-version",
+        ),
+        pytest.param(
+            json.dumps({"version": True, "criteria": {}}),
+            "unsupported version True",
+            id="bool-version",
+        ),
+        pytest.param(
+            json.dumps({"version": 1}), "lacks criteria", id="no-criteria"
+        ),
+        pytest.param(
+            json.dumps({"version": 1, "criteria": {}, "actions": []}),
+            "unknown key",
+            id="actions-are-not-a-filter",
+        ),
+        pytest.param(
+            json.dumps({"version": 1, "criteria": {"match": "any"}}),
+            "lacks terms",
+            id="no-terms",
+        ),
+        pytest.param(document(terms=[]), "non-empty list", id="empty-terms"),
+        pytest.param(document(comapre="is"), "unknown key", id="misspelt"),
+        pytest.param(document(match="either"), "'match'", id="bad-match"),
+        pytest.param(document(compare="regex"), "'compare'", id="bad-compare"),
+        pytest.param(
+            document(terms=[{"header": "From"}]), "lacks value", id="no-value"
+        ),
+        pytest.param(
+            document(terms=[{"header": "From", "value": 3}]),
+            "must be strings",
+            id="non-string",
+        ),
+        pytest.param(
+            document(terms=[{"header": " ", "value": "a"}]),
+            "empty header",
+            id="blank-header",
+        ),
+        pytest.param(
+            document(terms=[{"header": "From", "value": ""}]),
+            "empty value",
+            id="empty-value",
+        ),
+        pytest.param(
+            document(terms=["From"]), "terms[0]", id="term-not-object"
+        ),
+    ],
+)
+def test_a_malformed_filter_is_refused_by_name(text, error):
+    with pytest.raises(MailctlError, match=re.escape(error)):
+        load_filter(text)

@@ -28,6 +28,8 @@ ALL_TESTS = [
     "folders",
     "backup",
     "search",
+    "search-like",
+    "build-filter",
     "view-keeps-unread",
     "apply",
     "add",
@@ -192,6 +194,8 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("drift", "unchanged"),
         ("backup-writes", "backup"),
         ("backup-writes-elsewhere", "backup"),
+        ("like-drops-source", "search-like"),
+        ("filter-on-stdout", "build-filter"),
     ],
 )
 def test_a_failing_check_is_not_ok_and_the_run_exits_nonzero(
