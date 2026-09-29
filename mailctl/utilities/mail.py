@@ -3,19 +3,27 @@
 Sieve only ever sees new mail, so this is the half that applies a rule to
 what is already in the mailbox. The ``--max-messages`` ceiling is checked
 again when a plan is executed, not only when it is made.
+
+Selection is done here, on the transport's candidates: the host's search
+narrows the mailbox, and :func:`recheck` keeps only the messages the rule
+really matches (ADR 0007).
 """
 
 import email.utils
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from email.message import Message
 
 from .. import MailctlError
 from ..criteria import Criteria
 from ..engine import Session
 from ..providers.base import (
     ActionSpec,
+    FetchedMessage,
     MailActionPlan,
     MailActionResult,
+    MessageSummary,
     decode_header_value,
     same_folder,
 )
@@ -63,7 +71,7 @@ def source_folder(session: Session, name: str) -> str:
     ``--fileinto Lists/X`` are recognised as one folder, and the search
     selects the server's real name for it.
     """
-    return session.transport.normalize(name)
+    return session.dialect.normalize(name, session.transport.list_folders())
 
 
 # ----------------------------------------------------------------------------
@@ -76,14 +84,66 @@ def plan_mail(
 ) -> MailActionPlan:
     """Select the matches in ``source`` read-only and plan what is done.
 
-    Selection is the provider's: it answers which delivered messages the
-    rule matches, however its host evaluates rules.
+    Read-only by construction -- the host is only searched and read -- so
+    a caller can always build a plan first and decide afterwards. That is
+    what a dry run is: a plan that is never executed.
     """
     criteria.require_terms()
 
-    return session.transport.select_mail(
-        criteria, source, destination, list(spec.flags), spec.discard
+    transport = session.transport
+    uids = transport.search(source, criteria)
+    messages = (
+        recheck(criteria, transport.fetch_headers(uids, source))
+        if uids
+        else []
     )
+
+    return MailActionPlan(
+        source, destination, list(spec.flags), spec.discard, messages
+    )
+
+
+# ----------------------------------------------------------------------------
+def recheck(
+    criteria: Criteria, candidates: Iterable[FetchedMessage]
+) -> list[MessageSummary]:
+    """Keep the candidates whose headers really match ``criteria``.
+
+    The host's search narrows the mailbox; the fetched headers then decide.
+    That second pass is not belt-and-braces -- IMAP can only substring
+    match, so it is the only thing that makes ``--compare is`` and
+    ``--compare matches`` mean the same here as they will in Sieve.
+    """
+    return [
+        candidate.summary
+        for candidate in candidates
+        if criteria.matches(header_values(candidate.headers))
+    ]
+
+
+# ----------------------------------------------------------------------------
+def header_values(message: Message) -> dict[str, list[str]]:
+    """Map upper-cased header names to every occurrence of that header.
+
+    Each occurrence contributes both its decoded and its raw form. Sieve
+    compares against the MIME-decoded value, so that is the one that
+    matters; keeping the raw form as well means a search for the literal
+    encoded text still finds its message, and costs only a wider candidate
+    set.
+    """
+    collected: dict[str, list[str]] = {}
+
+    for name, raw in message.items():
+        key = name.upper()
+        decoded = decode_header_value(raw)
+
+        values = collected.setdefault(key, [])
+        values.append(decoded)
+
+        if decoded != raw:
+            values.append(raw)
+
+    return collected
 
 
 # ----------------------------------------------------------------------------

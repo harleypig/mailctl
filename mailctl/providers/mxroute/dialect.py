@@ -31,6 +31,7 @@ from ..base import (
     DisplayDiff,
     ExtensionState,
     Fact,
+    FolderListing,
     Placement,
     Wording,
 )
@@ -233,6 +234,13 @@ class MxrouteDialect(Dialect):
     # ########################################################################
     # Folders
     # ########################################################################
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def normalize(cls, name: str, listing: FolderListing) -> str:
+        return normalize_folder(
+            name, listing.delimiter, listing.folders, listing.prefix
+        )
 
     # ------------------------------------------------------------------------
     @classmethod

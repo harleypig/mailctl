@@ -4,7 +4,7 @@ A folder planned for creation is created on execute only, never while
 planning, so a dry run or a rejected script leaves no stray folder.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .. import MailctlError
 from ..config import Config, Source
@@ -30,7 +30,9 @@ FOLDER_UNCREATABLE = "uncreatable"
 # ----------------------------------------------------------------------------
 def list_folders(session: Session) -> FolderListing:
     """Return the folder list, sorted, with the delimiter."""
-    return session.transport.list_folders()
+    listing = session.transport.list_folders()
+
+    return replace(listing, folders=sorted(listing.folders))
 
 
 # ############################################################################
@@ -84,26 +86,26 @@ def plan_subscription(
     unsubscribing does not, since a subscription can outlive its folder and
     removing that stale entry is a legitimate thing to want.
     """
-    transport = session.transport
-    folder = transport.normalize(name)
-    subscribed_now = transport.is_subscribed(folder)
+    listing = session.transport.list_folders()
+    folder = session.dialect.normalize(name, listing)
+    subscribed_now = listing.is_subscribed(folder)
 
-    hint = case_variant_hint(transport.case_variants(folder))
+    hint = case_variant_hint(listing.case_variants(folder))
 
-    if subscribe and not transport.exists(folder):
+    if subscribe and not listing.exists(folder):
         raise MailctlError(
             f"no folder named {folder!r} on the server, so there is nothing "
             f"to subscribe to. {hint}'mailctl folders' lists what exists."
         )
 
-    if not subscribe and not subscribed_now and not transport.exists(folder):
+    if not subscribe and not subscribed_now and not listing.exists(folder):
         raise MailctlError(
             f"no folder or subscription named {folder!r} on the server. "
             f"{hint}'mailctl folders' lists what exists."
         )
 
     return SubscriptionPlan(
-        name, folder, transport.delimiter(), subscribe, subscribed_now
+        name, folder, listing.delimiter, subscribe, subscribed_now
     )
 
 
@@ -204,12 +206,14 @@ def plan_folder(
     if not requested:
         return FolderPlan("", "", "", False, FOLDER_NONE, subscribe)
 
-    if not mail:
+    listing = transport.list_folders() if mail else None
+
+    if listing is None:
         folder, assumed = session.dialect.assumed_folder(requested, delimiter)
 
     else:
-        assumed = transport.delimiter()
-        folder = transport.normalize(requested)
+        assumed = listing.delimiter
+        folder = session.dialect.normalize(requested, listing)
 
     shape = {
         "requested": requested,
@@ -219,11 +223,11 @@ def plan_folder(
         "subscribe": subscribe,
     }
 
-    if mail and transport.exists(folder):
+    if listing is not None and listing.exists(folder):
         return FolderPlan(status=FOLDER_EXISTS, **shape)
 
-    if mail:
-        shape["case_variants"] = tuple(transport.case_variants(folder))
+    if listing is not None:
+        shape["case_variants"] = tuple(listing.case_variants(folder))
 
     delivery = session.dialect.delivery_create(
         config,
@@ -268,22 +272,46 @@ def check_folder(plan: FolderPlan) -> None:
 
 # ----------------------------------------------------------------------------
 def create_folder(session: Session, plan: FolderPlan) -> FolderCreation:
-    """Create the planned folder over IMAP, subscribing unless declined."""
+    """Create the planned folder over IMAP, subscribing unless declined.
+
+    Subscribing is the default because a folder made to be a ``fileinto``
+    target is by definition one the user is meant to see; an unsubscribed
+    one receives mail that never appears in webmail.
+
+    A failed subscription does **not** undo the creation and does not
+    raise: the folder exists and mail filed there will arrive, so tearing
+    it back down would trade a visibility problem for a data one. The
+    outcome is returned instead, for the front-end to say out loud.
+    """
     if not plan.imap_creates:
         raise MailctlError(
             f"folder {plan.folder!r} is not planned for IMAP creation "
             f"({plan.status})"
         )
 
-    return session.transport.create_folder(
-        plan.folder, subscribe=plan.subscribe
-    )
+    transport = session.transport
+    transport.create_folder(plan.folder)
+
+    if not plan.subscribe:
+        return FolderCreation(plan.folder, subscribed=False)
+
+    try:
+        transport.subscribe(plan.folder)
+
+    except MailctlError as exc:
+        return FolderCreation(
+            plan.folder, subscribed=False, subscribe_error=str(exc)
+        )
+
+    return FolderCreation(plan.folder, subscribed=True)
 
 
 # ----------------------------------------------------------------------------
 def folder_pending(session: Session, plan: FolderPlan) -> bool:
     """Whether a folder planned for IMAP creation has not been made yet."""
-    return plan.imap_creates and not session.transport.exists(plan.folder)
+    return plan.imap_creates and not (
+        session.transport.list_folders().exists(plan.folder)
+    )
 
 
 # ----------------------------------------------------------------------------

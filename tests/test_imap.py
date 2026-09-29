@@ -11,8 +11,9 @@ nobody opens, which looks exactly like the filter not running.
 
 import pytest
 from imapclient.exceptions import IMAPClientError, LoginError
+from utilities_support import mxroute
 
-from mailctl import MailctlError
+from mailctl import MailctlError, utilities
 from mailctl.components.imap import (
     BULK_CHUNK,
     ImapAuthenticationError,
@@ -22,16 +23,45 @@ from mailctl.components.imap import (
     PartialExecution,
     case_variants,
     decode_header_value,
-    header_values,
     normalize_folder,
     split_path,
 )
 from mailctl.config import Secret
 from mailctl.criteria import Criteria
+from mailctl.providers.base import ActionSpec
+from mailctl.providers.mxroute import records
+from mailctl.utilities.mail import header_values
 
 # ############################################################################
 # Helpers
 # ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def matching(imap_session, criteria, folder="INBOX"):
+    """What the existing-mail pass selects: the session's candidates,
+    re-checked against the real comparison by the mail utility."""
+    session = mxroute(imap=imap_session)
+
+    return utilities.mail.plan_mail(
+        session, criteria, ActionSpec(), folder, ""
+    ).messages
+
+
+# ----------------------------------------------------------------------------
+def plan_actions(
+    imap_session, criteria, source, destination="", flags=(), discard=False
+):
+    """The existing-mail pass's plan, as this session executes it."""
+    plan = utilities.mail.plan_mail(
+        mxroute(imap=imap_session),
+        criteria,
+        ActionSpec(flags=tuple(flags), discard=discard),
+        source,
+        destination,
+    )
+
+    return records.session_plan(plan)
 
 
 # ----------------------------------------------------------------------------
@@ -448,7 +478,7 @@ def test_calling_a_method_before_open_fails_clearly():
     session = plain_session()
 
     with pytest.raises(MailctlError, match="IMAP session is not open"):
-        session.search(Criteria(), "INBOX")
+        session.search_uids(Criteria(), "INBOX")
 
 
 # ----------------------------------------------------------------------------
@@ -506,7 +536,7 @@ def test_search_rejects_an_imap_hit_that_fails_the_strict_comparison(
     criteria = Criteria(compare="matches")
     criteria.add("from", "*@lists.example.com")
 
-    found = imap_session.search(criteria, "INBOX")
+    found = matching(imap_session, criteria, "INBOX")
 
     assert [item.uid for item in found] == [2]
 
@@ -527,7 +557,32 @@ def test_search_rejects_a_substring_hit_under_compare_is(
     criteria = Criteria(compare="is")
     criteria.add("subject", "Weekly Report")
 
-    assert [item.uid for item in imap_session.search(criteria, "INBOX")] == [2]
+    assert [
+        item.uid for item in matching(imap_session, criteria, "INBOX")
+    ] == [2]
+
+
+# ----------------------------------------------------------------------------
+def test_the_session_searches_by_the_key_alone_and_narrows_nothing(
+    imap_session, fake_imap
+):
+    """The re-check left the component (ADR 0007): it needs only a search
+    key, and hands back every candidate the server matched."""
+    fake_imap.messages = {
+        1: message("a@example.com"),
+        2: message("b@example.com"),
+    }
+
+    class KeyOnly:
+        def imap_search_key(self):
+            return [["FROM", "a@example.com"]]
+
+    uids = imap_session.search_uids(KeyOnly(), "INBOX")
+    fetched = imap_session.fetch_headers(uids, "INBOX")
+
+    assert uids == [1, 2]
+    assert [item.summary.uid for item in fetched] == [1, 2]
+    assert fetched[1].headers["From"] == "b@example.com"
 
 
 # ----------------------------------------------------------------------------
@@ -537,7 +592,7 @@ def test_search_returns_nothing_without_fetching_when_imap_found_nothing(
     criteria = Criteria()
     criteria.add("from", "nobody@example.com")
 
-    assert imap_session.search(criteria, "INBOX") == []
+    assert matching(imap_session, criteria, "INBOX") == []
     assert "fetch" not in fake_imap.names()
 
 
@@ -553,7 +608,7 @@ def test_a_matched_message_carries_its_decoded_summary(
     criteria = Criteria()
     criteria.add("from", "j@example.com")
 
-    found = imap_session.search(criteria, "INBOX")
+    found = matching(imap_session, criteria, "INBOX")
 
     assert found[0].sender == "José <j@example.com>"
     assert found[0].subject == "Hola"
@@ -571,7 +626,7 @@ def test_a_raw_utf8_header_is_summarized_as_its_text(imap_session, fake_imap):
     criteria = Criteria()
     criteria.add("from", "zoë@exemple.fr")
 
-    found = imap_session.search(criteria, "INBOX")
+    found = matching(imap_session, criteria, "INBOX")
 
     assert found[0].sender == "zoë@exemple.fr"
     assert found[0].subject == "café"
@@ -587,7 +642,7 @@ def test_a_header_that_is_not_utf8_is_summarized_as_before(
     criteria = Criteria()
     criteria.add("from", "j@example.com")
 
-    found = imap_session.search(criteria, "INBOX")
+    found = matching(imap_session, criteria, "INBOX")
 
     assert found[0].sender == "Jos\ufffd <j@example.com>"
 
@@ -601,7 +656,7 @@ def test_a_search_failure_names_the_folder(imap_session, fake_imap):
     criteria.add("from", "a@example.com")
 
     with pytest.raises(MailctlError, match=r"search in 'INBOX' failed"):
-        imap_session.search(criteria, "INBOX")
+        matching(imap_session, criteria, "INBOX")
 
 
 # ----------------------------------------------------------------------------
@@ -615,7 +670,7 @@ def test_selecting_a_missing_folder_points_at_the_folders_command(
     criteria.add("from", "a@example.com")
 
     with pytest.raises(MailctlError, match=r"Run 'mailctl folders'"):
-        imap_session.search(criteria, "INBOX.Nope")
+        matching(imap_session, criteria, "INBOX.Nope")
 
 
 # ############################################################################
@@ -635,8 +690,12 @@ def test_planning_never_writes_anything(imap_session, fake_imap):
     criteria = Criteria()
     criteria.add("from", "a@example.com")
 
-    plan = imap_session.plan_actions(
-        criteria, "INBOX", destination="INBOX.Lists", flags=["\\Seen"]
+    plan = plan_actions(
+        imap_session,
+        criteria,
+        "INBOX",
+        destination="INBOX.Lists",
+        flags=["\\Seen"],
     )
 
     assert plan.count == 1
@@ -654,8 +713,12 @@ def test_execute_flags_before_it_moves(imap_session, fake_imap):
     criteria = Criteria()
     criteria.add("from", "a@example.com")
 
-    plan = imap_session.plan_actions(
-        criteria, "INBOX", destination="INBOX.Lists", flags=["\\Seen"]
+    plan = plan_actions(
+        imap_session,
+        criteria,
+        "INBOX",
+        destination="INBOX.Lists",
+        flags=["\\Seen"],
     )
     result = imap_session.execute(plan)
 
@@ -676,7 +739,7 @@ def test_execute_reopens_the_folder_writable(imap_session, fake_imap):
     criteria = Criteria()
     criteria.add("from", "a@example.com")
 
-    imap_session.execute(imap_session.plan_actions(criteria, "INBOX"))
+    imap_session.execute(plan_actions(imap_session, criteria, "INBOX"))
 
     assert ("select_folder", "INBOX", False) in fake_imap.calls
 
@@ -704,8 +767,12 @@ def test_discard_deletes_and_never_moves(imap_session, fake_imap):
     criteria = Criteria()
     criteria.add("from", "a@example.com")
 
-    plan = imap_session.plan_actions(
-        criteria, "INBOX", destination="INBOX.Lists", discard=True
+    plan = plan_actions(
+        imap_session,
+        criteria,
+        "INBOX",
+        destination="INBOX.Lists",
+        discard=True,
     )
     result = imap_session.execute(plan)
 
@@ -895,7 +962,7 @@ def test_the_header_fetch_for_a_broad_search_is_chunked(
     criteria = Criteria()
     criteria.add("From", "list@example.com")
 
-    found = imap_session.search(criteria, "INBOX")
+    found = matching(imap_session, criteria, "INBOX")
 
     assert len(found) == MANY
     assert chunk_sizes(fake_imap, "fetch") == [250, 250, 100]

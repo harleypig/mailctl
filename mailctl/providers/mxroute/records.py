@@ -8,23 +8,14 @@ records -- a placement, a diff -- cross in the dialect (``sieve.py``).
 """
 
 from ...components.imap import messages as imap_records
-from ...components.imap.folders import FolderCreation
 from .. import model
 
 __all__ = [
-    "folder_creation",
-    "mail_plan",
+    "fetched_message",
     "mail_result",
     "message_summary",
     "session_plan",
 ]
-
-
-# ----------------------------------------------------------------------------
-def folder_creation(value: FolderCreation) -> model.FolderCreation:
-    return model.FolderCreation(
-        value.folder, value.subscribed, value.subscribe_error
-    )
 
 
 # ----------------------------------------------------------------------------
@@ -60,15 +51,10 @@ def _session_summary(
 
 
 # ----------------------------------------------------------------------------
-def mail_plan(value: imap_records.MailActionPlan) -> model.MailActionPlan:
-    """The IMAP session's plan, as the engine carries it."""
-    return model.MailActionPlan(
-        value.source,
-        value.destination,
-        list(value.flags),
-        value.discard,
-        [message_summary(message) for message in value.messages],
-    )
+def fetched_message(
+    value: imap_records.FetchedMessage,
+) -> model.FetchedMessage:
+    return model.FetchedMessage(value.headers, message_summary(value.summary))
 
 
 # ----------------------------------------------------------------------------

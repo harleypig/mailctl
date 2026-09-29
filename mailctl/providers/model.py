@@ -14,6 +14,7 @@ configuration, or prints.
 from dataclasses import dataclass, field
 from email.errors import HeaderParseError
 from email.header import Header, decode_header, make_header
+from email.message import Message
 
 from ..config import Source
 
@@ -31,6 +32,7 @@ __all__ = [
     "DisplayDiff",
     "ExtensionState",
     "Fact",
+    "FetchedMessage",
     "FolderCreation",
     "FolderListing",
     "MailActionPlan",
@@ -101,7 +103,7 @@ def decode_header_value(raw: "str | Header") -> str:
 def _utf8_header(raw: "str | Header") -> "str | Header":
     """Read ``email``'s ``unknown-8bit`` chunks as UTF-8 where they are.
 
-    The IMAP component has the same reading for its search re-check; the
+    The IMAP component has the same reading for its message summaries; the
     layers may not import each other, so each keeps its own (ADR 0006).
     """
     if not isinstance(raw, Header):
@@ -250,11 +252,37 @@ class DeliveryCreate:
 @dataclass(frozen=True)
 class FolderListing:
     """The account's folders, the hierarchy delimiter, and which folders
-    are subscribed -- the ones webmail actually draws."""
+    are subscribed -- the ones webmail actually draws.
+
+    ``prefix`` is where a new top-level folder belongs, as the host
+    reports it; None when it does not say, which is not the same as
+    ``""`` (the root).
+    """
 
     delimiter: str
     folders: list[str]
     subscribed: list[str] = field(default_factory=list)
+    prefix: str | None = None
+
+    # ------------------------------------------------------------------------
+    def exists(self, folder: str) -> bool:
+        """Whether a folder, already in the host's spelling, exists."""
+        return any(same_folder(name, folder) for name in self.folders)
+
+    # ------------------------------------------------------------------------
+    def case_variants(self, folder: str) -> list[str]:
+        """Existing folders that differ from ``folder`` only in case.
+
+        Matching is exact (``same_folder``), which makes these the folders
+        a user most likely meant: ones a lookup does not resolve to, and
+        ones a create would put a second folder beside.
+        """
+        return [
+            name
+            for name in self.folders
+            if name.casefold() == folder.casefold()
+            and not same_folder(name, folder)
+        ]
 
     # ------------------------------------------------------------------------
     def is_subscribed(self, folder: str) -> bool:
@@ -307,6 +335,18 @@ class MessageSummary:
     size: int = 0
     flags: tuple[str, ...] = ()
     has_attachments: bool = False
+
+
+@dataclass(frozen=True)
+class FetchedMessage:
+    """One candidate message, as the host sent it: headers and summary.
+
+    A search returns candidates; the utilities re-check ``headers`` against
+    a rule's real comparison semantics and keep ``summary`` for a match.
+    """
+
+    headers: Message
+    summary: MessageSummary
 
 
 @dataclass(frozen=True)

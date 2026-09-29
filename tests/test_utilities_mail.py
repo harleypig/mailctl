@@ -16,6 +16,8 @@ import pytest
 from utilities_support import criteria
 
 from mailctl import MailctlError, utilities
+from mailctl.criteria import Criteria
+from mailctl.providers.base import FetchedMessage, MessageSummary
 from mailctl.utilities.rules import (
     ActionSpec,
 )
@@ -70,6 +72,39 @@ def test_planning_the_mail_pass_is_read_only(sessions, mailbox):
     assert plan.moves
     assert ("select_folder", "INBOX", True) in mailbox.calls
     assert "move" not in mailbox.names()
+
+
+# ----------------------------------------------------------------------------
+def test_the_recheck_keeps_only_the_candidates_the_rule_matches():
+    """The host's search is coarse; the utility decides (ADR 0007).
+
+    Both candidates contain the address, as a substring search would find
+    them, but only one is it exactly under ``--compare is``.
+    """
+    rule = Criteria(compare="is")
+    rule.add("from", "a@example.com")
+    candidates = [
+        FetchedMessage(
+            headers(From=sender),
+            MessageSummary(uid, "", sender, "", "INBOX"),
+        )
+        for uid, sender in ((1, "xa@example.com"), (2, "a@example.com"))
+    ]
+
+    kept = utilities.mail.recheck(rule, candidates)
+
+    assert [summary.uid for summary in kept] == [2]
+
+
+# ----------------------------------------------------------------------------
+def test_the_recheck_reads_decoded_and_raw_header_forms():
+    """Sieve compares the decoded value; the literal encoded text still
+    finds its message."""
+    values = utilities.mail.header_values(
+        headers(Subject="=?utf-8?q?caf=C3=A9?=")
+    )
+
+    assert values["SUBJECT"] == ["café", "=?utf-8?q?caf=C3=A9?="]
 
 
 # ----------------------------------------------------------------------------

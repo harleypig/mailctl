@@ -60,9 +60,8 @@ from mailctl.providers.base import (
     Dialect,
     DisplayDiff,
     Fact,
-    FolderCreation,
+    FetchedMessage,
     FolderListing,
-    MailActionPlan,
     MailActionResult,
     MessageSummary,
     Placement,
@@ -253,6 +252,12 @@ class FakeDialect(Dialect):
     # -- folders -------------------------------------------------------------
 
     @classmethod
+    def normalize(cls, name, listing):
+        name = name.replace("/", listing.delimiter)
+
+        return name if name.startswith("INBOX") else f"INBOX.{name}"
+
+    @classmethod
     def assumed_folder(cls, name, delimiter):
         return name.replace("/", delimiter or "."), delimiter or "."
 
@@ -286,8 +291,8 @@ class FakeTransport(Transport):
         self.folders = ["INBOX", "INBOX.Lists"]
         self.subscribed = list(self.folders)
         self.messages = {
-            7: {"FROM": [GITHUB], "SUBJECT": ["hello"]},
-            8: {"FROM": ["someone@example.com"], "SUBJECT": ["hi"]},
+            7: f"From: {GITHUB}\r\nSubject: hello\r\n\r\n",
+            8: "From: someone@example.com\r\nSubject: hi\r\n\r\n",
         }
 
     # ------------------------------------------------------------------------
@@ -335,29 +340,10 @@ class FakeTransport(Transport):
         return []
 
     def list_folders(self):
-        return FolderListing(".", sorted(self.folders), list(self.subscribed))
+        return FolderListing(".", list(self.folders), list(self.subscribed))
 
-    def delimiter(self):
-        return "."
-
-    def normalize(self, name):
-        name = name.replace("/", ".")
-
-        return name if name.startswith("INBOX") else f"INBOX.{name}"
-
-    def exists(self, folder):
-        return folder in self.folders
-
-    def case_variants(self, folder):
-        return []
-
-    def is_subscribed(self, folder):
-        return folder in self.subscribed
-
-    def create_folder(self, folder, subscribe):
+    def create_folder(self, folder):
         self.folders.append(folder)
-
-        return FolderCreation(folder, subscribe)
 
     def subscribe(self, folder):
         self.subscribed.append(folder)
@@ -365,31 +351,34 @@ class FakeTransport(Transport):
     def unsubscribe(self, folder):
         self.subscribed.remove(folder)
 
-    def select_mail(self, criteria, source, destination, flags, discard):
-        matched = [
-            MessageSummary(uid, "", headers["FROM"][0], "", source)
-            for uid, headers in sorted(self.messages.items())
-            if criteria.matches(headers)
-        ]
-
-        return MailActionPlan(source, destination, flags, discard, matched)
-
-    def apply_mail(self, plan):
-        return MailActionResult(moved=plan.count)
+    def search(self, folder, criteria):
+        # A host search coarser than the rule: every message is a
+        # candidate, and the utilities' re-check has to narrow them.
+        return sorted(self.messages)
 
     def search_messages(self, folder, expression):
         return sorted(self.messages)
 
-    def message_headers(self, folder, uid):
-        return email.message_from_string(
-            f"From: {self.messages[uid]['FROM'][0]}\r\n\r\n"
-        )
+    def fetch_headers(self, uids, folder):
+        return [self._fetched(uid, folder) for uid in sorted(uids)]
 
-    def list_messages(self, folder, *, criteria, expression, limit):
-        return [], False
+    def fetch_summaries(self, uids, folder):
+        return [self._fetched(uid, folder) for uid in uids]
+
+    def _fetched(self, uid, folder):
+        headers = email.message_from_string(self.messages[uid])
+        summary = MessageSummary(uid, "", headers["From"], "", folder)
+
+        return FetchedMessage(headers, summary)
+
+    def apply_mail(self, plan):
+        return MailActionResult(moved=plan.count)
+
+    def message_headers(self, folder, uid):
+        return email.message_from_string(self.messages[uid])
 
     def message_source(self, folder, uid):
-        return b"", ()
+        return self.messages[uid].encode(), ()
 
 
 FAKE = Provider("fake", FULL, FakeDialect, FakeTransport)
@@ -658,9 +647,7 @@ def test_the_operation_lists_are_the_interface():
         TRANSPORT_OPERATIONS
     )
     assert {"add_rule", "validate", "diff"} <= set(DIALECT_OPERATIONS)
-    assert {"select_mail", "open", "store_rule_set"} <= set(
-        TRANSPORT_OPERATIONS
-    )
+    assert {"search", "open", "store_rule_set"} <= set(TRANSPORT_OPERATIONS)
     assert len(OPERATIONS) > 40
 
 
@@ -691,7 +678,7 @@ def test_the_check_would_catch_a_missing_or_undeclared_operation():
         name = "gap"
 
     assert "add_rule" in GapDialect.__abstractmethods__
-    assert "select_mail" in GapTransport.__abstractmethods__
+    assert "search" in GapTransport.__abstractmethods__
 
     class Undeclared(FakeDialect):
         @classmethod
@@ -870,6 +857,21 @@ def test_the_fake_really_stored_the_rule_and_moved_the_mail(
 
 
 # ----------------------------------------------------------------------------
+def test_a_coarse_host_search_is_narrowed_by_the_utilities(fakes):
+    """The fake's search returns every message; selection is still exact,
+    because the re-check is the utilities', not the transport's."""
+    criteria = Criteria()
+    criteria.add("From", GITHUB)
+
+    plan = utilities.mail.plan_mail(
+        fake_session(), criteria, ActionSpec(), "INBOX", "INBOX.Lists"
+    )
+
+    assert fake_session().transport.search("INBOX", criteria) == [7, 8]
+    assert plan.uids == [7]
+
+
+# ----------------------------------------------------------------------------
 def test_a_declined_capability_is_refused_before_any_connection(fakes):
     """``check_rule`` needs only the config: nothing is opened."""
     criteria = Criteria()
@@ -1028,26 +1030,27 @@ def test_mxroute_translates_every_record_it_returns(
         roundcube_script, roundcube_script, "managesieve"
     )
     raw = MxrouteDialect.raw_diff(roundcube_script, "", "managesieve")
-    plan = transport.select_mail(criteria, "INBOX", "INBOX.Lists", [], False)
-    result = transport.apply_mail(plan)
-    created = transport.create_folder("INBOX.New", subscribe=True)
-    listed, _more = transport.list_messages(
-        "INBOX", criteria=criteria, expression=None, limit=None
+    listing = transport.list_folders()
+    uids = transport.search("INBOX", criteria)
+    fetched = [
+        *transport.fetch_headers(uids, "INBOX"),
+        *transport.fetch_summaries(uids, "INBOX"),
+    ]
+    result = transport.apply_mail(
+        model.MailActionPlan(
+            "INBOX", "INBOX.Lists", [], False, [fetched[0].summary]
+        )
     )
 
     assert type(diff) is model.DisplayDiff
     assert type(raw) is model.DisplayDiff
     assert (diff.label, raw.label) == ("sieve", "sieve")
-    assert type(plan) is model.MailActionPlan
-    assert plan.count == 1
-    assert {type(message) for message in plan.messages} == {
-        model.MessageSummary
-    }
+    assert type(listing) is model.FolderListing
+    assert len(fetched) == 2
+    assert {type(item) for item in fetched} == {model.FetchedMessage}
+    assert {type(item.summary) for item in fetched} == {model.MessageSummary}
     assert type(result) is model.MailActionResult
     assert result.moved == 1
-    assert type(created) is model.FolderCreation
-    assert listed
-    assert {type(message) for message in listed} == {model.MessageSummary}
 
 
 # ############################################################################

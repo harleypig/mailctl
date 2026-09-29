@@ -1,9 +1,10 @@
 """The IMAP session, over IMAPClient.
 
 :class:`ImapSession` wraps IMAPClient with what mailctl needs: the folder
-list plus its hierarchy delimiter, a search that is re-checked against the
-caller's real comparison semantics, and a move that degrades gracefully
-when the server has no MOVE capability (ADR 0006, I3). It takes plain
+list plus its hierarchy delimiter, a search and the header fetch a caller
+re-checks its candidates against, and a move that degrades gracefully when
+the server has no MOVE capability (ADR 0006, I3). The re-check itself --
+the real comparison semantics -- is the caller's (ADR 0007). It takes plain
 connection parameters, so nothing here knows which host, which
 configuration, or which front-end is calling.
 
@@ -20,7 +21,7 @@ import contextlib
 import email
 import socket
 import ssl
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Protocol
 
 from imapclient import IMAPClient
@@ -35,14 +36,12 @@ from .folders import (
     same_folder,
 )
 from .messages import (
-    BULK_CHUNK,
+    FetchedMessage,
     MailActionPlan,
     MailActionResult,
-    MessageSummary,
     PartialExecution,
     chunked,
     flag_names,
-    header_values,
     summarize,
 )
 from .search import SEARCH_CHARSET, SearchCriteria, encode_search_key
@@ -512,26 +511,17 @@ class ImapSession:
         return FolderCreation(folder=folder, subscribed=True)
 
     # ------------------------------------------------------------------------
-    def search(
-        self, criteria: SearchCriteria, folder: str, readonly: bool = True
-    ) -> list[MessageSummary]:
-        """Return the messages in ``folder`` that really match ``criteria``.
+    def search_uids(self, criteria: SearchCriteria, folder: str) -> list[int]:
+        """Return the UIDs the server matches for ``criteria`` in ``folder``.
 
-        The IMAP search narrows the mailbox; the fetched headers then decide.
-        That second pass is not belt-and-braces -- IMAP can only substring
-        match, so it is the only thing that makes ``--compare is`` and
-        ``--compare matches`` mean the same here as they will in Sieve.
+        The folder is selected read-only first. These are candidates: IMAP
+        can only substring-match, so a caller holding the real comparison
+        semantics narrows them against the headers ``fetch_headers``
+        returns.
         """
-        self._select(folder, readonly=readonly)
+        self._select(folder, readonly=True)
 
-        uids = self._criteria_candidates(criteria, folder)
-
-        if not uids:
-            return []
-
-        self._log(f"{len(uids)} candidate message(s); re-checking headers")
-
-        return self._confirm(uids, criteria, folder)
+        return self._criteria_candidates(criteria, folder)
 
     # ------------------------------------------------------------------------
     def _criteria_candidates(
@@ -553,95 +543,60 @@ class ImapSession:
             ) from exc
 
     # ------------------------------------------------------------------------
-    def list_messages(
-        self,
-        folder: str,
-        criteria: SearchCriteria | None = None,
-        expression: str | None = None,
-        limit: int | None = None,
-    ) -> tuple[list[MessageSummary], bool]:
-        """Return up to ``limit`` matching messages, newest (highest UID)
-        first, and whether candidates beyond the limit went unexamined.
+    def fetch_headers(
+        self, uids: list[int], folder: str
+    ) -> list[FetchedMessage]:
+        """Fetch the headers and date of ``uids`` in the selected folder.
 
-        ``criteria`` is re-checked against the fetched headers exactly as
-        ``search`` does; ``expression`` is a raw IMAP SEARCH taken as given;
-        with neither, every message is a candidate. Headers are fetched a
-        chunk at a time from the newest end, so a small limit on a large
-        folder reads only what it shows.
+        Returned in UID order, one per message the server still has. A
+        broad search can return far more candidates than --max-messages
+        (the cap applies once the caller has narrowed them), so the FETCH
+        is chunked for the same line-length reason as the bulk writes.
+        """
+        client = self._require_client()
+        fetched = {}
+
+        # Announces the caller's narrowing, which follows this fetch; the
+        # wording is what --verbose has always printed here.
+        self._log(f"{len(uids)} candidate message(s); re-checking headers")
+
+        try:
+            for chunk in chunked(uids):
+                fetched.update(
+                    client.fetch(chunk, ["BODY.PEEK[HEADER]", "INTERNALDATE"])
+                )
+
+        except IMAPClientError as exc:
+            raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
+
+        return [
+            _fetched(uid, data, folder)
+            for uid, data in sorted(fetched.items())
+        ]
+
+    # ------------------------------------------------------------------------
+    def fetch_summaries(
+        self, uids: list[int], folder: str
+    ) -> list[FetchedMessage]:
+        """Fetch what a listing shows of ``uids``, in the selected folder.
+
+        One FETCH of headers, date, size, flags, and structure; returned in
+        the order asked for, one per message the server still has -- a UID
+        a search returned and the fetch did not was expunged in between.
         """
         client = self._require_client()
 
-        if criteria is not None:
-            self._select(folder, readonly=True)
-            uids = self._criteria_candidates(criteria, folder)
+        try:
+            fetched = client.fetch(uids, SUMMARY_ITEMS)
 
-        else:
-            uids = self.raw_search(folder, expression or "ALL")
+        except IMAPClientError as exc:
+            raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
 
-        newest = sorted(uids, reverse=True)
-        step = min(BULK_CHUNK, limit or BULK_CHUNK)
-        matches: list[MessageSummary] = []
-        examined = 0
-
-        while examined < len(newest) and not (limit and len(matches) >= limit):
-            chunk = newest[examined : examined + step]
-
-            try:
-                fetched = client.fetch(chunk, SUMMARY_ITEMS)
-
-            except IMAPClientError as exc:
-                raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
-
-            for uid in chunk:
-                examined += 1
-                data = fetched.get(uid)
-
-                # A UID the search returned and the fetch did not was
-                # expunged in between; it is simply gone.
-                if not data:
-                    continue
-
-                message = email.message_from_bytes(
-                    data.get(b"BODY[HEADER]") or b""
-                )
-
-                if criteria is not None and not criteria.matches(
-                    header_values(message)
-                ):
-                    continue
-
-                matches.append(summarize(uid, data, message, folder))
-
-                if limit and len(matches) >= limit:
-                    break
-
-        return matches, examined < len(newest)
-
-    # ------------------------------------------------------------------------
-    def plan_actions(
-        self,
-        criteria: SearchCriteria,
-        source: str,
-        destination: str = "",
-        flags: Sequence[str] = (),
-        discard: bool = False,
-    ) -> MailActionPlan:
-        """Work out what the existing-mail pass would do, without doing it.
-
-        Read-only by construction -- the mailbox is opened read-only and
-        nothing is written -- so a caller can always build a plan first and
-        decide afterwards. That is what a dry run is: a plan that is never
-        executed, rather than a flag threaded down into the operations.
-        """
-        messages = self.search(criteria, source, readonly=True)
-
-        return MailActionPlan(
-            source=source,
-            destination=destination,
-            flags=list(flags),
-            discard=discard,
-            messages=messages,
-        )
+        return [
+            _fetched(uid, fetched[uid], folder)
+            for uid in uids
+            if fetched.get(uid)
+        ]
 
     # ------------------------------------------------------------------------
     def execute(self, plan: MailActionPlan) -> MailActionResult:
@@ -711,40 +666,6 @@ class ImapSession:
             )
 
         return MailActionResult(flagged=flagged)
-
-    # ------------------------------------------------------------------------
-    def _confirm(
-        self, uids: list[int], criteria: SearchCriteria, folder: str
-    ) -> list[MessageSummary]:
-        """Fetch headers for candidates and keep only the real matches."""
-        client = self._require_client()
-        fetched = {}
-
-        # A broad search can return far more candidates than --max-messages
-        # (the cap applies after this re-check), so the FETCH is chunked for
-        # the same line-length reason as the bulk writes.
-        try:
-            for chunk in chunked(uids):
-                fetched.update(
-                    client.fetch(chunk, ["BODY.PEEK[HEADER]", "INTERNALDATE"])
-                )
-
-        except IMAPClientError as exc:
-            raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
-
-        matches = []
-
-        for uid, data in sorted(fetched.items()):
-            raw = data.get(b"BODY[HEADER]") or b""
-            message = email.message_from_bytes(raw)
-            headers = header_values(message)
-
-            if not criteria.matches(headers):
-                continue
-
-            matches.append(summarize(uid, data, message, folder))
-
-        return matches
 
     # ------------------------------------------------------------------------
     def _select(self, folder: str, readonly: bool = True) -> None:
@@ -901,3 +822,11 @@ class ImapSession:
                 f"IMAP search {expression!r} failed -- {exc}. Use IMAP "
                 f"syntax, e.g. 'FROM boss@example.com' or 'UNSEEN'."
             ) from exc
+
+
+# ----------------------------------------------------------------------------
+def _fetched(uid: int, data: dict, folder: str) -> FetchedMessage:
+    """One FETCH response as its parsed headers and its summary."""
+    headers = email.message_from_bytes(data.get(b"BODY[HEADER]") or b"")
+
+    return FetchedMessage(headers, summarize(uid, data, headers, folder))

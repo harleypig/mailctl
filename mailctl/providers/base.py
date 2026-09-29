@@ -55,6 +55,7 @@ from .model import (
     DisplayDiff,
     ExtensionState,
     Fact,
+    FetchedMessage,
     FolderCreation,
     FolderListing,
     MailActionPlan,
@@ -85,6 +86,7 @@ __all__ = [
     "DisplayDiff",
     "ExtensionState",
     "Fact",
+    "FetchedMessage",
     "FolderCreation",
     "FolderListing",
     "MailActionPlan",
@@ -400,6 +402,15 @@ class Dialect(ABC):
 
     @classmethod
     @abstractmethod
+    def normalize(cls, name: str, listing: FolderListing) -> str:
+        """A user's folder name as the host spells it, against its folders.
+
+        An existing folder is looked up in ``listing``; a new one is placed
+        where the listing's delimiter and prefix say it belongs.
+        """
+
+    @classmethod
+    @abstractmethod
     def assumed_folder(
         cls, name: str, delimiter: str | None
     ) -> tuple[str, str]:
@@ -511,31 +522,12 @@ class Transport(ABC):
 
     @abstractmethod
     def list_folders(self) -> FolderListing:
-        """The folders, sorted, the delimiter, and the subscribed ones."""
+        """The folders in the host's order, the delimiter, the subscribed
+        ones, and where a new folder goes."""
 
     @abstractmethod
-    def delimiter(self) -> str:
-        """The folder hierarchy delimiter the host reports."""
-
-    @abstractmethod
-    def normalize(self, name: str) -> str:
-        """A user's folder name as the host spells it."""
-
-    @abstractmethod
-    def exists(self, folder: str) -> bool:
-        """Whether a folder exists."""
-
-    @abstractmethod
-    def case_variants(self, folder: str) -> list[str]:
-        """Existing folders that differ from ``folder`` only in case."""
-
-    @abstractmethod
-    def is_subscribed(self, folder: str) -> bool:
-        """Whether a folder is subscribed."""
-
-    @abstractmethod
-    def create_folder(self, folder: str, subscribe: bool) -> FolderCreation:
-        """Create a folder, subscribing to it unless declined."""
+    def create_folder(self, folder: str) -> None:
+        """Create a folder, as named; subscribing to it is a second step."""
 
     @abstractmethod
     def subscribe(self, folder: str) -> None:
@@ -550,43 +542,38 @@ class Transport(ABC):
     # ------------------------------------------------------------------------
 
     @abstractmethod
-    def select_mail(
-        self,
-        criteria: Criteria,
-        source: str,
-        destination: str,
-        flags: list[str],
-        discard: bool,
-    ) -> MailActionPlan:
-        """Select the messages a rule matches, read-only, and plan the act.
+    def search(self, folder: str, criteria: Criteria) -> list[int]:
+        """The UIDs the host's own search matches for ``criteria``.
 
-        Selection -- *does this rule match this message* -- is the
-        provider's to answer (#26), so the existing-mail pass stands on it
-        whatever the host.
+        Candidates, read-only: a host search may be coarser than a rule's
+        comparison, and the utilities re-check what comes back.
         """
-
-    @abstractmethod
-    def apply_mail(self, plan: MailActionPlan) -> MailActionResult:
-        """Carry out a selection's plan."""
 
     @abstractmethod
     def search_messages(self, folder: str, expression: str) -> list[int]:
         """The UIDs a host-native search expression matches."""
 
     @abstractmethod
-    def message_headers(self, folder: str, uid: int) -> Message:
-        """One message's headers, as an ``email.message.Message``."""
+    def fetch_headers(
+        self, uids: list[int], folder: str
+    ) -> list[FetchedMessage]:
+        """The headers and date of ``uids``, in the folder the last search
+        read, in UID order; one per message the host still has."""
 
     @abstractmethod
-    def list_messages(
-        self,
-        folder: str,
-        *,
-        criteria: Criteria | None,
-        expression: str | None,
-        limit: int | None,
-    ) -> tuple[list[MessageSummary], bool]:
-        """The newest matches, newest first, and whether there are more."""
+    def fetch_summaries(
+        self, uids: list[int], folder: str
+    ) -> list[FetchedMessage]:
+        """What a listing shows of ``uids``, in the folder the last search
+        read, in the order asked for; one per message the host still has."""
+
+    @abstractmethod
+    def apply_mail(self, plan: MailActionPlan) -> MailActionResult:
+        """Carry out a plan: flag, then move or delete, its messages."""
+
+    @abstractmethod
+    def message_headers(self, folder: str, uid: int) -> Message:
+        """One message's headers, as an ``email.message.Message``."""
 
     @abstractmethod
     def message_source(

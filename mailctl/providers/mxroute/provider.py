@@ -4,10 +4,9 @@ ManageSieve for rules and IMAP for mail. The dialect (``dialect.py``)
 speaks Sieve in Roundcube's rule-name form, offline; the transport
 (``transport.py``) talks to the two servers.
 
-Selection -- which delivered messages a rule matches -- is the IMAP
-``SEARCH`` translation plus the client-side re-check against the real Sieve
-semantics. It moves to the Sieve interpreter of ADR 0004 behind the same
-operations once that exists.
+Selection -- which delivered messages a rule matches -- is the transport's
+IMAP ``SEARCH``, re-checked by the utilities against the real Sieve
+semantics. It moves to the Sieve interpreter of ADR 0004 once that exists.
 """
 
 from ..base import (

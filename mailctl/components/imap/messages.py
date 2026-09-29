@@ -1,12 +1,15 @@
 """Messages as data: summaries, the existing-mail plan, and header reading.
 
 Everything here is offline. A FETCH response goes in and plain values come
-out, so the session and any front-end share one reading of a message.
+out, so the session and any front-end share one reading of a message. How
+a message's headers are compared with a rule is not here: that is the
+caller's re-check (ADR 0007).
 """
 
 from dataclasses import dataclass, field
 from email.errors import HeaderParseError
 from email.header import Header, decode_header, make_header
+from email.message import Message
 
 from ... import MailctlError
 from .folders import same_folder
@@ -21,6 +24,7 @@ BULK_CHUNK = 250
 
 __all__ = [
     "BULK_CHUNK",
+    "FetchedMessage",
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
@@ -28,7 +32,6 @@ __all__ = [
     "chunked",
     "decode_header_value",
     "flag_names",
-    "header_values",
     "structure_has_attachment",
     "summarize",
 ]
@@ -51,6 +54,18 @@ class MessageSummary:
     size: int = 0
     flags: tuple[str, ...] = ()
     has_attachments: bool = False
+
+
+@dataclass(frozen=True)
+class FetchedMessage:
+    """One message as a header FETCH returned it: parsed, and summarized.
+
+    ``headers`` is what a caller re-checks its criteria against; the
+    summary is what it keeps when the message matches.
+    """
+
+    headers: Message
+    summary: MessageSummary
 
 
 @dataclass(frozen=True)
@@ -176,31 +191,6 @@ def decode_header_value(raw: "str | Header") -> str:
     # raises it, and one such header must not abort a whole listing.
     except (UnicodeDecodeError, LookupError, ValueError, HeaderParseError):
         return str(raw)
-
-
-# ----------------------------------------------------------------------------
-def header_values(message) -> dict[str, list[str]]:
-    """Map upper-cased header names to every occurrence of that header.
-
-    Each occurrence contributes both its decoded and its raw form. Sieve
-    compares against the MIME-decoded value, so that is the one that
-    matters; keeping the raw form as well means a search for the literal
-    encoded text still finds its message, and costs only a wider candidate
-    set.
-    """
-    collected: dict[str, list[str]] = {}
-
-    for name, raw in message.items():
-        key = name.upper()
-        decoded = decode_header_value(_utf8_header(raw))
-
-        values = collected.setdefault(key, [])
-        values.append(decoded)
-
-        if decoded != raw:
-            values.append(raw)
-
-    return collected
 
 
 # ----------------------------------------------------------------------------
