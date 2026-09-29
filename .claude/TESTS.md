@@ -113,10 +113,18 @@ fixture required before anything writes to one is still outstanding
      - the **interface guard**: a front-end imports only the utilities, the
        session's opening calls, and the neutral model — never a provider, a
        component, or the session's transport, connection, or dialect.
+     - the **read/write guard** ([#154][i154]): a read-only utility never
+       reaches a transport operation classified write ([#135][i135]).
+       Read-only is derived, not listed: every function under
+       `utilities/` except an `execute_*` one and the named write steps
+       an execute is built from (`create_folder`, `realize_folder`,
+       `upload_script`), each of which must still be seen to write. The
+       check is static, so every branch is seen, and reach is followed
+       through other utilities to a fixed point.
 
-     The component, session-and-utilities, neutral-model, and half guards
-     each carry a case built to break them, so each is seen to fail as well
-     as pass.
+     The component, session-and-utilities, neutral-model, half, and
+     read/write guards each carry a case built to break them, so each is
+     seen to fail as well as pass.
    - **Providers** (`test_providers.py`) — each half of every registered
      provider implements or explicitly declines every operation of its
      interface (`Dialect`, `Transport`), and the two decline exactly what
@@ -226,3 +234,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
 [adr7]: ../adr/0007-interfaces-utilities-session-provider-layering.md
 [i99]: https://github.com/harleypig/mailctl/issues/99
+[i135]: https://github.com/harleypig/mailctl/issues/135
+[i154]: https://github.com/harleypig/mailctl/issues/154

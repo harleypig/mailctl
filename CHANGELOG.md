@@ -46,6 +46,13 @@ NOTES:
   always selects the folder it names instead of relying on the last one
   selected. The CLI's output is byte-for-byte what it was.
 
+* **A test now guarantees that looking never changes anything** ([#154]).
+  Every step that only reads -- planning a change, listing rules or
+  folders, searching and viewing messages, the probes behind `mailctl
+  test` -- is checked on every run never to store a rule, create or
+  subscribe a folder, or move mail. Only the steps that carry out a plan
+  already shown may. No behaviour change.
+
 ## 0.8.4
 
 NOTES:
@@ -808,3 +815,4 @@ NOTES:
 [#134]: https://github.com/harleypig/mailctl/issues/134
 [#135]: https://github.com/harleypig/mailctl/issues/135
 [#137]: https://github.com/harleypig/mailctl/issues/137
+[#154]: https://github.com/harleypig/mailctl/issues/154
