@@ -8,12 +8,11 @@ ENHANCEMENTS:
 
 * **A command given bad input fails before logging in** ([#137]). The CLI
   now connects to each server the first time a command needs it, rather
-  than to every server it might need before starting. So `mailctl
-  messages` given both criteria and `--search`, or `mailctl apply` with no
-  action, stops with its error before logging in to IMAP or asking for
-  the password. `mailctl add` with no action still reads the rule script
-  first, so it still logs in to ManageSieve. What each command prints is
-  unchanged.
+  than to every server it might need before starting, and `mailctl add`
+  refuses a rule with no action before connecting. So `mailctl messages`
+  given both criteria and `--search`, or `mailctl apply` or `mailctl add`
+  with no action, stops with its error before logging in to either server
+  or asking for the password. What each command prints is unchanged.
 
 NOTES:
 

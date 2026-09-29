@@ -178,7 +178,15 @@ def check_rule(
     caps = provider.capabilities
 
     folder = request.actions.fileinto or config.default_folder or ""
-    unsupported = action_names(request.actions, folder) - caps.actions
+    requested = action_names(request.actions, folder)
+
+    if not requested:
+        raise MailctlError(
+            "no action requested -- use --fileinto, --discard, --mark-read, "
+            "--flag, or --keep"
+        )
+
+    unsupported = requested - caps.actions
 
     if unsupported:
         raise refuse(
