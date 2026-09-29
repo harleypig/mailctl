@@ -151,6 +151,47 @@ def reparse():
 # ############################################################################
 
 
+class FakeImaplib:
+    """IMAPClient's imaplib connection, reduced to what LIST-STATUS uses.
+
+    ``_simple_command`` answers ``LIST "" "*" RETURN (STATUS (...))`` with
+    a STATUS line per folder in the double's ``counts`` carrying only the
+    items asked for, left where imaplib leaves them: in
+    ``untagged_responses``, the word STATUS already taken off.
+    """
+
+    # ------------------------------------------------------------------------
+    def __init__(self, client: "FakeIMAPClient"):
+        self.client = client
+        self.untagged_responses: dict[str, list] = {}
+
+    # ------------------------------------------------------------------------
+    def _simple_command(self, name: str, *args: str):
+        self.client._maybe_fail("list_status")
+        self.client.calls.append((name, *args))
+
+        items = args[-1].removeprefix("(STATUS (").removesuffix("))").split()
+        listed, status = [], []
+
+        for _flags, _delimiter, folder in self.client.listing:
+            listed.append(b'() "." "' + folder + b'"')
+            counts = self.client.counts.get(folder.decode())
+
+            if counts is None:
+                continue
+
+            values = dict(
+                zip(("MESSAGES", "UNSEEN", "SIZE"), counts, strict=True)
+            )
+            body = " ".join(f"{item} {values[item]}" for item in items)
+            status.append(b'"' + folder + b'" (' + body.encode() + b")")
+
+        self.untagged_responses["LIST"] = listed
+        self.untagged_responses["STATUS"] = status
+
+        return "OK", [b"LIST completed"]
+
+
 class FakeIMAPClient:
     """A stand-in for ``IMAPClient``, recording what it was asked to do.
 
@@ -206,6 +247,15 @@ class FakeIMAPClient:
         # A server that answers OK to SUBSCRIBE and does not act on it.
         # Nothing advertises this, so the only defence is re-reading LSUB.
         self.subscribe_takes_effect = True
+
+        # Each folder's (MESSAGES, UNSEEN, SIZE), for LIST-STATUS; a folder
+        # left out gets no STATUS line, as one that cannot hold mail.
+        self.counts: dict[str, tuple[int, int, int]] = {
+            "INBOX": (3, 1, 2048),
+            "INBOX.Lists": (0, 0, 0),
+            "INBOX.spam": (12, 12, 30822),
+        }
+        self._imap = FakeImaplib(self)
 
     # ------------------------------------------------------------------------
     def _maybe_fail(self, name: str) -> None:

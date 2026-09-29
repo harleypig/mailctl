@@ -25,6 +25,10 @@ faults to inject, so a test can watch a check go red:
 - ``probe-no-mail``   -- ``probe --json`` has no mail section
 - ``json-noise``      -- ``folders --json`` prints a line ahead of the
   document
+- ``counts-missing``  -- ``folders --counts --json`` leaves a folder's
+  unread count null
+- ``no-list-status``  -- ``folders --counts`` is refused, the server not
+  advertising LIST-STATUS
 """
 
 import json
@@ -325,10 +329,31 @@ def add() -> str:
 
 
 # ----------------------------------------------------------------------------
+def counted() -> list[dict]:
+    """The folders of 'folders --counts --json', each with its counts."""
+    folders = [
+        {"name": name, "subscribed": True, "messages": total}
+        | {"unseen": unseen, "size": size}
+        for name, total, unseen, size in (
+            ("INBOX", 12, 3, 40960),
+            ("INBOX.Lists", 0, 0, 0),
+        )
+    ]
+
+    if "counts-missing" in BREAK:
+        folders[1]["unseen"] = None
+
+    return folders
+
+
+# ----------------------------------------------------------------------------
 def document(command: str) -> str:
     """A --json document shaped like the real one for ``command``."""
     if command == "search":
         body = {"folder": "INBOX", "more": True, "messages": []}
+
+    elif command == "folders" and "--counts" in ARGV:
+        body = {"delimiter": ".", "prefix": None, "folders": counted()}
 
     elif command == "folders":
         body = {"delimiter": ".", "prefix": None, "folders": []}
@@ -350,6 +375,21 @@ def main() -> int:
         log.write(json.dumps(ARGV) + "\n")
 
     command = ARGV[0]
+
+    if (
+        command == "folders"
+        and "--counts" in ARGV
+        and "no-list-status" in BREAK
+    ):
+        print(
+            "mailctl: the mxroute provider cannot count the messages in "
+            "every folder in one request: the IMAP server does not "
+            "advertise LIST-STATUS, and without it every folder would be a "
+            "request of its own",
+            file=sys.stderr,
+        )
+
+        return 1
 
     if (
         "--json" in ARGV

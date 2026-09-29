@@ -428,6 +428,7 @@ EXPECTED_KINDS = {
     "unsubscribe": (WRITE, MAIL),
     "describe_mail_server": (READ, MAIL),
     "mail_namespaces": (READ, MAIL),
+    "folder_status": (READ, MAIL),
     "search": (READ, MAIL),
     "search_messages": (READ, MAIL),
     "fetch_headers": (READ, MAIL),

@@ -31,6 +31,7 @@ __all__ = [
     "PLACE_LAST",
     "ActionSpec",
     "Capability",
+    "CountSupport",
     "DeliveryCreate",
     "DisplayDiff",
     "ExtensionState",
@@ -38,6 +39,7 @@ __all__ = [
     "FetchedMessage",
     "FolderCreation",
     "FolderListing",
+    "FolderStatus",
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
@@ -299,6 +301,35 @@ class FolderListing:
     def unsubscribed(self) -> list[str]:
         """Folders that exist but that webmail will not show."""
         return [name for name in self.folders if not self.is_subscribed(name)]
+
+
+@dataclass(frozen=True)
+class FolderStatus:
+    """One folder's message counts, as the host reported them.
+
+    ``unseen`` is the messages not yet read; ``size`` is in bytes. Each is
+    None where the host reported nothing -- ``size`` from a host that does
+    not report sizes, and all three for a folder the host gave no counts
+    for, such as one that cannot hold mail.
+    """
+
+    folder: str
+    messages: int | None = None
+    unseen: int | None = None
+    size: int | None = None
+
+
+@dataclass(frozen=True)
+class CountSupport:
+    """Whether the mail half can count every folder in one request.
+
+    ``missing`` is what the host lacks for it, in the host's own name for
+    that capability, or None when it lacks nothing; ``sizes`` is whether
+    the counts can carry each folder's size.
+    """
+
+    missing: str | None = None
+    sizes: bool = False
 
 
 @dataclass(frozen=True)

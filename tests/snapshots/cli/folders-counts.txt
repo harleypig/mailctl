@@ -1,0 +1,17 @@
+$ mailctl folders --counts
+exit: 0
+--- stdout
+Hierarchy delimiter: '.'
+3 folder(s), 2 subscribed (webmail shows only subscribed folders):
+  Folder       Messages  Unread   Size
+  INBOX               3       1   2.0K
+  INBOX.Lists         0       0     0B
+  INBOX.spam         12      12  30.1K  (not subscribed)
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('LIST', '""', '"*"', 'RETURN', '(STATUS (MESSAGES UNSEEN SIZE))')
+('logout',)

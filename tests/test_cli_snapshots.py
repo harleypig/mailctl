@@ -411,6 +411,14 @@ if header :contains "to" "announce@lists.example.com"
 
 # #151: --json on the data commands and on every write command's --dry-run
 # plan; --uids-only on search. Each pins a document's shape.
+# A server that counts every folder in one LIST (#157); the second leaves
+# INBOX.Lists without a STATUS line, as a folder that cannot hold mail.
+COUNTED = {"imap_caps": ["MOVE", "UIDPLUS", "LIST-STATUS", "STATUS=SIZE"]}
+COUNTED_NO_SIZE = {
+    "imap_caps": ["MOVE", "UIDPLUS", "LIST-STATUS"],
+    "counts": {"INBOX": (3, 1, 2048), "INBOX.spam": (12, 12, 30822)},
+}
+
 JSON_SCENARIOS = {
     "mark-dry-json": (
         ["mark", "1", "2", "--read", "--flag", "--dry-run", "--json"],
@@ -430,6 +438,13 @@ JSON_SCENARIOS = {
     # Progress is said on the way, so it goes to stderr with the rest.
     "list-verbose-json": (["list", "--verbose", "--json"], {}),
     "folders-json": (["folders", "--json"], {}),
+    # #157: one LIST-STATUS; size only where STATUS=SIZE is advertised.
+    "folders-counts-json": (["folders", "--counts", "--json"], COUNTED),
+    "folders-counts-nosize-json": (
+        ["folders", "--counts", "--json"],
+        COUNTED_NO_SIZE,
+    ),
+    "folders-counts-refused-json": (["folders", "--counts", "--json"], {}),
     "rules-json": (["rules", "--json"], {}),
     "rules-findings-json": (
         ["rules", "--json"],
@@ -682,6 +697,11 @@ SCENARIOS = {
     "show": (["show"], {}),
     "rules": (["rules"], {}),
     "folders": (["folders"], {}),
+    "folders-counts": (["folders", "--counts"], COUNTED),
+    "folders-counts-nosize": (["folders", "--counts"], COUNTED_NO_SIZE),
+    # A server without LIST-STATUS: refused, naming it, rather than a
+    # STATUS per folder.
+    "folders-counts-refused": (["folders", "--counts"], {}),
     "test": (["test"], {}),
     # A server that advertises neither ID nor NAMESPACE, and sends only
     # the SIEVE line: the report says so rather than leaving gaps.
@@ -1537,6 +1557,9 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
 
     if "imap_caps" in options:
         imap.caps = set(options["imap_caps"])
+
+    if "counts" in options:
+        imap.counts = options["counts"]
 
     monkeypatch.setattr(sieve_client, "SieveClient", lambda *a, **k: sieve)
     if "file" in options:

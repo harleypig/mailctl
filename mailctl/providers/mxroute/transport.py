@@ -25,6 +25,7 @@ from ..base import (
     RULES,
     FetchedMessage,
     FolderListing,
+    FolderStatus,
     MailActionPlan,
     MailActionResult,
     Namespace,
@@ -216,6 +217,13 @@ class MxrouteTransport(Transport):
         imap = self._imap()
 
         return records.mail_server(imap.identity(), imap.capabilities())
+
+    # ------------------------------------------------------------------------
+    def folder_status(self, sizes: bool) -> list[FolderStatus]:
+        return [
+            records.folder_status(item)
+            for item in self._imap().list_status(sizes)
+        ]
 
     # ------------------------------------------------------------------------
     def mail_namespaces(self) -> list[Namespace]:

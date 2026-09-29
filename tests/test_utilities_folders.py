@@ -570,3 +570,119 @@ def test_a_failed_subscription_keeps_the_created_folder(sessions, fake_imap):
     assert result.folder == "INBOX.New"
     assert not result.subscribed
     assert "still does not list it" in result.subscribe_error
+
+
+# ############################################################################
+# Counting folders (#157)
+# ############################################################################
+
+LIST_STATUS = {"LIST-STATUS"}
+WITH_SIZE = {"LIST-STATUS", "STATUS=SIZE"}
+
+
+# ----------------------------------------------------------------------------
+def list_commands(fake_imap) -> list[tuple]:
+    """The raw LIST commands sent, as recorded by the double."""
+    return [call for call in fake_imap.calls if call[0] == "LIST"]
+
+
+# ----------------------------------------------------------------------------
+def test_every_folder_is_counted_in_the_listings_order(sessions, fake_imap):
+    fake_imap.caps |= WITH_SIZE
+
+    counts = utilities.folders.list_folder_counts(sessions)
+
+    assert counts.listing.folders == ["INBOX", "INBOX.Lists", "INBOX.spam"]
+    assert counts.sizes
+    assert [
+        (s.folder, s.messages, s.unseen, s.size) for s in counts.statuses
+    ] == [
+        ("INBOX", 3, 1, 2048),
+        ("INBOX.Lists", 0, 0, 0),
+        ("INBOX.spam", 12, 12, 30822),
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_it_is_one_request_however_many_folders(sessions, fake_imap):
+    """Red if the counts came a STATUS -- or a SELECT -- per folder."""
+    fake_imap.caps |= WITH_SIZE
+    fake_imap.listing += [((), b".", f"INBOX.f{n}".encode()) for n in range(9)]
+
+    utilities.folders.list_folder_counts(sessions)
+
+    assert list_commands(fake_imap) == [
+        ("LIST", '""', '"*"', "RETURN", "(STATUS (MESSAGES UNSEEN SIZE))")
+    ]
+    assert "select_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_size_is_neither_asked_for_nor_shown_without_status_size(
+    sessions, fake_imap
+):
+    fake_imap.caps |= LIST_STATUS
+
+    counts = utilities.folders.list_folder_counts(sessions)
+
+    assert not counts.sizes
+    assert list_commands(fake_imap)[0][-1] == "(STATUS (MESSAGES UNSEEN))"
+    assert {status.size for status in counts.statuses} == {None}
+    assert counts.statuses[0].messages == 3
+
+
+# ----------------------------------------------------------------------------
+def test_a_folder_the_server_gives_no_counts_for_has_none(sessions, fake_imap):
+    """A \\Noselect folder gets no STATUS line (RFC 5819); it is still
+    listed, with nothing counted, rather than dropped or shown as 0."""
+    fake_imap.caps |= LIST_STATUS
+    del fake_imap.counts["INBOX.Lists"]
+
+    counts = utilities.folders.list_folder_counts(sessions)
+
+    assert counts.listing.folders == ["INBOX", "INBOX.Lists", "INBOX.spam"]
+    assert counts.statuses[1] == utilities.folders.FolderStatus("INBOX.Lists")
+
+
+# ----------------------------------------------------------------------------
+def test_inbox_is_matched_whatever_case_the_server_gives_it(
+    sessions, fake_imap
+):
+    """The session read LIST as it opened, so it still says INBOX; the
+    STATUS line now says Inbox."""
+    fake_imap.caps |= LIST_STATUS
+    fake_imap.listing[0] = ((), b".", b"Inbox")
+    fake_imap.counts["Inbox"] = fake_imap.counts.pop("INBOX")
+
+    counts = utilities.folders.list_folder_counts(sessions)
+
+    assert counts.statuses[0].folder == "INBOX"
+    assert counts.statuses[0].messages == 3
+
+
+# ----------------------------------------------------------------------------
+def test_without_list_status_it_is_refused_naming_it(sessions, fake_imap):
+    """Refused rather than counted folder by folder: that would be a
+    request per folder, and nothing here loops over the server."""
+    with pytest.raises(MailctlError, match="does not advertise LIST-STATUS"):
+        utilities.folders.list_folder_counts(sessions)
+
+    assert list_commands(fake_imap) == []
+
+
+# ----------------------------------------------------------------------------
+def test_counting_writes_nothing(sessions, fake_imap):
+    fake_imap.caps |= WITH_SIZE
+
+    utilities.folders.list_folder_counts(sessions)
+
+    assert set(fake_imap.names()) <= {"login", "LIST"}
+
+
+# ----------------------------------------------------------------------------
+def test_a_failed_list_status_is_an_error_naming_it(sessions, fake_imap):
+    fake_imap.caps |= LIST_STATUS
+    fake_imap.failures["list_status"] = IMAPClientError("BAD no such option")
+
+    with pytest.raises(MailctlError, match="LIST-STATUS failed"):
+        utilities.folders.list_folder_counts(sessions)

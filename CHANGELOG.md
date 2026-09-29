@@ -40,6 +40,20 @@ BREAKING CHANGES:
 
 FEATURES:
 
+* **`mailctl folders --counts` shows each folder's total and unread
+  messages** ([#157]), for a morning digest or a cron job. The counts come
+  from one IMAP `LIST ... RETURN (STATUS ...)` (`LIST-STATUS`, RFC 5819) —
+  one request however many folders there are — and nothing is read or
+  marked. Where the server also advertises `STATUS=SIZE` a Size column is
+  added. `--counts --json` gives each folder `messages`, `unseen`, and
+  `size` (bytes, or `null` where the server does not report sizes); a
+  folder the server gives no counts for, one that cannot hold mail, shows
+  `-` and `null`. A server that does not advertise `LIST-STATUS` is
+  refused, naming it, rather than asked once per folder. A provider that
+  cannot count folders leaves `--counts` out of `folders --help`, and
+  refuses it by name, before connecting, if it is given anyway. MXroute
+  advertises both capabilities.
+
 * **`mailctl probe` prints what a provider record needs** ([#101]). It
   reads both servers and changes nothing: the date and time in UTC, where
   each half connects, each server's identity (IMAP `ID`, ManageSieve
@@ -1035,3 +1049,4 @@ NOTES:
 [#151]: https://github.com/harleypig/mailctl/issues/151
 [#168]: https://github.com/harleypig/mailctl/issues/168
 [#175]: https://github.com/harleypig/mailctl/issues/175
+[#157]: https://github.com/harleypig/mailctl/issues/157

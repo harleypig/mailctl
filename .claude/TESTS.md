@@ -49,6 +49,12 @@ where every write path is proved first.
      must reach the wire as one whole UTF-8 literal under `CHARSET UTF-8`
      with its parentheses balanced, and the re-check must still match the
      decoded text ([#89][i89]).
+   - **Folder counts** (`test_imap_status.py`) — the `STATUS` lines of one
+     `LIST-STATUS` read into counts: quoted, atom, literal, all-digit, and
+     modified UTF-7 mailbox names, and a line that does not parse refused.
+     Run twice, on imaplib's shapes and from a server's bytes through
+     imaplib's **real** reader, since only the reader turns a literal name
+     into the pair the parser must handle ([#157][i157]).
    - `config` — the flag → env → file → default resolution order, and that a
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
@@ -187,8 +193,10 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   date, `--older-than`, and read or flagged state, alone and together
   ([#152][i152]). Its dates are counted from the day it runs, so it means
   the same whenever it does.
-  One read is here too: `probe --json` checked against what the server
-  says about itself, and against printing the password.
+  Two reads are here too: `probe --json` checked against what the server
+  says about itself, and against printing the password; and
+  `folders --counts --json` checked against each folder's own `STATUS`,
+  leaving every message unread ([#157][i157]).
   New mail is also handed to `dovecot-lda`, which runs the uploaded script,
   so the going-forward half is seen filing it too — by header, and by
   body through an `add --body` rule.
@@ -319,3 +327,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i152]: https://github.com/harleypig/mailctl/issues/152
 [i154]: https://github.com/harleypig/mailctl/issues/154
 [i49]: https://github.com/harleypig/mailctl/issues/49
+[i157]: https://github.com/harleypig/mailctl/issues/157

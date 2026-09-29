@@ -1,4 +1,4 @@
-"""Folders: listed, subscribed, and planned as a rule's target.
+"""Folders: listed, counted, subscribed, and planned as a rule's target.
 
 A folder planned for creation is created on execute only, never while
 planning, so a dry run or a rejected script leaves no stray folder.
@@ -9,7 +9,13 @@ from dataclasses import dataclass, replace
 from .. import MailctlError
 from ..config import Config, Source
 from ..engine import Session
-from ..providers.base import FolderCreation, FolderListing
+from ..providers.base import (
+    FolderCreation,
+    FolderListing,
+    FolderStatus,
+    refuse,
+    same_folder,
+)
 from .events import EventSink, FolderCreated
 
 # Folder plan outcomes.
@@ -33,6 +39,78 @@ def list_folders(session: Session) -> FolderListing:
     listing = session.transport.list_folders()
 
     return replace(listing, folders=sorted(listing.folders))
+
+
+# ############################################################################
+# Counting folders -- 'mailctl folders --counts'
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class FolderCounts:
+    """The folder list, with each folder's counts beside it.
+
+    ``statuses`` holds one record per folder in ``listing.folders``, in
+    the same order; a folder the host gave no counts for has None in each
+    count. ``sizes`` is whether the host reported sizes at all.
+    """
+
+    listing: FolderListing
+    statuses: tuple[FolderStatus, ...]
+    sizes: bool
+
+
+# ----------------------------------------------------------------------------
+def list_folder_counts(session: Session) -> FolderCounts:
+    """Every folder with its total, unread, and -- where the host reports
+    it -- size, from one request to the host. Read-only.
+
+    Refused before connecting by a provider that does not declare
+    ``folder_counts``, and before counting by a server that cannot answer
+    in one request: counting folder by folder would be a request per
+    folder, and nothing here loops over the server.
+    """
+    # ``rules`` imports this module at its top, so the import waits until
+    # both are loaded, whichever loads first.
+    from .rules import CAPABILITY_CONSTRUCTS, require_capability
+
+    require_capability(session, "folder_counts")
+
+    transport = session.transport
+    support = session.dialect.count_support(transport.mail_capabilities())
+
+    if support.missing is not None:
+        raise refuse(
+            session.name,
+            CAPABILITY_CONSTRUCTS["folder_counts"],
+            f"the {session.wording.mail_service} server does not advertise "
+            f"{support.missing}, and without it every folder would be a "
+            f"request of its own",
+        )
+
+    listing = list_folders(session)
+    reported = transport.folder_status(support.sizes)
+
+    return FolderCounts(
+        listing,
+        tuple(_status_of(folder, reported) for folder in listing.folders),
+        support.sizes,
+    )
+
+
+# ----------------------------------------------------------------------------
+def _status_of(folder: str, reported: list[FolderStatus]) -> FolderStatus:
+    """The host's counts for ``folder``, or a record of none."""
+    found = next(
+        (item for item in reported if same_folder(item.folder, folder)),
+        None,
+    )
+
+    return (
+        FolderStatus(folder)
+        if found is None
+        else replace(found, folder=folder)
+    )
 
 
 # ############################################################################

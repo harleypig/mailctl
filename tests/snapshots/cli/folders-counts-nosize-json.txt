@@ -1,0 +1,39 @@
+$ mailctl folders --counts --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "delimiter": ".",
+  "prefix": null,
+  "folders": [
+    {
+      "name": "INBOX",
+      "subscribed": true,
+      "messages": 3,
+      "unseen": 1,
+      "size": null
+    },
+    {
+      "name": "INBOX.Lists",
+      "subscribed": true,
+      "messages": null,
+      "unseen": null,
+      "size": null
+    },
+    {
+      "name": "INBOX.spam",
+      "subscribed": false,
+      "messages": 12,
+      "unseen": 12,
+      "size": null
+    }
+  ]
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('LIST', '""', '"*"', 'RETURN', '(STATUS (MESSAGES UNSEEN))')
+('logout',)

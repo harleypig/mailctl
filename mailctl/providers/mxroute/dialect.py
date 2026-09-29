@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from ...components.imap.folders import normalize_folder
+from ...components.imap.status import LIST_STATUS, STATUS_SIZE
 from ...components.managesieve.backup import (
     backup_path,
     resolve_backup_target,
@@ -26,6 +27,7 @@ from ...criteria import Criteria
 from ...rules import Rule, read_rules
 from ..base import (
     ActionSpec,
+    CountSupport,
     DeliveryCreate,
     Dialect,
     DisplayDiff,
@@ -292,6 +294,18 @@ class MxrouteDialect(Dialect):
     @classmethod
     def mail_facts(cls, capabilities: list[str]) -> list[Fact]:
         return capability_facts(capabilities)
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def count_support(cls, capabilities: list[str]) -> CountSupport:
+        """``LIST-STATUS`` (RFC 5819) counts every folder in one ``LIST``;
+        ``STATUS=SIZE`` (RFC 8438) adds each folder's size to it."""
+        advertised = {item.upper() for item in capabilities}
+
+        return CountSupport(
+            missing=None if LIST_STATUS in advertised else LIST_STATUS,
+            sizes=STATUS_SIZE in advertised,
+        )
 
 
 # ----------------------------------------------------------------------------

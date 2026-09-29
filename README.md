@@ -182,6 +182,10 @@ mailctl probe --json > probe-$(date -u +%F).json
 # What does this server call its folders, and which does webmail show?
 mailctl folders
 
+# The same, with each folder's total and unread messages (and size, where
+# the server reports it), from one request.
+mailctl folders --counts
+
 # Find a message: the newest 20 in a folder, UID first. Takes the same
 # criteria flags as add and apply, or a raw IMAP search.
 mailctl search
@@ -356,7 +360,7 @@ handling.
 | Command | Document |
 |---------|----------|
 | `list` | `{"version", "scripts": [{"name", "active"}]}` |
-| `folders` | `{"version", "delimiter", "prefix", "folders": [{"name", "subscribed"}]}` |
+| `folders` | `{"version", "delimiter", "prefix", "folders": [{"name", "subscribed"}]}`; with `--counts`, each folder also has `"messages", "unseen", "size"` (`null` where the server gave none) |
 | `search` | `{"version", "folder", "more", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
 | `view` | `{"version", "message": {"uid", "folder", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
 | `rules` | `{"version", "script", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
