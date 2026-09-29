@@ -14,19 +14,32 @@ The gate is deliberately narrow:
   otherwise fail against *some* server, which is worse than not running.
 
 TESTS.md holds the rest of the safety contract for anything added here.
-The two clauses a future writing test must satisfy, neither of which the
-read-only smoke tests below need:
+The two clauses a writing test must satisfy, neither of which the
+read-only smoke tests need, are fixtures (``tests/live_write.py``, #9):
 
-* **Back up the active script before writing and restore it afterwards,
-  including on failure.** The account's real filters are not the test's
-  to lose.
-* **Never move real mail in INBOX.** Use a purpose-made folder, prefer
-  messages the test appended itself, and tear it down.
+* **``guarded_scripts``** -- every Sieve script is captured before the
+  test and put back afterwards, including on failure, and the restore is
+  confirmed or reported. The account's real filters are not the test's to
+  lose.
+* **``scratch_folder``** -- never real mail in INBOX: a new folder the
+  test owns, filled with messages it appends itself, and deleted after.
+
+**Writing is a second opt-in.** Both fixtures reach the account through
+``write_mailbox``, which skips unless ``MAILCTL_LIVE_WRITE`` is also
+exactly ``"1"``. ``make testlive`` alone therefore stays read-only; a
+writing test that forgets these fixtures has no ``write_mailbox`` and so
+no gate, which is why a writing test must use them.
 """
 
 import os
 
 import pytest
+from live_write import (  # noqa: F401 -- fixtures, registered by import
+    Mailbox,
+    guarded_scripts,
+    scratch_folder,
+    write_gate_reason,
+)
 
 LIVE_FLAG = "MAILCTL_LIVE"
 LIVE_VALUE = "1"
@@ -124,3 +137,20 @@ def no_network():
     nowhere else.
     """
     return None
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def write_mailbox(live_config) -> Mailbox:
+    """The account, for a test that writes -- behind a second opt-in.
+
+    ``MAILCTL_LIVE=1`` opens the tier for reading. Writing also needs
+    ``MAILCTL_LIVE_WRITE`` set to exactly ``"1"``, so a run meant to read
+    cannot write by accident.
+    """
+    reason = write_gate_reason(os.environ)
+
+    if reason is not None:
+        pytest.skip(reason)
+
+    return Mailbox.from_config(live_config)

@@ -48,9 +48,15 @@ from pathlib import Path
 
 import pytest
 from imapclient import IMAPClient
+from live_write import (  # noqa: F401 -- fixtures, registered by import
+    Mailbox,
+    guarded_scripts,
+    scratch_folder,
+)
 from sievelib.managesieve import Client as SieveClient
 
 from mailctl import cli
+from mailctl.config import Secret
 
 GATE_FLAG = "MAILCTL_CONTAINER"
 GATE_VALUE = "1"
@@ -356,6 +362,20 @@ class Account:
         return self.server.password_file.read_text()
 
     # ------------------------------------------------------------------------
+    def mailbox(self) -> Mailbox:
+        """This mailbox as the write guards take one (``live_write``)."""
+        return Mailbox(
+            sieve_host="localhost",
+            sieve_port=self.server.sieve_port,
+            sieve_tls="starttls",
+            imap_host="localhost",
+            imap_port=self.server.imap_port,
+            imap_tls="ssl",
+            user=self.user,
+            password=lambda: Secret(self._password()),
+        )
+
+    # ------------------------------------------------------------------------
     @contextmanager
     def sieve(self) -> Iterator[SieveClient]:
         """sievelib's own client, logged in over STARTTLS."""
@@ -504,3 +524,15 @@ def account(dovecot, monkeypatch, tmp_path, capsys) -> Account:
         monkeypatch.setenv(name, value)
 
     return Account(dovecot, user, backup_dir, capsys)
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def write_mailbox(account) -> Mailbox:
+    """This test's mailbox, as the live tier's write guards reach one.
+
+    The same :class:`Mailbox` the live tier builds from the user's
+    configuration, pointed at the container instead, so the guards proved
+    here are the code the live tier runs (#9).
+    """
+    return account.mailbox()

@@ -364,6 +364,18 @@ NOTES:
   real account, runs only when `MAILCTL_CONTAINER=1` is set, and is not
   part of the default `pytest` run or of CI.
 
+* **Live tests can now write to a real account safely; no change to the
+  tool** ([#9]). A test that writes first saves every Sieve script exactly
+  as the server holds it, and afterwards puts back whatever it changed,
+  removes any script it added, and checks the result, failing loudly --
+  and naming the saved copy -- if it cannot confirm it. This happens
+  whether the test passes, fails, or is interrupted with Ctrl-C. Mail is
+  only ever handled in a new folder the test makes and deletes afterwards;
+  INBOX and any folder that already exists are refused. Writing needs
+  `MAILCTL_LIVE_WRITE=1` on top of `MAILCTL_LIVE=1`, so `make testlive`
+  on its own still only reads. All of it was proved against the local
+  test server first; nothing has yet been run against a real account.
+
 ## 0.8.4
 
 NOTES:
@@ -1140,6 +1152,7 @@ NOTES:
 [#147]: https://github.com/harleypig/mailctl/issues/147
 [#7]: https://github.com/harleypig/mailctl/issues/7
 [#49]: https://github.com/harleypig/mailctl/issues/49
+[#9]: https://github.com/harleypig/mailctl/issues/9
 [#148]: https://github.com/harleypig/mailctl/issues/148
 [#149]: https://github.com/harleypig/mailctl/issues/149
 [#151]: https://github.com/harleypig/mailctl/issues/151

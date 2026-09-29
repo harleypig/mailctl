@@ -9,9 +9,10 @@ package). This file records what belongs here.
 the live- and container-gated ones. `pytest -q` reports the current count; none is kept
 here, because a count nobody re-derives is only ever stale.
 The live tier is scaffolded (`tests/live/`) and skipped by default; it stays
-open until it has run against a real account, and the backup-and-restore
-fixture required before anything writes to one is still outstanding
-([#9](https://github.com/harleypig/mailctl/issues/9)). The container tier
+open until it has run against a real account. The write guards it needs
+before anything writes to one are built and proved on the container tier
+([#9](https://github.com/harleypig/mailctl/issues/9)); nothing has yet
+written to the real account. The container tier
 (`tests/container/`) is written and green against a local server; it is
 where every write path is proved first.
 
@@ -166,6 +167,8 @@ where every write path is proved first.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
+   A test that writes also needs `MAILCTL_LIVE_WRITE=1` and the write
+   guards (*Live-test credentials & safety*).
 3. **Container tests** (`MAILCTL_CONTAINER=1`, `tests/container/`) — every
    **write** path against a **throwaway local Dovecot + Pigeonhole** in
    Docker, never a real account. See *The container tier* below.
@@ -218,10 +221,12 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   script file on the container's disk, so a write that mailctl both gets
   wrong and reads back wrong still fails. Every test's docstring names the
   break that turns it red, and each was seen red under that break.
-- **The safe place to prove #9's fixture.** The mail store is disposable,
-  so this tier needs no backup-and-restore guard of its own; the backup and
-  restore round trip is proved here, byte for byte, before the live tier's
-  guard is built on it ([#9](https://github.com/harleypig/mailctl/issues/9)).
+- **Where the live tier's write guards are proved.** The mail store is
+  disposable, so this tier needs no guard of its own; instead
+  `test_live_write_guards.py` runs the live tier's guards against it
+  through the same `Mailbox` type, as context managers and as fixtures in
+  a child pytest run that fails, is interrupted, or passes
+  ([#9](https://github.com/harleypig/mailctl/issues/9)).
 - **The server.** Debian trixie's own `dovecot-*` packages — **Dovecot
   2.4.1 with Pigeonhole** — rather than the `dovecot/docker` image, whose
   packaging is CC BY-NC-SA 4.0. Debian was the first choice on #49 and it
@@ -259,9 +264,9 @@ arguments to run only those; `--list` shows the names.
 
 It is **not** the pytest live tier above, and the difference is the point:
 
-- **It never writes.** `tests/live/` will write, under the backup-and-restore
-  fixture [#9](https://github.com/harleypig/mailctl/issues/9) requires; this
-  one never does, so it needs no such fixture and is safe to run any time.
+- **It never writes.** `tests/live/` writes only behind the write guards and
+  a second opt-in ([#9](https://github.com/harleypig/mailctl/issues/9));
+  this one never does, so it needs neither and is safe to run any time.
 - **It drives the CLI end to end**, as a user or an automation script would —
   the installed `mailctl` command, not the package from inside Python. The
   CLI is the automation surface (CONVENTIONS.md › *The core returns data;
@@ -293,13 +298,24 @@ Live tests touch a real mailbox, so the guards are not optional:
   surface — `Secret` is what prevents it, so a live test must never unwrap a
   password to build a fixture or a diagnostic. See CONVENTIONS.md ›
   *Credentials*.
-- **Back up and restore the active script.** A live run must capture the
-  account's existing script before it writes, and put it back afterwards —
-  including on failure. The account's real filters are not the test's to lose.
-- **Scope the mail-moving tests to a dedicated folder.** They must not run
-  against `INBOX` and must not disturb live mail; use a purpose-made test
-  folder and tear it down. Prefer messages the test appended itself over
-  whatever happens to be in the mailbox.
+- **Writing is a second opt-in.** A test that writes uses the fixtures
+  below, which reach the account through `write_mailbox`; it skips unless
+  `MAILCTL_LIVE_WRITE` is exactly `1` as well (pinned offline by
+  `test_live_write_gate.py`). `make testlive` alone reads.
+- **Back up and restore every script — `guarded_scripts`.** It captures
+  each script's exact bytes and which is active, saves them to a `0600`
+  file, and afterwards puts back only what changed, deletes what the test
+  created, and confirms the result through two readers. A restore it
+  cannot confirm fails the test's teardown, naming the saved copy. It runs
+  after a failure and after Ctrl-C.
+- **Never touch INBOX — `scratch_folder`.** A new `mailctl-test-…` folder
+  in the personal namespace, deleted with its contents afterwards; INBOX,
+  any folder that already exists, and any unmarked name are refused before
+  anything is written. Append the test's own messages there
+  (`scratch_folder.append`).
+- **Few writes, never looped.** The guards write nothing when nothing
+  changed. `tests/live_write.py` holds both guards and says what each
+  sends.
 - **Assume nothing about the server's configuration.** The live tier is
   precisely where *Discover, don't hardcode* (CONVENTIONS.md) gets exercised —
   a test that hardcodes the delimiter, the script name, or `INBOX.spam` is
@@ -322,6 +338,8 @@ lands in `Lists/GitHub`" is.
 pytest                 # unit (offline, credential-free)
 make test              # the same, via the Makefile
 make testlive          # live (MAILCTL_LIVE=1; needs MAILCTL_* in the env)
+MAILCTL_LIVE_WRITE=1 make testlive TESTARGS=tests/live/test_live_write_smoke.py
+                       # the one live test that writes, behind the guards
 make testcontainer     # write paths against a local Dovecot (needs Docker)
 make livecheck         # read-only live check (normal mailctl config)
 scripts/live-readonly.sh --list        # the read-only check's test names
