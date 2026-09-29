@@ -37,8 +37,10 @@ BUG FIXES:
   the rule moves, stays when the rule is replaced, and goes when that
   rule is removed. A comment above the `require` line stays at the top,
   and one after the last rule stays at the end. A comment inside a rule
-  is kept too, but moves up to sit above the rule. `/* ... */` comments
-  are still dropped.
+  is kept too, but moves up to sit above the rule. A rule switched off in
+  Roundcube keeps its `if false # ...` line as Roundcube wrote it, so it
+  still shows as disabled in webmail; before, that comment was dropped
+  and the rule no longer did. `/* ... */` comments are still dropped.
 
 NOTES:
 

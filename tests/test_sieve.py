@@ -9,6 +9,7 @@ the failure is loud.
 """
 
 import argparse
+import re
 
 import pytest
 
@@ -1262,6 +1263,98 @@ def test_a_removed_rule_takes_its_comments_with_it(reparse):
     assert removed.endswith("}\n# end of hand-made rules\n")
 
     reparse(removed)
+
+
+# A Roundcube-shaped script with one rule switched off in the webmail UI.
+# Roundcube disables a rule by writing ``if false # <its test>`` and reads it
+# back as disabled only while that comment follows ``false`` on the same
+# line; moved anywhere else the rule stops showing as disabled and its test
+# is orphaned.
+DISABLED_SCRIPT = """require ["fileinto"];
+# rule:[paused]
+if false # anyof (header :contains "subject" "invoice")
+{
+\tfileinto "INBOX.Bills";
+\tstop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter"
+{
+\tfileinto "INBOX.Noise";
+\tstop;
+}
+"""
+
+DISABLED_RENDERED = """require ["fileinto"];
+
+# rule:[paused]
+if false # anyof (header :contains "subject" "invoice")
+{
+    fileinto "INBOX.Bills";
+    stop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter" {
+    fileinto "INBOX.Noise";
+    stop;
+}
+"""
+
+# What Roundcube's managesieve plugin matches, right after ``if``, to decide
+# a rule is disabled (rcube_sieve_script.php).
+ROUNDCUBE_DISABLED = re.compile(r"^\s*false\s+#\s*", re.IGNORECASE)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_a_disabled_rule_keeps_its_test_inline_through_a_merge(
+    newline, reparse
+):
+    merged = merge_simple(
+        DISABLED_SCRIPT.replace("\n", newline), "new-rule", "INBOX.New"
+    )
+
+    assert merged.startswith(DISABLED_RENDERED)
+    assert merged.count("invoice") == 1
+
+    reparse(merged)
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_rule_still_reads_as_disabled_to_roundcube():
+    rendered = render_script(parse_script(DISABLED_SCRIPT))
+    after_if = rendered.split("# rule:[paused]\nif", 1)[1]
+
+    assert ROUNDCUBE_DISABLED.match(after_if)
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_rule_is_a_fixed_point_of_render():
+    assert render_script(parse_script(DISABLED_RENDERED)) == DISABLED_RENDERED
+
+
+# ----------------------------------------------------------------------------
+def test_a_moved_disabled_rule_keeps_its_test_inline():
+    moved = move_rule(DISABLED_SCRIPT, "paused", Placement(PLACE_LAST))
+
+    assert (
+        "# rule:[paused]\n"
+        'if false # anyof (header :contains "subject" "invoice")\n'
+        "{\n"
+    ) in moved
+    assert moved.index("# rule:[bin-the-noise]") < moved.index(
+        "# rule:[paused]"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_replaced_disabled_rule_drops_the_stale_test():
+    """The comment describes the old test, so it does not outlive it."""
+    merged = merge_simple(
+        DISABLED_SCRIPT, "paused", "INBOX.Other", replace=True
+    )
+
+    assert "invoice" not in merged
 
 
 # ----------------------------------------------------------------------------

@@ -30,15 +30,29 @@ the code actually guarantees, and what it does not:
 
 | Survives a merge | Does **not** survive |
 |---|---|
-| Rule **bodies** — every test, comparator, and action, unchanged | Free-standing comments, e.g. `# this one is for the accountant` |
+| Rule **bodies** — every test, comparator, and action, unchanged | Bracket comments, `/* ... */` |
 | Rule **names**, in either dialect (see below) | Original whitespace and formatting, which are normalized |
+| Hash comments, e.g. `# this one is for the accountant` (below) | |
 
-The gap is `sievelib`'s renderer: `tosieve` re-emits only the name and
-description markers, so any other comment in the user's script is dropped on
-the first merge. That is a real loss of the user's *intent* even though no
-rule is lost, and it surfaces the same way this ADR describes — quietly, days
-later. It is tracked as a defect in [#7](https://github.com/harleypig/mailctl/issues/7) rather than left
-implied by an over-strong claim here.
+`sievelib`'s renderer writes back only the name and description markers, so
+mailctl keeps every other hash comment itself:
+
+- A comment belongs to the rule that follows it and is written directly
+  above that rule's name marker. It moves when the rule moves, stays when the
+  rule is replaced, and is removed with the rule.
+- A comment inside a rule's body is kept the same way, and so moves up to
+  sit above the rule.
+- Roundcube's disabled rule keeps its `if false # <test>` line as written,
+  because that comment on that line is how Roundcube knows the rule is
+  disabled.
+- A comment before `require` stays at the top of the script, and one after
+  the last rule stays at the end.
+
+Bracket comments are still dropped: `sievelib`'s parser discards them
+without recording where they were.
+
+Comments were dropped on every merge until 2026-09-28
+([#7](https://github.com/harleypig/mailctl/issues/7)).
 
 **Rule identity spans two dialects.** Roundcube's managesieve plugin — the
 webmail MXroute ships — names rules `# rule:[NAME]`, while `sievelib` writes
