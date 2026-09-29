@@ -398,6 +398,15 @@ Say so plainly rather than filling the gap:
 - **Whether this server's IMAP `CAPABILITY` list changes at login.** Only
   the after-login list is recorded, so the 2026-08-14 count cannot be
   placed against it.
+- **How MXroute's Pigeonhole behaves for any advertised Sieve extension
+  beyond listing it** (*Not yet used › Sieve*): the `subaddress`
+  separator, how long `duplicate` remembers an ID, which headers
+  `editheader` may change, and the `vacation` minimum are all the
+  implementation's to choose, and none has been read or probed.
+- **Whether a stored message carries its envelope in a header**, such as
+  `Delivered-To` or `X-Original-To`. It decides whether the IMAP pass
+  could reproduce an `envelope` rule. Settle it by reading the headers of
+  one delivered message with `mailctl view`.
 
 ## Not yet used
 
@@ -409,33 +418,141 @@ start from it.
 
 ### Sieve
 
-mailctl emits four of the 23 advertised extensions: `fileinto`,
-`imap4flags`, `mailbox`, and, since [#152][i152], `body` for `add --body`
-(the emit table in `components/managesieve/emit.py`). `body` was seen
-advertised on 2026-08-14 (*Observed*); a rule using it has run against the
+mailctl emits four of the 24 extensions advertised on 2026-09-29
+(*Observed*): `fileinto`, `imap4flags`, `mailbox`, and, since
+[#152][i152], `body` for `add --body` (the emit table in
+`components/managesieve/emit.py`). A rule using `body` has run against the
 container tier's Dovecot 2.4 Pigeonhole, not yet against an MXroute
-server. The rest are unused. [#16][i16] is the
-open reading task for all of them. These look the most useful:
+server. The two tables below cover all 24, from the reading [#16][i16]
+asked for.
 
-- **`regex`**: real pattern matching. mailctl offers only `:contains`,
-  `:is`, and `:matches`.
-- **`envelope`**: the SMTP recipient rather than the `To:` header. It is how
-  to catch mail sent to an alias.
-- **`subaddress`**: `user+tag@` matching.
-- **`duplicate`**: de-duplicate repeated notifications. It needs
-  server-side state.
-- **`date`** and **`relational`**: time-based and numeric rules.
-- **`mime`**, **`foreverypart`**, and **`extracttext`**: matching on
-  individual MIME parts. `body` itself is now used (above).
-- **`variables`**, **`include`**, and **`ihave`**. `ihave` is the Sieve-side
-  runtime capability test, relevant to [#19][i19].
-- **`copy`**: file a message and keep it in the inbox as well.
-- **`reject`**: refuse delivery with a message.
-- **`vacation`**: refused by choice (*Observed*, above), and iceboxed.
+**Keep the tiers apart when reading them.** What an extension does is
+**documented** by its defining document, an RFC for all but `regex`. That
+the server lists it is **observed**, on one server on one day. How MXroute's Pigeonhole behaves for any of them beyond
+listing it is **unknown**: nothing here was run against a mail server.
 
-`sievelib`'s parser rejects `subaddress`, `include`, `duplicate`, `ihave`,
-and the `i;ascii-numeric` comparator ([ADR 0006][adr6], gap S6). Each needs
-the parser extended before mailctl can round-trip a script that uses it.
+- **Sources.** The [IANA Sieve extensions registry][iana-sieve] (last
+  updated 2024-10-15) names each extension's defining document. Each RFC
+  was read from the RFC Editor, and the `regex` draft from the IETF
+  archive. All were fetched 2026-09-29.
+- **The parser column is measured.** Each extension's commands, tests, and
+  tags were parsed in a minimal script with the repo's `sievelib` 1.5.0,
+  offline, on 2026-09-29.
+
+**None of the 24 is base language.** Each is named in `require` before
+use. RFC 5228's base is `keep`, `discard`, `redirect`, `stop`, `if`, the
+`header`, `address`, `exists`, and `size` tests, `allof` / `anyof` /
+`not`, and the `i;octet` and `i;ascii-casemap` comparators. `fileinto`,
+`envelope`, and `encoded-character` are defined inside RFC 5228, but as
+optional extensions that must be `require`d. That corrects [#82][i82]'s table,
+which labelled `fileinto` and `envelope` as core. The same table named the
+`regex` document `draft-ietf-sieve-regex`; the registry's reference is
+`draft-murchison-sieve-regex-07`, which expired in 2004 and never became
+an RFC.
+
+#### What each one is
+
+| Extension | Defined in | What a rule could say that mailctl cannot | mailctl | sievelib 1.5.0 parses it |
+|---|---|---|---|---|
+| `body` | RFC 5173 | Match the whole undecoded body (`:raw`), or only parts of named content types (`:content`). `:text :contains` is already emitted | **emits** `body :text` | yes: `:raw`, `:content`, `:text` |
+| `comparator-i;ascii-numeric` | RFC 4790 §9.1, under RFC 5228's `comparator-` prefix | Compare a header as a number (a spam score), with `relational` | no | **no**: the comparator is refused; a `require` line naming it is accepted |
+| `copy` | RFC 3894 | `fileinto :copy`: file a copy without cancelling the implicit keep, so a later `discard` can still drop the inbox copy. mailctl's `--keep` writes an explicit `keep`, which nothing later cancels | no | yes |
+| `date` | RFC 5260 | `date`: one part (year, hour, weekday, …) of a date header, in a chosen zone. `currentdate`: the same of the delivery time | no | yes: both tests, `:zone`, `:originalzone` |
+| `duplicate` | RFC 7352 | True when a message with the same `Message-ID`, another header, or a given value was seen before, optionally within `:seconds` | no | **no** |
+| `editheader` | RFC 5293 | `addheader` / `deleteheader`: change the header of the message as stored | no | **no** |
+| `encoded-character` | RFC 5228 §2.4.2.4 | `${hex:…}` and `${unicode:…}` inside strings. mailctl writes UTF-8 directly and has no need of it | no | yes |
+| `envelope` | RFC 5228 §5.4 | Match the SMTP `MAIL FROM` and this user's `RCPT TO` rather than the headers: mail sent to an alias, or Bcc'd | no | yes; not with `subaddress`'s `:detail` |
+| `environment` | RFC 5183 | Facts about the interpreter: `domain`, `host`, `name`, `phase`, `remote-host`, `remote-ip`, `version`, … | no | yes |
+| `extracttext` | RFC 5703 §7 | Put a MIME part's text in a variable. Useful only inside `foreverypart` and with `variables` | no | **no**: fails at `foreverypart` |
+| `fileinto` | RFC 5228 §4.1 | — | **emits** | yes, with `:copy`, `:create`, `:flags` |
+| `foreverypart` | RFC 5703 §3 | Loop over every MIME part, with `break` | no | **no** |
+| `ihave` | RFC 5463 | Test at delivery whether an extension exists, and use it only if so. Adds `error` | no | **no**: neither `ihave` nor `error` |
+| `imap4flags` | RFC 5232 | `setflag` / `removeflag`, the `hasflag` test, and `:flags` on `fileinto` / `keep` | **emits** `addflag` | yes: `addflag`, `hasflag`, `:flags` |
+| `include` | RFC 6609 | Run another stored script (`:personal` or `:global`); `return` from it | no | **no** |
+| `index` | RFC 5260 | `:index N` / `:last` on `header`, `address`, and `date`: test one occurrence of a repeated field, such as the first `Received` | no | **no** |
+| `mailbox` | RFC 5490 | The `mailboxexists` test | **emits** `:create` | `:create` yes; `mailboxexists` **no** |
+| `mime` | RFC 5703 §4 | `:mime` / `:anychild` on `header`, `address`, and `exists`, with `:type`, `:subtype`, `:contenttype`, `:param`: "any part is a PDF" | no | **no** |
+| `regex` | draft-murchison-sieve-regex-07 | A `:regex` match type, POSIX extended regular expressions, on `header`, `address`, and `envelope` | no | yes |
+| `reject` | RFC 5429 | Refuse delivery, with a reason sent back to the sender | no | yes |
+| `relational` | RFC 5231 | `:count` (how many values: more than N recipients) and `:value` (`gt`, `ge`, `lt`, `le`, `eq`, `ne`) | no | yes with the default comparator; **no** with `i;ascii-numeric` |
+| `subaddress` | RFC 5233 | The `:user` and `:detail` parts of `user+tag@` | no | **no**, on `address` or `envelope` |
+| `vacation` | RFC 5230 | An autoresponder | no: refused by choice (*Observed*) and iceboxed | yes, every tag |
+| `variables` | RFC 5229 | `set`, the `string` test, and `${name}` / `${1}` in strings, as in `fileinto "Lists/${1}"` from a `:matches` capture | no | partly: `set` and `${…}` yes; the `string` test and `set`'s modifiers (`:lower`, …) **no** |
+
+#### Footguns, and each against the adoption tests
+
+Each verdict is against the three tests in CONVENTIONS.md › *Rule
+conventions* ([#17][i17]): (1) the IMAP pass can reproduce it on mail
+already delivered; (2) it has an `EMIT_TABLE` entry and a decided absence
+path; (3) the provider's own panel does not do it better. Test 1 decides
+most of them. IMAP `SEARCH` is a case-insensitive substring match, with no
+pattern, number, or MIME-part keys (RFC 3501 §6.4.4), so anything beyond
+that means fetching and re-checking client-side, as mailctl already does
+for `:matches`.
+
+| Extension | Footgun | Verdict |
+|---|---|---|
+| `body` | A part that cannot be decoded MAY be read as US-ASCII, left out, or handled by local convention (RFC 5173 §5.2). IMAP `BODY` is substring-only, so `:matches` over a body needs the body fetched | **Adopted** ([#152][i152]) for `:text :contains`. `:raw` and `:content` would each need test 1 again |
+| `comparator-i;ascii-numeric` | Input is cut at the first non-digit, so `"5.9"` equals `"5"`. A value not starting with a digit is positive infinity, so a missing or `n/a` score is larger than every number. No substring matching | Fails test 1 in practice: no numeric search, so every header in the folder is fetched and compared. Not now; only useful with `relational` |
+| `copy` | Two copies count against quota. It differs from `fileinto` + `keep` only when a later rule might `discard` (RFC 3894 §1) | Passes test 1 (IMAP `COPY` without deleting). Adds little over `--keep`. Not a candidate |
+| `date` | `date` reads a header the sender wrote, and is false when it is missing or unparsable (RFC 5260 §4). `currentdate` is the moment of delivery | Fails test 1. `SENTBEFORE` / `SENTSINCE` compare `Date:` to the day, ignoring time and zone; `currentdate` has no retroactive meaning |
+| `duplicate` | Needs server-side state. The ID is recorded only when the script finishes; parallel deliveries can both miss (RFC 7352 §3) | Fails test 1: the server's tracking list cannot be read, so a pass cannot know what delivery counted as seen |
+| `editheader` | `Received` and `Auto-Submitted` cannot be deleted, and a refused change is **silently** ignored (RFC 5293 §6). Later tests see the edited header | Fails test 1: an IMAP message is immutable; editing means appending a new message and deleting the old |
+| `encoded-character` | Once required, any literal `${hex:` or `${unicode:` in a string is decoded | Nothing to adopt: mailctl writes UTF-8 |
+| `envelope` | `to` is only the `RCPT TO` that delivered to this user (RFC 5228 §5.4). The envelope is not part of the stored message | Fails test 1 unless the server records the envelope in a header of the stored message; whether MXroute does is *Unknown* |
+| `environment` | Every value is the implementation's, and most describe the delivery moment | Fails test 1. Not a candidate |
+| `extracttext` | Outside `foreverypart` it sets the variable to the empty string (RFC 5703 §7) | Fails test 1 without fetching every part. Not a candidate |
+| `fileinto` | A missing folder MAY be an error, created, or delivered elsewhere (RFC 5228 §4.1). That is why mailctl uses `:create` | **Adopted** |
+| `foreverypart` | Nesting depth MAY be limited by the implementation (RFC 5703 §3) | Plumbing for `mime` and `extracttext`, not a feature. Not a candidate alone |
+| `ihave` | Requiring it turns off parse-time checking of extension use (RFC 5463 §4), so `CHECKSCRIPT` stops catching a misused extension; it fails at delivery | Not a feature to adopt; see *`ihave` against drift checks* below |
+| `imap4flags` | `setflag` replaces any flags set before it; the flags held when the message is filed, the implicit keep included, are the ones stored (RFC 5232 §3) | **Adopted** (`addflag`). `removeflag` would pass test 1 (IMAP `STORE -FLAGS`). `hasflag` reads the script's own flag variable, empty when the script starts, not the stored message's flags, so it has no IMAP counterpart |
+| `include` | A recursive include is an error at execution, never at upload; a missing script is an error unless `:optional` (RFC 6609 §3.1) | Structure, not an effect; mailctl merges into one active script. Not a candidate |
+| `index` | Counts separate header fields, not addresses within one field (RFC 5260 §6) | Test 1 only by fetching the headers and picking the occurrence. Not now |
+| `mailbox` | Whether `:create` subscribes the folder is *Unknown* | **Adopted** (`:create`). `mailboxexists` has no use in a filter mailctl writes |
+| `mime` | Matches on part headers, not file contents; a message's own `Content-Type` is one part among the rest | Test 1 possible by fetching `BODYSTRUCTURE`, which the pass does not do yet. Blocked on the parser. Later, perhaps |
+| `regex` | Not a standard. POSIX EREs, not Python's `re`: `\b`, `\w`, and back-references are unsupported, and Python reads `[[:lower:]]` as a plain character set without an error. A backslash is doubled by Sieve string escaping | Nearest to passing. Test 1 only if the re-check evaluates the same dialect; the risk is the halves disagreeing, which #17 exists to prevent |
+| `reject` | Where the server cannot refuse during the SMTP transaction, it notifies the envelope sender, which spam forges: the "Joe-job" the RFC is written against (RFC 5429 §1) | Fails test 1: mail already delivered cannot be refused |
+| `relational` | With the default `i;ascii-casemap` comparator `:value` compares as text, so `"10"` sorts before `"9"`; numbers need `i;ascii-numeric` | Test 1 only client-side; no count or order in IMAP `SEARCH`. Not now |
+| `subaddress` | The separator is the implementation's; `+` is usual but not given (RFC 5233 §4) | Header form passes test 1 through the re-check, but `--to 'user+tag@'` already matches the same mail. The envelope form fails as `envelope` does. Not a candidate |
+| `vacation` | Reply loops and replies to lists are held back only by `:days` (default 7 or the site minimum) and the implementation's checks (RFC 5230 §4.1, §4.6) | Fails tests 1 and 3: replying to old mail is wrong, and the panel does autoresponders. Iceboxed |
+| `variables` | Once required, every `${…}` in every string is expanded, and an unknown variable becomes the empty string, so `fileinto "Lists/${1}"` with no capture files into `Lists/` | Test 1 possible for `:matches` captures, client-side. Not a candidate alone |
+
+**No extension passes all three tests today.** `regex` is the nearest: it
+parses, its absence path is a refusal, and the re-check is already where a
+pattern would be evaluated. It passes test 1 only if mailctl evaluates
+POSIX EREs as Pigeonhole does, and that is not established. `mime` is the
+next, once the parser and a `BODYSTRUCTURE` re-check exist.
+
+#### The parser gaps, as measured
+
+`sievelib` 1.5.0 refuses `duplicate`, `editheader`, `foreverypart` (and so
+`extracttext`), `ihave` and `error`, `include`, `index`, `mailboxexists`,
+`mime`, `subaddress`'s `:user` / `:detail`, the `i;ascii-numeric`
+comparator, and `variables`' `string` test and `set` modifiers ([ADR
+0006][adr6], gap S6). It accepts a `require` line naming any of the 24, so
+the failure comes at the first use. **This matters before mailctl ever
+emits one.** A rule written in the webmail with any of these makes the
+active script unparseable, and a parse failure is a hard stop for every
+command that merges into it ([ADR 0002][adr2]).
+
+#### `ihave` against drift checks
+
+`ihave` and `check-baseline` ([#19][i19]) answer the same question, *is
+this extension still there?*, at different times and for different
+readers:
+
+- **`check-baseline` asks at command time and tells the user.** It compares
+  a fresh probe with a saved one and reports what changed.
+- **`ihave` asks at delivery time and tells nobody.** A rule wrapped in it
+  keeps working, degraded, if the server drops the extension after
+  upload. The script chooses its own fallback, or stops with `error`.
+
+So `ihave` covers the gap between two probes, when no one runs mailctl. It
+is not a replacement for drift checks. It has three costs. The script can
+no longer be checked for extension misuse at upload (the footgun above).
+sievelib cannot parse it. And the IMAP pass would have to choose the same
+branch the server will choose at delivery, which it can only guess. Not
+adopted.
 
 ### IMAP
 
@@ -505,6 +622,7 @@ serve mailctl. Each line says what it might do, not what will be built:
 | 2026-09-28 | *Observed*: IMAP `CAPABILITY` (43, after login), `ID`, `NAMESPACE`; also a `mailctl test` read and the read-only CLI commands | One read-only IMAP session through `ImapSession` in a throwaway script (#101, #120); server `heracles.mxrouting.net` |
 | 2026-09-28 | *Documented*: Roundcube's disabled-rule form | Upstream `rcube_sieve_script.php` read at `cbf2500dd8db` (#158); not probed on MXroute |
 | 2026-09-29 | *Observed*: Sieve extensions (24, `editheader` new), ManageSieve capabilities before login, active script; IMAP unchanged | `mailctl probe --json`, read-only, server `heracles.mxrouting.net` (#101) |
+| 2026-09-29 | *Not yet used › Sieve*: each of the 24 advertised extensions against its defining document, sievelib's parser, and the adoption tests | IANA registry, the RFCs, and the `regex` draft fetched; minimal scripts parsed with `sievelib` 1.5.0 offline (#16); no probe |
 
 **Due next:** a probe, by 2026-12-29 on the quarterly cadence. The in-house
 webmail does not bring it forward; see *Known condition* above. The
@@ -517,10 +635,12 @@ settle it is to use it: create one filter there and read the script back
 with `mailctl show`.
 
 [adr1]: ../../../adr/0001-standalone-cli-over-provider-resource.md
+[adr2]: ../../../adr/0002-non-destructive-script-merge.md
 [adr6]: ../../../adr/0006-two-layer-component-and-provider-architecture.md
 [conv]: ../../../.claude/CONVENTIONS.md
 [provider]: https://github.com/harleypig/terraform-provider-mxroute
 [i16]: https://github.com/harleypig/mailctl/issues/16
+[i17]: https://github.com/harleypig/mailctl/issues/17
 [i18]: https://github.com/harleypig/mailctl/issues/18
 [i19]: https://github.com/harleypig/mailctl/issues/19
 [i30]: https://github.com/harleypig/mailctl/issues/30
@@ -534,6 +654,8 @@ with `mailctl show`.
 [i157]: https://github.com/harleypig/mailctl/issues/157
 [i158]: https://github.com/harleypig/mailctl/issues/158
 [i159]: https://github.com/harleypig/mailctl/issues/159
+[i82]: https://github.com/harleypig/mailctl/issues/82
+[iana-sieve]: https://www.iana.org/assignments/sieve-extensions
 [rc-script]: https://github.com/roundcube/roundcubemail/blob/cbf2500dd8db31ada3fccf71e247c8d8c852c3d7/plugins/managesieve/lib/Roundcube/rcube_sieve_script.php
 [blog-redirect]: https://blog.mxroute.com/why-we-disabled-redirect-sieve-filters-on-mxroute
 [blog-dovecot24]: https://blog.mxroute.com/we-fixed-quota-reporting-then-dovecot-2-4-happened
