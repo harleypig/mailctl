@@ -18,7 +18,8 @@ which is what lets a second provider be added with no engine change.
 At the top, an interface calls only the utilities (ADR 0007): it opens a
 session and hands it to them, and never imports a provider or a component
 or reads a session's transport, connection, or dialect. The utilities, in
-turn, use only the transport the session guards.
+turn, use only the transport the session guards, and one that only reads
+-- anything not carrying out a plan -- never reaches a transport write.
 
 The check resolves relative imports to absolute names first, because
 ``from ...config import Config`` and ``from mailctl.config import Config``
@@ -33,6 +34,7 @@ from pathlib import Path
 import pytest
 
 import mailctl
+from mailctl.providers.base import TRANSPORT_KINDS, WRITE
 
 PACKAGE = Path(mailctl.__file__).parent
 
@@ -1169,3 +1171,472 @@ def test_the_utility_guard_would_catch_a_transport_off_the_session(source):
 )
 def test_the_utility_guard_allows_the_session_transport(source):
     assert transport_outside_a_session(source) == [], source
+
+
+# ############################################################################
+# A read-only utility never reaches a write (#154)
+# ############################################################################
+
+# Read and write are kept apart at every layer. The transport interface
+# classifies each operation read or write (#135), and the session reads
+# that to decide what may be sent again. This guard carries the same line
+# up into the utilities: every change is plan -> decide -> execute, so a
+# utility that is not carrying out a plan must not store, create,
+# subscribe, or move anything.
+#
+# THE RULE -- which utilities may write. A utility may reach a transport
+# write only if it carries out a plan: its name begins ``execute_``, or it
+# is one of the write steps an ``execute_`` function is built from
+# (``WRITE_STEPS``). Every other function under ``mailctl/utilities/`` --
+# every ``plan_*``, ``read_*``, ``list_*``, the probes, the search and view
+# of messages, and every private helper -- is read-only. The read-only set
+# is the complement of the writers over a walk of the package, never a
+# list, so a utility added tomorrow is held read-only the day it lands, and
+# has to be named, visibly, to be allowed to write.
+#
+# THE MECHANISM -- static, not dynamic. A dynamic check would drive each
+# read-only utility over a fake transport that fails on a write, but every
+# utility needs its own hand-built inputs, which turns a derived set back
+# into a hand-written one, and it sees only the branch those inputs take:
+# ``plan_folder`` reads the rule half only when there is one. The AST sees
+# every branch of every function without running any of them.
+#
+# WHAT GOES RED. A reference to a write operation on the transport,
+# however the utility holds it: straight off ``session.transport``, through
+# a local assigned from a ``.transport``, or through a parameter that is a
+# transport (annotated ``Transport``, or named ``transport``, as
+# ``messages.newest_matches`` takes it). A reference, not only a call:
+# handing ``session.transport.subscribe`` to something else to call is
+# caught too. And a ``getattr`` whose name is a write operation's, on
+# anything. Reach is followed through other utilities -- by bare name
+# within a module, by ``from .module import name``, and by
+# ``module.name`` after ``from . import module`` -- to a fixed point, so a
+# plan that calls a helper that calls ``upload_script`` is as red as one
+# that stores.
+#
+# Why the receiver is checked. A write's name is also an ordinary word:
+# ``SubscriptionPlan`` and ``FolderPlan`` each carry a ``subscribe``
+# field, and reading ``self.subscribe`` is not subscribing. Matching the
+# name on any receiver reported ``SubscriptionPlan.changes`` as a write
+# the first time this ran -- too wide, and a guard whose findings are not
+# worth chasing stops being read.
+#
+# WHAT IT DOES NOT SEE. A transport kept somewhere other than a local or
+# a parameter (a field of a record, an unpacked tuple) and then written
+# through; a write op named by a computed string
+# (``getattr(t, "store_" + x)``); and a write reached outside the
+# utilities -- through a callback a front-end passes in, or through the
+# dialect. The dialect is held to opening no connection by the half guard
+# above, and a utility reaches a transport only as ``session.transport``
+# by the guard before this one, so none of those is a route today.
+
+WRITE_OPERATIONS = frozenset(
+    name
+    for name, operation in TRANSPORT_KINDS.items()
+    if operation.kind == WRITE
+)
+
+# The write steps an ``execute_`` function is built from, which write on
+# its behalf. Each must be seen to reach a write (a test below), so an
+# entry cannot outlive the reason it is here.
+WRITE_STEPS = frozenset(
+    {
+        "folders.create_folder",
+        "folders.realize_folder",
+        "scripts.upload_script",
+    }
+)
+
+# The read-only utilities known by name. The derived set must hold every
+# one of them, or the walk has gone narrow.
+KNOWN_READERS = (
+    "backup.plan_backup",
+    "backup.plan_restore",
+    "folders.list_folders",
+    "folders.plan_folder",
+    "folders.plan_subscription",
+    "mail.plan_mail",
+    "messages.list_messages",
+    "messages.read_message",
+    "reports.probe_rules",
+    "rules.plan_rule",
+    "rules.read_rules",
+    "scripts.read_script",
+)
+
+
+# ----------------------------------------------------------------------------
+def is_writer(unit: str) -> bool:
+    """Whether the rule lets ``unit`` (``module.function``) write."""
+    return (
+        unit.rsplit(".", 1)[-1].startswith("execute_") or unit in WRITE_STEPS
+    )
+
+
+# ----------------------------------------------------------------------------
+def utility_units(
+    sources: dict[str, str],
+) -> dict[str, tuple[str, ast.AST]]:
+    """Every function in ``sources`` (module name -> source), by name.
+
+    A module-level function is ``module.function``; a method of a
+    module-level class is ``module.Class.method``. A function nested inside
+    one of those is part of it, since ``ast.walk`` descends into it.
+    """
+    units = {}
+
+    for module, source in sources.items():
+        for node in ast.parse(source).body:
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                units[f"{module}.{node.name}"] = (module, node)
+
+            elif isinstance(node, ast.ClassDef):
+                units.update(
+                    (f"{module}.{node.name}.{item.name}", (module, item))
+                    for item in node.body
+                    if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef)
+                )
+
+    return units
+
+
+# ----------------------------------------------------------------------------
+def utility_namespace(
+    module: str, source: str, modules: set[str]
+) -> tuple[dict[str, str], dict[str, str]]:
+    """What a bare name means in ``module``: ``(functions, modules)``.
+
+    ``functions`` maps a name to the utility it is -- one defined in the
+    module, or taken from a sibling with ``from .x import name`` (or its
+    absolute spelling). ``modules`` maps a name to the sibling utility
+    module it is bound to by ``from . import x``.
+    """
+    tree = ast.parse(source)
+    functions = {
+        node.name: f"{module}.{node.name}"
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    bound = {}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+
+        if node.level == 1:
+            origin = node.module
+
+        elif node.module and node.module.startswith("mailctl.utilities"):
+            origin = node.module.removeprefix("mailctl.utilities").lstrip(".")
+            origin = origin or None
+
+        else:
+            continue
+
+        for alias in node.names:
+            local = alias.asname or alias.name
+
+            if origin is None and alias.name in modules:
+                bound[local] = alias.name
+
+            elif origin in modules:
+                functions[local] = f"{origin}.{alias.name}"
+
+    return functions, bound
+
+
+# ----------------------------------------------------------------------------
+def transport_names(function: ast.AST) -> set[str]:
+    """The names a function holds a transport under.
+
+    A parameter annotated ``Transport`` or named ``transport``, and a name
+    assigned from an expression ending in ``.transport``.
+    """
+    names = set()
+    arguments = function.args  # type: ignore[attr-defined]
+
+    for arg in [
+        *arguments.posonlyargs,
+        *arguments.args,
+        *arguments.kwonlyargs,
+    ]:
+        if arg.arg == "transport" or (
+            arg.annotation is not None
+            and re.search(r"\bTransport\b", ast.unparse(arg.annotation))
+        ):
+            names.add(arg.arg)
+
+    for node in ast.walk(function):
+        if isinstance(node, ast.Assign | ast.AnnAssign):
+            value = node.value
+            targets = (
+                node.targets if isinstance(node, ast.Assign) else [node.target]
+            )
+
+            if isinstance(value, ast.Attribute) and value.attr == "transport":
+                names.update(
+                    target.id
+                    for target in targets
+                    if isinstance(target, ast.Name)
+                )
+
+    return names
+
+
+# ----------------------------------------------------------------------------
+def write_reach(sources: dict[str, str]) -> dict[str, set[str]]:
+    """The transport writes each utility reaches, directly or through
+    another utility, over ``sources`` (module name -> source)."""
+    units = utility_units(sources)
+    modules = set(sources)
+    namespaces = {
+        module: utility_namespace(module, source, modules)
+        for module, source in sources.items()
+    }
+    direct: dict[str, set[str]] = {}
+    calls: dict[str, set[str]] = {}
+
+    for unit, (module, function) in units.items():
+        functions, bound = namespaces[module]
+        direct[unit], calls[unit] = set(), set()
+
+        transports = transport_names(function)
+
+        for node in ast.walk(function):
+            if isinstance(node, ast.Attribute):
+                owner = node.value
+
+                if isinstance(owner, ast.Name) and owner.id in bound:
+                    calls[unit].add(f"{bound[owner.id]}.{node.attr}")
+
+                elif node.attr in WRITE_OPERATIONS and (
+                    (
+                        isinstance(owner, ast.Attribute)
+                        and owner.attr == "transport"
+                    )
+                    or (isinstance(owner, ast.Name) and owner.id in transports)
+                ):
+                    direct[unit].add(node.attr)
+
+            elif isinstance(node, ast.Name) and node.id in functions:
+                calls[unit].add(functions[node.id])
+
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value in WRITE_OPERATIONS
+            ):
+                direct[unit].add(node.args[1].value)
+
+    reach = {unit: set(found) for unit, found in direct.items()}
+    changed = True
+
+    while changed:
+        changed = False
+
+        for unit, callees in calls.items():
+            for callee in callees & reach.keys():
+                if not reach[callee] <= reach[unit]:
+                    reach[unit] |= reach[callee]
+                    changed = True
+
+    return reach
+
+
+# ----------------------------------------------------------------------------
+def read_write_violations(sources: dict[str, str]) -> list[str]:
+    """Every read-only utility in ``sources`` that reaches a write."""
+    return [
+        f"{unit} reaches {sorted(found)}"
+        for unit, found in sorted(write_reach(sources).items())
+        if found and not is_writer(unit)
+    ]
+
+
+UTILITY_SOURCES = {
+    path.stem: path.read_text(encoding="utf-8")
+    for path in sorted((PACKAGE / "utilities").glob("*.py"))
+}
+
+UTILITY_REACH = write_reach(UTILITY_SOURCES)
+
+READ_ONLY_UTILITIES = sorted(
+    unit for unit in UTILITY_REACH if not is_writer(unit)
+)
+
+
+# ----------------------------------------------------------------------------
+def test_the_write_operations_come_from_the_classification():
+    """Derived from the interface: a write added to it is guarded here
+    without an edit, and a read is never mistaken for one."""
+    assert "store_rule_set" in WRITE_OPERATIONS
+    assert "apply_mail" in WRITE_OPERATIONS
+    assert "read_rule_set" not in WRITE_OPERATIONS
+    assert "check_rule_set" not in WRITE_OPERATIONS
+
+
+# ----------------------------------------------------------------------------
+def test_the_derived_read_only_set_holds_the_known_readers():
+    """An empty or narrowed set would pass the guard below vacuously."""
+    assert len(READ_ONLY_UTILITIES) > len(KNOWN_READERS)
+    assert set(KNOWN_READERS) <= set(READ_ONLY_UTILITIES)
+
+
+# ----------------------------------------------------------------------------
+def test_no_reading_name_is_allowed_to_write():
+    """The exemptions cannot swallow a utility the convention calls a
+    read: a ``plan_``, ``read_``, or ``list_`` name is never a writer."""
+    assert not [
+        unit
+        for unit in UTILITY_REACH
+        if is_writer(unit)
+        and unit.rsplit(".", 1)[-1].startswith(("plan_", "read_", "list_"))
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_the_analysis_sees_the_writes_that_exist():
+    """The walk sees a direct write, and one reached two utilities away;
+    were it blind to either, every read-only utility would pass."""
+    assert "store_rule_set" in UTILITY_REACH["scripts.upload_script"]
+    assert "apply_mail" in UTILITY_REACH["mail.execute_mail"]
+    assert "store_rule_set" in UTILITY_REACH["backup.execute_restore"]
+    assert "create_folder" in UTILITY_REACH["rules.execute_script_change"]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("unit", sorted(WRITE_STEPS))
+def test_every_write_step_still_writes(unit):
+    """An exemption whose utility no longer writes, or no longer exists,
+    is one somebody could hide a plan behind."""
+    assert UTILITY_REACH.get(unit), f"{unit} is exempt and reaches no write"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("unit", READ_ONLY_UTILITIES)
+def test_a_read_only_utility_never_reaches_a_write(unit):
+    assert UTILITY_REACH[unit] == set(), (
+        f"{unit} reaches the transport writes {sorted(UTILITY_REACH[unit])}; "
+        f"only an execute_ utility or a named write step may write (#154)"
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "sources",
+    [
+        # Straight off the session.
+        {
+            "a": "def plan_x(session):\n"
+            "    session.transport.store_rule_set(n, s)\n"
+        },
+        # Through a local, as most utilities hold it.
+        {
+            "a": "def plan_x(session):\n"
+            "    t = session.transport\n"
+            "    t.apply_mail(p)\n"
+        },
+        # Through a parameter, as newest_matches takes it.
+        {"a": "def read_x(transport):\n    transport.subscribe(f)\n"},
+        # Handed on to be called by somebody else.
+        {
+            "a": "def plan_x(session):\n"
+            "    run(session.transport.create_folder)\n"
+        },
+        # Named by a constant.
+        {"a": "def plan_x(t):\n    getattr(t, 'activate_rule_set')(n)\n"},
+        # Through a private helper in the same module.
+        {
+            "a": "def _store(session):\n"
+            "    session.transport.store_rule_set(n, s)\n"
+            "def plan_x(session):\n    _store(session)\n"
+        },
+        # Through a write step taken from a sibling module.
+        {
+            "scripts": "def upload_script(s):\n"
+            "    s.transport.store_rule_set(n, t)\n",
+            "rules": "from .scripts import upload_script\n"
+            "def plan_rule(s):\n    upload_script(s)\n",
+        },
+        # The same, spelled absolute.
+        {
+            "scripts": "def upload_script(s):\n"
+            "    s.transport.store_rule_set(n, t)\n",
+            "rules": "from mailctl.utilities.scripts import upload_script\n"
+            "def plan_rule(s):\n    upload_script(s)\n",
+        },
+        # Through a sibling module bound by name.
+        {
+            "folders": "def create_folder(s, p):\n"
+            "    s.transport.create_folder(f)\n",
+            "mail": "from . import folders\n"
+            "def plan_mail(s):\n    folders.create_folder(s, p)\n",
+        },
+        # Three utilities deep, and round a cycle.
+        {
+            "a": "def execute_x(s):\n    s.transport.apply_mail(p)\n"
+            "def _b(s):\n    _c(s)\n    execute_x(s)\n"
+            "def _c(s):\n    _b(s)\n"
+            "def plan_x(s):\n    _c(s)\n"
+        },
+        # In a method of a class.
+        {
+            "a": "class P:\n"
+            "    def feed(self):\n"
+            "        self.session.transport.unsubscribe(f)\n"
+        },
+    ],
+)
+def test_the_read_write_guard_would_catch_a_write(sources):
+    """The public reader in each case is the one caught -- not only a
+    helper it calls -- so reach really is followed to the reader."""
+    caught = {
+        found.split(" ")[0].rsplit(".", 1)[-1]
+        for found in read_write_violations(sources)
+    }
+
+    assert caught & {"plan_x", "read_x", "plan_rule", "plan_mail", "feed"}, (
+        sources
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "sources",
+    [
+        # Reads, however held.
+        {
+            "a": "def plan_x(session):\n"
+            "    t = session.transport\n"
+            "    t.read_rule_set(t.active_rule_set())\n"
+            "    t.check_rule_set(s)\n"
+        },
+        # An execute_ utility writing is what it is for.
+        {
+            "a": "def execute_x(session):\n"
+            "    session.transport.apply_mail(p)\n"
+        },
+        # A named write step, and the execute_ utility built on it.
+        {
+            "scripts": "def upload_script(s):\n"
+            "    s.transport.store_rule_set(n, t)\n"
+            "def execute_up(s):\n    upload_script(s)\n",
+        },
+        # A record's own field that shares a write's name.
+        {
+            "a": "class P:\n"
+            "    def changes(self):\n        return self.subscribe\n"
+        },
+        {
+            "a": "def plan_x(plan):\n"
+            "    return plan.subscribe and plan.folder\n"
+        },
+        # A read-only utility that only names a write in prose.
+        {"a": 'def plan_x(s):\n    """Never calls store_rule_set."""\n'},
+    ],
+)
+def test_the_read_write_guard_allows_reads_and_execute_steps(sources):
+    assert read_write_violations(sources) == [], sources
