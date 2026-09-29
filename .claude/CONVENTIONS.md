@@ -31,10 +31,10 @@ stops the break stranding anybody silently is detection plus a switch, not
 compatibility:
 
 - **The old directory is a finding.** While it exists and the new one does
-  not, `engine.check_config_dir` returns `ConfigDirPending` and the CLI
-  warns loudly on stderr before every command, naming `mailctl
+  not, `utilities.migration.check_config_dir` returns `ConfigDirPending`
+  and the CLI warns loudly on stderr before every command, naming `mailctl
   migrate-config`. That command is the switch the scoping rule asks for: a
-  plan/execute pair in the engine (`plan_config_migration` /
+  plan/execute pair in the migration utility (`plan_config_migration` /
   `execute_config_migration`) that lists what moves, honours `--dry-run` and
   `--yes`, moves by rename so every file keeps its mode, merges into a new
   directory that already exists, refuses outright if anything at the
@@ -51,9 +51,10 @@ compatibility:
   `MXROUTE_PASSWORD` is therefore also never held to the env-file mode
   check — it is never used.
 - **The script created under the old name is still ours.** A new account
-  gets a script called `mailctl` (`engine.DEFAULT_SCRIPT_NAME`); with nothing
-  active, an existing `mxfilter` script (`engine.LEGACY_SCRIPT_NAME`) is
-  reused rather than a second one created beside it.
+  gets a script called `mailctl` (`utilities.scripts.DEFAULT_SCRIPT_NAME`);
+  with nothing active, an existing `mxfilter` script
+  (`utilities.scripts.LEGACY_SCRIPT_NAME`) is reused rather than a second
+  one created beside it.
 - **`MXROUTE_FORBIDDEN_ACTIONS` keeps its vendor name.** It is a fact about
   MXroute, not a setting of this tool (*Rule conventions*).
 
@@ -120,17 +121,94 @@ Built on two libraries, both of which the code wraps rather than exposes:
 
 ## Layout
 
+The package is layered in four, top to bottom — interfaces, utilities, the
+session, the provider — over the protocol components ([ADR 0007][adr7],
+refining [ADR 0006][adr6]); *The core returns data* below says what each
+layer may call.
+
 - `mailctl/__init__.py` — the package docstring, `__version__`, and
   `MailctlError` (the one exception type every actionable failure raises).
 - `mailctl/config.py` — endpoint and credential resolution, and the `Secret`
   wrapper (see *Credentials* below).
 - `mailctl/criteria.py` — the shared criteria model, translated **both** to
   Sieve tests and to IMAP `SEARCH`. One model, two backends — this is what
-  keeps the two halves in agreement.
+  keeps the two halves in agreement. It is the **input model** every
+  front-end builds, so syntax sugar belongs here (*The core returns data*).
+- `mailctl/cli.py` — **interface**: the CLI front-end. Argument parsing,
+  turning flags into utility inputs, opening a session for the command, and
+  rendering and confirming what the utilities return.
+- `mailctl/utilities/` — **utilities**: every piece of work the tool does,
+  host-independent, for any front-end and against any provider, one module
+  per subject. The safety policy lives here.
+  - `rules.py` — checking a rule against what the provider declares
+    (`check_rule`, `resolve_stop`), reading the rules in a script, planning
+    a rule into it, and uploading it.
+  - `scripts.py` — rule sets as the server stores them: read, chosen, and
+    uploaded. `upload_script` is the one upload path, and takes the backup
+    first.
+  - `backup.py` — backing up the active script, and restoring one.
+  - `backup_files.py` — writing a backup's exact bytes to disk.
+  - `folders.py` — listing and subscribing folders, and planning a rule's
+    target folder (created on execute only).
+  - `mail.py` — the existing-mail pass, with `recheck` narrowing the host's
+    search to what the rule really matches and the `--max-messages`
+    ceiling; and criteria derived from a message.
+  - `messages.py` — finding and reading messages, read-only.
+  - `migration.py` — what the rename from `mxfilter` left behind.
+  - `reports.py` — the probes behind `mailctl test`, the provider's wording
+    and connection facts, and each extension's state.
+  - `events.py` — the steps of a change, as a front-end is told of them.
+- `mailctl/engine.py` — **the session**. `connect(config)` resolves the
+  provider the configuration selects, refuses a setting it has no use for,
+  lets its dialect validate the rest — all before any connection — and
+  yields a `Session`, closed when the block ends. `capabilities_for(config)`
+  is what that provider declares, with no connection, so a front-end can
+  offer only what it can do. The session never touches a protocol; it
+  imports no component and never names a provider
+  (`tests/test_layer_purity.py`).
+- `mailctl/providers/` — **the provider**, layer 2 of [ADR 0006][adr6]: one
+  package per host, each composing layer-1 components, in two halves (see
+  *Providers* below).
+  - `base.py` — the interface: `Dialect` (the offline half), `Transport`
+    (the communication half, every operation classified), `Provider` (the
+    record naming a host's capabilities, dialect, and transport), and
+    `ProviderCapabilities`; it re-exports the model so one import reaches
+    both.
+  - `model.py` — the provider-neutral model the utilities speak:
+    `ActionSpec`, `Placement`, `DisplayDiff`, the folder and message
+    records, and the host's own words as data (`Wording`, `Fact`). It and
+    `base.py` import nothing from layer 1 (`tests/test_layer_purity.py`).
+  - `registry.py` — `PROVIDERS`, every provider by name, and
+    `provider_for(config)`.
+  - `mxroute/provider.py` — `MXROUTE`, the `Provider` record: MXroute's
+    capabilities, `MxrouteDialect`, and `MxrouteTransport`.
+  - `mxroute/dialect.py` — `MxrouteDialect`, offline: a neutral rule into
+    Sieve merged into the account's script and read back out, MXroute's
+    refusals and wording, backup paths, folder names normalized against the
+    server's list, and what `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean as
+    the facts `mailctl test` shows.
+  - `mxroute/sieve.py` — the dialect's Sieve side, offline:
+    `MXROUTE_FORBIDDEN_ACTIONS`, the Roundcube `# rule:[NAME]` name dialect
+    and the script functions bound to it, the translation of an
+    `ActionSpec` into Sieve actions, the `disabled_extensions` checks, and
+    a placement or diff crossing to and from the component's records.
+  - `mxroute/transport.py` — `MxrouteTransport`, communication only:
+    ManageSieve for rules and IMAP for mail, each half its own connection,
+    each operation one exchange handed to a layer-1 session.
+  - `mxroute/managesieve.py` — the transport's ManageSieve side:
+    `sieve_session()` maps `Config` onto a `SieveSession`, and a failed
+    connection or login gains MXroute's advice.
+  - `mxroute/imap.py` — the same for IMAP: `imap_session()` maps `Config`
+    onto an `ImapSession` (port 143 is STARTTLS, any other implicit TLS),
+    with the full-address login advice and the hints that name mailctl's
+    settings.
+  - `mxroute/records.py` — the translation between the neutral model and
+    the `imap` component's own records.
 - `mailctl/components/` — **layer 1** ([ADR 0006][adr6]): one library per
   protocol, knowing nothing about any host. It imports only the stdlib, the
   library it wraps, other components, and `MailctlError` — never `config`,
-  the engine, the CLI, or a provider (`tests/test_layer_purity.py`).
+  the session, the utilities, the CLI, or a provider
+  (`tests/test_layer_purity.py`).
   - `managesieve/client.py` — `SieveClient`, sievelib's client with ADR
     0006's gaps S1/S4/S5/S8 closed (byte-exact GETSCRIPT, the whole
     CAPABILITY response, a configurable read timeout, debug output
@@ -142,62 +220,31 @@ Built on two libraries, both of which the code wraps rather than exposes:
     `UNIMPLEMENTED_ACTIONS`.
   - `managesieve/emit.py` — `EMIT_TABLE`, every command, test, and tag
     mailctl can put in a rule and the Sieve extension each needs; offline.
-  - `managesieve/backup.py` — the backup path and the byte-exact writer.
+  - `managesieve/backup.py` — where a backup of a script goes; writing it
+    is `utilities/backup_files.py`'s.
   - `managesieve/servers/` — one module per server software, chosen by the
     `IMPLEMENTATION` capability, with a plain-protocol fallback;
-    `pigeonhole.py` carries no quirks yet.
+    `profile.py` holds a server's quirks as data, and `pigeonhole.py`
+    carries none yet.
   - `imap/client.py` — `ImapSession`, over IMAPClient, taking plain
     connection parameters: `LIST` / `LSUB` and the delimiter, create and
-    subscribe (subscription confirmed by re-reading `LSUB`), the
-    re-checked search, flags, the move with its COPY + EXPUNGE fallback
-    (ADR 0006's I3), and `BODY.PEEK` reads under `EXAMINE`.
+    subscribe (subscription confirmed by re-reading `LSUB`), the search and
+    the header fetch its caller re-checks against, flags, the move with its
+    COPY + EXPUNGE fallback (ADR 0006's I3), and `BODY.PEEK` reads under
+    `EXAMINE`. The re-check itself is the mail utility's.
   - `imap/folders.py` — folder names normalized against a reported
     delimiter, and case variants; offline.
   - `imap/messages.py` — message summaries, the existing-mail plan and its
-    result, and header decoding for the re-check; offline.
+    result, and header reading; offline.
   - `imap/search.py` — `SearchCriteria`, what the session needs from a
     criteria object, and `encode_search_key`, which gets a non-ASCII value
     to the server intact (I1, [#89][i89]).
   - `imap/servers/` — one module per server software, chosen by the IMAP
-    `ID` response, with a plain-protocol fallback; `dovecot.py` carries no
-    quirks yet.
-- `mailctl/providers/` — **layer 2** ([ADR 0006][adr6]): one package per
-  host, each composing layer-1 components (see *Providers* below).
-  - `base.py` — the `Provider` interface and `ProviderCapabilities`,
-    re-exporting the model so one import reaches both.
-  - `model.py` — the provider-neutral model the engine speaks:
-    `ActionSpec`, `Placement`, `DisplayDiff`, the folder and message
-    records, and the host's own words as data (`Wording`, `Fact`). It and
-    `base.py` import nothing from layer 1 (`tests/test_layer_purity.py`).
-  - `registry.py` — `PROVIDERS`, every provider by name, and
-    `provider_for(config)`.
-  - `mxroute/provider.py` — `MxrouteProvider`: ManageSieve for rules, IMAP
-    for mail, translating both ways, and MXroute's wording and notes.
-  - `mxroute/records.py` — the translation between the neutral model and
-    the components' own records.
-  - `mxroute/sieve.py` — what is MXroute's rather than the protocol's:
-    `MXROUTE_FORBIDDEN_ACTIONS`, the Roundcube `# rule:[NAME]` dialect and
-    the script functions bound to it, the translation of an `ActionSpec`
-    into Sieve actions, the `disabled_extensions` checks, the connection
-    and login advice, and `sieve_session()`, which maps `Config` onto a
-    `SieveSession`.
-  - `mxroute/imap.py` — the same for IMAP: `imap_session()` maps `Config`
-    onto an `ImapSession` (port 143 is STARTTLS, any other implicit TLS)
-    and adds the full-address login advice and the hints that name
-    mailctl's settings, and says what `MOVE`, `UIDPLUS`, and
-    `FILTER=SIEVE` mean as the facts `mailctl test` shows.
+    `ID` response, with a plain-protocol fallback; `profile.py` holds a
+    server's quirks as data, and `dovecot.py` carries none yet.
 - `mailctl/rules.py` — reads a parsed script into a flat rule model and
   reports which rules cannot fire where they are (shadowing, in both
   directions); offline.
-- `mailctl/engine.py` — the engine: every piece of work the tool does
-  (open the provider, plan the target folder, merge a rule, back up and
-  upload, plan and run the existing-mail pass, derive criteria from a
-  message), for any front-end and against any provider. It takes plain
-  values (`ActionSpec`, `RuleRequest`, `Criteria`, `Placement`, `Config`)
-  and returns plans and results. It imports no component and never names
-  a provider (`tests/test_layer_purity.py`).
-- `mailctl/cli.py` — the CLI front-end: argument parsing, turning flags into
-  engine inputs, and rendering and confirming what the engine returns.
 - `mailctl/__main__.py` — `python -m mailctl`.
 - `tests/` — pytest, mirroring the package layout ([TESTS.md](TESTS.md)).
 
@@ -208,39 +255,86 @@ live there.
 
 ## The core returns data; only the CLI prints
 
-**`config`, `criteria`, `rules`, `components/`, `providers/`, and the
-`engine` that drives them return structured values and raise
-`MailctlError`. Every piece of rendering, prompting, confirmation, and
-progress output lives in `cli.py`.** Two reasons, both cashing out now: the
-core stays testable without capturing stdout, and a future front-end can
-sit on the same core instead of requiring it to be torn apart first.
+**`config`, `criteria`, `rules`, `components/`, `providers/`, the session
+in `engine.py`, and the `utilities/` that do the work return structured
+values and raise `MailctlError`. Every piece of rendering, prompting,
+confirmation, and progress output lives in `cli.py`.** Two reasons, both
+cashing out now: the core stays testable without capturing stdout, and a
+future front-end can sit on the same core instead of requiring it to be torn
+apart first.
 
-**The engine does not know how it was called.** The operator's instruction,
-2026-09-27: *"the engine, the code that does the actual work, should not know
-nor care how the app was called (cli, tui, gui, web)"*. So it never takes an
-`argparse` namespace, never imports the CLI, and never reads the terminal or
-the environment; `tests/test_core_no_presentation.py` enforces all three.
-Every change is **plan → decide → execute**: a `plan_*` function is
-read-only and returns what would change (a diff, placement findings, a
-message preview, counts); the front-end renders it and makes the decision
-(`--dry-run`, `--yes`, a confirmation prompt); an execute-style call carries
-the plan out. New work goes into the engine first; `cli.py` should only gain
-parsing and rendering.
+**Four layers, and each calls only the one below it** (operator,
+2026-09-28, [#137][i137]; [ADR 0007][adr7] holds the reasoning):
 
-**The engine reaches the protocols only through a provider.** It imports
-no `mailctl.components` module, and the CLI imports none either: the
-neutral names a front-end builds or renders come through the engine.
+```text
+interfaces  cli · tui · gui · web   parse input, render output, ask
+utilities   mailctl/utilities/      the work, and the safety policy
+session     engine.py               config → provider → open, keep, close
+provider    dialect                 offline: neutral model ⇄ host language
+            transport               communication only
+```
+
+**Three kinds of operation, and each has one home.**
+
+- **Atomic** — one exchange with the server, or a composite the host does
+  natively (`MOVE`, with the transport's `COPY` + `EXPUNGE` fallback where
+  the server lacks it). It lives in the provider's transport, and a utility
+  passes it straight through.
+- **Syntax sugar** — another spelling of an operation that already exists
+  (`--unread` as `UNSEEN`, `--older-than 30d` as `BEFORE`). It lives in the
+  input model, `criteria.py`, so every front-end gets it at once.
+- **Utilities** — host-independent logic that composes atomic operations
+  and keeps state on the client: the re-check, the existing-mail pass,
+  reading one message after another. It lives in `utilities/`, one module
+  per subject.
+
+**The provider side only talks to the server.** The operator, 2026-09-28:
+*"any activity on the provider side ... only handles communication with that
+provider's server, it doesn't manage loops (unless the protocol supports it),
+it doesn't manage the building or validation of a filter, it just tries to
+save it and reports success or failure"*. Building, validation, and
+presentation are the utilities', which ask the dialect for the host-specific
+parts. Connection routines stay apart from the utilities so a failure says
+which it is: a transport call that failed, or a utility that composed the
+calls wrongly.
+
+**Interfaces call only utilities.** A front-end may open a session —
+`engine.connect`, or `engine.capabilities_for` to learn what to offer — and
+hand it to a utility. It never reaches the session's transport, connection,
+or dialect itself, and imports no provider and no component. That is what
+puts every write behind the safety policy, whichever front-end asked for
+it. `tests/test_layer_purity.py` holds the lines: a component imports no
+layer above it; the session, the utilities, and the CLI import no
+component; the session and the utilities reach a provider only through
+`providers.base` and `providers.registry` and never name one; and the
+interface guard holds a front-end to utilities, the session's opening
+calls, and the neutral model.
+
+**The utilities do not know how they were called.** The operator's
+instruction, 2026-09-27: *"the engine, the code that does the actual work,
+should not know nor care how the app was called (cli, tui, gui, web)"* —
+the work named there is the utilities' now, and the session's under them.
+So neither takes an `argparse` namespace, imports the CLI, or reads the
+terminal or the environment; `tests/test_core_no_presentation.py` enforces
+all three. Every change is **plan → decide → execute**: a `plan_*`
+function is read-only and returns what would change (a diff, placement
+findings, a message preview, counts); the front-end renders it and makes
+the decision (`--dry-run`, `--yes`, a confirmation prompt); an
+execute-style call carries the plan out. New work goes into the utilities
+first; `cli.py` should only gain parsing and rendering.
 
 **Nothing below the front-end writes to the terminal, progress included.**
 `--verbose` protocol chatter leaves `SieveSession` and `ImapSession` through
 a `progress` callback, and the steps of a change (backup written, script
-uploaded, folder created) leave the engine through an `on_event` callback;
-the CLI decides whether and how to show either. Do not add a second output
-path beside them.
+uploaded, folder created) leave the utilities through an `on_event`
+callback; the CLI decides whether and how to show either. Do not add a
+second output path beside them.
 
-Safety policy lives in the engine, not the front-end: the backup before every
-upload, merge-never-overwrite, and the `--max-messages` ceiling (re-checked
-when a mail plan is executed) hold whichever front-end calls it.
+**Safety policy lives in the utilities, not the front-end or the
+provider**: the backup before every upload (`scripts.upload_script`, the
+one upload path), merge-never-overwrite, and the `--max-messages` ceiling
+(re-checked when a mail plan is executed) hold whichever front-end calls
+them.
 
 **Every command is in every interface.** The operator, 2026-09-27:
 
@@ -249,12 +343,12 @@ when a mail plan is executed) hold whichever front-end calls it.
 > There may be some parameters differences between cli, tui, gui, and web but
 > the commands should all be available in all environments.
 
-So every operation the engine offers is a command in every front-end — CLI,
-TUI, GUI, and web. **Parameters may differ per front-end; availability may
-not.** A capability wanted for one front-end is built into the engine and
-exposed in all of them; a feature only one front-end has is a gap in the
-others, not a design choice. The CLI is the only front-end today, so today
-this means the CLI exposes every engine operation.
+So every operation the utilities offer is a command in every front-end —
+CLI, TUI, GUI, and web. **Parameters may differ per front-end; availability
+may not.** A capability wanted for one front-end is built into the
+utilities and exposed in all of them; a feature only one front-end has is a
+gap in the others, not a design choice. The CLI is the only front-end today,
+so today this means the CLI exposes every utility operation.
 
 **The CLI comes first, and it is the baseline.** The operator, 2026-09-28:
 
@@ -266,8 +360,8 @@ this means the CLI exposes every engine operation.
 So the order is **CLI, then TUI, then GUI and web**. The CLI is the
 automation surface, and it is built first; a later front-end is built on
 what the CLI already exposes, never backfilled into it. Read with the
-paragraph above, this is why the CLI exposing every engine operation is the
-standing state rather than a stopgap.
+paragraph above, this is why the CLI exposing every utility operation is
+the standing state rather than a stopgap.
 
 **Per-folder retention is the shape of automation this means**
 ([ICEBOX.md][icebox-retention] › *Per-folder retention — expire mail after N
@@ -283,50 +377,98 @@ visible.
 ## Providers
 
 **A provider is a two-way translator** ([ADR 0006][adr6] *Amendment*).
-The engine speaks one provider-neutral model: a rule is criteria plus an
+The utilities speak one provider-neutral model: a rule is criteria plus an
 `ActionSpec`, and the model also covers folders, messages, capabilities,
 results, and `MailctlError`. The provider converts that model into its
 host's terms on the way out, and converts the host's answers back on the
 way in. For `mxroute`, outbound is Sieve over ManageSieve, and inbound a
 parsed script becomes `Rule` values.
 
+**It does so in two halves** ([ADR 0007][adr7]):
+
+- **The dialect is offline and host-specific.** It translates, parses, and
+  edits (for `mxroute`, Sieve in Roundcube's `# rule:[NAME]` form), holds
+  the host's refusals and wording as data, and never touches the network.
+  `tests/test_layer_purity.py` holds a dialect's modules — derived by
+  following its imports, not listed — to opening no connection.
+- **The transport is communication only.** Each operation is one exchange
+  with the server, or a composite the host performs natively. It does not
+  loop unless the protocol does, and it builds and validates nothing: it
+  tries to store what it is handed and reports success, or raises
+  `MailctlError` with the server's answer. The same guard holds a
+  transport's modules to importing no building helper and no utility.
+
+**Every transport operation is classified**, once, on the `Transport`
+interface in `base.py`: which half it uses (`rules` or `mail`) and whether
+it is a **read**, a **write**, or a **connection** operation (`open`,
+`connect`, `disconnect`, `dropped`, the `has_*` answers). The session reads
+that classification and never asks which provider it has.
+
+**The session is lazy, and what it does around each call it reads from the
+classification** (`engine.Session`):
+
+- **Each half connects the first time a utility uses it**, and only if the
+  command asked for it; a command that only reads rules never opens IMAP.
+  The session closes what it opened, last first, when it ends.
+- **A read the server cut off is sent once more on a fresh connection.** A
+  second failure is raised, and so is a refusal — `dropped` tells the two
+  apart.
+- **A write is never sent again.** It may have landed before the
+  connection went; a retry could land it twice, and would hide the failure
+  the user needs to see. A failed write is final for that command.
+- **One call at a time per half**, under a lock, since IMAP and
+  ManageSieve are both one command after another; and each mail call names
+  its folder rather than trusting the one a previous call left selected.
+- **A session owns its connections, and nothing is shared between
+  sessions.** There is no module-level connection state: a long-running
+  front-end keeps one session per user.
+
+**The CLI keeps its shape**: one command opens a session with the halves it
+needs, runs, and closes it. It uses the session's lazy open, so bad input
+fails before any login or password prompt (decided on [#137][i137]).
+
+**How a provider is chosen, declared, and held to its interface:**
+
 - **Selected by the `provider` setting**, default `mxroute`, resolved like
   every other setting: `--provider`, then `MAILCTL_PROVIDER` in the env
   file or the environment, then `provider` in `config.toml`. An unknown
   name is refused, naming the known ones, before anything connects.
-- **In-tree and registered in-tree.** A provider is a `Provider` subclass
-  listed in `providers/registry.py`. There are no entry points; ADR 0006
-  defers them.
+- **In-tree and registered in-tree.** A provider is a `Provider` record —
+  its name, its `ProviderCapabilities`, its dialect class, and its
+  transport class — listed in `providers/registry.py`. There are no entry
+  points; ADR 0006 defers them.
 - **Differences are data, never a branch.** A provider declares
   `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, its `actions`,
   `extensions`, its namespaced `specifics` with their schema, the
-  connection `settings` it reads, and the operations it `declined`. The engine reads those and never asks which
-  provider it has.
-- **Refused before any network work.** `engine.check_rule` refuses a rule
-  the provider cannot express, through one error naming the provider, the
-  construct, and why.
-- **Every provider answers every operation.** Each one implements or
-  explicitly declines (`@declined`) every operation of `Provider`, and
-  what it declines matches its capabilities. `tests/test_providers.py`
-  holds this. It also drives a fake second provider through the engine to
-  show the calls match `mxroute`'s.
+  connection `settings` it reads, and the operations it `declined`. The
+  utilities read those and never ask which provider they have.
+- **Refused before any network work.** `utilities.rules.check_rule`
+  refuses a rule the provider cannot express, through one error naming the
+  provider, the construct, and why.
+- **Every provider answers every operation.** Each half implements or
+  explicitly declines (`@declined`) every operation of its interface —
+  `Dialect` or `Transport` — and what the two decline matches the
+  provider's capabilities. `tests/test_providers.py` holds this. It also
+  drives a fake second provider through the utilities to show the calls
+  match `mxroute`'s.
 - **The neutral model is the provider layer's own.** `providers/model.py`
-  defines every record the engine and a front-end build or read, and it
+  defines every record the utilities and a front-end build or read, and it
   and `base.py` import nothing from a component. A component keeps its
-  own records, and the provider translates (`mxroute/records.py`), so a
-  provider with no Sieve never imports the Sieve component ([#99][i99]).
-- **The host's words are the provider's data.** A front-end lays out one
+  own records, and the provider translates (`mxroute/records.py`,
+  `mxroute/sieve.py`), so a provider with no Sieve never imports the Sieve
+  component ([#99][i99]).
+- **The host's words are the dialect's data.** A front-end lays out one
   report for every provider and fills it from `Provider.wording` (service
   names, what extensions are called, closing notes such as MXroute's
   redirect and Exim/DirectAdmin notes), `connection_facts` and
   `mail_facts` (labelled lines), `DisplayDiff.label` (the diff heading),
-  and `describe_actions` (a rule's actions in words). Nothing about one
-  host is written into `cli.py`.
+  and `describe_actions` (a rule's actions in words) — each reached through
+  a utility. Nothing about one host is written into `cli.py`.
 - **A default comes from the capabilities.** `ActionSpec.stop` None is the
-  provider's default, which `engine.resolve_stop` settles from the `stop`
-  capability: a host that cannot stop is never asked to, so its default
-  rules are not refused. `--no-stop` sends False; an explicit True is
-  still refused where `stop` is not declared.
+  provider's default, which `utilities.rules.resolve_stop` settles from the
+  `stop` capability: a host that cannot stop is never asked to, so its
+  default rules are not refused. `--no-stop` sends False; an explicit True
+  is still refused where `stop` is not declared.
 - **Offered only what it declares** ([#26][i26] constraint 4). The CLI
   parses twice: a first pass reads only `--provider` and `--env-file` and
   resolves the provider, then the parsers are built from its capabilities.
@@ -337,8 +479,9 @@ parsed script becomes `Rule` values.
   where `ProviderCapabilities.settings` names them, with the help it
   gives — they keep their names and their `MAILCTL_*` variables, being
   `mxroute`'s connection options. An unoffered option is **hidden, not
-  removed**: given anyway it still parses and meets the engine's refusal
-  naming the provider, which stays the backstop for every front-end. A
+  removed**: given anyway it still parses and meets the refusal below the
+  front-end naming the provider, which stays the backstop for every
+  front-end. A
   first pass that cannot resolve a provider falls back to the default
   provider's offer, and the run reports the problem. `mxroute` declares
   everything, so its help is what it always was.
@@ -351,8 +494,9 @@ parsed script becomes `Rule` values.
   serve another provider, so only a flag is refused.
 - **Adding one is a record, a package, and a registry line**:
   `providers/<name>/RECORD.md` first (*Providers are probed and read*),
-  then `providers/<name>/`, composing the layer-1 components it needs,
-  with no engine change.
+  then `providers/<name>/` — a dialect, a transport, and the `Provider`
+  record naming them — composing the layer-1 components it needs, with no
+  change to the session or the utilities.
 
 ## The protocols
 
@@ -925,6 +1069,8 @@ will read it.
 [i9]: https://github.com/harleypig/mailctl/issues/9
 [adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
+[adr7]: ../adr/0007-interfaces-utilities-session-provider-layering.md
+[i137]: https://github.com/harleypig/mailctl/issues/137
 [i99]: https://github.com/harleypig/mailctl/issues/99
 [i26]: https://github.com/harleypig/mailctl/issues/26
 [rec-mxroute]: ../mailctl/providers/mxroute/RECORD.md
