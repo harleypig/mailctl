@@ -268,17 +268,32 @@ def human_size(size: int) -> str:
 
 # ----------------------------------------------------------------------------
 def progress_from_args(args, stream=None):
-    """Return the engine's progress callback, or None without --verbose.
+    """Return the engine's progress callback.
 
     The engine reports protocol progress by calling back rather than
     printing, so the decision to show it -- and the decoration around it --
-    is made once, here. ``stream`` is where it goes; stdout by default.
-    """
-    if not args.verbose:
-        return None
+    is made once, here. Progress is shown under --verbose, on ``stream``;
+    stdout by default.
 
-    def emit(channel: str, message: str) -> None:
-        print(f"[{channel}] {message}", file=stream or sys.stdout)
+    A server's alert is shown with or without --verbose, since RFC 9051
+    has a client present one, and always on stderr, so --json's stdout
+    stays the document alone. It is shown once per run: the same alert
+    again, as on a reconnection's greeting, says nothing new.
+    """
+    shown = vars(args).setdefault("server_alerts_shown", set())
+
+    def emit(channel: str, message: str | utilities.events.ServerAlert):
+        if isinstance(message, utilities.events.ServerAlert):
+            if (channel, message.text) not in shown:
+                shown.add((channel, message.text))
+                print(
+                    f"mailctl: alert from the {channel} server: "
+                    f"{safe_line(message.text)}",
+                    file=sys.stderr,
+                )
+
+        elif args.verbose:
+            print(f"[{channel}] {message}", file=stream or sys.stdout)
 
     return emit
 

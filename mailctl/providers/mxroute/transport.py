@@ -11,11 +11,11 @@ the dialect's (``dialect.py``) and the utilities'.
 
 from contextlib import ExitStack
 from email.message import Message
-from functools import partial
 
 from ... import MailctlError
 from ...components import imap as imap_component
 from ...components import managesieve as sieve_component
+from ...components.imap import alerts as imap_alerts
 from ...components.imap.client import ImapSession
 from ...components.managesieve.client import SieveSession
 from ...config import Config
@@ -95,8 +95,23 @@ class MxrouteTransport(Transport):
 
     # ------------------------------------------------------------------------
     def _channel(self, name: str):
-        """The progress callback for one server, tagged with its name."""
-        return partial(self.progress, name) if self.progress else None
+        """The progress callback for one server, tagged with its name.
+
+        An alert the server sent crosses into the neutral model on the way.
+        """
+        progress = self.progress
+
+        if progress is None:
+            return None
+
+        def relay(message: str | imap_alerts.ServerAlert) -> None:
+            if isinstance(message, imap_alerts.ServerAlert):
+                progress(name, records.server_alert(message))
+
+            else:
+                progress(name, message)
+
+        return relay
 
     # ------------------------------------------------------------------------
     def connect(self, half: str) -> None:

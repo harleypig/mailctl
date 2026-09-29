@@ -1,0 +1,10 @@
+$ mailctl folders
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: alert from the imap server: Account suspended; call support
+mailctl: IMAP error -- Account suspended; call support
+
+--- sieve calls
+--- imap calls

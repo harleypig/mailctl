@@ -185,8 +185,9 @@ def message(
 # names the script listing carries), sieve_extra (raw CAPABILITY lines sent
 # ahead of SIEVE), imap_caps (what IMAP advertises), password
 # (MAILCTL_PASSWORD's value), folders (further folders, as (name, subscribed)
-# pairs), and imap_failures (an IMAPClient method, and the error text it
-# raises).
+# pairs), imap_failures (an IMAPClient method, and the error text it
+# raises), imap_welcome (the greeting), and imap_responses (an IMAPClient
+# method, and the response lines the server sends while it runs).
 
 # Host from the env file over the exported MAILCTL_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
@@ -496,6 +497,19 @@ HOSTILE_SENDER = {
     }
 }
 
+# #205: the same alert in the greeting and as an untagged OK during the
+# login, then a second one on LIST's tagged completion.
+ALERTS = {
+    "imap_welcome": b"* OK [ALERT] Maintenance tonight at 22:00 UTC",
+    "imap_responses": {
+        "login": [
+            b"* OK [ALERT] Maintenance tonight at 22:00 UTC",
+            b"a1 OK Logged in",
+        ],
+        "list_folders": [b"a2 OK [ALERT] Mailbox is 95% full"],
+    },
+}
+
 HOSTILE = {
     "add-like-hostile": (
         [
@@ -525,6 +539,11 @@ HOSTILE = {
             "--json",
         ],
         {"mail": {9: HOSTILE_SUBJECT}},
+    ),
+    # #205: a server's alert is its own text, escaped like mail's.
+    "folders-alert-hostile": (
+        ["folders"],
+        {"imap_welcome": b"* OK [ALERT] \x1b]0;pwned\x07\x1b[31mred"},
     ),
     "show-hostile": (["show"], {"script": HOSTILE_SCRIPT}),
     "rules-hostile": (["rules"], {"script": HOSTILE_SCRIPT}),
@@ -1059,6 +1078,21 @@ SCENARIOS = {
     "show": (["show"], {}),
     "rules": (["rules"], {}),
     "folders": (["folders"], {}),
+    # #205: an ALERT is shown on stderr without --verbose, once however
+    # often it is sent -- in the greeting and again as the login runs --
+    # and one on a refused login is shown before the failure.
+    "folders-alert": (["folders"], ALERTS),
+    "folders-alert-json": (["folders", "--json"], ALERTS),
+    "folders-alert-verbose": (["folders", "-v"], ALERTS),
+    "folders-alert-login-refused": (
+        ["folders"],
+        {
+            "imap_responses": {
+                "login": [b"a1 NO [ALERT] Account suspended; call support"]
+            },
+            "imap_failures": {"login": "Account suspended; call support"},
+        },
+    ),
     "folders-counts": (["folders", "--counts"], COUNTED),
     "folders-counts-nosize": (["folders", "--counts"], COUNTED_NO_SIZE),
     # A server without LIST-STATUS: refused, naming it, rather than a
@@ -2121,6 +2155,11 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
 
     for method, text in options.get("imap_failures", {}).items():
         imap.failures[method] = IMAPClientError(text)
+
+    if "imap_welcome" in options:
+        imap.welcome = options["imap_welcome"]
+
+    imap.responses = dict(options.get("imap_responses", {}))
 
     monkeypatch.setattr(sieve_client, "SieveClient", lambda *a, **k: sieve)
     if "file" in options:

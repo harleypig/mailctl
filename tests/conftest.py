@@ -161,12 +161,20 @@ class FakeImaplib:
     a STATUS line per folder in the double's ``counts`` carrying only the
     items asked for, left where imaplib leaves them: in
     ``untagged_responses``, the word STATUS already taken off.
+
+    ``_get_response`` is imaplib's reader, handing back the next response
+    line the server sent -- what the session watches for alerts.
     """
 
     # ------------------------------------------------------------------------
     def __init__(self, client: "FakeIMAPClient"):
         self.client = client
         self.untagged_responses: dict[str, list] = {}
+        self.pending: list[bytes] = []
+
+    # ------------------------------------------------------------------------
+    def _get_response(self) -> bytes:
+        return self.pending.pop(0)
 
     # ------------------------------------------------------------------------
     def _simple_command(self, name: str, *args: str):
@@ -266,9 +274,21 @@ class FakeIMAPClient:
         }
         self._imap = FakeImaplib(self)
 
+        # The greeting imaplib read as it connected, and, by method, the
+        # response lines the server sends while that command runs -- read
+        # through imaplib's reader, as IMAPClient reads them, and before
+        # any failure the method is armed with.
+        self.welcome = b"* OK Dovecot ready."
+        self.responses: dict[str, list[bytes]] = {}
+
     # ------------------------------------------------------------------------
     def _maybe_fail(self, name: str) -> None:
-        """Raise whatever the test armed this method with."""
+        """Read the lines the server sends this command, then raise
+        whatever the test armed the method with."""
+        for line in self.responses.pop(name, ()):
+            self._imap.pending.append(line)
+            self._imap._get_response()
+
         error = self.failures.get(name)
 
         if error is not None:
