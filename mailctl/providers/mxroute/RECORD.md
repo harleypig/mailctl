@@ -378,11 +378,11 @@ might do, not what will be built:
 - **`NAMESPACE`**: the parent for a new folder, read from the server rather
   than guessed ([#116][i116]).
 - **`PREVIEW`** / **`SNIPPET=FUZZY`**: a server-side preview line for
-  `mailctl messages`, without fetching bodies.
+  `mailctl search`, without fetching bodies.
 - **`ESEARCH`**, **`SEARCHRES`**, and **`WITHIN`**: cheaper searches, and
   age criteria such as *older than N days* for the retroactive pass.
 - **`SORT`**, **`SORT=DISPLAY`**, and **`THREAD=*`**: server-side ordering
-  and threading for `mailctl messages`.
+  and threading for `mailctl search`.
 - **`METADATA`**: per-mailbox annotations. Whether mailctl has a use for it
   is unclear; it is recorded as available.
 - **`QUOTA`**: the account's quota is a setting on the account, so under

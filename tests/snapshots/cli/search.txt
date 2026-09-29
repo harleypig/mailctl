@@ -1,4 +1,4 @@
-$ mailctl messages
+$ mailctl search
 exit: 0
 --- stdout
 5 message(s) in 'INBOX', newest first:

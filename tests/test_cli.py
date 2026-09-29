@@ -66,8 +66,8 @@ def test_an_unusable_password_is_reported_and_handed_back():
     "argv",
     [
         pytest.param(
-            ["messages", "--from", "a@b.c", "--search", "ALL"],
-            id="messages-criteria-and-search",
+            ["search", "--from", "a@b.c", "--raw", "ALL"],
+            id="search-criteria-and-raw",
         ),
         pytest.param(["apply", "--from", "a@b.c"], id="apply-no-action"),
         pytest.param(["add", "--from", "a@b.c"], id="add-no-action"),
@@ -96,3 +96,27 @@ def test_bad_input_fails_before_any_login(argv, fake_imap, monkeypatch):
 
     assert fake_imap.calls == []
     assert sieve_logins == []
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "error"),
+    [
+        pytest.param(
+            ["messages"], "invalid choice: 'messages'", id="messages"
+        ),
+        pytest.param(
+            ["search", "--search", "ALL"],
+            "unrecognized arguments: --search",
+            id="search-flag",
+        ),
+    ],
+)
+def test_the_old_names_are_gone(argv, error, capsys):
+    """#147: 'messages' became 'search' and its '--search' became '--raw',
+    with no alias for either."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(argv)
+
+    assert stopped.value.code == 2
+    assert error in capsys.readouterr().err

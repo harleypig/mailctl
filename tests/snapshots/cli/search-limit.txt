@@ -1,14 +1,12 @@
-$ mailctl messages --search UNSEEN
+$ mailctl search --limit 2
 exit: 0
 --- stdout
-5 message(s) in 'INBOX', newest first:
+2 message(s) in 'INBOX', newest first:
      UID  Received               Size  Mark  From                          Subject
        5  2026-02-03 04:05:06    131B  N     News <news@example.com>       Weekly
        4  2026-02-03 04:05:06    591B  N     Boss <boss@example.com>       Q3 report — draft
-       3  2026-02-03 04:05:06    163B  N     Someone <list@lists.example…  Digest
-       2  2026-02-03 04:05:06    121B  N     Someone <noreply@github.com>  Issue closed
-       1  2026-02-03 04:05:06    118B        Someone <noreply@github.com>  PR opened
 Marks: N unread, F flagged, R replied, D deleted, @ attachment
+Showing the 2 newest; there may be more -- raise --limit to see them.
 
 --- stderr
 
@@ -16,6 +14,6 @@ Marks: N unread, F flagged, R replied, D deleted, @ attachment
 --- imap calls
 ('login', 'user@example.com')
 ('select_folder', 'INBOX', True)
-('search', 'UNSEEN')
-('fetch', (5, 4, 3, 2, 1))
+('search', 'ALL')
+('fetch', (5, 4))
 ('logout',)

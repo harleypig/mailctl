@@ -30,6 +30,8 @@ MXROUTE = Provider(
         rule_sets=True,
         actions=frozenset((FILEINTO, DISCARD, FLAG, KEEP)),
         extensions=True,
+        # The query is IMAP SEARCH syntax (RFC 3501 section 6.4.4).
+        raw_query=True,
         settings={
             "host": "MXRoute server hostname",
             "imap_host": "",

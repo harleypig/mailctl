@@ -1222,7 +1222,7 @@ def cmd_test(args) -> int:
     print(
         f"Folder:    {config.source_folder}  "
         f"({origin_of(config, 'source_folder')})  "
-        f"-- read by apply, messages, view, from-message"
+        f"-- read by apply, search, view, from-message"
     )
 
     if failure is not None:
@@ -1659,7 +1659,7 @@ def status_marks(message) -> str:
 
 
 # ----------------------------------------------------------------------------
-def cmd_messages(args) -> int:
+def cmd_search(args) -> int:
     """List the newest messages in a folder, optionally filtered."""
     config = configure(args)
     criteria = criteria_from_args(args)
@@ -1669,7 +1669,7 @@ def cmd_messages(args) -> int:
             sessions,
             config.source_folder,
             criteria=criteria,
-            search=args.search,
+            raw=args.raw,
             limit=args.limit,
         )
 
@@ -2262,33 +2262,36 @@ def build_parser(
     apply_cmd.add_argument("--delimiter", help=argparse.SUPPRESS)
     apply_cmd.set_defaults(handler=cmd_apply, no_imap=False)
 
-    messages = command(
-        "messages",
+    search = command(
+        "search",
         parents=[common, connection, criteria],
         help="list the newest messages in a folder",
     )
-    messages.add_argument(
+    search.add_argument(
         "--folder", help=f"folder to list; {FOLDER_DEFAULT_HELP}"
     )
-    messages.add_argument(
-        "--search",
-        help="raw IMAP search expression instead of criteria flags, "
-        "e.g. 'UNSEEN' or 'SINCE 1-Sep-2026'",
+    search.add_argument(
+        "--raw",
+        metavar="QUERY",
+        help="a query in the host's own search language instead of "
+        "criteria flags, e.g. 'UNSEEN' or 'SINCE 1-Sep-2026'"
+        if offer.raw_query
+        else argparse.SUPPRESS,
     )
-    messages.add_argument(
+    search.add_argument(
         "--limit",
         type=int,
         default=DEFAULT_LIST_LIMIT,
         help=f"show at most N messages; default {DEFAULT_LIST_LIMIT}",
     )
-    messages.set_defaults(handler=cmd_messages)
+    search.set_defaults(handler=cmd_search)
 
     view = command(
         "view",
         parents=[common, connection],
         help="show one message, without marking it read",
     )
-    view.add_argument("uid", type=int, help="the message UID ('messages')")
+    view.add_argument("uid", type=int, help="the message UID ('search')")
     view.add_argument(
         "--folder", help=f"folder holding it; {FOLDER_DEFAULT_HELP}"
     )

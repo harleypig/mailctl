@@ -1,0 +1,9 @@
+$ mailctl search --from noreply@github.com --raw ALL
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: give criteria or a raw query, not both
+
+--- sieve calls
+--- imap calls

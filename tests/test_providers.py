@@ -90,6 +90,7 @@ FULL = ProviderCapabilities(
     rule_sets=True,
     actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
     extensions=True,
+    raw_query=True,
     specifics={"fake.label": Specific(str, "a label to add")},
 )
 
@@ -429,6 +430,7 @@ UNORDERED = Provider(
         rule_sets=True,
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
+        raw_query=False,
         declined=frozenset(("move_rule", "position")),
     ),
     UnorderedDialect,
@@ -455,6 +457,7 @@ STOPLESS = Provider(
         rule_sets=True,
         actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
         extensions=False,
+        raw_query=False,
     ),
     StoplessDialect,
     StoplessTransport,
@@ -1350,6 +1353,7 @@ BARE = Provider(
         rule_sets=True,
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
+        raw_query=False,
         declined=frozenset(("move_rule", "position")),
     ),
     BareDialect,
@@ -1399,7 +1403,7 @@ def test_mxroute_declares_everything_so_nothing_is_hidden():
     flags = offered_flags(cli.build_parser())
 
     assert flags["hidden"] - {"--verbose", "--debug"} == ALWAYS_HIDDEN
-    assert {*PLACEMENT_FLAGS, "--no-stop", "--disable-extension"} <= (
+    assert {*PLACEMENT_FLAGS, "--no-stop", "--disable-extension", "--raw"} <= (
         flags["shown"]
     )
     assert {"--host", "--sieve-port", "--sieve-tls", "--imap-host"} <= (
@@ -1443,6 +1447,23 @@ def test_disable_extension_is_not_offered_without_extensions(bare, capsys):
 
 
 # ----------------------------------------------------------------------------
+def test_raw_is_not_offered_without_raw_query(bare, capsys):
+    assert "--raw" not in help_text(capsys, "search", "--provider", "bare")
+    assert "--raw" in help_text(capsys, "search")
+
+
+# ----------------------------------------------------------------------------
+def test_a_raw_query_is_refused_by_a_provider_without_raw_query(fakes):
+    """The utility holds the line for any front-end, not only the CLI."""
+    session = fake_session(UNORDERED)
+
+    with pytest.raises(MailctlError, match="'raw_query'"):
+        utilities.messages.list_messages(session, "INBOX", raw="ALL")
+
+    assert session.opened == ()
+
+
+# ----------------------------------------------------------------------------
 def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     """A host that reads no --sieve-port does not offer one, and its help
     says nothing about MXroute."""
@@ -1468,8 +1489,15 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         (["move-rule", "x", "--first"], "'ordering'"),
         (["list", "--sieve-port", "4190"], "flag --sieve-port"),
         (["list", "--disable-extension", "mailbox"], "disabled_extensions"),
+        (["search", "--raw", "ALL"], "'raw_query'"),
     ],
-    ids=["placement", "move-rule", "connection-flag", "disable-extension"],
+    ids=[
+        "placement",
+        "move-rule",
+        "connection-flag",
+        "disable-extension",
+        "raw-query",
+    ],
 )
 def test_a_hidden_option_given_anyway_is_refused_by_name(
     bare, capsys, argv, refusal

@@ -4,6 +4,19 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BREAKING CHANGES:
+
+* **`mailctl messages` is now `mailctl search`, and its `--search` is now
+  `--raw`** ([#147]). No alias is kept for either name: `mailctl messages`
+  and `mailctl search --search` are rejected as unknown. Everything else is
+  unchanged — the same criteria flags, `--folder`, `--limit`, the same
+  listing, and it still never writes. `--raw QUERY` takes a query in the
+  host's own search language, which for MXroute is IMAP `SEARCH` syntax
+  (`--raw 'UNSEEN SINCE 1-Sep-2026'`). Offering it is now up to the
+  provider: one that does not declare raw queries leaves `--raw` out of
+  `search --help`, and refuses it by name, before connecting, if it is
+  given anyway. `mailctl from-message --search` keeps its name for now.
+
 ENHANCEMENTS:
 
 * **A command given bad input fails before logging in** ([#137]). The CLI
@@ -816,3 +829,4 @@ NOTES:
 [#135]: https://github.com/harleypig/mailctl/issues/135
 [#137]: https://github.com/harleypig/mailctl/issues/137
 [#154]: https://github.com/harleypig/mailctl/issues/154
+[#147]: https://github.com/harleypig/mailctl/issues/147

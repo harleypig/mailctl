@@ -27,7 +27,7 @@ ALL_TESTS = [
     "rules",
     "folders",
     "backup",
-    "messages",
+    "search",
     "view-keeps-unread",
     "apply",
     "add",
@@ -320,7 +320,7 @@ def test_the_guard_refuses_yes_whatever_else_is_given(tmp_path, argv):
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "argv", [["list"], ["show"], ["messages", "--limit", "5"], ["view", "4"]]
+    "argv", [["list"], ["show"], ["search", "--limit", "5"], ["view", "4"]]
 )
 def test_the_guard_allows_read_only_calls(tmp_path, argv):
     proc, _ = run(tmp_path, "--selftest-guard", *argv)

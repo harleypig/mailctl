@@ -294,16 +294,16 @@ HOSTILE = {
 
 SCENARIOS = {
     **HOSTILE,
-    "messages": (["messages"], MAIL),
-    "messages-from": (["messages", *GITHUB], MAIL),
-    "messages-limit": (["messages", "--limit", "2"], MAIL),
-    "messages-search": (["messages", "--search", "UNSEEN"], MAIL),
-    "messages-both": (["messages", *GITHUB, "--search", "ALL"], MAIL),
-    "messages-none": (["messages", "--from", "nobody@x.y"], MAIL),
-    "messages-folder": (["messages", "--folder", "Lists"], MAIL),
+    "search": (["search"], MAIL),
+    "search-from": (["search", *GITHUB], MAIL),
+    "search-limit": (["search", "--limit", "2"], MAIL),
+    "search-raw": (["search", "--raw", "UNSEEN"], MAIL),
+    "search-both": (["search", *GITHUB, "--raw", "ALL"], MAIL),
+    "search-none": (["search", "--from", "nobody@x.y"], MAIL),
+    "search-folder": (["search", "--folder", "Lists"], MAIL),
     # #63: source_folder in the config file is where --folder defaults to.
-    "messages-config-folder": (
-        ["messages"],
+    "search-config-folder": (
+        ["search"],
         {**MAIL, "config": 'source_folder = "Lists"\n'},
     ),
     "apply-config-folder": (

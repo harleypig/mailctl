@@ -262,10 +262,10 @@ def test_one_undecodable_subject_does_not_break_the_listing(
 
 
 # ----------------------------------------------------------------------------
-def test_a_raw_search_is_passed_through(sessions, fake_imap):
+def test_a_raw_query_is_passed_through(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 
-    utilities.messages.list_messages(sessions, "INBOX", search="UNSEEN")
+    utilities.messages.list_messages(sessions, "INBOX", raw="UNSEEN")
 
     assert ("search", "UNSEEN") in fake_imap.calls
 
@@ -283,13 +283,13 @@ def test_empty_criteria_list_everything(sessions, fake_imap):
 
 
 # ----------------------------------------------------------------------------
-def test_criteria_and_a_raw_search_are_refused_together(sessions):
+def test_criteria_and_a_raw_query_are_refused_together(sessions):
     criteria = Criteria()
     criteria.add("From", "x@example.com")
 
     with pytest.raises(MailctlError, match="not both"):
         utilities.messages.list_messages(
-            sessions, criteria=criteria, search="ALL"
+            sessions, criteria=criteria, raw="ALL"
         )
 
 
