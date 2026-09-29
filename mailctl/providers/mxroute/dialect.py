@@ -129,6 +129,13 @@ class MxrouteDialect(Dialect):
 
     # ------------------------------------------------------------------------
     @classmethod
+    def check_criteria(
+        cls, config: Config, criteria: Criteria, advertised: list[str]
+    ) -> None:
+        mxroute_sieve.check_criteria_extensions(config, criteria, advertised)
+
+    # ------------------------------------------------------------------------
+    @classmethod
     def describe_actions(cls, actions: list) -> str:
         return mxroute_sieve.describe_actions(actions)
 

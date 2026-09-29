@@ -12,6 +12,7 @@ pass filed the old.
 Every test names, in its docstring, the break that turns it red.
 """
 
+import datetime
 import re
 import uuid
 
@@ -815,3 +816,171 @@ def test_mark_refuses_a_uid_the_folder_does_not_hold(account):
     assert result.code == 1
     assert f"no message with uid {uid + 100}" in result.err
     assert flags_of(account, uid) == set()
+
+
+# ############################################################################
+# Body, dates, and state (#152)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def message_with(subject: str, body: str) -> bytes:
+    """A minimal message whose body is ``body``, as UTF-8 text."""
+    return (
+        f"From: Build Bot <ci@example.org>\r\n"
+        f"To: user@example.test\r\n"
+        f"Subject: {subject}\r\n"
+        f"Date: Tue, 3 Feb 2026 04:05:06 +0000\r\n"
+        f"Message-ID: <{uuid.uuid4().hex}@example.test>\r\n"
+        f"MIME-Version: 1.0\r\n"
+        f"Content-Type: text/plain; charset=utf-8\r\n"
+        f"Content-Transfer-Encoding: 8bit\r\n"
+        f"\r\n"
+        f"{body}\r\n"
+    ).encode()
+
+
+# ----------------------------------------------------------------------------
+def listed(result) -> set[str]:
+    """The subjects a ``search`` listing shows, from its rows."""
+    return {
+        line.rsplit("  ", 1)[-1].strip()
+        for line in result.out.splitlines()
+        if re.match(r"^ +\d+  \d{4}-", line)
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_search_and_apply_select_by_body_date_and_state(account):
+    """#152 against a real IMAP server: every new criterion narrows the
+    search as it says, alone and together, and ``apply --dry-run`` plans
+    exactly what ``search`` lists.
+
+    Dates are relative to today, so the test means the same whenever it
+    runs. Red if a key reaches Dovecot in a form it reads differently
+    (a locale month name, a quoted date, a state key inside the OR
+    group), if a filter is dropped or ORed rather than ANDed, if the
+    re-check throws away what the server matched on the body, or if a
+    non-ASCII body value is mangled on the way (#89's path).
+    """
+    now = datetime.datetime.now().replace(microsecond=0)
+    old = now - datetime.timedelta(days=60)
+    recent = now - datetime.timedelta(days=2)
+
+    account.append("INBOX", message_with("old-merged", "PR merged"), (), old)
+    account.append(
+        "INBOX",
+        message_with("read-merged", "PR merged"),
+        (b"\\Seen",),
+        recent,
+    )
+    account.append(
+        "INBOX",
+        message_with("flagged-other", "nothing here"),
+        (b"\\Flagged",),
+        recent,
+    )
+    account.append(
+        "INBOX",
+        message_with("flagged-merged", "PR MERGED today"),
+        (b"\\Flagged",),
+        recent,
+    )
+    account.append(
+        "INBOX", message_with("accented", "un café crème"), (), recent
+    )
+
+    since = (now - datetime.timedelta(days=10)).date().isoformat()
+
+    cases = {
+        ("--body", "merged"): {"old-merged", "read-merged", "flagged-merged"},
+        ("--body", "merged", "--since", since): {
+            "read-merged",
+            "flagged-merged",
+        },
+        ("--before", since): {"old-merged"},
+        ("--older-than", "30d"): {"old-merged"},
+        ("--unread",): {
+            "old-merged",
+            "flagged-other",
+            "flagged-merged",
+            "accented",
+        },
+        ("--flagged",): {"flagged-other", "flagged-merged"},
+        ("--body", "merged", "--unread", "--flagged"): {"flagged-merged"},
+        ("--body", "crème"): {"accented"},
+        ("--subject", "accented", "--body", "merged", "--flagged"): {
+            "flagged-merged"
+        },
+    }
+
+    for flags, expected in cases.items():
+        result = account.run("search", *flags)
+
+        assert result.code == 0, (flags, result.err)
+        assert listed(result) == expected, (flags, result.out)
+
+    planned = account.run(
+        "apply",
+        "--body",
+        "merged",
+        "--since",
+        since,
+        "--flagged",
+        "--fileinto",
+        "Lists/CI",
+        "--create-folder",
+        "--dry-run",
+    )
+
+    assert planned.code == 0, planned.err
+    assert "1 message(s) match" in planned.out
+    assert "flagged-merged" in planned.out
+    assert len(mail_in(account, "INBOX")) == 5
+
+
+# ----------------------------------------------------------------------------
+def test_a_body_rule_files_a_delivered_message_by_its_body(account):
+    """``add --body`` writes the ``body`` extension's test, Pigeonhole
+    accepts it, and on delivery it files a message by what its text says.
+
+    Red if the rule is written without ``require "body"`` (PUTSCRIPT
+    refuses it), if the test is shaped so Pigeonhole reads it differently
+    (a transform or match type in the wrong place), or if it matches on
+    anything but the body -- the two messages differ only there and in a
+    subject the rule never reads.
+    """
+    account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
+
+    added = account.run(
+        "add",
+        "--body",
+        "build failed",
+        "--name",
+        "ci-failures",
+        "--fileinto",
+        "Lists/CI",
+        "--create-folder",
+    )
+
+    assert added.code == 0, added.err
+
+    stored = account.script(ROUNDCUBE_NAME)
+
+    assert rule_names(stored) == ["keep-boss", "ci-failures"]
+    assert '"body"' in stored.splitlines()[0]
+
+    account.deliver(
+        message_with("nightly 1", "The nightly BUILD FAILED at step 3."),
+        "ci@example.org",
+    )
+    account.deliver(
+        message_with("nightly 2", "The nightly build passed."),
+        "ci@example.org",
+    )
+
+    filed = [subject for subject, _ in mail_in(account, "Lists.CI").values()]
+    inbox = [subject for subject, _ in mail_in(account, "INBOX").values()]
+
+    assert filed == ["nightly 1"]
+    assert inbox == ["nightly 2"]

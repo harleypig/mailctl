@@ -33,6 +33,8 @@ from .criteria import (
     Criteria,
     dump_filter,
     load_filter,
+    parse_age,
+    parse_date,
 )
 from .rules import CERTAIN
 from .utilities.folders import FolderCreation
@@ -77,7 +79,7 @@ REFUSED_ACTION_FLAGS = ("redirect", "notify", "vacation")
 
 NO_CRITERIA = (
     "no criteria given -- use --from/--to/--cc/--subject/--list-id/"
-    "--header, --filter FILE, or --like UID"
+    "--header/--body, --filter FILE, or --like UID"
 )
 
 # Said after every save: the rule filters only new mail, and a user who
@@ -397,7 +399,19 @@ def criteria_from_args(args) -> Criteria:
         for name in ("match", "compare")
         if getattr(args, name) is not None
     }
-    criteria = Criteria(**given)
+
+    if args.since is not None:
+        given["since"] = parse_date(args.since, "--since")
+
+    # add has no date --before: its --before places the rule (see
+    # criteria_parser).
+    if getattr(args, "received_before", None) is not None:
+        given["before"] = parse_date(args.received_before, "--before")
+
+    if args.older_than is not None:
+        given["older_than"] = parse_age(args.older_than, "--older-than")
+
+    criteria = Criteria(**given, unread=args.unread, flagged=args.flagged)
 
     for header, values in (
         ("From", getattr(args, "from_addr", None)),
@@ -415,6 +429,9 @@ def criteria_from_args(args) -> Criteria:
 
         name, value = item.split("=", 1)
         criteria.add(name, value)
+
+    for value in args.body or []:
+        criteria.add_body(value)
 
     return criteria
 
@@ -2202,7 +2219,8 @@ def print_filter(args, criteria: Criteria) -> int:
     if not criteria:
         raise MailctlError(
             "--build-filter needs criteria: give --like UID, or criteria "
-            "flags (--from/--to/--cc/--subject/--list-id/--header)"
+            "flags (--from/--to/--cc/--subject/--list-id/--header/--body/"
+            "--since/--before/--older-than/--unread/--flagged)"
         )
 
     if args.json:
@@ -2547,8 +2565,13 @@ def connection_parser(
 
 
 # ----------------------------------------------------------------------------
-def criteria_parser() -> argparse.ArgumentParser:
-    """The criteria flags shared by add / apply / search."""
+def criteria_parser(dated_before: bool = True) -> argparse.ArgumentParser:
+    """The criteria flags shared by add / apply / search.
+
+    ``dated_before`` False leaves out ``--before DATE``, for ``add``, whose
+    ``--before RULE`` places the rule. A date filter is refused on ``add``
+    anyway, so nothing is lost but the spelling.
+    """
     parser = argparse.ArgumentParser(add_help=False)
 
     group = parser.add_argument_group("criteria")
@@ -2566,6 +2589,42 @@ def criteria_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="NAME=VALUE",
         help="match an arbitrary header; repeatable",
+    )
+    group.add_argument(
+        "--body",
+        action="append",
+        metavar="TEXT",
+        help="match text in the message body, always as a substring; "
+        "repeatable",
+    )
+    group.add_argument(
+        "--since",
+        metavar="DATE",
+        help="only mail received on or after DATE (YYYY-MM-DD). Like "
+        "every date and state filter, ANDed with the other criteria, and "
+        "for mail already delivered only: refused by add",
+    )
+
+    if dated_before:
+        group.add_argument(
+            "--before",
+            dest="received_before",
+            metavar="DATE",
+            help="only mail received before DATE (YYYY-MM-DD)",
+        )
+
+    group.add_argument(
+        "--older-than",
+        dest="older_than",
+        metavar="AGE",
+        help="only mail received more than AGE ago: days or weeks, as "
+        "30d or 3w",
+    )
+    group.add_argument(
+        "--unread", action="store_true", help="only unread mail"
+    )
+    group.add_argument(
+        "--flagged", action="store_true", help="only flagged mail"
     )
     group.add_argument(
         "--match",
@@ -2741,6 +2800,7 @@ def build_parser(
     common = global_parser()
     connection = connection_parser(offer)
     criteria = criteria_parser()
+    rule_criteria = criteria_parser(dated_before=False)
     sources = criteria_source_parser()
     actions = action_parser(offer)
     safety = safety_parser()
@@ -2947,7 +3007,7 @@ def build_parser(
 
     add = command(
         "add",
-        parents=[common, connection, criteria, sources, actions],
+        parents=[common, connection, rule_criteria, sources, actions],
         help="save a rule; mail already delivered is left alone",
         description="Save a rule into the active script, merged with the "
         "rules already there. The diff is shown, the script is backed up, "

@@ -1,0 +1,12 @@
+$ mailctl search --build-filter --from noreply@github.com --body merged --since 2026-09-01 --older-than 3w --unread
+exit: 0
+--- stdout
+Filter (criteria only; nothing was saved):
+  when:  (From contains 'noreply@github.com' OR body contains 'merged') AND received on or after 2026-09-01 AND older than 21 days AND unread
+
+--json prints it as a filter document.
+
+--- stderr
+
+--- sieve calls
+--- imap calls

@@ -12,7 +12,7 @@ Folder:    INBOX  (default)  -- read by apply, search, view, and add --like
 
 ManageSieve: connected
   Sieve extensions (* = mailctl's own rules can need it):
-      body        available    enabled
+    * body        available    enabled
       copy        unavailable
       enotify     unavailable
       envelope    unavailable

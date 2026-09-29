@@ -132,6 +132,13 @@ def rule_shapes():
 
             yield actions, built
 
+            # A body test is a substring test only (#152).
+            if compare == "contains":
+                with_body = Criteria(match=match, terms=list(built.terms))
+                with_body.add_body("c")
+
+                yield actions, with_body
+
 
 # ----------------------------------------------------------------------------
 def render(actions, built: Criteria) -> str:
@@ -159,8 +166,16 @@ def test_the_rule_shapes_cover_every_emitted_action():
         if part.startswith(":")
     }
 
+    tests = {
+        condition[0]
+        for _actions, built in rule_shapes()
+        for condition in built.sieve_conditions()
+        if len(condition) == 4
+    }
+
     assert emitted == {"addflag", "discard", "fileinto", "keep", "stop"}
     assert tags == {":create"}
+    assert tests == {"body"}
 
 
 # ----------------------------------------------------------------------------
@@ -198,7 +213,12 @@ def test_every_word_a_rule_emits_is_in_the_emit_table():
 
 # ----------------------------------------------------------------------------
 def test_the_required_set_is_derived_from_the_emit_table():
-    assert emit.REQUIRED_EXTENSIONS == ("fileinto", "imap4flags", "mailbox")
+    assert emit.REQUIRED_EXTENSIONS == (
+        "body",
+        "fileinto",
+        "imap4flags",
+        "mailbox",
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -328,6 +348,80 @@ def test_execute_refuses_a_plan_the_setting_now_forbids(
 
 
 # ----------------------------------------------------------------------------
+def body_request() -> RuleRequest:
+    built = criteria()
+    built.add_body("merged")
+
+    return RuleRequest(built, ActionSpec("Lists"))
+
+
+# ----------------------------------------------------------------------------
+def test_a_body_rule_is_written_where_the_server_has_body(
+    imap_config, imap_session
+):
+    live = live_sessions(FakeSieveSession([*FULL, "body"]), imap_session)
+    folder = utilities.folders.plan_folder(live, imap_config, "Lists")
+
+    plan = utilities.rules.plan_rule(live, imap_config, body_request(), folder)
+
+    assert '"body"' in plan.after.splitlines()[0]
+    assert 'body :contains :text ["merged"]' in plan.after
+
+
+# ----------------------------------------------------------------------------
+def test_a_body_rule_is_refused_where_the_server_lacks_body(
+    imap_config, imap_session
+):
+    """A test has no fallback, so a missing extension is refused by name
+    rather than left to CHECKSCRIPT, and the pointer is to the commands
+    that can still use the criteria."""
+    live = live_sessions(FakeSieveSession(FULL), imap_session)
+    folder = utilities.folders.plan_folder(live, imap_config, "Lists")
+
+    with pytest.raises(MailctlError, match="does not advertise") as caught:
+        utilities.rules.plan_rule(live, imap_config, body_request(), folder)
+
+    assert "'body'" in str(caught.value)
+    assert "mailctl apply" in str(caught.value)
+
+
+# ----------------------------------------------------------------------------
+def test_a_body_rule_is_refused_when_body_is_disabled(
+    imap_config, imap_session
+):
+    live = live_sessions(FakeSieveSession([*FULL, "body"]), imap_session)
+    disable(imap_config, "body")
+    folder = utilities.folders.plan_folder(live, imap_config, "Lists")
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.rules.plan_rule(live, imap_config, body_request(), folder)
+
+    message = str(caught.value)
+
+    assert "'body'" in message
+    assert "disabled_extensions" in message
+    assert "flag --disable-extension" in message
+
+
+# ----------------------------------------------------------------------------
+def test_execute_refuses_a_body_plan_the_setting_now_forbids(
+    imap_config, imap_session, tmp_path
+):
+    imap_config.backup_dir = tmp_path
+    sieve = FakeSieveSession([*FULL, "body"])
+    live = live_sessions(sieve, imap_session)
+    folder = utilities.folders.plan_folder(live, imap_config, "Lists")
+    plan = utilities.rules.plan_rule(live, imap_config, body_request(), folder)
+
+    disable(imap_config, "body")
+
+    with pytest.raises(MailctlError, match="'body'"):
+        utilities.rules.execute_script_change(live, imap_config, plan)
+
+    assert "put_script" not in sieve.names()
+
+
+# ----------------------------------------------------------------------------
 def test_with_mailbox_disabled_imap_makes_the_folder_and_the_rule_is_plain(
     imap_config, imap_session, fake_imap, tmp_path
 ):
@@ -434,12 +528,12 @@ def test_the_report_is_one_row_per_known_or_listed_extension(imap_config):
 # ----------------------------------------------------------------------------
 def test_a_server_only_name_is_available_and_enabled(imap_config):
     """mailctl never blocks a name it does not know, so it is enabled."""
-    body = report(["Body"], imap_config)["body"]
+    duplicate = report(["Duplicate"], imap_config)["duplicate"]
 
-    assert body.advertised
-    assert not body.required
-    assert body.disabled_by is None
-    assert body.enabled is True
+    assert duplicate.advertised
+    assert not duplicate.required
+    assert duplicate.disabled_by is None
+    assert duplicate.enabled is True
 
 
 # ----------------------------------------------------------------------------

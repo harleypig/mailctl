@@ -1,0 +1,9 @@
+$ mailctl search --since 2026-09-28 --before 2026-09-01
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: no message can arrive on or after 2026-09-28 and before 2026-09-01; since must be earlier than before
+
+--- sieve calls
+--- imap calls

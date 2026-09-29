@@ -393,9 +393,12 @@ start from it.
 
 ### Sieve
 
-mailctl emits three of the 23 advertised extensions: `fileinto`,
-`imap4flags`, and `mailbox` (the emit table in
-`components/managesieve/emit.py`). The rest are unused. [#16][i16] is the
+mailctl emits four of the 23 advertised extensions: `fileinto`,
+`imap4flags`, `mailbox`, and, since [#152][i152], `body` for `add --body`
+(the emit table in `components/managesieve/emit.py`). `body` was seen
+advertised on 2026-08-14 (*Observed*); a rule using it has run against the
+container tier's Dovecot 2.4 Pigeonhole, not yet against an MXroute
+server. The rest are unused. [#16][i16] is the
 open reading task for all of them. These look the most useful:
 
 - **`regex`**: real pattern matching. mailctl offers only `:contains`,
@@ -406,8 +409,8 @@ open reading task for all of them. These look the most useful:
 - **`duplicate`**: de-duplicate repeated notifications. It needs
   server-side state.
 - **`date`** and **`relational`**: time-based and numeric rules.
-- **`body`**, **`mime`**, **`foreverypart`**, and **`extracttext`**:
-  matching on the content rather than the headers.
+- **`mime`**, **`foreverypart`**, and **`extracttext`**: matching on
+  individual MIME parts. `body` itself is now used (above).
 - **`variables`**, **`include`**, and **`ihave`**. `ihave` is the Sieve-side
   runtime capability test, relevant to [#19][i19].
 - **`copy`**: file a message and keep it in the inbox as well.
@@ -434,7 +437,11 @@ might do, not what will be built:
 - **`PREVIEW`** / **`SNIPPET=FUZZY`**: a server-side preview line for
   `mailctl search`, without fetching bodies.
 - **`ESEARCH`**, **`SEARCHRES`**, and **`WITHIN`**: cheaper searches, and
-  age criteria such as *older than N days* for the retroactive pass.
+  finer age criteria. `WITHIN` and `SEARCHRES` were both advertised on
+  2026-09-28 (*Observed*) and neither is used: `--older-than` ([#152][i152])
+  is sent as IMAP4rev1's own `BEFORE`, with a date counted back from today,
+  so it needs no extension and works to the day. `WITHIN`'s `OLDER` /
+  `YOUNGER` would give it to the second.
 - **`SORT`**, **`SORT=DISPLAY`**, and **`THREAD=*`**: server-side ordering
   and threading for `mailctl search`.
 - **`METADATA`**: per-mailbox annotations. Whether mailctl has a use for it
@@ -498,6 +505,7 @@ with `mailctl show`.
 [i102]: https://github.com/harleypig/mailctl/issues/102
 [i116]: https://github.com/harleypig/mailctl/issues/116
 [i120]: https://github.com/harleypig/mailctl/issues/120
+[i152]: https://github.com/harleypig/mailctl/issues/152
 [i158]: https://github.com/harleypig/mailctl/issues/158
 [rc-script]: https://github.com/roundcube/roundcubemail/blob/cbf2500dd8db31ada3fccf71e247c8d8c852c3d7/plugins/managesieve/lib/Roundcube/rcube_sieve_script.php
 [blog-redirect]: https://blog.mxroute.com/why-we-disabled-redirect-sieve-filters-on-mxroute

@@ -14,12 +14,25 @@ explicitly rather than papered over:
   ``--compare is`` and ``--compare matches`` the search key is therefore
   deliberately too broad, and ``Criteria.matches`` re-checks each candidate
   against the real semantics using its fetched headers.
+* A body test is a substring match on both sides, and the server's answer
+  is taken as final: re-checking it would mean fetching every candidate's
+  body. So ``--body`` is refused with ``--compare is`` or ``matches``.
+  The two sides read slightly different text: Sieve's ``body`` test reads
+  the decoded text parts (its default ``:text`` transform), while IMAP
+  ``BODY`` searches whatever parts the server decodes, attachments
+  possibly among them -- so the retroactive pass can find a word the
+  rule would not.
+* Dates and read or flagged state mean something only for mail already
+  delivered -- a message being delivered is new, unread, and unflagged --
+  so they have an IMAP translation and no Sieve one. They are always
+  ANDed onto the header and body tests, and IMAP answers them exactly.
 """
 
 import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 from . import MailctlError
 
@@ -33,6 +46,8 @@ __all__ = [
     "escape_sieve_string",
     "load_filter",
     "merge_criteria",
+    "parse_age",
+    "parse_date",
 ]
 
 COMPARE_OPS = ("contains", "is", "matches")
@@ -66,8 +81,35 @@ IMAP_SHORTCUTS = {
 }
 
 # The filter document's format version. A reader refuses any other, so a
-# change a version 1 reader would misread must raise it.
+# change a version 1 reader would misread must raise it. A new key is not
+# such a change: a version 1 reader refuses a key it does not know, so an
+# older mailctl refuses a document using one rather than misreading it.
 FILTER_VERSION = 1
+
+# IMAP's date-text month names (RFC 3501 date-month), never the locale's.
+IMAP_MONTHS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)  # fmt: skip
+
+# An age, as --older-than takes it: days or weeks.
+AGE_UNITS = {"d": 1, "w": 7}
+
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_AGE = re.compile(r"(\d+)([dw])")
+
+# Every key a filter document's criteria may hold.
+CRITERIA_KEYS = (
+    "match",
+    "compare",
+    "terms",
+    "body",
+    "since",
+    "before",
+    "older_than_days",
+    "unread",
+    "flagged",
+)
 
 
 # ############################################################################
@@ -79,6 +121,52 @@ FILTER_VERSION = 1
 def canonical_header(name: str) -> str:
     """Return the canonical spelling of a header name."""
     return CANONICAL_HEADERS.get(name.strip().lower(), name.strip())
+
+
+# ----------------------------------------------------------------------------
+def parse_date(text: str, what: str = "a date") -> date:
+    """Read a calendar date written as ``YYYY-MM-DD``, and only that.
+
+    ``date.fromisoformat`` alone would also take ``20260901`` and week
+    dates, which read as typos; one spelling is accepted so a date means
+    the same to everyone who reads the command.
+    """
+    if not _ISO_DATE.fullmatch(text.strip()):
+        raise MailctlError(
+            f"{what} must be a date as YYYY-MM-DD, not {text!r}"
+        )
+
+    try:
+        return date.fromisoformat(text.strip())
+
+    except ValueError as exc:
+        raise MailctlError(f"{what}: {text!r} is not a real date") from exc
+
+
+# ----------------------------------------------------------------------------
+def parse_age(text: str, what: str = "an age") -> int:
+    """Read an age written as ``N`` days (``30d``) or weeks (``3w``), in
+    days. Zero is refused: "older than no time at all" is every message."""
+    match = _AGE.fullmatch(text.strip())
+
+    if match is None:
+        raise MailctlError(
+            f"{what} must be a whole number of days or weeks, as 30d or "
+            f"3w, not {text!r}"
+        )
+
+    days = int(match[1]) * AGE_UNITS[match[2]]
+
+    if days < 1:
+        raise MailctlError(f"{what} must be at least 1d, not {text!r}")
+
+    return days
+
+
+# ----------------------------------------------------------------------------
+def imap_date(value: date) -> str:
+    """A date as IMAP's search keys take it: ``d-Mon-yyyy``."""
+    return f"{value.day}-{IMAP_MONTHS[value.month - 1]}-{value.year}"
 
 
 # ----------------------------------------------------------------------------
@@ -185,11 +273,27 @@ class Term:
 
 @dataclass
 class Criteria:
-    """A set of header tests plus how to combine and compare them."""
+    """Header and body tests, how to combine and compare them, and the
+    date and state filters ANDed on top.
+
+    ``terms`` and ``body`` are the tests ``match`` combines. ``since`` and
+    ``before`` are arrival dates (IMAP's internal date, not the Date
+    header): on or after ``since``, strictly before ``before``.
+    ``older_than`` is an age in days, turned into a ``before`` date when
+    the search is made, so a saved filter keeps meaning "older than N
+    days" rather than a date that was N days ago once. ``unread`` and
+    ``flagged`` require the state; False means "either".
+    """
 
     terms: list[Term] = field(default_factory=list)
     match: str = "any"
     compare: str = "contains"
+    body: list[str] = field(default_factory=list)
+    since: date | None = None
+    before: date | None = None
+    older_than: int | None = None
+    unread: bool = False
+    flagged: bool = False
 
     # ------------------------------------------------------------------------
     def __post_init__(self):
@@ -203,9 +307,23 @@ class Criteria:
                 f"--compare must be one of {', '.join(COMPARE_OPS)}"
             )
 
+        if self.body:
+            self._check_body_compare()
+
+        if self.older_than is not None and self.older_than < 1:
+            raise MailctlError(
+                f"an age must be at least one day, not {self.older_than}"
+            )
+
+        if self.since and self.before and self.since >= self.before:
+            raise MailctlError(
+                f"no message can arrive on or after {self.since} and before "
+                f"{self.before}; since must be earlier than before"
+            )
+
     # ------------------------------------------------------------------------
     def __bool__(self) -> bool:
-        return bool(self.terms)
+        return bool(self.terms or self.body or self.state_filters())
 
     # ------------------------------------------------------------------------
     def add(self, header: str, value: str) -> None:
@@ -216,41 +334,124 @@ class Criteria:
         self.terms.append(Term(canonical_header(header), value))
 
     # ------------------------------------------------------------------------
+    def add_body(self, value: str) -> None:
+        """Append a body test: the body contains ``value``."""
+        if value == "":
+            raise MailctlError("a body criterion has an empty value")
+
+        self.body.append(value)
+        self._check_body_compare()
+
+    # ------------------------------------------------------------------------
+    def _check_body_compare(self) -> None:
+        """Refuse a body test under ``is`` or ``matches``.
+
+        IMAP can only say whether a body contains a string, and re-checking
+        a whole-body comparison would mean fetching every candidate's body;
+        a whole-body ``is`` is never what anyone means anyway. Refusing is
+        what keeps the rule and the existing-mail pass in agreement.
+        """
+        if self.compare != "contains":
+            raise MailctlError(
+                f"a body criterion is always a substring test, so it "
+                f"cannot be combined with --compare {self.compare}; use "
+                f"--compare contains (the default)"
+            )
+
+    # ------------------------------------------------------------------------
+    def state_filters(self) -> list[str]:
+        """The date and state filters given, by name, in a fixed order."""
+        given = {
+            "since": self.since is not None,
+            "before": self.before is not None,
+            "older-than": self.older_than is not None,
+            "unread": self.unread,
+            "flagged": self.flagged,
+        }
+
+        return [name for name, present in given.items() if present]
+
+    # ------------------------------------------------------------------------
     def require_terms(self) -> None:
         """Fail unless at least one criterion was given.
 
         A rule with no conditions would match every message, which is never
         what someone meant to type.
         """
-        if not self.terms:
+        if not self:
             raise MailctlError(
                 "no criteria given -- use --from/--to/--cc/--subject/"
-                "--list-id/--header"
+                "--list-id/--header/--body, or --since/--before/"
+                "--older-than/--unread/--flagged"
+            )
+
+    # ------------------------------------------------------------------------
+    def check_deliverable(self) -> None:
+        """Refuse date and state filters in a rule run at delivery.
+
+        A message being delivered is new: unread, unflagged, and zero days
+        old. A test on any of those is always true or never true there, so
+        a saved rule carrying one would not mean what it says.
+        """
+        given = self.state_filters()
+
+        if given:
+            raise MailctlError(
+                f"a saved rule cannot test a message's date or read or "
+                f"flagged state (given: {', '.join(given)}): a rule runs "
+                f"as mail is delivered, when every message is new, unread, "
+                f"and unflagged. They select mail already delivered: use "
+                f"them with 'mailctl search' to list it, or 'mailctl "
+                f"apply' to act on it."
             )
 
     # ------------------------------------------------------------------------
     def to_dict(self) -> dict:
-        """The criteria as plain data, the filter document's ``criteria``."""
-        return {
-            "match": self.match,
-            "compare": self.compare,
-            "terms": [
+        """The criteria as plain data, the filter document's ``criteria``.
+
+        A criterion not given is left out, so a document of header terms
+        alone reads exactly as it did before bodies, dates, and state.
+        """
+        data: dict = {"match": self.match, "compare": self.compare}
+
+        if self.terms:
+            data["terms"] = [
                 {"header": term.header, "value": term.value}
                 for term in self.terms
-            ],
-        }
+            ]
+
+        if self.body:
+            data["body"] = list(self.body)
+
+        if self.since is not None:
+            data["since"] = self.since.isoformat()
+
+        if self.before is not None:
+            data["before"] = self.before.isoformat()
+
+        if self.older_than is not None:
+            data["older_than_days"] = self.older_than
+
+        if self.unread:
+            data["unread"] = True
+
+        if self.flagged:
+            data["flagged"] = True
+
+        return data
 
     # ------------------------------------------------------------------------
     @classmethod
     def from_dict(cls, data) -> "Criteria":
         """Read ``to_dict``'s shape back, refusing anything else.
 
-        ``match`` and ``compare`` default as their flags do; ``terms`` is
-        required and may not be empty. An unknown key is refused rather
-        than ignored, so a misspelt ``comapre`` cannot quietly fall back
-        to the default.
+        ``match`` and ``compare`` default as their flags do. Every other key
+        is optional, but at least one criterion must be there, and
+        ``terms`` and ``body``, when present, may not be empty. An unknown
+        key is refused rather than ignored, so a misspelt ``comapre``
+        cannot quietly fall back to the default.
         """
-        _require_keys(data, "criteria", {"terms"}, {"match", "compare"})
+        _require_keys(data, "criteria", set(), CRITERIA_KEYS)
 
         match = data.get("match", "any")
         compare = data.get("compare", "contains")
@@ -265,14 +466,13 @@ class Criteria:
                 f"filter: 'compare' must be one of {', '.join(COMPARE_OPS)}"
             )
 
-        terms = data["terms"]
+        criteria = cls(match=match, compare=compare, **_filters(data))
+        terms = data.get("terms")
 
-        if not isinstance(terms, list) or not terms:
+        if terms is not None and (not isinstance(terms, list) or not terms):
             raise MailctlError("filter: 'terms' must be a non-empty list")
 
-        criteria = cls(match=match, compare=compare)
-
-        for index, term in enumerate(terms):
+        for index, term in enumerate(terms or []):
             where = f"terms[{index}]"
             _require_keys(term, where, {"header", "value"})
 
@@ -286,6 +486,26 @@ class Criteria:
 
             criteria.add(term["header"], term["value"])
 
+        body = data.get("body")
+
+        if body is not None:
+            if not isinstance(body, list) or not body:
+                raise MailctlError("filter: 'body' must be a non-empty list")
+
+            if not all(isinstance(value, str) and value for value in body):
+                raise MailctlError(
+                    "filter: every 'body' value must be a non-empty string"
+                )
+
+            for value in body:
+                criteria.add_body(value)
+
+        if not criteria:
+            raise MailctlError(
+                "filter: criteria holds no terms, body, dates, or state; a "
+                "filter must test something"
+            )
+
         return criteria
 
     # ------------------------------------------------------------------------
@@ -293,12 +513,36 @@ class Criteria:
         """Render the criteria as one human-readable line."""
         joiner = " OR " if self.match == "any" else " AND "
 
-        parts = [
+        tests = [
             f"{term.header} {self.compare} {term.value!r}"
             for term in self.terms
         ]
+        tests += [f"body contains {value!r}" for value in self.body]
+        text = joiner.join(tests)
 
-        return joiner.join(parts)
+        state = []
+
+        if self.since is not None:
+            state.append(f"received on or after {self.since.isoformat()}")
+
+        if self.before is not None:
+            state.append(f"received before {self.before.isoformat()}")
+
+        if self.older_than is not None:
+            plural = "" if self.older_than == 1 else "s"
+            state.append(f"older than {self.older_than} day{plural}")
+
+        state += [
+            name for name in ("unread", "flagged") if getattr(self, name)
+        ]
+
+        if not state:
+            return text
+
+        if self.match == "any" and len(tests) > 1:
+            text = f"({text})"
+
+        return " AND ".join([text, *state] if tests else state)
 
     # ########################################################################
     # Sieve
@@ -310,21 +554,31 @@ class Criteria:
         return "anyof" if self.match == "any" else "allof"
 
     # ------------------------------------------------------------------------
-    def sieve_conditions(self) -> list[tuple[str, str, str]]:
+    def sieve_conditions(self) -> list[tuple[str, ...]]:
         """Return sievelib condition tuples for these criteria.
 
-        Each tuple is ``(header, :comparator, value)``, which sievelib turns
-        into a ``header`` test. Values are escaped here because sievelib
-        quotes but does not escape.
+        A header term is ``(header, :comparator, value)``, which sievelib
+        turns into a ``header`` test; a body term is ``("body", ":text",
+        ":contains", value)``, the ``body`` extension's test over the
+        message's text parts (RFC 5173's default transform, written out).
+        Values are escaped here because sievelib quotes but does not
+        escape. Date and state filters have no Sieve form and are refused.
         """
+        self.check_deliverable()
         self.require_terms()
 
         tag = f":{self.compare}"
 
-        return [
+        conditions: list[tuple[str, ...]] = [
             (term.header, tag, escape_sieve_string(term.value))
             for term in self.terms
         ]
+        conditions += [
+            ("body", ":text", ":contains", escape_sieve_string(value))
+            for value in self.body
+        ]
+
+        return conditions
 
     # ########################################################################
     # IMAP
@@ -351,13 +605,17 @@ class Criteria:
         return ["HEADER", term.header, needle]
 
     # ------------------------------------------------------------------------
-    def imap_search_key(self, extra: Sequence = ()) -> list:
+    def imap_search_key(
+        self, extra: Sequence = (), today: date | None = None
+    ) -> list:
         """Return an IMAPClient search key for these criteria.
 
         ``all`` becomes IMAP's implicit AND (adjacent keys); ``any`` becomes
-        a right-nested chain of the binary ``OR`` key. ``extra`` is ANDed on
-        top, for callers that want to add ``UNSEEN``, ``NOT DELETED``, and
-        the like.
+        a right-nested chain of the binary ``OR`` key. The date and state
+        filters (``SINCE``, ``BEFORE``, ``UNSEEN``, ``FLAGGED``) are ANDed
+        after them, and ``extra`` on top of everything, for callers that
+        want to add ``NOT DELETED`` and the like. ``today`` is what an
+        ``older_than`` age counts back from; the local date by default.
         """
         # This method and sieve_conditions() are the *only* two renderings
         # of a rule, and both read from this one object. That is what keeps
@@ -399,10 +657,41 @@ class Criteria:
         self.require_terms()
 
         keys = [self._imap_term_key(term) for term in self.terms]
+        keys += [["BODY", value] for value in self.body]
 
-        combined = list(keys) if self.match == "all" else [_or_chain(keys)]
+        if not keys:
+            combined = []
 
-        return [*combined, *extra]
+        elif self.match == "all":
+            combined = list(keys)
+
+        else:
+            combined = [_or_chain(keys)]
+
+        return [*combined, *self._imap_state_keys(today), *extra]
+
+    # ------------------------------------------------------------------------
+    def _imap_state_keys(self, today: date | None) -> list:
+        """The date and state filters as flat IMAP search keys."""
+        keys: list = []
+
+        if self.since is not None:
+            keys += ["SINCE", imap_date(self.since)]
+
+        if self.before is not None:
+            keys += ["BEFORE", imap_date(self.before)]
+
+        if self.older_than is not None:
+            cutoff = (today or date.today()) - timedelta(days=self.older_than)
+            keys += ["BEFORE", imap_date(cutoff)]
+
+        if self.unread:
+            keys.append("UNSEEN")
+
+        if self.flagged:
+            keys.append("FLAGGED")
+
+        return keys
 
     # ------------------------------------------------------------------------
     def header_names(self) -> list[str]:
@@ -443,11 +732,22 @@ class Criteria:
         that header in the message. This is what makes ``is`` and
         ``matches`` behave the same for existing mail as they will for new
         mail, given that IMAP could only offer a substring search.
+
+        What the headers cannot show is taken from the server's answer. A
+        body term counts as matched: under ``all`` the search required it,
+        and under ``any`` every term is a substring test (a body term
+        forbids any other comparison), which IMAP answers exactly, so the
+        server's candidate is already right. The date and state filters
+        were ANDed into the search and IMAP answers them exactly too.
         """
         results = [
             self._term_matches(term, headers.get(term.header.upper(), ()))
             for term in self.terms
         ]
+        results += [True for _ in self.body]
+
+        if not results:
+            return True
 
         if self.match == "all":
             return all(results)
@@ -467,7 +767,8 @@ def merge_criteria(derived: Criteria, explicit: Criteria) -> Criteria:
     A header the explicit criteria name replaces every term the derived
     ones hold for it; any other derived term is kept, ahead of the
     explicit terms. ``match`` and ``compare`` are the explicit criteria's,
-    since they govern the whole set.
+    since they govern the whole set. Body tests from both are kept, and a
+    date or state filter the explicit criteria give wins.
     """
     named = {term.header.upper() for term in explicit.terms}
 
@@ -477,6 +778,12 @@ def merge_criteria(derived: Criteria, explicit: Criteria) -> Criteria:
         terms=[*kept, *explicit.terms],
         match=explicit.match,
         compare=explicit.compare,
+        body=[*derived.body, *explicit.body],
+        since=explicit.since or derived.since,
+        before=explicit.before or derived.before,
+        older_than=explicit.older_than or derived.older_than,
+        unread=explicit.unread or derived.unread,
+        flagged=explicit.flagged or derived.flagged,
     )
 
 
@@ -526,6 +833,44 @@ def load_filter(text: str) -> Criteria:
         )
 
     return Criteria.from_dict(document["criteria"])
+
+
+# ----------------------------------------------------------------------------
+def _filters(data: dict) -> dict:
+    """The date and state filters of a document's criteria, as ``Criteria``
+    takes them, each checked for its type."""
+    filters: dict = {}
+
+    for key in ("since", "before"):
+        if key in data:
+            value = data[key]
+
+            if not isinstance(value, str):
+                raise MailctlError(
+                    f"filter: {key!r} must be a YYYY-MM-DD string"
+                )
+
+            filters[key] = parse_date(value, f"filter: {key!r}")
+
+    if "older_than_days" in data:
+        days = data["older_than_days"]
+
+        # bool is an int in Python, and true is not an age.
+        if isinstance(days, bool) or not isinstance(days, int) or days < 1:
+            raise MailctlError(
+                "filter: 'older_than_days' must be a whole number, 1 or more"
+            )
+
+        filters["older_than"] = days
+
+    for key in ("unread", "flagged"):
+        if key in data:
+            if not isinstance(data[key], bool):
+                raise MailctlError(f"filter: {key!r} must be true or false")
+
+            filters[key] = data[key]
+
+    return filters
 
 
 # ----------------------------------------------------------------------------

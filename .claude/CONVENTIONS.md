@@ -425,6 +425,14 @@ FILE|-` (a filter file, or `-` for stdin), never both — `--match` and
 refused with `--filter`, since each supplies the whole set. Every one of these
 refusals is made before connecting.
 
+**Dates and message state select delivered mail only** ([#152][i152]).
+`--since`, `--before`, `--older-than`, `--unread`, and `--flagged` are
+`search` and `apply` criteria, always ANDed with the rest. `add` refuses
+them before connecting, from flags or a `--filter` document, because a
+message being delivered is new, unread, and unflagged; and `add` has no
+date `--before`, since its `--before RULE` places the rule. `--body` is in
+all three, and is always a substring test.
+
 **The split was decided over a recorded objection** (operator, 2026-09-28):
 it puts the tool's two halves, the rule and the existing mail, in two
 commands. `apply` taking the same `--like` and `--filter` as `add` is what
@@ -1174,6 +1182,7 @@ will read it.
 [i149]: https://github.com/harleypig/mailctl/issues/149
 [i150]: https://github.com/harleypig/mailctl/issues/150
 [i151]: https://github.com/harleypig/mailctl/issues/151
+[i152]: https://github.com/harleypig/mailctl/issues/152
 [i153]: https://github.com/harleypig/mailctl/issues/153
 [i154]: https://github.com/harleypig/mailctl/issues/154
 [i155]: https://github.com/harleypig/mailctl/issues/155

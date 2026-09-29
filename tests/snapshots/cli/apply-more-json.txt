@@ -1,0 +1,111 @@
+$ mailctl apply --body merged --since 2026-09-01 --before 2026-09-28 --flagged --fileinto Lists --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "apply",
+    "changes": true,
+    "criteria": {
+      "match": "any",
+      "compare": "contains",
+      "body": [
+        "merged"
+      ],
+      "since": "2026-09-01",
+      "before": "2026-09-28",
+      "flagged": true
+    },
+    "actions": {
+      "fileinto": "Lists",
+      "discard": false,
+      "flags": [],
+      "keep": false,
+      "stop": null
+    },
+    "folder": {
+      "requested": "Lists",
+      "folder": "INBOX.Lists",
+      "delimiter": ".",
+      "delimiter_assumed": false,
+      "status": "exists",
+      "subscribe": true,
+      "case_variants": [],
+      "mailbox_disabled_by": null
+    },
+    "max_messages": 500,
+    "over_limit": false,
+    "mail": {
+      "source": "INBOX",
+      "destination": "INBOX.Lists",
+      "flags": [],
+      "discard": false,
+      "moves": true,
+      "count": 5,
+      "messages": [
+        {
+          "uid": 1,
+          "received": "2026-02-03T04:05:06",
+          "size": 0,
+          "flags": [],
+          "has_attachments": false,
+          "from": "Someone <noreply@github.com>",
+          "subject": "PR opened",
+          "folder": "INBOX"
+        },
+        {
+          "uid": 2,
+          "received": "2026-02-03T04:05:06",
+          "size": 0,
+          "flags": [],
+          "has_attachments": false,
+          "from": "Someone <noreply@github.com>",
+          "subject": "Issue closed",
+          "folder": "INBOX"
+        },
+        {
+          "uid": 3,
+          "received": "2026-02-03T04:05:06",
+          "size": 0,
+          "flags": [],
+          "has_attachments": false,
+          "from": "Someone <list@lists.example.com>",
+          "subject": "Digest",
+          "folder": "INBOX"
+        },
+        {
+          "uid": 4,
+          "received": "2026-02-03T04:05:06",
+          "size": 0,
+          "flags": [],
+          "has_attachments": false,
+          "from": "Boss <boss@example.com>",
+          "subject": "Q3 report \u2014 draft",
+          "folder": "INBOX"
+        },
+        {
+          "uid": 5,
+          "received": "2026-02-03T04:05:06",
+          "size": 0,
+          "flags": [],
+          "has_attachments": false,
+          "from": "News <news@example.com>",
+          "subject": "Weekly",
+          "folder": "INBOX"
+        }
+      ]
+    }
+  }
+}
+
+--- stderr
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Criteria: body contains 'merged' AND received on or after 2026-09-01 AND received before 2026-09-28 AND flagged
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['BODY', 'merged'], 'SINCE', '1-Sep-2026', 'BEFORE', '28-Sep-2026', 'FLAGGED'])
+('fetch', (1, 2, 3, 4, 5))
+('logout',)

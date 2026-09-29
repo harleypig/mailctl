@@ -1,0 +1,9 @@
+$ mailctl search --older-than 0d
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --older-than must be at least 1d, not '0d'
+
+--- sieve calls
+--- imap calls

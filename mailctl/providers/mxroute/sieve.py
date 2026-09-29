@@ -43,6 +43,7 @@ __all__ = [
     "ROUNDCUBE_DIALECT",
     "ROUNDCUBE_NAME_MARKER",
     "candidate_rule",
+    "check_criteria_extensions",
     "check_disabled_extensions",
     "check_rule_extensions",
     "component_placement",
@@ -292,6 +293,46 @@ def check_rule_extensions(config: Config, actions: list) -> None:
             f"{disabled_message(config, blocked)}, and this rule needs "
             f"{it}. Drop the action that needs {it}, or take {it} out of "
             f"disabled_extensions."
+        )
+
+
+# ----------------------------------------------------------------------------
+def check_criteria_extensions(
+    config: Config, criteria: Criteria, advertised: Iterable[str]
+) -> None:
+    """Refuse criteria needing an extension that is disabled or missing.
+
+    Unlike an action, a test has no fallback: a ``body`` test the server
+    cannot run would be rejected at upload, or accepted and never match.
+    So a missing extension is refused here, naming it, rather than left to
+    CHECKSCRIPT; the same criteria still work for ``search`` and
+    ``apply``, which never write Sieve.
+    """
+    needed = emitted_extensions((), criteria.sieve_conditions())
+    blocked = needed & config.disabled_extensions
+
+    if blocked:
+        it = "it" if len(blocked) == 1 else "them"
+
+        raise MailctlError(
+            f"{disabled_message(config, blocked)}, and this rule's criteria "
+            f"need {it}. Drop the criterion that needs {it}, or take {it} "
+            f"out of disabled_extensions."
+        )
+
+    listed = {name.lower() for name in advertised}
+    missing = sorted(name for name in needed if name.lower() not in listed)
+
+    if missing:
+        noun = "extension" if len(missing) == 1 else "extensions"
+
+        raise MailctlError(
+            f"the server does not advertise the Sieve {noun} "
+            f"{', '.join(repr(name) for name in missing)}, which this "
+            f"rule's criteria need, so it cannot be saved as a rule. "
+            f"'mailctl test' lists what the server advertises; 'mailctl "
+            f"search' and 'mailctl apply' take the same criteria for mail "
+            f"already delivered."
         )
 
 

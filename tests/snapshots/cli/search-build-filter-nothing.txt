@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: --build-filter needs criteria: give --like UID, or criteria flags (--from/--to/--cc/--subject/--list-id/--header)
+mailctl: --build-filter needs criteria: give --like UID, or criteria flags (--from/--to/--cc/--subject/--list-id/--header/--body/--since/--before/--older-than/--unread/--flagged)
 
 --- sieve calls
 --- imap calls
