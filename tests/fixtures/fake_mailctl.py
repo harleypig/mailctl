@@ -20,6 +20,8 @@ faults to inject, so a test can watch a check go red:
 - ``switch-uploads``  -- ``disable-rule --dry-run`` uploads anyway
 - ``mark-writes``     -- ``mark --dry-run`` flags its message anyway
 - ``mark-reports-change`` -- ``mark --dry-run`` says it marked something
+- ``probe-not-json``  -- ``probe --json`` prints the human report instead
+- ``probe-no-mail``   -- ``probe --json`` has no mail section
 """
 
 import json
@@ -92,6 +94,43 @@ DIFF = """\
 
 [dry-run] the script was NOT uploaded.
 """
+
+
+# The shape of 'mailctl probe --json' (tests/snapshots/cli/probe-json.txt),
+# cut down.
+PROBE = {
+    "version": 1,
+    "taken": "2026-09-29T14:30:05Z",
+    "provider": "mxroute",
+    "endpoints": [{"label": "IMAP", "value": "mail.example.com:993"}],
+    "rules": {
+        "identity": {"implementation": "Dovecot Pigeonhole"},
+        "capabilities_after_login": False,
+        "capabilities": [{"name": "SASL", "value": "PLAIN"}],
+        "extensions": ["fileinto"],
+        "active_rule_set": "managesieve",
+    },
+    "mail": {
+        "identity": {"name": "Dovecot"},
+        "capabilities_after_login": True,
+        "capabilities": [{"name": "IMAP4REV1", "value": None}],
+        "delimiter": ".",
+        "namespaces": [{"kind": "personal", "prefix": "", "delimiter": "."}],
+    },
+}
+
+
+# ----------------------------------------------------------------------------
+def probe() -> str:
+    if "probe-not-json" in BREAK:
+        return "Probe of mxroute, taken 2026-09-29T14:30:05Z\n"
+
+    document = dict(PROBE)
+
+    if "probe-no-mail" in BREAK:
+        document["mail"] = None
+
+    return json.dumps(document, indent=2) + "\n"
 
 
 # ----------------------------------------------------------------------------
@@ -291,6 +330,9 @@ def main() -> int:
 
         if "password-unset" in BREAK:
             out = out.replace("Password:  set (via file)", "Password:  unset")
+
+    elif command == "probe":
+        out = probe()
 
     elif command == "show":
         out = show()

@@ -5,6 +5,7 @@ Not a test module. The fixtures built on these -- ``fake_sieve`` and
 """
 
 from mailctl import MailctlError
+from mailctl.components.managesieve.capabilities import Capabilities
 from mailctl.criteria import Criteria
 from mailctl.engine import Session
 from mailctl.providers.mxroute import MXROUTE, MxrouteTransport
@@ -35,9 +36,16 @@ class FakeSieveSession:
         self.reject = False
         self.calls: list[tuple] = []
 
+        # CAPABILITY lines sent besides SIEVE, as (name, value) pairs.
+        self.extra: list[tuple[str, str | None]] = []
+
     # ------------------------------------------------------------------------
     def capabilities(self):
         return list(self.caps)
+
+    # ------------------------------------------------------------------------
+    def server_capabilities(self):
+        return Capabilities((*self.extra, ("SIEVE", " ".join(self.caps))))
 
     # ------------------------------------------------------------------------
     def list_scripts(self):

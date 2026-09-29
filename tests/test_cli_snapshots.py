@@ -77,8 +77,11 @@ class FakeSieveClient:
     """A stand-in for ``SieveClient`` with a script store."""
 
     # ------------------------------------------------------------------------
-    def __init__(self, caps, active, script, reject, others=None, stray=0):
+    def __init__(
+        self, caps, active, script, reject, others=None, stray=0, extra=b""
+    ):
         self.caps = caps
+        self.extra = extra
         self.stray = stray
         self.scripts = {} if active is None else {active: script}
         self.scripts.update(others or {})
@@ -116,7 +119,9 @@ class FakeSieveClient:
     # ------------------------------------------------------------------------
     @property
     def capability_response(self) -> bytes:
-        return b'"SIEVE" "%s"\r\n' % " ".join(self.caps).encode()
+        sieve = b'"SIEVE" "%s"\r\n' % " ".join(self.caps).encode()
+
+        return self.extra + sieve
 
     # ------------------------------------------------------------------------
     def checkscript(self, content):
@@ -165,7 +170,9 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # (the text of a .env written, mode 0600, into the directory the command
 # runs in), mail / flags
 # (extra messages and their IMAP flags, by UID), and stray (how many empty
-# names the script listing carries).
+# names the script listing carries), sieve_extra (raw CAPABILITY lines
+# sent ahead of SIEVE), imap_caps (what IMAP advertises), and password
+# (MAILCTL_PASSWORD's value).
 
 # Host from the env file over the exported MAILCTL_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
@@ -319,6 +326,20 @@ if header :contains "subject" "x\x1b]0;pwn\x07y"
 }
 """
 
+# What a Dovecot sends about itself, for the probe scenarios: the
+# ManageSieve lines around SIEVE (a hostile one included, to be escaped),
+# and IMAP answering ID and NAMESPACE.
+PROBE = {
+    "sieve_extra": (
+        b'"IMPLEMENTATION" "Dovecot Pigeonhole"\r\n'
+        b'"SASL" "PLAIN"\r\n'
+        b'"NOTIFY" "mailto"\r\n'
+        b'"X-HOSTILE" "\x1b[31mred\x07"\r\n'
+        b'"VERSION" "1.0"\r\n'
+    ),
+    "imap_caps": {"ID", "IMAP4REV1", "MOVE", "NAMESPACE", "UIDPLUS"},
+}
+
 HOSTILE = {
     "add-like-hostile": (
         [
@@ -351,6 +372,12 @@ HOSTILE = {
     ),
     "show-hostile": (["show"], {"script": HOSTILE_SCRIPT}),
     "rules-hostile": (["rules"], {"script": HOSTILE_SCRIPT}),
+    # #101: every line of both CAPABILITY answers, the identities, and the
+    # namespaces, sorted -- a server's own text escaped like mail's.
+    "probe": (["probe"], PROBE),
+    "probe-json": (["probe", "--json"], PROBE),
+    # --verbose's chatter goes to stderr, so stdout stays one document.
+    "probe-json-verbose": (["probe", "--json", "-v"], PROBE),
 }
 
 SCENARIOS = {
@@ -449,6 +476,9 @@ SCENARIOS = {
     "rules": (["rules"], {}),
     "folders": (["folders"], {}),
     "test": (["test"], {}),
+    # A server that advertises neither ID nor NAMESPACE, and sends only
+    # the SIEVE line: the report says so rather than leaving gaps.
+    "probe-bare": (["probe"], {}),
     "test-verbose": (["test", "-v"], {}),
     "test-env-file": (
         ["test", "--env-file", "--sieve-port", "4192"],
@@ -1126,6 +1156,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         options.get("reject", False),
         options.get("others"),
         options.get("stray", 0),
+        options.get("sieve_extra", b""),
     )
 
     imap.messages = {
@@ -1137,6 +1168,9 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         **options.get("mail", {}),
     }
     imap.flags = options.get("flags", {})
+
+    if "imap_caps" in options:
+        imap.caps = set(options["imap_caps"])
 
     monkeypatch.setattr(sieve_client, "SieveClient", lambda *a, **k: sieve)
     if "file" in options:
@@ -1159,7 +1193,9 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
 
     monkeypatch.setenv("MAILCTL_HOST", "mail.example.com")
     monkeypatch.setenv("MAILCTL_USER", "user@example.com")
-    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
+    monkeypatch.setenv(
+        "MAILCTL_PASSWORD", options.get("password", "not-a-real-password")
+    )
     monkeypatch.setattr(sys, "stdin", io.StringIO(options.get("stdin", "")))
 
     out, err = Stdout(tty=options.get("tty", False)), io.StringIO()
@@ -1181,7 +1217,10 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         # snapshot file itself holds plain LF line endings.
         text = text.replace("\r", "\\r")
 
-        return re.sub(r"\d{8}T\d{6}(\.\d+)?Z?", "<STAMP>", text)
+        text = re.sub(r"\d{8}T\d{6}(\.\d+)?Z?", "<STAMP>", text)
+
+        # 'probe' dates itself, extended form.
+        return re.sub(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", "<STAMP>", text)
 
     sections = [
         scrub(f"$ mailctl {' '.join(argv)}"),
@@ -1238,6 +1277,47 @@ def test_hostile_text_reaches_the_terminal_escaped(
 
     assert "\x1b" not in output
     assert "\x07" not in output
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["probe"],
+        ["probe", "--json"],
+        ["probe", "-v"],
+        ["probe", "--json", "-v"],
+    ],
+    ids=" ".join,
+)
+def test_probe_never_prints_the_password(
+    argv, fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """#101: nothing of the credential reaches stdout, stderr, or the
+    document -- verbose protocol chatter included. The login is checked to
+    have been handed the sentinel, so the absence is not vacuous."""
+    sentinel = "s3ntinel-PROBE-never-shown-4b1d"
+    logins = []
+    login = fake_imap.login
+
+    def recording_login(user, password):
+        logins.append(password == sentinel)
+        login(user, password)
+
+    monkeypatch.setattr(fake_imap, "login", recording_login)
+
+    actual = run_scenario(
+        argv,
+        {**PROBE, "password": sentinel},
+        fake_imap,
+        roundcube_script,
+        monkeypatch,
+        tmp_path,
+    )
+
+    assert logins == [True]
+    assert "exit: 0" in actual
+    assert sentinel not in actual
 
 
 # ----------------------------------------------------------------------------
