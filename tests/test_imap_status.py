@@ -23,6 +23,7 @@ from mailctl.components.imap.status import (
     list_status_arguments,
     parse_status,
 )
+from mailctl.config import Secret
 
 # ############################################################################
 # The parser, on imaplib's shapes
@@ -180,7 +181,12 @@ class ScriptedIMAP4(imaplib.IMAP4):
 # ----------------------------------------------------------------------------
 def scripted_session(server: ScriptedIMAP4) -> ImapSession:
     """An ImapSession whose client's imaplib connection is ``server``."""
-    session = ImapSession("scripted.example", 143, "user", password=str)
+    session = ImapSession(
+        "scripted.example",
+        143,
+        "user",
+        password=lambda: Secret("not-a-real-password"),
+    )
     session.client = SimpleNamespace(_imap=server)  # type: ignore[assignment]
 
     return session

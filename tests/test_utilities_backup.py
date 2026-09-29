@@ -81,6 +81,7 @@ def test_a_restore_is_planned_then_backs_up_and_uploads_exact_bytes(
         live, imap_config, plan, events.append
     )
 
+    assert path is not None
     assert path.read_text() == "current\n"
     assert fake.calls[-2] == ("put_script", "managesieve", plan.after)
     assert [type(event) for event in events] == [
@@ -97,7 +98,8 @@ def test_a_restore_over_an_unparseable_script_is_allowed(
     imap_config.backup_dir = tmp_path / "backups"
     backup = tmp_path / "good.sieve"
     backup.write_text(roundcube_script)
-    live = mxroute(sieve=FakeSieveSession(script="if {{{ broken"))
+    fake = FakeSieveSession(script="if {{{ broken")
+    live = mxroute(sieve=fake)
 
     utilities.backup.execute_restore(
         live,
@@ -107,14 +109,15 @@ def test_a_restore_over_an_unparseable_script_is_allowed(
         ),
     )
 
-    assert "put_script" in live.transport.sieve.names()
+    assert "put_script" in fake.names()
 
 
 # ----------------------------------------------------------------------------
 def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
     backup = tmp_path / "same.sieve"
     backup.write_text("same\n")
-    live = mxroute(sieve=FakeSieveSession(script="same\n"))
+    fake = FakeSieveSession(script="same\n")
+    live = mxroute(sieve=fake)
 
     plan = utilities.backup.plan_restore(
         live, utilities.backup.read_backup_file(backup)
@@ -122,7 +125,7 @@ def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
 
     assert not plan.changes
     assert utilities.backup.execute_restore(live, imap_config, plan) is None
-    assert "put_script" not in live.transport.sieve.names()
+    assert "put_script" not in fake.names()
 
 
 # ----------------------------------------------------------------------------

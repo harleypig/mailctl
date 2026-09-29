@@ -28,6 +28,7 @@ from mailctl.components.managesieve import (
 from mailctl.components.managesieve import script as script_module
 from mailctl.config import Config, load_config
 from mailctl.criteria import Criteria, canonical_header, escape_sieve_string
+from mailctl.providers import model
 from mailctl.providers.mxroute import MxrouteDialect
 from mailctl.providers.mxroute import managesieve as mxroute_managesieve
 from mailctl.providers.mxroute.sieve import (
@@ -1229,7 +1230,9 @@ def test_a_roundcube_script_without_comments_renders_as_before(
 
 # ----------------------------------------------------------------------------
 def test_a_moved_rule_carries_its_comments_with_it():
-    moved = move_rule(COMMENTED_SCRIPT, "keep-boss", Placement(PLACE_LAST))
+    moved = move_rule(
+        COMMENTED_SCRIPT, "keep-boss", model.Placement(model.PLACE_LAST)
+    )
 
     assert moved.index("# rule:[bin-the-noise]") < moved.index(
         "# this one is for the accountant"
@@ -1345,7 +1348,9 @@ def test_a_disabled_rule_is_a_fixed_point_of_render():
 
 # ----------------------------------------------------------------------------
 def test_a_moved_disabled_rule_keeps_its_test_inline():
-    moved = move_rule(DISABLED_SCRIPT, "paused", Placement(PLACE_LAST))
+    moved = move_rule(
+        DISABLED_SCRIPT, "paused", model.Placement(model.PLACE_LAST)
+    )
 
     assert (
         "# rule:[paused]\n"

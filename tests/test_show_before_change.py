@@ -202,7 +202,7 @@ def test_a_missing_header_is_left_out_rather_than_crashing(absent, capsys):
     so the block degrades rather than fails, and prints no "(none)" row
     to clutter what is left.
     """
-    headers = {
+    headers: dict[str, str | None] = {
         "Date": "Thu, 14 Aug 2026 09:12:03 -0600",
         "To": "harleypig@example.com",
         "From": "boss@example.com",

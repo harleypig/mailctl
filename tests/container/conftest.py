@@ -45,6 +45,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import pytest
 from imapclient import IMAPClient
@@ -456,9 +457,12 @@ class Account:
         ``when`` is the internal date to give it -- the arrival date IMAP's
         SINCE and BEFORE compare -- or None for now.
         """
+        # IMAPClient is unannotated; with unpack=True, append() returns
+        # the server's one response line.
         with self.imap() as client:
-            response = client.append(
-                folder, message, flags=flags, msg_time=when
+            response = cast(
+                bytes,
+                client.append(folder, message, flags=flags, msg_time=when),
             )
 
         # UIDPLUS: "[APPENDUID <validity> <uid>] Append completed."

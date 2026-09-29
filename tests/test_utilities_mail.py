@@ -11,6 +11,7 @@ conftest, so folder normalization and planning run for real.
 """
 
 import email
+import email.message
 
 import pytest
 from utilities_support import criteria
