@@ -9,5 +9,3 @@ mailctl: no action requested -- use --fileinto, --discard, --mark-read, --flag, 
 ('connect',)
 ('logout',)
 --- imap calls
-('login', 'user@example.com')
-('logout',)

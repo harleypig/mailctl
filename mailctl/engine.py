@@ -251,16 +251,14 @@ def connect(
     rules: bool = True,
     mail: bool = True,
     progress: Progress | None = None,
-    eager: bool = False,
 ) -> Iterator[Session]:
     """A session on the configured provider, closed when the block ends.
 
     ``rules`` is the half that stores rules, ``mail`` the half that holds
     messages and folders; each says whether the session may connect it,
-    and it connects only when first used -- unless ``eager``, when both
-    are connected before the block starts, as :meth:`Session.open_all`
-    does. The configuration is validated first, so an unknown provider or
-    a setting it refuses costs no connection.
+    and it connects only when first used; :meth:`Session.open_all`
+    connects both up front. The configuration is validated first, so an
+    unknown provider or a setting it refuses costs no connection.
     """
     provider = provider_for(config)
     check_settings(provider, config)
@@ -274,9 +272,6 @@ def connect(
     )
 
     try:
-        if eager:
-            session.open_all()
-
         yield session
 
     finally:

@@ -228,16 +228,14 @@ def progress_from_args(args):
 def connect(config, args, *, rules: bool = True, mail: bool = False):
     """Open the provider with this invocation's progress reporting.
 
-    A command opens the halves it names up front, as it always has, so
-    what it connects to -- and in what order -- does not depend on how
-    far it gets before stopping.
+    Each half connects the first time the command uses it, so a command
+    that fails on its own input fails before any login or password prompt.
     """
     return engine.connect(
         config,
         rules=rules,
         mail=mail,
         progress=progress_from_args(args),
-        eager=True,
     )
 
 

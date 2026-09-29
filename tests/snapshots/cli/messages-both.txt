@@ -7,5 +7,3 @@ mailctl: give criteria or a raw IMAP search expression, not both
 
 --- sieve calls
 --- imap calls
-('login', 'user@example.com')
-('logout',)
