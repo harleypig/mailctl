@@ -97,6 +97,18 @@ BUG FIXES:
   still shows as disabled in webmail; before, that comment was dropped
   and the rule no longer did. `/* ... */` comments are still dropped.
 
+* **Replacing a disabled rule keeps it disabled, the way webmail shows
+  it** ([#168]). `mailctl add --replace` on a rule switched off in
+  Roundcube wrote the new rule inside an `if false { ... }` block, which
+  never runs but which webmail shows as enabled. The replacement is now
+  written as Roundcube writes a disabled rule -- `if false # <the new
+  test>` -- so it stays switched off, shows as disabled in webmail and in
+  `mailctl rules`, and `mailctl enable-rule` turns on the new test. The
+  old rule's test goes with it. A rule left in the `if false { ... }`
+  form by an earlier replace is rewritten the same way the next time it
+  is replaced. A new test that cannot fit on one line is refused while
+  the rule is disabled: enable it first, then replace it.
+
 NOTES:
 
 * **The engine is split into the session and the utilities; no behaviour
@@ -918,3 +930,4 @@ NOTES:
 [#49]: https://github.com/harleypig/mailctl/issues/49
 [#148]: https://github.com/harleypig/mailctl/issues/148
 [#149]: https://github.com/harleypig/mailctl/issues/149
+[#168]: https://github.com/harleypig/mailctl/issues/168

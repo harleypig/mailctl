@@ -27,6 +27,7 @@ from mailctl.components.managesieve import (
 from mailctl.components.managesieve import script as script_module
 from mailctl.config import Config, load_config
 from mailctl.criteria import Criteria, escape_sieve_string
+from mailctl.providers.mxroute import MxrouteDialect
 from mailctl.providers.mxroute import managesieve as mxroute_managesieve
 from mailctl.providers.mxroute.sieve import (
     disable_rule,
@@ -1350,13 +1351,154 @@ def test_a_moved_disabled_rule_keeps_its_test_inline():
 
 
 # ----------------------------------------------------------------------------
-def test_a_replaced_disabled_rule_drops_the_stale_test():
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_a_replaced_disabled_rule_drops_the_stale_test(newline):
     """The comment describes the old test, so it does not outlive it."""
     merged = merge_simple(
-        DISABLED_SCRIPT, "paused", "INBOX.Other", replace=True
+        DISABLED_SCRIPT.replace("\n", newline),
+        "paused",
+        "INBOX.Other",
+        replace=True,
     )
 
     assert "invoice" not in merged
+    assert 'fileinto "INBOX.Bills"' not in merged
+
+
+# The paused rule after `add --replace` gives it merge_simple's test and
+# body: still disabled, in Roundcube's form, with the new test after
+# `false` (#168).
+REPLACED_DISABLED = (
+    "# rule:[paused]\n"
+    'if false # anyof (header :contains "From" "a@example.com")\n'
+    "{\n"
+    '    fileinto "INBOX.Other";\n'
+    "    stop;\n"
+    "}\n"
+    "# rule:[bin-the-noise]\n"
+)
+
+# The same paused rule as sievelib's own disablefilter writes it, the
+# whole rule wrapped in `if false { ... }`.
+SIEVELIB_DISABLED_SCRIPT = """require ["fileinto"];
+# rule:[paused]
+if false {
+    if anyof (header :contains "subject" "invoice") {
+        fileinto "INBOX.Bills";
+        stop;
+    }
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter" {
+    fileinto "INBOX.Noise";
+    stop;
+}
+"""
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "script",
+    [
+        DISABLED_SCRIPT,
+        DISABLED_SCRIPT.replace("\n", "\r\n"),
+        SIEVELIB_DISABLED_SCRIPT,
+    ],
+    ids=["roundcube-lf", "roundcube-crlf", "sievelib"],
+)
+def test_a_replaced_disabled_rule_stays_disabled_in_roundcubes_form(
+    script, reparse
+):
+    """Red while sievelib's updatefilter wraps the replacement in
+    ``if false { if <test> { ... } }``, which Roundcube shows as enabled
+    (#168)."""
+    merged = merge_simple(script, "paused", "INBOX.Other", replace=True)
+
+    assert REPLACED_DISABLED in merged
+
+    after_if = merged.split("# rule:[paused]\nif", 1)[1]
+
+    assert ROUNDCUBE_DISABLED.match(after_if)
+    assert merged.count("if false") == 1
+    assert [rule.disabled for rule in MxrouteDialect.read_rules(merged)] == [
+        True,
+        False,
+    ]
+    reparse(merged)
+
+
+# ----------------------------------------------------------------------------
+def test_a_replaced_disabled_rule_is_read_with_its_new_test():
+    """What ``mailctl rules`` lists: still disabled, with the new test."""
+    merged = merge_simple(
+        DISABLED_SCRIPT, "paused", "INBOX.Other", replace=True
+    )
+    fresh = merge_simple("", "paused", "INBOX.Other")
+
+    paused = MxrouteDialect.read_rules(merged)[0]
+
+    assert paused.disabled
+    assert paused.modelled
+    assert paused.tests == MxrouteDialect.read_rules(fresh)[0].tests
+    assert paused.actions == ("fileinto", "stop")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_a_replaced_disabled_rule_enables_to_the_new_test(newline, reparse):
+    merged = merge_simple(
+        DISABLED_SCRIPT.replace("\n", newline),
+        "paused",
+        "INBOX.Other",
+        replace=True,
+    )
+
+    enabled = enable_rule(merged, "paused")
+
+    assert (
+        "# rule:[paused]\n"
+        'if anyof (header :contains "From" "a@example.com") {\n'
+        '    fileinto "INBOX.Other";\n'
+        "    stop;\n"
+        "}\n"
+    ) in enabled
+    assert "if false" not in enabled
+    reparse(enabled)
+
+
+# ----------------------------------------------------------------------------
+def test_a_multi_line_replacement_of_a_disabled_rule_is_refused():
+    """A comment ends at the line's end, so the test cannot be kept after
+    ``if false``; enabling the rule first is the way through."""
+    with pytest.raises(
+        MailctlError, match=r"'paused' cannot be replaced while disabled"
+    ) as error:
+        merge_rule(
+            DISABLED_SCRIPT,
+            "paused",
+            [("Subject", ":contains", "two\nlines")],
+            [("fileinto", "INBOX.Other")],
+            replace=True,
+        )
+
+    assert "enable-rule" in str(error.value)
+
+
+# ----------------------------------------------------------------------------
+def test_a_multi_line_replacement_of_an_enabled_rule_still_goes_ahead(
+    reparse,
+):
+    """The control: only the disabled form needs the test on one line."""
+    merged = merge_rule(
+        DISABLED_SCRIPT,
+        "bin-the-noise",
+        [("Subject", ":contains", "two\nlines")],
+        [("fileinto", "INBOX.Other")],
+        replace=True,
+    )
+
+    assert '"two\nlines"' in merged
+    reparse(merged)
 
 
 # ############################################################################
@@ -1434,15 +1576,14 @@ def test_a_rule_roundcube_disabled_is_enabled(newline, reparse):
 # ----------------------------------------------------------------------------
 def test_a_rule_sievelib_disabled_is_enabled_too(reparse):
     """sievelib's disablefilter wraps the rule in ``if false { ... }``,
-    which is what a --replace of a disabled rule currently writes."""
-    wrapped = merge_simple(
-        DISABLED_SCRIPT, "paused", "INBOX.Other", replace=True
-    )
-
-    enabled = enable_rule(wrapped, "paused")
+    which a --replace of a disabled rule wrote before #168."""
+    enabled = enable_rule(SIEVELIB_DISABLED_SCRIPT, "paused")
 
     assert "if false" not in enabled
-    assert 'fileinto "INBOX.Other";' in enabled
+    assert (
+        'if anyof (header :contains "subject" "invoice") {\n'
+        '    fileinto "INBOX.Bills";\n'
+    ) in enabled
     reparse(enabled)
 
 
