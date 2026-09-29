@@ -320,6 +320,15 @@ ENHANCEMENTS:
 
 BUG FIXES:
 
+* **`mailctl add --before ""` and `--after ""` are refused instead of
+  appending the rule** ([#196]). An empty rule name was read as no
+  placement at all, so the rule quietly went to the end. `add` now refuses
+  it before connecting, with the same message `move-rule` gives:
+  `--before and --after need a rule name`.
+  Also fixed alongside it: `mailctl help optimize-rules` printed
+  `{rule_language}` literally in its `--activate` help; it now names the
+  provider's rule language, as every other `--activate` does.
+
 * **Running `apply --keep` again no longer copies the same mail twice**
   ([#192]). `apply --fileinto X --keep` leaves the originals where they
   are, so they still match next time, and every re-run -- from cron, or
@@ -1247,4 +1256,5 @@ NOTES:
 [#39]: https://github.com/harleypig/mailctl/issues/39
 [#188]: https://github.com/harleypig/mailctl/issues/188
 [#192]: https://github.com/harleypig/mailctl/issues/192
+[#196]: https://github.com/harleypig/mailctl/issues/196
 [#10]: https://github.com/harleypig/mailctl/issues/10

@@ -600,18 +600,27 @@ def placement_from_args(args) -> Placement | None:
     branches only decides which attribute is read first, never which flag
     wins. None means no flag was given, which ``resolve_position`` reads as
     "append a new rule, leave an existing one alone".
+
+    Raises ``MailctlError`` for ``--before ""`` or ``--after ""``: argparse
+    accepts an empty name, and reading it as no flag would quietly append.
     """
+    before = getattr(args, "place_before", None)
+    after = getattr(args, "place_after", None)
+
+    if before == "" or after == "":
+        raise MailctlError("--before and --after need a rule name")
+
     if getattr(args, "place_first", False):
         return Placement(PLACE_FIRST)
 
     elif getattr(args, "place_last", False):
         return Placement(PLACE_LAST)
 
-    elif getattr(args, "place_before", None):
-        return Placement(PLACE_BEFORE, args.place_before)
+    elif before is not None:
+        return Placement(PLACE_BEFORE, before)
 
-    elif getattr(args, "place_after", None):
-        return Placement(PLACE_AFTER, args.place_after)
+    elif after is not None:
+        return Placement(PLACE_AFTER, after)
 
     return None
 
@@ -2759,12 +2768,11 @@ def cmd_move_rule(args) -> int:
     config = configure(args)
     utilities.rules.check_move(config)
 
-    # argparse requires one position flag, but an empty --before or
-    # --after name reads as none given.
+    # argparse requires one position flag, and an empty --before or --after
+    # name is refused, so there is always a placement.
     placement = placement_from_args(args)
 
-    if placement is None:
-        raise MailctlError("--before and --after need a rule name")
+    assert placement is not None
 
     with connect(config, args) as sessions:
         plan = utilities.rules.plan_move(
@@ -4459,7 +4467,7 @@ def build_parser(
     )
     optimize.add_argument("--script", help="script name; default active")
     optimize.add_argument(
-        "--activate", action="store_true", help=ACTIVATE_HELP
+        "--activate", action="store_true", help=activate_help
     )
     optimize.add_argument(
         "--skip",
