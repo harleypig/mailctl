@@ -8,7 +8,7 @@ backs up first.
 
 import re
 import unicodedata
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -596,7 +596,7 @@ def execute_script_change(
     is stored -- so neither a dry run nor a rejected script leaves a stray
     folder, and the rule never goes live pointing at a missing one.
     """
-    before_put = None
+    before_put: Callable[[], None] | None = None
 
     if isinstance(plan, RulePlan):
         session.dialect.check_actions(config, plan.actions)
@@ -605,8 +605,10 @@ def execute_script_change(
         )
         folder = plan.folder
 
-        def before_put():
+        def create_target() -> None:
             realize_folder(session, folder, on_event)
+
+        before_put = create_target
 
     return upload_script(
         session,

@@ -21,7 +21,7 @@ import contextlib
 import email
 import socket
 import ssl
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from imapclient import IMAPClient
@@ -636,7 +636,14 @@ class ImapSession:
         wire_key, charset = encode_search_key(key)
 
         try:
-            return list(client.search(wire_key, charset=charset))
+            # IMAPClient is unannotated, so pyright takes ``criteria``'s
+            # type from its "ALL" default; it documents a sequence too.
+            return list(
+                client.search(
+                    wire_key,  # pyright: ignore[reportArgumentType]
+                    charset=charset,
+                )
+            )
 
         except IMAPClientError as exc:
             raise MailctlError(
@@ -808,7 +815,7 @@ class ImapSession:
             self._select(folder, readonly=True)
 
     # ------------------------------------------------------------------------
-    def add_flags(self, uids: list[int], flags: list[str]) -> None:
+    def add_flags(self, uids: list[int], flags: Sequence[str | bytes]) -> None:
         """Set flags on messages in the currently selected folder."""
         client = self._require_client()
         self._log(f"flagging {len(uids)} message(s) with {flags}")
@@ -1053,7 +1060,15 @@ class ImapSession:
         self._log(f"sorting {folder!r} by {' '.join(order)} with {key}")
 
         try:
-            return list(client.sort(order, key, charset=SEARCH_CHARSET))
+            # As in search(): pyright infers ``criteria: str`` from
+            # IMAPClient's default, where a sequence is documented.
+            return list(
+                client.sort(
+                    order,
+                    key,  # pyright: ignore[reportArgumentType]
+                    charset=SEARCH_CHARSET,
+                )
+            )
 
         except IMAPClientError as exc:
             raise MailctlError(

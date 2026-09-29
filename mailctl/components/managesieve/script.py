@@ -314,10 +314,9 @@ class _CommentedFiltersSet(factory.FiltersSet):
         self._plain([], self.requires).tosieve(target)
 
         for entry in self.filters:
-            _write_comments(
-                target, cast(dict[str, Any], entry).get("comments", [])
-            )
-            target.write(_render_entry(self._plain([entry], []), entry))
+            extra = cast(dict[str, Any], entry)
+            _write_comments(target, extra.get("comments", []))
+            target.write(_render_entry(self._plain([entry], []), extra))
 
         _write_comments(target, self.trailing_comments)
 
@@ -464,7 +463,7 @@ def _parse_test(comment: str, requires: list[str]) -> commands.Command:
 
     script_parser = parser.Parser()
 
-    if text and script_parser.parse(source):
+    if text and script_parser.parse(source.encode("utf-8")):
         result = [
             command
             for command in script_parser.result
@@ -636,7 +635,7 @@ def parse_script(
     script_parser = parser.Parser()
     source = dialect.read(text)
 
-    if not script_parser.parse(source):
+    if not script_parser.parse(source.encode("utf-8")):
         raise MailctlError(
             "the existing Sieve script could not be parsed, so merging into "
             "it would risk losing rules: "
@@ -811,9 +810,17 @@ def _build_rule(
         if test.extension is not None:
             filters.require(test.extension)
 
-        combinator.check_next_arg("test", test)
+        # sievelib annotates ``avalue`` as str, but a "test" argument is a
+        # Command -- its own factory and parser pass one, as here.
+        combinator.check_next_arg(
+            "test",
+            test,  # pyright: ignore[reportArgumentType]
+        )
 
-    rule.check_next_arg("test", combinator)
+    rule.check_next_arg(
+        "test",
+        combinator,  # pyright: ignore[reportArgumentType]
+    )
 
     for name, *arguments in actions:
         action = commands.get_command_instance(name, rule, False)
