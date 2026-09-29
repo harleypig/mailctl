@@ -2234,6 +2234,43 @@ def test_another_hosts_help_says_nothing_about_mxroute(
     assert "Manage Fakehost Fakescript filters" in pages["(top)"]
 
 
+# A str.format field nobody filled in, such as "{rule_language}". Choice
+# lists argparse prints ("{starttls,ssl,none}") hold commas, so never match.
+PLACEHOLDER = re.compile(r"\{[A-Za-z_]\w*\}")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("provider", ["mxroute", "fake"])
+def test_no_help_page_leaves_a_placeholder_unfilled(
+    fakes, capsys, monkeypatch, provider
+):
+    """Every help page is written in the provider's words, filled in.
+
+    Red if any help text is a template passed on unformatted, as
+    optimize-rules' --activate was.
+    """
+    monkeypatch.setenv("MAILCTL_PROVIDER", provider)
+    pages = {"(top)": help_text(capsys)}
+
+    for name in commands_for(provider):
+        pages[name] = help_text(capsys, name)
+
+    found = {
+        name: sorted(set(PLACEHOLDER.findall(text)))
+        for name, text in pages.items()
+        if PLACEHOLDER.search(text)
+    }
+
+    assert found == {}
+
+
+# ----------------------------------------------------------------------------
+def test_the_placeholder_check_sees_an_unfilled_template():
+    """The check above, pointed at a template it should catch."""
+    assert PLACEHOLDER.findall(cli.ACTIVATE_HELP) == ["{rule_language}"]
+    assert not PLACEHOLDER.search("--sieve-tls {starttls,ssl,none}")
+
+
 # ----------------------------------------------------------------------------
 def test_the_host_words_check_sees_mxroutes_help(capsys):
     """The check above, pointed at a host it should catch."""

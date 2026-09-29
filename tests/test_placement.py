@@ -274,6 +274,30 @@ def test_move_rule_with_an_empty_anchor_is_refused_before_connecting(
         cli.cmd_move_rule(args)
 
 
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("flag", ["--before", "--after"])
+def test_add_with_an_empty_anchor_is_refused_before_connecting(
+    monkeypatch, flag
+):
+    """An empty name satisfies argparse but gives no placement, so ``add``
+    would quietly append the rule at the end instead (#196).
+
+    Red if the refusal is removed: the command reaches ``connect``, which
+    fails here with a different message.
+    """
+
+    def no_connect(*_args, **_kwargs):
+        raise AssertionError("connected before refusing")
+
+    monkeypatch.setattr(cli, "connect", no_connect)
+    args = build_parser().parse_args(
+        ["add", "--from", "a@b.c", "--fileinto", "X", flag, ""]
+    )
+
+    with pytest.raises(MailctlError, match="need a rule name"):
+        cli.cmd_add(args)
+
+
 # ############################################################################
 # What the analysis does with it
 # ############################################################################

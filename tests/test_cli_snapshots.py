@@ -1883,6 +1883,11 @@ SCENARIOS = {
         ["add", *GITHUB, "--before", "2026-09-01", "--fileinto", "Lists"],
         {},
     ),
+    # #196: an empty anchor is refused before connecting, not appended.
+    "add-before-empty": (
+        ["add", *GITHUB, "--before", "", "--fileinto", "Lists"],
+        {},
+    ),
     "add-filter-state-refused": (
         ["add", "--filter", "<FILE>", "--fileinto", "Lists"],
         {
