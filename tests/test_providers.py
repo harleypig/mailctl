@@ -103,6 +103,7 @@ FULL = ProviderCapabilities(
     raw_query=True,
     mark=True,
     folder_counts=True,
+    uidvalidity=True,
     specifics={"fake.label": Specific(str, "a label to add")},
 )
 
@@ -413,6 +414,8 @@ class FakeTransport(Transport):
         # Each folder's (messages, unseen, size).
         self.counts = {"INBOX": (2, 1, 512), "INBOX.Lists": (0, 0, 0)}
         self.mail_caps: list[str] = []
+        # What each folder's UIDs are valid under; one not named has 42.
+        self.validity: dict[str, int] = {}
 
     # ------------------------------------------------------------------------
     @classmethod
@@ -502,6 +505,9 @@ class FakeTransport(Transport):
 
     def search_messages(self, folder, expression):
         return sorted(self.messages)
+
+    def uidvalidity(self, folder):
+        return self.validity.get(folder, 42)
 
     def fetch_headers(self, uids, folder):
         return [self._fetched(uid, folder) for uid in sorted(uids)]
@@ -616,6 +622,7 @@ UNORDERED = Provider(
         raw_query=False,
         mark=True,
         folder_counts=True,
+        uidvalidity=True,
         declined=frozenset(("move_rule", "position", "rearrange_rules")),
     ),
     UnorderedDialect,
@@ -646,6 +653,7 @@ STOPLESS = Provider(
         raw_query=False,
         mark=True,
         folder_counts=True,
+        uidvalidity=True,
     ),
     StoplessDialect,
     StoplessTransport,
@@ -820,6 +828,15 @@ def drive(session: Session, config: Config) -> None:
     add, remove = utilities.flags.mark_flags(read=True, flagged=False)
     marks = utilities.flags.plan_mark(session, "INBOX", [7, 8], add, remove)
     utilities.flags.execute_mark(session, marks)
+
+    # The same UIDs, pinned to the value the host reports for them.
+    pin = utilities.uids.current_uidvalidity(session, "INBOX")
+    pinned = utilities.flags.plan_mark(
+        session, "INBOX", [7], ("$Todo",), (), pin
+    )
+    utilities.flags.execute_mark(session, pinned)
+    utilities.messages.read_message(session, "INBOX", 7, pin)
+    utilities.mail.criteria_like(session, "INBOX", 7, uidvalidity=pin)
 
     utilities.folders.list_folder_counts(session)
     utilities.senders.count_senders(session, "INBOX", criteria)
@@ -1677,6 +1694,10 @@ class BareTransport(FakeTransport):
     def sort_messages(self, folder, order, criteria, expression):
         """No ordered search; the utilities sort what they fetch."""
 
+    @declined
+    def uidvalidity(self, folder):
+        """No numbering a UID is valid under."""
+
 
 # The fake with no connection settings, no ordering, no extensions.
 BARE = Provider(
@@ -1691,8 +1712,10 @@ BARE = Provider(
         raw_query=False,
         mark=False,
         folder_counts=False,
+        uidvalidity=False,
         declined=frozenset(
             (
+                "uidvalidity",
                 "move_rule",
                 "position",
                 "rearrange_rules",
@@ -1898,6 +1921,71 @@ def test_the_fake_really_marked_and_unmarked_the_mail(fakes):
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize("command", ["view", "mark", "search", "add", "apply"])
+def test_uidvalidity_is_offered_only_where_declared(
+    bare, capsys, monkeypatch, command
+):
+    assert "--uidvalidity" in help_text(capsys, command)
+
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    assert "--uidvalidity" not in help_text(capsys, command)
+
+
+# ----------------------------------------------------------------------------
+def test_a_pin_is_refused_by_a_provider_without_uidvalidity(fakes):
+    """Refused, not ignored: an unchecked pin would read as a checked
+    one. Before connecting, for any front-end."""
+    session = fake_session(BARE)
+
+    with pytest.raises(MailctlError, match="'uidvalidity'"):
+        utilities.messages.read_message(session, "INBOX", 7, 5)
+
+    with pytest.raises(MailctlError, match="'uidvalidity'"):
+        utilities.mail.criteria_like(session, "INBOX", 7, uidvalidity=5)
+
+    assert session.opened == ()
+    assert "uidvalidity" in BARE.capabilities.declined
+
+
+# ----------------------------------------------------------------------------
+def test_a_host_without_uidvalidity_still_lists_and_reads(fakes):
+    """The concept is optional: without it nothing is recorded or checked,
+    and the declined operation is never asked. Red if a utility calls it
+    regardless -- the decline raises."""
+    session = fake_session(BARE)
+    criteria = Criteria()
+    criteria.add("From", GITHUB)
+
+    listing = utilities.messages.list_messages(session, "INBOX")
+    content = utilities.messages.read_message(session, "INBOX", 7)
+    like = utilities.mail.criteria_like(session, "INBOX", 7)
+    plan = utilities.mail.plan_mail(
+        session, criteria, ActionSpec(fileinto="INBOX.Lists"), "INBOX", ""
+    )
+    utilities.mail.execute_mail(session, plan)
+
+    assert listing.uidvalidity is None
+    assert content.uidvalidity is None
+    assert plan.uidvalidity is None
+    assert like.criteria
+
+
+# ----------------------------------------------------------------------------
+def test_the_fake_refuses_a_uid_from_its_own_old_numbering(fakes):
+    """The check reads the host's value through the neutral interface,
+    so a second provider's renumbering is refused the same way."""
+    session = fake_session()
+    fake_transport(session).validity["INBOX"] = 43
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.flags.plan_mark(session, "INBOX", [7], ("\\Seen",), (), 42)
+
+    assert caught.value.code == "uidvalidity_changed"
+    assert fake_transport(session).flags == {}
+
+
+# ----------------------------------------------------------------------------
 def test_counts_are_offered_only_where_declared(bare, capsys, monkeypatch):
     assert "--counts" in help_text(capsys, "folders")
 
@@ -1959,6 +2047,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         (["search", "--raw", "ALL"], "'raw_query'"),
         (["mark", "7", "--flag"], "'mark'"),
         (["folders", "--counts"], "'folder_counts'"),
+        (["view", "7", "--uidvalidity", "5"], "'uidvalidity'"),
     ],
     ids=[
         "placement",
@@ -1970,6 +2059,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         "raw-query",
         "mark",
         "folder-counts",
+        "uidvalidity",
     ],
 )
 def test_a_hidden_option_given_anyway_is_refused_by_name(

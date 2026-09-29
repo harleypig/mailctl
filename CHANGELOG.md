@@ -19,6 +19,27 @@ BUG FIXES:
   network could have written it. ManageSieve has no alerts to show: its
   standard defines no such response code.
 
+* **A UID from an earlier run can be checked against the folder's
+  UIDVALIDITY, and a stale one is refused before anything is used or
+  changed** ([#204]). A UID names one message only while the folder keeps
+  its UIDVALIDITY (RFC 9051 section 2.3.1.1); a server that renumbers a
+  folder, as Dovecot does when one is deleted and made again under the
+  same name, gives it a new one, and a UID kept from before may then name
+  other mail. `search` now shows the value in its listing heading and as
+  `uidvalidity` in `--json`, and `view` and the `mark` and `apply`
+  `--dry-run --json` plans carry it too. `view`, `mark`, and `--like` on
+  `search`, `add`, and `apply` take `--uidvalidity N`: if the folder's is
+  now another, the command exits 1 naming both values, using none of the
+  UIDs and changing nothing; under `--json` the error's `code` is
+  `uidvalidity_changed`. A bare UID works as before, unchecked.
+  `--uidvalidity` without `--like` on `search`, `add`, or `apply`, and a
+  value outside 1 to 4294967295, are refused before connecting. Within one
+  run, `mark` and `apply` also check the value again just before writing,
+  so a folder renumbered while the confirmation was open is refused too.
+  Reading the value costs no request of its own: the `SELECT` or `EXAMINE`
+  each command already sends reports it. A provider that has no such
+  value does not offer `--uidvalidity` and refuses it by name.
+
 ## 0.9.0
 
 BREAKING CHANGES:
@@ -1276,3 +1297,4 @@ NOTES:
 [#196]: https://github.com/harleypig/mailctl/issues/196
 [#10]: https://github.com/harleypig/mailctl/issues/10
 [#205]: https://github.com/harleypig/mailctl/issues/205
+[#204]: https://github.com/harleypig/mailctl/issues/204

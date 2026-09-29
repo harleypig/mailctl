@@ -38,6 +38,9 @@ MXROUTE = Provider(
         mark=True,
         # IMAP LIST-STATUS (RFC 5819), where the server advertises it.
         folder_counts=True,
+        # IMAP's UIDVALIDITY, reported by SELECT and EXAMINE (RFC 9051
+        # section 2.3.1.1).
+        uidvalidity=True,
         settings={
             "host": "MXRoute server hostname",
             "imap_host": "",

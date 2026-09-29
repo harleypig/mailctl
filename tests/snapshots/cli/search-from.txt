@@ -1,7 +1,7 @@
 $ mailctl search --from noreply@github.com
 exit: 0
 --- stdout
-2 message(s) in 'INBOX', newest first:
+2 message(s) in 'INBOX' (UIDVALIDITY 1727000000), newest first:
      UID  Received               Size  Mark  From                          Subject
        2  2026-02-03 04:05:06    121B  N     Someone <noreply@github.com>  Issue closed
        1  2026-02-03 04:05:06    118B        Someone <noreply@github.com>  PR opened

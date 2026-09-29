@@ -502,6 +502,8 @@ def criteria_given(args) -> Criteria:
     if args.derive is not None and args.like is None:
         raise MailctlError("--derive needs --like UID")
 
+    require_like_for_uidvalidity(args)
+
     if args.filter_file is None:
         if not flags and args.like is None:
             raise MailctlError(NO_CRITERIA)
@@ -566,6 +568,7 @@ def message_like(sessions, config, args, explicit: Criteria, file=None):
         args.like,
         explicit,
         args.derive or "auto",
+        args.uidvalidity,
     )
 
     print_message(
@@ -3081,6 +3084,8 @@ def cmd_search(args) -> int:
     if args.derive is not None and args.like is None:
         raise MailctlError("--derive needs --like UID")
 
+    require_like_for_uidvalidity(args)
+
     if args.uids_only and (args.json or args.build_filter):
         raise MailctlError(
             "--uids-only prints a listing's UIDs; it cannot be combined with "
@@ -3191,9 +3196,16 @@ def print_listing(listing) -> int:
 
         return 0
 
+    validity = (
+        ""
+        if listing.uidvalidity is None
+        else f" (UIDVALIDITY {listing.uidvalidity})"
+    )
+
     print(
         f"{len(listing.messages)} message(s) in "
-        f"{safe_line(listing.folder)!r}, {order_words(listing.order)}:"
+        f"{safe_line(listing.folder)!r}{validity}, "
+        f"{order_words(listing.order)}:"
     )
     print(
         f"{'UID':>8}  {'Received':<19}  {'Size':>6}  {'Mark':<4}  "
@@ -3257,7 +3269,7 @@ def cmd_view(args) -> int:
 
     with connect(config, args, rules=False, mail=True) as sessions:
         content = utilities.messages.read_message(
-            sessions, config.source_folder, args.uid
+            sessions, config.source_folder, args.uid, args.uidvalidity
         )
 
     if args.json:
@@ -3336,7 +3348,12 @@ def cmd_mark(args) -> int:
 
     with connect(config, args, rules=False, mail=True) as sessions:
         plan = utilities.flags.plan_mark(
-            sessions, config.source_folder, args.uids, add, remove
+            sessions,
+            config.source_folder,
+            args.uids,
+            add,
+            remove,
+            args.uidvalidity,
         )
 
         if args.json:
@@ -3697,7 +3714,9 @@ def criteria_parser(
 
 
 # ----------------------------------------------------------------------------
-def criteria_source_parser() -> argparse.ArgumentParser:
+def criteria_source_parser(
+    offer: engine.ProviderCapabilities,
+) -> argparse.ArgumentParser:
     """The other two ways add and apply take criteria: a filter document,
     or a message to take them from."""
     parser = argparse.ArgumentParser(add_help=False)
@@ -3723,8 +3742,31 @@ def criteria_source_parser() -> argparse.ArgumentParser:
         help="with --like, headers to derive from, comma separated "
         "(default: auto -- List-Id if present, else From)",
     )
+    add_uidvalidity(group, offer, "the --like UID")
 
     return parser
+
+
+# ----------------------------------------------------------------------------
+def add_uidvalidity(parser, offer: engine.ProviderCapabilities, what: str):
+    """Attach --uidvalidity, offered where the provider declares it."""
+    parser.add_argument(
+        "--uidvalidity",
+        type=int,
+        metavar="N",
+        help=f"the UIDVALIDITY {what} was listed under, as 'search' shows "
+        f"it; if the folder's is now another, its UIDs have been "
+        f"renumbered and the command is refused, using none of them"
+        if offer.uidvalidity
+        else argparse.SUPPRESS,
+    )
+
+
+# ----------------------------------------------------------------------------
+def require_like_for_uidvalidity(args) -> None:
+    """Refuse --uidvalidity where there is no --like UID for it to check."""
+    if getattr(args, "uidvalidity", None) is not None and args.like is None:
+        raise MailctlError("--uidvalidity needs --like UID")
 
 
 # ----------------------------------------------------------------------------
@@ -3858,7 +3900,7 @@ def build_parser(
     connection = connection_parser(offer, words)
     criteria = criteria_parser(words)
     rule_criteria = criteria_parser(words, dated_before=False)
-    sources = criteria_source_parser()
+    sources = criteria_source_parser(offer)
     actions = action_parser(offer)
     safety = safety_parser()
     mail_safety = mail_safety_parser()
@@ -4247,6 +4289,7 @@ def build_parser(
         help="with --like, headers to derive from, comma separated "
         "(default: auto -- List-Id if present, else From)",
     )
+    add_uidvalidity(search, offer, "the --like UID")
     search.add_argument(
         "--build-filter",
         action="store_true",
@@ -4276,6 +4319,7 @@ def build_parser(
     view.add_argument(
         "--folder", help=f"folder holding it; {FOLDER_DEFAULT_HELP}"
     )
+    add_uidvalidity(view, offer, "the UID")
     shape = view.add_mutually_exclusive_group()
     shape.add_argument(
         "--headers-only",
@@ -4361,6 +4405,7 @@ def build_parser(
     mark.add_argument(
         "--folder", help=f"folder holding them; {FOLDER_DEFAULT_HELP}"
     )
+    add_uidvalidity(mark, offer, "the UIDs")
     seen = mark.add_mutually_exclusive_group()
     seen.add_argument(
         "--read",
@@ -4968,6 +5013,11 @@ ERROR_TEXT = {
     ),
     "no_baseline": lambda message, fields: (
         f"{message}; '{command_for(fields['operation'])}' records one"
+    ),
+    "uidvalidity_changed": lambda message, fields: (
+        f"{message} '{command_for(fields['operation'])}' lists the folder's "
+        f"UIDs as they are now, with the UIDVALIDITY to pass as "
+        f"--uidvalidity."
     ),
     "baseline_other_provider": lambda message, fields: (
         f"{message} '{command_for(fields['operation'])}' replaces it."

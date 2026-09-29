@@ -395,6 +395,10 @@ Say so plainly rather than filling the gap:
   `STATUS=SIZE` are in the 2026-09-28 list, and `folders --counts` has run
   against the container tier's Dovecot 2.4 but not yet against this
   server. The read-only live check's `folder-counts` test settles it.
+- **Whether this server reports `UIDVALIDITY`, and keeps it.** The
+  protocol requires it, and the container tier's Dovecot 2.4 gave a folder
+  deleted and made again a new one; this server has not been read. The
+  read-only live check's `uidvalidity` test settles the first half.
 - **Whether this server's IMAP `CAPABILITY` list changes at login.** Only
   the after-login list is recorded, so the 2026-08-14 count cannot be
   placed against it.
@@ -564,8 +568,10 @@ on 2026-09-28 (*Observed*); the sort has run against the container tier's
 Dovecot, not yet against an MXroute server. `folders --counts`
 ([#157][i157]) uses `LIST-STATUS` to count every folder in one `LIST`, and
 asks for each folder's size too when `STATUS=SIZE` is advertised; without
-`LIST-STATUS` it is refused. It reads `FILTER=SIEVE` only to report on
-it. Of the 43 capabilities seen on 2026-09-28 (*Observed*), these could
+`LIST-STATUS` it is refused. Since [#204][i204] it reads the
+`UIDVALIDITY` every `SELECT` and `EXAMINE` reports (base protocol, RFC 9051
+section 2.3.1.1, so *Documented*), to refuse a UID from before a folder was
+renumbered. It reads `FILTER=SIEVE` only to report on it. Of the 43 capabilities seen on 2026-09-28 (*Observed*), these could
 serve mailctl. Each line says what it might do, not what will be built:
 
 - **`SPECIAL-USE`**: find Trash, Junk, Sent, and Archive by their role
@@ -654,6 +660,7 @@ with `mailctl show`.
 [i157]: https://github.com/harleypig/mailctl/issues/157
 [i158]: https://github.com/harleypig/mailctl/issues/158
 [i159]: https://github.com/harleypig/mailctl/issues/159
+[i204]: https://github.com/harleypig/mailctl/issues/204
 [i82]: https://github.com/harleypig/mailctl/issues/82
 [iana-sieve]: https://www.iana.org/assignments/sieve-extensions
 [rc-script]: https://github.com/roundcube/roundcubemail/blob/cbf2500dd8db31ada3fccf71e247c8d8c852c3d7/plugins/managesieve/lib/Roundcube/rcube_sieve_script.php

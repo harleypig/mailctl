@@ -125,6 +125,7 @@ CAPABILITY_CONSTRUCTS = {
     "raw_query": "search with a query in its own search language",
     "rule_sets": "name or activate one of several rule sets",
     "stop": "end evaluation after a rule",
+    "uidvalidity": "check a message UID against the numbering it came from",
 }
 
 

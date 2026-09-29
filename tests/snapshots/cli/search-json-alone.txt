@@ -4,6 +4,7 @@ exit: 0
 {
   "version": 1,
   "folder": "INBOX",
+  "uidvalidity": 1727000000,
   "more": false,
   "sort": null,
   "messages": [

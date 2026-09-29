@@ -1,0 +1,18 @@
+$ mailctl mark 1 2 --read --uidvalidity 1727000000 --yes
+exit: 0
+--- stdout
+Marking in 'INBOX': set \Seen
+  uid 1        no change  (now: \Seen)
+  uid 2        set \Seen  (now: no flags)
+Marked 1 message(s) in 'INBOX'.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (1, 2))
+('select_folder', 'INBOX', False)
+('add_flags', (2,), (b'\\Seen',))
+('logout',)

@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 from imapclient.exceptions import IMAPClientError
+from utilities_support import DEFAULT_UIDVALIDITY
 
 from mailctl import __version__, cli
 from mailctl.components.managesieve import client as sieve_client
@@ -607,6 +608,11 @@ COUNTED_NO_SIZE = {
     "counts": {"INBOX": (3, 1, 2048), "INBOX.spam": (12, 12, 30822)},
 }
 
+# What the IMAP double's folders report as UIDVALIDITY, and one from
+# before a renumbering (#204).
+CURRENT = str(DEFAULT_UIDVALIDITY)
+STALE = str(DEFAULT_UIDVALIDITY - 1)
+
 JSON_SCENARIOS = {
     "mark-dry-json": (
         ["mark", "1", "2", "--read", "--flag", "--dry-run", "--json"],
@@ -621,6 +627,11 @@ JSON_SCENARIOS = {
         MARKED,
     ),
     "mark-json-nodry": (["mark", "2", "--flag", "--yes", "--json"], MARKED),
+    # #204: a stale pin fails as one JSON line, coded.
+    "mark-stale-uidvalidity-json": (
+        ["mark", "1", "--read", "--uidvalidity", STALE, "--dry-run", "--json"],
+        MARKED,
+    ),
     "list-json": (["list", "--json"], {"others": {"spare": ONE_RULE}}),
     "list-empty-json": (["list", "--json"], {"active": None}),
     # Progress is said on the way, so it goes to stderr with the rest.
@@ -1062,6 +1073,57 @@ SCENARIOS = {
     "mark-already": (["mark", "1", "--read"], MARKED),
     "mark-notty": (["mark", "2", "--flag"], MARKED),
     "mark-missing": (["mark", "1", "98", "99", "--flag"], MARKED),
+    # #204: UIDs pinned to the folder's UIDVALIDITY. A stale pin refuses
+    # the whole command with no STORE; a current one marks as before.
+    "mark-stale-uidvalidity": (
+        ["mark", "1", "2", "--read", "--uidvalidity", STALE, "--yes"],
+        MARKED,
+    ),
+    "mark-uidvalidity-yes": (
+        ["mark", "1", "2", "--read", "--uidvalidity", CURRENT, "--yes"],
+        MARKED,
+    ),
+    "mark-uidvalidity-range": (
+        ["mark", "1", "--read", "--uidvalidity", "0", "--yes"],
+        MARKED,
+    ),
+    "view-stale-uidvalidity": (["view", "4", "--uidvalidity", STALE], MAIL),
+    "view-uidvalidity": (["view", "4", "--uidvalidity", CURRENT], MAIL),
+    "search-like-stale-uidvalidity": (
+        ["search", "--like", "3", "--uidvalidity", STALE],
+        {},
+    ),
+    "search-uidvalidity-no-like": (["search", "--uidvalidity", CURRENT], {}),
+    "add-like-stale-uidvalidity": (
+        [
+            "add",
+            "--like",
+            "3",
+            "--fileinto",
+            "Lists",
+            "--uidvalidity",
+            STALE,
+            "--dry-run",
+        ],
+        {},
+    ),
+    "add-uidvalidity-no-like": (
+        ["add", *GITHUB, "--fileinto", "Lists", "--uidvalidity", CURRENT],
+        {},
+    ),
+    "apply-like-stale-uidvalidity": (
+        [
+            "apply",
+            "--like",
+            "2",
+            "--fileinto",
+            "Lists",
+            "--uidvalidity",
+            STALE,
+            "--yes",
+        ],
+        {},
+    ),
     "mark-read-unread": (["mark", "1", "--read", "--unread"], MARKED),
     "mark-nothing": (["mark", "1"], MARKED),
     "mark-bad-keyword": (["mark", "1", "--keyword", "two words"], MARKED),

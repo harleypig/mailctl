@@ -253,6 +253,12 @@ mailctl mark 4127 --unread --dry-run
 mailctl mark 4127 --folder Lists/News --keyword '$Todo'
 mailctl mark 4127 --unflag --no-keyword '$Todo' --yes
 
+# UIDs kept for a later run can carry the folder's UIDVALIDITY, which
+# 'search' shows: if the server has renumbered the folder since, the
+# command is refused and nothing is used or changed. Also on view, and on
+# search, add, and apply with --like.
+mailctl mark 4127 4128 --read --uidvalidity 1727000000
+
 # Show a folder in webmail, or hide one (it keeps its mail either way).
 mailctl subscribe Lists/News
 mailctl unsubscribe Lists/Noisy --dry-run
@@ -416,9 +422,9 @@ and error handling.
 |---------|----------|
 | `list` | `{"version", "scripts": [{"name", "active"}]}` |
 | `folders` | `{"version", "delimiter", "prefix", "folders": [{"name", "subscribed"}]}`; with `--counts`, each folder also has `"messages", "unseen", "size"` (`null` where the server gave none) |
-| `search` | `{"version", "folder", "more", "sort", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
+| `search` | `{"version", "folder", "uidvalidity", "more", "sort", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
 | `senders` | `{"version", "folder", "by", "messages", "unread", "groups", "senders": [{"key", "name", "total", "unread", "unread_percent"}]}` — busiest first; `messages`, `unread`, and `groups` count everything matched, rows `--top` and `--min` left out included; `key` is `null` for mail with no address or no List-Id |
-| `view` | `{"version", "message": {"uid", "folder", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
+| `view` | `{"version", "message": {"uid", "folder", "uidvalidity", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
 | `rules` | `{"version", "script", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — what else a plan holds depends on the command |
 | `check-baseline` | `{"version", "host", "baseline", "baseline_taken", "taken", "account_recorded", "requires_known", "serious", "informational", "drift": [{"severity", "kind", "half", "name", "before", "after"}]}` |
@@ -441,9 +447,9 @@ and error handling.
   "reason"}`), what was left alone for want of certainty; `considered`
   names the kinds of change looked for.
 * An `apply` plan's `mail` is `null` where the actions leave delivered mail
-  as it is. Otherwise it holds `source`, `destination`, `flags`,
-  `discard`, `moves`, `copies`, `count`, `held`, `unidentified`, and
-  `messages` (each as in `search`). `copies` is `true` for `--keep` with a
+  as it is. Otherwise it holds `source`, `uidvalidity`, `destination`,
+  `flags`, `discard`, `moves`, `copies`, `count`, `held`, `unidentified`,
+  and `messages` (each as in `search`). `copies` is `true` for `--keep` with a
   folder; `held` is the UIDs the folder already has by Message-ID, which
   are not copied again, and `unidentified` the UIDs with no Message-ID,
   which are copied regardless.
@@ -451,6 +457,10 @@ and error handling.
   `{"key", "reverse"}` as `--sort` and `--reverse` gave them, and
   `messages` are in that order. `more` is `true` when there may be
   matches past `--limit`.
+* `uidvalidity` is what the UIDs are valid under in that folder, `null`
+  where the server reports none; `search`, `view`, and the `mark` and
+  `apply` plans carry it. Pass it back as `--uidvalidity` to have a UID
+  checked before it is used.
 * `search --build-filter --json` prints a filter document instead (below),
   and `search --uids-only` prints the matching UIDs, one per line.
 

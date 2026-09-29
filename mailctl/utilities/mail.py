@@ -29,6 +29,12 @@ from ..providers.base import (
 )
 from .events import EventSink
 from .folders import FolderPlan, realize_folder
+from .uids import (
+    check_uidvalidity,
+    current_uidvalidity,
+    read_pinned,
+    require_pinnable,
+)
 
 DEFAULT_MAX_MESSAGES = 500
 
@@ -99,6 +105,10 @@ def plan_mail(
         else []
     )
 
+    # Read while the search's selection of the source is current, so it
+    # costs no round trip; execute_mail checks it again.
+    validity = current_uidvalidity(session, source)
+
     # The rule's own meaning: a discarding rule files nowhere, and an
     # explicit keep outlives the discard (RFC 5228 section 4.4), so only a
     # discard without keep deletes.
@@ -109,6 +119,7 @@ def plan_mail(
         spec.discard and not spec.keep,
         [candidate.summary for candidate in matched],
         keep=spec.keep,
+        uidvalidity=validity,
     )
 
     if not plan.copies or not matched:
@@ -282,7 +293,9 @@ def execute_mail(
     folder: FolderPlan | None = None,
     on_event: EventSink | None = None,
 ) -> MailActionResult:
-    """Carry out an approved plan, re-checking the cap first.
+    """Carry out an approved plan, re-checking the cap and the source's
+    UIDVALIDITY first: UIDs renumbered since the plan was made are refused
+    before anything is created or written.
 
     ``folder`` is the destination's plan; one due for IMAP creation is
     created here, after the decision, rather than while planning.
@@ -293,6 +306,9 @@ def execute_mail(
     destination did not already hold are copied.
     """
     check_message_cap(plan, max_messages)
+
+    if plan.messages and plan.uidvalidity is not None:
+        check_uidvalidity(session, plan.source, plan.uidvalidity)
 
     if folder is not None:
         realize_folder(session, folder, on_event)
@@ -399,6 +415,7 @@ def criteria_like(
     uid: int,
     explicit: Criteria | None = None,
     derive: str = "auto",
+    uidvalidity: int | None = None,
 ) -> LikeMessage:
     """Criteria matching mail like message ``uid`` in ``folder``, read-only.
 
@@ -409,16 +426,28 @@ def criteria_like(
     the server's list; the message is not marked read. The result is not
     validated, so the caller can report ``skipped`` before
     ``require_terms`` refuses an empty set.
+
+    ``uidvalidity`` is what ``uid`` was valid under when it was listed;
+    where the folder's is now another, the message is refused, since the
+    UID may name a different one and a rule would be built from it.
     """
     if uid < 1:
         raise MailctlError(f"message UIDs start at 1, not {uid}")
+
+    require_pinnable(session, uidvalidity)
 
     explicit = explicit if explicit is not None else Criteria()
 
     transport = session.transport
     folder = session.dialect.normalize(folder, transport.list_folders())
 
-    headers = transport.message_headers(folder, uid)
+    headers = read_pinned(
+        session,
+        folder,
+        uidvalidity,
+        lambda: transport.message_headers(folder, uid),
+    )
+    check_uidvalidity(session, folder, uidvalidity)
 
     derived = derive_criteria(
         headers, derive, explicit.match, explicit.compare

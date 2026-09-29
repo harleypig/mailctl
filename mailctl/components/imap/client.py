@@ -160,8 +160,10 @@ class ImapSession:
         self._subscribed: list[str] = []
         self._prefix: str | None = None
         self._server: ServerProfile | None = None
-        # The folder the server has selected on this connection, if any.
+        # The folder the server has selected on this connection, if any,
+        # and the UIDVALIDITY its SELECT or EXAMINE reported.
         self._selected: str | None = None
+        self._selected_validity: int | None = None
 
     # ------------------------------------------------------------------------
     def __enter__(self) -> "ImapSession":
@@ -838,9 +840,10 @@ class ImapSession:
 
         # A failed SELECT leaves nothing selected (RFC 3501 6.3.1).
         self._selected = None
+        self._selected_validity = None
 
         try:
-            client.select_folder(folder, readonly=readonly)
+            response = client.select_folder(folder, readonly=readonly)
 
         except IMAPClientError as exc:
             raise MailctlError(
@@ -853,6 +856,22 @@ class ImapSession:
             ) from exc
 
         self._selected = folder
+        self._selected_validity = _validity(response)
+
+    # ------------------------------------------------------------------------
+    def uidvalidity(self, folder: str) -> int | None:
+        """The UIDVALIDITY of ``folder``: what its UIDs are valid under.
+
+        A UID names one message only together with this value (RFC 9051
+        section 2.3.1.1), and a change means every UID remembered from
+        before it may name another message. SELECT and EXAMINE report it,
+        so the folder's own selection is where it is read: the one this
+        connection holds already, or an EXAMINE made now, which a read that
+        follows keeps using. None when the server reported none.
+        """
+        self._ensure_selected(folder)
+
+        return self._selected_validity
 
     # ------------------------------------------------------------------------
     def _ensure_selected(self, folder: str) -> None:
@@ -1149,6 +1168,14 @@ def _refuse_non_ascii(expression: str) -> None:
             code="raw_non_ascii",
             fields={"refused": refused, "charset": SEARCH_CHARSET},
         )
+
+
+# ----------------------------------------------------------------------------
+def _validity(response) -> int | None:
+    """The UIDVALIDITY in IMAPClient's SELECT response, if it has one."""
+    value = (response or {}).get(b"UIDVALIDITY")
+
+    return None if value is None else int(value)
 
 
 # ----------------------------------------------------------------------------

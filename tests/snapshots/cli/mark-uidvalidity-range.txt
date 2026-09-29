@@ -1,0 +1,9 @@
+$ mailctl mark 1 --read --uidvalidity 0 --yes
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: a UIDVALIDITY is a number from 1 to 4294967295, not 0
+
+--- sieve calls
+--- imap calls

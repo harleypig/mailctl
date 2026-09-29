@@ -35,6 +35,7 @@ ALL_TESTS = [
     "search-sort",
     "senders",
     "search-like",
+    "uidvalidity",
     "build-filter",
     "json",
     "view-keeps-unread",
@@ -551,6 +552,36 @@ def test_search_unread_is_one_call_with_the_state_and_date_filters(tmp_path):
     assert argv[2] == "--since"
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", argv[3])
     assert argv[4:] == ["--limit", "5"]
+
+
+# ----------------------------------------------------------------------------
+def test_uidvalidity_pins_the_listed_uid_then_a_stale_one(tmp_path):
+    """#204: the value and UID from one listing, a view pinned to it, and a
+    view pinned to another value, which must be refused."""
+    proc, calls = run(tmp_path, "uidvalidity")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - uidvalidity"]
+    assert calls == [
+        ["search", "--limit", "1", "--json"],
+        ["view", "5", "--uidvalidity", "1727000000"],
+        ["view", "5", "--uidvalidity", "1726999999"],
+    ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("fault", "reason"),
+    [
+        ("uidvalidity-null", "uidvalidity is None, not a whole number"),
+        ("uidvalidity-ignored", "exited 0, not 1"),
+    ],
+)
+def test_uidvalidity_names_what_went_wrong(tmp_path, fault, reason):
+    proc, _ = run(tmp_path, "uidvalidity", breaks=[fault])
+
+    assert proc.returncode != 0
+    assert "not ok 1 - uidvalidity" in proc.stdout
+    assert reason in proc.stdout
 
 
 # ----------------------------------------------------------------------------

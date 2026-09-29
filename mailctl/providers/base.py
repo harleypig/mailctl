@@ -186,6 +186,9 @@ class ProviderCapabilities:
     * ``folder_counts`` -- every folder's total and unread messages can be
       read in one request, where the server offers it (the dialect's
       :meth:`Dialect.count_support` says whether this one does).
+    * ``uidvalidity`` -- a folder reports the value its message UIDs are
+      valid under (IMAP's UIDVALIDITY), so a UID kept from an earlier run
+      can be checked before it is used.
     * ``specifics`` -- the namespaced keys a request's ``specifics`` may
       carry, each with its schema. An unknown key is refused.
     * ``settings`` -- which of ``config.CONNECTION_SETTINGS`` it reads, each
@@ -204,6 +207,7 @@ class ProviderCapabilities:
     raw_query: bool
     mark: bool
     folder_counts: bool
+    uidvalidity: bool
     specifics: Mapping[str, Specific] = field(default_factory=dict)
     declined: frozenset[str] = frozenset()
     settings: Mapping[str, str] = field(default_factory=dict)
@@ -791,6 +795,13 @@ class Transport(ABC):
     @classified(Operation(READ, MAIL))
     def search_messages(self, folder: str, expression: str) -> list[int]:
         """The UIDs a host-native search expression matches."""
+
+    @abstractmethod
+    @classified(Operation(READ, MAIL))
+    def uidvalidity(self, folder: str) -> int | None:
+        """What the UIDs in ``folder`` are valid under: a UID names the
+        same message only while this is unchanged. None where the host
+        reported none."""
 
     @abstractmethod
     @classified(Operation(READ, MAIL))

@@ -1272,6 +1272,8 @@ KNOWN_READERS = (
     "rules.plan_rule",
     "rules.read_rules",
     "scripts.read_script",
+    "uids.check_uidvalidity",
+    "uids.current_uidvalidity",
 )
 
 

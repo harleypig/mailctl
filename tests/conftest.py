@@ -24,7 +24,7 @@ import socket
 import pytest
 from imapclient import exceptions as imapclient_exceptions
 from sievelib import parser
-from utilities_support import FakeSieveSession, mxroute
+from utilities_support import DEFAULT_UIDVALIDITY, FakeSieveSession, mxroute
 
 from mailctl.components.imap import client as imap_client
 from mailctl.config import Config, Secret
@@ -281,6 +281,11 @@ class FakeIMAPClient:
         self.welcome = b"* OK Dovecot ready."
         self.responses: dict[str, list[bytes]] = {}
 
+        # Each folder's UIDVALIDITY, as SELECT and EXAMINE report it; a
+        # folder not named here reports ``DEFAULT_UIDVALIDITY``, and one
+        # named with None reports none at all.
+        self.uidvalidity: dict[str, int | None] = {}
+
     # ------------------------------------------------------------------------
     def _maybe_fail(self, name: str) -> None:
         """Read the lines the server sends this command, then raise
@@ -407,11 +412,16 @@ class FakeIMAPClient:
         }
 
     # ------------------------------------------------------------------------
-    def select_folder(self, folder: str, readonly: bool = True) -> None:
+    def select_folder(self, folder: str, readonly: bool = True) -> dict:
         self._maybe_fail("select_folder")
         self.calls.append(("select_folder", folder, readonly))
         self.readonly = readonly
         self.selected = folder
+
+        validity = self.uidvalidity.get(folder, DEFAULT_UIDVALIDITY)
+
+        # IMAPClient's parsed SELECT response, cut to the one item read.
+        return {} if validity is None else {b"UIDVALIDITY": validity}
 
     # ------------------------------------------------------------------------
     def _mailbox(self) -> dict[int, bytes]:

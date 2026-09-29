@@ -43,6 +43,9 @@ faults to inject, so a test can watch a check go red:
 - ``optimize-uploads`` -- ``optimize-rules --dry-run`` uploads anyway
 - ``optimize-no-diff`` -- an ``optimize-rules --json`` plan proposes a
   change but carries no diff
+- ``uidvalidity-null`` -- ``search --json`` reports no uidvalidity
+- ``uidvalidity-ignored`` -- ``view --uidvalidity`` shows the message
+  whatever value it is given
 """
 
 import json
@@ -54,6 +57,9 @@ ARGV = sys.argv[1:]
 BREAK = set(filter(None, os.environ.get("STUB_BREAK", "").split(",")))
 STATE = Path(os.environ["STUB_LOG"]).with_suffix(".state")
 FLAGGED = Path(os.environ["STUB_LOG"]).with_suffix(".flagged")
+
+# What INBOX's UIDs are valid under.
+UIDVALIDITY = 1727000000
 
 SCRIPT = """\
 # ---- managesieve ----
@@ -273,7 +279,8 @@ def search() -> str:
             if like
             else []
         ),
-        f"{len(rows)} message(s) in 'INBOX', newest first:",
+        f"{len(rows)} message(s) in 'INBOX' (UIDVALIDITY {UIDVALIDITY}), "
+        "newest first:",
         header,
         *rows,
         legend,
@@ -407,7 +414,15 @@ def document(command: str) -> str:
         }
 
     elif command == "search":
-        body = {"folder": "INBOX", "more": True, "sort": None, "messages": []}
+        body = {
+            "folder": "INBOX",
+            "uidvalidity": None
+            if "uidvalidity-null" in BREAK
+            else UIDVALIDITY,
+            "more": True,
+            "sort": None,
+            "messages": [{"uid": 5, "size": 131}],
+        }
 
     elif command == "senders":
         body = senders()
@@ -539,6 +554,24 @@ def main() -> int:
             "every folder in one request: the IMAP server does not "
             "advertise LIST-STATUS, and without it every folder would be a "
             "request of its own",
+            file=sys.stderr,
+        )
+
+        return 1
+
+    pin = option("--uidvalidity")
+
+    if (
+        command == "view"
+        and pin is not None
+        and int(pin) != UIDVALIDITY
+        and "uidvalidity-ignored" not in BREAK
+    ):
+        print(
+            f"mailctl: the UIDs for 'INBOX' were valid under UIDVALIDITY "
+            f"{pin}, but the folder's is now {UIDVALIDITY}: the server has "
+            f"renumbered it, so they may name other messages. None was "
+            f"used, and nothing was changed.",
             file=sys.stderr,
         )
 

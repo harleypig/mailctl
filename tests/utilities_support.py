@@ -13,6 +13,10 @@ from mailctl.providers.mxroute import MXROUTE, MxrouteTransport
 FULL = ["fileinto", "imap4flags", "mailbox"]
 NO_MAILBOX = ["fileinto", "imap4flags"]
 
+# What a folder's SELECT reports in the conftest IMAP double unless a test
+# says otherwise: a time-shaped value, as Dovecot assigns.
+DEFAULT_UIDVALIDITY = 1727000000
+
 # ############################################################################
 # Fakes and helpers
 # ############################################################################

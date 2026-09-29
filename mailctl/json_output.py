@@ -140,11 +140,13 @@ def folder_listing(listing, statuses=None) -> dict:
 # ----------------------------------------------------------------------------
 def message_listing(listing) -> dict:
     """``search``: the matched messages, newest first, or in the order
-    ``sort`` names; ``sort`` is null for newest first."""
+    ``sort`` names; ``sort`` is null for newest first. ``uidvalidity`` is
+    what the UIDs are valid under, null where the host reports none."""
     order = listing.order
 
     return _document(
         folder=listing.folder,
+        uidvalidity=listing.uidvalidity,
         more=listing.more,
         sort=None
         if order is None
@@ -190,6 +192,7 @@ def message(content) -> dict:
         message={
             "uid": content.uid,
             "folder": content.folder,
+            "uidvalidity": content.uidvalidity,
             "size": content.size,
             "flags": list(content.flags),
             "headers": [
@@ -308,6 +311,7 @@ def mail_plan(record) -> dict:
     """What the existing-mail pass would do to which messages."""
     return {
         "source": record.source,
+        "uidvalidity": record.uidvalidity,
         "destination": record.destination,
         "flags": list(record.flags),
         "discard": record.discard,
@@ -329,6 +333,7 @@ def mark_plan(record) -> dict:
         "mark",
         changes=not record.is_empty,
         folder=record.folder,
+        uidvalidity=record.uidvalidity,
         set=list(record.add),
         clear=list(record.remove),
         messages=[

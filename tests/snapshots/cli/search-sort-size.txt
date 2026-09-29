@@ -1,7 +1,7 @@
 $ mailctl search --sort size --reverse --limit 2
 exit: 0
 --- stdout
-2 message(s) in 'INBOX', by size, largest first:
+2 message(s) in 'INBOX' (UIDVALIDITY 1727000000), by size, largest first:
      UID  Received               Size  Mark  From                          Subject
        4  2026-02-03 04:05:06    591B  N     Boss <boss@example.com>       Q3 report — draft
        3  2026-02-03 04:05:06    163B  N     Someone <list@lists.example…  Digest

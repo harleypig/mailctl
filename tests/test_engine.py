@@ -431,6 +431,7 @@ EXPECTED_KINDS = {
     "folder_status": (READ, MAIL),
     "search": (READ, MAIL),
     "search_messages": (READ, MAIL),
+    "uidvalidity": (READ, MAIL),
     "fetch_headers": (READ, MAIL),
     "fetch_summaries": (READ, MAIL),
     "apply_mail": (WRITE, MAIL),

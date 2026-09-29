@@ -61,8 +61,8 @@ where every write path is proved first.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
      `scripts`, `backup`, `baseline`, `flags`, `folders`,
      `folder_rename`, `mail`, `messages`, `optimize`, `senders`,
-     `reports`, and `server_report` under `mailctl/utilities/`; a backup's
-     bytes on disk are `test_backup.py`, and the migration utility
+     `reports`, `server_report`, and `uids` under `mailctl/utilities/`; a
+     backup's bytes on disk are `test_backup.py`, and the migration utility
      `test_migration.py`) — every plan and execute step driven with plain
      inputs over a session, as any front-end would call it. The safety
      policy is pinned here, since it lives here: an upload backs up first
@@ -76,8 +76,12 @@ where every write path is proved first.
      ([#192][i192]). `test_utilities_server_report.py` pins the redaction:
      servers echo a sentinel address, host, IPv4 address, folder, and
      script name back, and none of them, the password, or the script's
-     text may reach the report ([#39][i39]). The fakes they share are
-     `tests/utilities_support.py`.
+     text may reach the report ([#39][i39]). `test_utilities_uids.py` pins
+     the UIDVALIDITY check ([#204][i204]): a stale pin given to `mark`
+     refused before any write, and before its flags are read; `view` and
+     `--like` refusing one, a UID lost in the renumbering included; a plan's
+     own value checked again at execute; and reading it costing no SELECT
+     of its own. The fakes they share are `tests/utilities_support.py`.
    - **The session** (`test_engine.py`) — only what is about the
      connection: a half opens the first time a utility uses it and never if
      the command did not ask for it; a read the server cut off is sent once
@@ -177,7 +181,9 @@ where every write path is proved first.
      refused by name, by the CLI and by the utility alike; without `disable`
      `disable-rule` and `enable-rule` are not listed and a switch is refused;
      without `mark` `mark` is not listed and is refused; without
-     `folder_counts` `folders --counts` is not offered and is refused; a
+     `folder_counts` `folders --counts` is not offered and is refused;
+     without `uidvalidity` `--uidvalidity` is not offered and a pin is
+     refused, while listing and reading still work; a
      connection flag the provider does not read is hidden and refused; and
      `add` and `test` under a fake carry its own wording, with nothing about
      Sieve or MXroute. `mxroute`'s help hides nothing but the always-hidden
@@ -231,9 +237,14 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   `senders` in `test_senders.py` ([#160][i160]), counting each address and its
   unread exactly, grouping by domain and List-Id, refusing above its ceiling,
   and leaving every message as it was. `search --sort` runs against Dovecot's
-  own `SORT` in `test_search_sort.py` ([#159][i159]). And baselines: one saved
-  from the server checks clean against it, saving writes nothing there, and
-  drift made by editing the saved file exits 3 or 4 as documented.
+  own `SORT` in `test_search_sort.py` ([#159][i159]). UIDVALIDITY in
+  `test_uidvalidity.py` ([#204][i204]): a folder deleted and made again
+  gets a new value from Dovecot (asserted, not assumed), `search --json`
+  reports the server's, and a UID pinned to the old value is refused by
+  `mark` and `view`, leaving the message that now has it unread. And
+  baselines: one saved from the server checks clean against it, saving
+  writes nothing there, and drift made by editing the saved file exits 3 or
+  4 as documented.
   `rename-folder` in `test_rename_folder.py` ([#5][i5]): the folder and its
   subfolder moved, both subscribed under the new names and gone from `LSUB`
   under the old, the message count kept, and the script's bytes changed only
@@ -315,7 +326,9 @@ does not check each row's date, since a message near midnight can show on
 either side of the server's. `optimize-rules` is another: one
 `optimize-rules --dry-run --json`, checking the plan is well formed, has a
 diff exactly when it proposes a change, and uploaded nothing
-([#21][i21]).
+([#21][i21]). `uidvalidity` is a third: the newest UID and its
+UIDVALIDITY from one `search --json`, a `view` pinned to that value, and a
+`view` pinned to another, which must be refused ([#204][i204]).
 
 ## Live-test credentials & safety
 
@@ -399,4 +412,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i183]: https://github.com/harleypig/mailctl/issues/183
 [i188]: https://github.com/harleypig/mailctl/issues/188
 [i192]: https://github.com/harleypig/mailctl/issues/192
+[i204]: https://github.com/harleypig/mailctl/issues/204
 [i160]: https://github.com/harleypig/mailctl/issues/160

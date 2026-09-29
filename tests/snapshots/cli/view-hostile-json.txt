@@ -6,6 +6,7 @@ exit: 0
   "message": {
     "uid": 9,
     "folder": "INBOX",
+    "uidvalidity": 1727000000,
     "size": 68,
     "flags": [],
     "headers": [

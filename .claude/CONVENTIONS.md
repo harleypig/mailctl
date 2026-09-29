@@ -189,6 +189,9 @@ layer may call.
   - `server_report.py` — which servers no module recognised, and the
     redacted issue body `probe --report` prints for them ([#39][i39]).
   - `events.py` — the steps of a change, as a front-end is told of them.
+  - `uids.py` — a UID kept between runs, pinned to the folder's
+    UIDVALIDITY and refused, before it is used, once the folder has been
+    renumbered ([#204][i204]).
 - `mailctl/engine.py` — **the session**. `connect(config)` resolves the
   provider the configuration selects, refuses a setting it has no use for,
   lets its dialect validate the rest — all before any connection — and
@@ -263,8 +266,9 @@ layer may call.
     the header fetch its caller re-checks against, flags, the move with its
     COPY + EXPUNGE fallback (ADR 0006's I3), the copy that leaves the
     originals where they are (`copy_messages`, for a rule that keeps its
-    mail), and `BODY.PEEK` reads under `EXAMINE`. The re-check itself is
-    the mail utility's.
+    mail), `BODY.PEEK` reads under `EXAMINE`, and the UIDVALIDITY each
+    `SELECT` or `EXAMINE` reports, kept for the selected folder so reading
+    it costs no round trip. The re-check itself is the mail utility's.
   - `imap/capabilities.py` — the capabilities the session behaves
     differently without, derived from its `has_capability` checks and held
     to them by `tests/test_imap.py`; offline.
@@ -379,9 +383,10 @@ another operation, an error or a record names the operation in a field
 
 **Safety policy lives in the utilities, not the front-end or the
 provider**: the backup before every upload (`scripts.upload_script`, the
-one upload path), merge-never-overwrite, and the `--max-messages` ceiling
-(re-checked when a mail plan is executed) hold whichever front-end calls
-them.
+one upload path), merge-never-overwrite, the `--max-messages` ceiling
+(re-checked when a mail plan is executed), and the UIDVALIDITY check on a
+UID before it is used (checked again when a mark or mail plan is executed)
+hold whichever front-end calls them.
 
 **Every command is in every interface.** The operator, 2026-09-27:
 
@@ -495,6 +500,13 @@ keeps the two in step.
 `--no-keyword K`, several at once, over separate add-flag and remove-flag
 transport operations ([#150][i150]).
 
+**A UID from an earlier run can carry its folder's UIDVALIDITY**
+([#204][i204]). `search` shows the value, and `view`, `mark`, and `--like`
+take it as `--uidvalidity N`, one per command since every UID a command
+takes is in its one folder. A mismatch refuses the command, coded
+`uidvalidity_changed`, before any UID is used; a bare UID is still taken
+unchecked.
+
 **`senders` counts a folder's mail by address, domain, or List-Id and never
 writes** ([#160][i160]): one search, then headers a page per FETCH, refused
 above `--max-messages` (default 5000) before any header is read.
@@ -571,9 +583,9 @@ fails before any login or password prompt (decided on [#137][i137]).
   points; ADR 0006 defers them.
 - **Differences are data, never a branch.** A provider declares
   `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, `disable`, its
-  `actions`, `extensions`, `raw_query`, `mark`, `folder_counts`, its
-  namespaced `specifics` with their schema, the connection `settings` it
-  reads, and the operations it `declined`. The utilities read those and never
+  `actions`, `extensions`, `raw_query`, `mark`, `folder_counts`,
+  `uidvalidity`, its namespaced `specifics` with their schema, the
+  connection `settings` it reads, and the operations it `declined`. The utilities read those and never
   ask which provider they have.
 - **Refused before any network work.** `utilities.rules.check_rule`
   refuses a rule the provider cannot express, through one error naming the
@@ -610,8 +622,9 @@ fails before any login or password prompt (decided on [#137][i137]).
   `--script` and `--activate`; without `disable`, `disable-rule` and
   `enable-rule`; without `extensions`, `--disable-extension`; without
   `raw_query`, `search`'s `--raw`; without `mark`, `mark`; without
-  `folder_counts`, `folders`'s `--counts`. The connection flags (`--host`,
-  `--imap-*`, `--sieve-*`) are offered only where
+  `folder_counts`, `folders`'s `--counts`; without `uidvalidity`,
+  `--uidvalidity`. The connection flags (`--host`, `--imap-*`, `--sieve-*`)
+  are offered only where
   `ProviderCapabilities.settings` names them, with the help it gives —
   they keep their names and their `MAILCTL_*` variables, being `mxroute`'s
   connection options. An unoffered option is **hidden, not
@@ -1231,6 +1244,7 @@ will read it.
 [i10]: https://github.com/harleypig/mailctl/issues/10
 [i39]: https://github.com/harleypig/mailctl/issues/39
 [i183]: https://github.com/harleypig/mailctl/issues/183
+[i204]: https://github.com/harleypig/mailctl/issues/204
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147
