@@ -6,6 +6,27 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 
 BREAKING CHANGES:
 
+* **`mailctl add` saves the rule and nothing else; `mailctl apply` is the
+  only command that touches mail already delivered, and `from-message` is
+  gone** ([#149]). `add` no longer searches for, previews, or moves
+  existing mail after uploading: it ends by saying that mail was left
+  alone and pointing at `apply`. Its `--no-apply`, `--max-messages`,
+  `--move-threshold`, and `--yes` are removed — `add` asks no question, so
+  `--yes` had nothing left to answer — and giving any of them is an error.
+  To get what `add` used to do, run `add` and then `apply` with the same
+  criteria and actions. Both now take their criteria three ways: criteria
+  flags; `--filter FILE`, the document `search --build-filter --json`
+  prints (`--filter -` reads standard input); or `--like UID [--folder
+  FOLDER] [--derive HEADERS]`, which takes them from a message, shown
+  first, as `search --like` does. A criteria flag given with `--like`
+  replaces what was derived for its header. `--filter` with criteria flags
+  (`--match` and `--compare` included) or with `--like` is refused before
+  connecting. `mailctl from-message --uid N` becomes `mailctl add --like N`
+  (or `apply --like N` for the mail already there); its `--search` has no
+  replacement — find the UID with `mailctl search` first. On `add`,
+  `--folder` now only says where the `--like` message is, and is refused
+  without `--like`.
+
 * **`mailctl messages` is now `mailctl search`, and its `--search` is now
   `--raw`** ([#147]). No alias is kept for either name: `mailctl messages`
   and `mailctl search --search` are rejected as unknown. Everything else is
@@ -15,7 +36,7 @@ BREAKING CHANGES:
   (`--raw 'UNSEEN SINCE 1-Sep-2026'`). Offering it is now up to the
   provider: one that does not declare raw queries leaves `--raw` out of
   `search --help`, and refuses it by name, before connecting, if it is
-  given anyway. `mailctl from-message --search` keeps its name for now.
+  given anyway.
 
 FEATURES:
 
@@ -51,12 +72,10 @@ FEATURES:
   `--like`, or both — and saves nothing; without `--like` it needs no
   server at all. `--build-filter --json` prints it as a versioned filter
   document (`{"version": 1, "criteria": {…}}`, criteria only, no actions)
-  with nothing else on stdout; the README describes the format, and `add`
-  and `apply` will read it ([#149]). `--build-filter` with no criteria is
-  refused, and so is a `--like` UID the folder does not hold, naming both.
-  `from-message` stays until `add --like` and `apply --like` land in
-  [#149], so there is no release without a way to write a filter from a
-  message.
+  with nothing else on stdout; the README describes the format, and `add
+  --filter` and `apply --filter` read it ([#149]). `--build-filter` with no
+  criteria is refused, and so is a `--like` UID the folder does not hold,
+  naming both.
 
 * **Switch a rule off without deleting it: `mailctl disable-rule NAME` and
   `mailctl enable-rule NAME`** ([#158]). A disabled rule stays in the

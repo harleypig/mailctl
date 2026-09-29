@@ -26,7 +26,13 @@ from .config import (
     Config,
     load_config,
 )
-from .criteria import COMPARE_OPS, MATCH_MODES, Criteria, dump_filter
+from .criteria import (
+    COMPARE_OPS,
+    MATCH_MODES,
+    Criteria,
+    dump_filter,
+    load_filter,
+)
 from .rules import CERTAIN
 from .utilities.folders import FolderCreation
 from .utilities.mail import DEFAULT_MAX_MESSAGES
@@ -60,8 +66,20 @@ FOLDER_DEFAULT_HELP = "default: source_folder from the config, else INBOX"
 # "unrecognized arguments" error; see action_parser.
 REFUSED_ACTION_FLAGS = ("redirect", "notify", "vacation")
 
+NO_CRITERIA = (
+    "no criteria given -- use --from/--to/--cc/--subject/--list-id/"
+    "--header, --filter FILE, or --like UID"
+)
+
+# Said after every save: the rule filters only new mail, and a user who
+# expected the mail already there to move needs pointing at apply (#149).
+ADD_LEAVES_MAIL = (
+    "\nMail already delivered was not touched; to act on it, run "
+    "'mailctl apply' with the same criteria and actions."
+)
+
 # The headers a person recognises one of their own emails by, shown by
-# 'from-message' before it derives anything. List-Id earns its place
+# '--like' before it derives anything. List-Id earns its place
 # beside the obvious four because '--derive auto' prefers it, so a rule
 # derived from a mailing list has to show the header it came from.
 IDENTIFYING_HEADERS = ("Date", "From", "To", "Subject", "List-Id")
@@ -352,8 +370,17 @@ def warn_about_inline_password(args) -> None:
 
 # ----------------------------------------------------------------------------
 def criteria_from_args(args) -> Criteria:
-    """Build the Criteria model from the shared criteria flags."""
-    criteria = Criteria(match=args.match, compare=args.compare)
+    """Build the Criteria model from the shared criteria flags.
+
+    ``--match`` and ``--compare`` default to None so that giving one can be
+    told apart from not; the model's own defaults stand in for them.
+    """
+    given = {
+        name: getattr(args, name)
+        for name in ("match", "compare")
+        if getattr(args, name) is not None
+    }
+    criteria = Criteria(**given)
 
     for header, values in (
         ("From", getattr(args, "from_addr", None)),
@@ -373,6 +400,101 @@ def criteria_from_args(args) -> Criteria:
         criteria.add(name, value)
 
     return criteria
+
+
+# ----------------------------------------------------------------------------
+def criteria_given(args) -> Criteria:
+    """The criteria ``add`` and ``apply`` were given, checked before
+    connecting: the criteria flags, or the ``--filter`` document.
+
+    With ``--like`` the result may be empty; the message supplies the rest
+    once it has been read (:func:`message_like`).
+    """
+    flags = criteria_from_args(args)
+
+    if args.derive is not None and args.like is None:
+        raise MailctlError("--derive needs --like UID")
+
+    if args.filter_file is None:
+        if not flags and args.like is None:
+            raise MailctlError(NO_CRITERIA)
+
+        return flags
+
+    if flags or args.match is not None or args.compare is not None:
+        raise MailctlError(
+            "--filter carries its own criteria; give criteria flags or "
+            "--filter, not both"
+        )
+
+    if args.like is not None:
+        raise MailctlError(
+            "--like and --filter both supply the criteria; give one of them"
+        )
+
+    return read_filter(args.filter_file)
+
+
+# ----------------------------------------------------------------------------
+def read_filter(path: str) -> Criteria:
+    """Read a filter document from ``path``, or standard input for '-'."""
+    if path == "-":
+        source, text = "standard input", sys.stdin.read()
+
+    else:
+        source = path
+
+        try:
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+
+        except OSError as exc:
+            raise MailctlError(
+                f"cannot read filter file {path!r}: {exc.strerror}"
+            ) from exc
+
+        except UnicodeDecodeError as exc:
+            raise MailctlError(
+                f"filter file {path!r} is not UTF-8 text"
+            ) from exc
+
+    try:
+        return load_filter(text)
+
+    except MailctlError as exc:
+        raise MailctlError(f"{source}: {exc}") from exc
+
+
+# ----------------------------------------------------------------------------
+def message_like(sessions, config, args, explicit: Criteria, file=None):
+    """Read the ``--like`` message, show it, and return what it makes.
+
+    The message is shown before anything else: it is the answer to "is
+    this the message I meant?", which the criteria cannot give. ``file``
+    is where that goes, for a caller keeping stdout for data.
+    """
+    like = utilities.mail.criteria_like(
+        sessions,
+        config.source_folder,
+        args.like,
+        explicit,
+        args.derive or "auto",
+    )
+
+    print_message(
+        like.message.headers, like.message.uid, like.message.folder, file
+    )
+
+    for header in like.skipped:
+        warn(f"message has no {header!r} header; skipping it")
+
+    if not like.criteria:
+        raise MailctlError(
+            f"nothing to derive from uid {like.message.uid}: it has none of "
+            f"the headers asked for ({', '.join(like.skipped)})"
+        )
+
+    return like
 
 
 # ----------------------------------------------------------------------------
@@ -1323,7 +1445,7 @@ def cmd_test(args) -> int:
     print(
         f"Folder:    {config.source_folder}  "
         f"({origin_of(config, 'source_folder')})  "
-        f"-- read by apply, search, view, from-message"
+        f"-- read by apply, search, view, and add --like"
     )
 
     if failure is not None:
@@ -1489,40 +1611,43 @@ def password_origin_suffix(config) -> str:
 
 # ----------------------------------------------------------------------------
 def cmd_add(args) -> int:
-    """Add a rule to the active script, then apply it to existing mail."""
+    """Save a rule into the active script; mail already delivered is left
+    alone -- that is ``apply``'s."""
     config = configure(args)
     reject_forbidden(config, args)
-    criteria = criteria_from_args(args)
-    criteria.require_terms()
+    explicit = criteria_given(args)
 
-    return run_add(config, args, criteria)
+    if args.folder is not None and args.like is None:
+        raise MailctlError("--folder needs --like UID")
 
+    if args.like is not None and args.no_imap:
+        raise MailctlError(
+            "--like reads the message over IMAP, so it cannot be combined "
+            "with --no-imap"
+        )
 
-# ----------------------------------------------------------------------------
-def run_add(config, args, criteria: Criteria) -> int:
-    """Shared body of ``add`` and ``from-message``."""
     spec = actions_from_args(args)
-    request = RuleRequest(
-        criteria=criteria,
-        actions=spec,
-        name=args.name,
-        script=args.script,
-        replace=args.replace,
-        placement=placement_from_args(args),
-        activate=args.activate,
-    )
 
     # Before connecting: a rule the provider cannot express costs no login.
-    utilities.rules.check_rule(config, request)
+    utilities.rules.check_rule(config, rule_request(args, explicit, spec))
 
     with connect(config, args, mail=not args.no_imap) as sessions:
+        criteria = explicit
+
+        if args.like is not None:
+            criteria = message_like(sessions, config, args, explicit).criteria
+
+            print()
+
         folder = prepare_folder(sessions, config, args)
 
         warn_missing_extensions(
             utilities.rules.missing_extensions(sessions, spec, folder)
         )
 
-        plan = utilities.rules.plan_rule(sessions, config, request, folder)
+        plan = utilities.rules.plan_rule(
+            sessions, config, rule_request(args, criteria, spec), folder
+        )
 
         print(f"\nRule {plan.name!r} on script {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
@@ -1538,29 +1663,37 @@ def run_add(config, args, criteria: Criteria) -> int:
         if args.dry_run:
             print("\n[dry-run] the script was NOT uploaded.")
 
-        else:
-            utilities.rules.execute_script_change(
-                sessions, config, plan, render_event
-            )
-
-        if not sessions.has_mail or args.no_apply:
-            if args.no_apply:
-                print("\nSkipping the existing-mail pass (--no-apply).")
-
             return 0
 
-        apply_to_existing(sessions, config, criteria, args, spec, folder)
+        utilities.rules.execute_script_change(
+            sessions, config, plan, render_event
+        )
+
+    print(ADD_LEAVES_MAIL)
 
     return 0
 
 
 # ----------------------------------------------------------------------------
+def rule_request(args, criteria: Criteria, spec: ActionSpec) -> RuleRequest:
+    """The rule ``add`` asks for, from its flags and resolved criteria."""
+    return RuleRequest(
+        criteria=criteria,
+        actions=spec,
+        name=args.name,
+        script=args.script,
+        replace=args.replace,
+        placement=placement_from_args(args),
+        activate=args.activate,
+    )
+
+
+# ----------------------------------------------------------------------------
 def cmd_apply(args) -> int:
-    """Apply criteria to existing mail only; touch no Sieve script."""
+    """Act on mail already delivered; touch no Sieve script."""
     config = configure(args)
     reject_forbidden(config, args)
-    criteria = criteria_from_args(args)
-    criteria.require_terms()
+    explicit = criteria_given(args)
     spec = actions_from_args(args)
 
     with connect(config, args, rules=False, mail=True) as sessions:
@@ -1583,6 +1716,15 @@ def cmd_apply(args) -> int:
 
         if folder.status == utilities.folders.FOLDER_IMAP_CREATE:
             announce_folder_creation(folder, args.dry_run)
+
+        criteria = explicit
+
+        if args.like is not None:
+            print()
+
+            criteria = message_like(sessions, config, args, explicit).criteria
+
+            print()
 
         print(f"Criteria: {criteria.describe()}")
 
@@ -1749,50 +1891,6 @@ def print_message(message, uid: int, folder: str, file=None) -> None:
 
 
 # ----------------------------------------------------------------------------
-def cmd_from_message(args) -> int:
-    """Derive criteria from an existing message, then behave like ``add``."""
-    config = configure(args)
-    reject_forbidden(config, args)
-
-    if not args.uid and not args.search:
-        raise MailctlError("give either --uid N or --search EXPRESSION")
-
-    with connect(config, args, rules=False, mail=True) as sessions:
-        picked = utilities.mail.pick_message(
-            sessions,
-            config.source_folder,
-            uid=args.uid,
-            search=args.search,
-        )
-
-        if picked.candidates > 1:
-            warn(
-                f"{picked.candidates} messages matched; using the most "
-                f"recent (uid {picked.uid})"
-            )
-
-    # Shown before the criteria, and before anything is derived, because
-    # this is the answer to "did I pick the right email?" -- the question
-    # the criteria below cannot answer.
-    print_message(picked.headers, picked.uid, config.source_folder)
-
-    derived = utilities.mail.derive_criteria(
-        picked.headers, args.derive, args.match, args.compare
-    )
-
-    for header in derived.skipped:
-        warn(f"message has no {header!r} header; skipping it")
-
-    criteria = derived.criteria
-    criteria.require_terms()
-
-    print("\nDerived criteria:")
-    print(f"  {criteria.describe()}")
-
-    return run_add(config, args, criteria)
-
-
-# ----------------------------------------------------------------------------
 def status_marks(message) -> str:
     """The listing's one-letter marks for a message; see MARK_LEGEND."""
     flags = {flag.lower() for flag in message.flags}
@@ -1842,29 +1940,7 @@ def cmd_search(args) -> int:
     shown = sys.stderr if args.json else None
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        like = utilities.mail.criteria_like(
-            sessions,
-            config.source_folder,
-            args.like,
-            criteria,
-            args.derive or "auto",
-        )
-
-        # Shown before anything else: it is the answer to "is this the
-        # message I meant?", which the criteria cannot give.
-        print_message(
-            like.message.headers, like.message.uid, like.message.folder, shown
-        )
-
-        for header in like.skipped:
-            warn(f"message has no {header!r} header; skipping it")
-
-        if not like.criteria:
-            raise MailctlError(
-                f"nothing to derive from uid {like.message.uid}: it has "
-                f"none of the headers asked for "
-                f"({', '.join(like.skipped)})"
-            )
+        like = message_like(sessions, config, args, criteria, shown)
 
         if args.build_filter:
             if not args.json:
@@ -2144,7 +2220,7 @@ def connection_parser(
 
 # ----------------------------------------------------------------------------
 def criteria_parser() -> argparse.ArgumentParser:
-    """The criteria flags shared by add / apply / from-message."""
+    """The criteria flags shared by add / apply / search."""
     parser = argparse.ArgumentParser(add_help=False)
 
     group = parser.add_argument_group("criteria")
@@ -2166,13 +2242,11 @@ def criteria_parser() -> argparse.ArgumentParser:
     group.add_argument(
         "--match",
         choices=MATCH_MODES,
-        default="any",
         help="combine criteria with OR (any) or AND (all); default any",
     )
     group.add_argument(
         "--compare",
         choices=COMPARE_OPS,
-        default="contains",
         help="comparison used for every criterion; default contains. "
         "Note that 'is' and 'matches' test the WHOLE header value, as "
         "Sieve does -- so --compare matches --from '*@list.org' will "
@@ -2183,10 +2257,41 @@ def criteria_parser() -> argparse.ArgumentParser:
 
 
 # ----------------------------------------------------------------------------
+def criteria_source_parser() -> argparse.ArgumentParser:
+    """The other two ways add and apply take criteria: a filter document,
+    or a message to take them from."""
+    parser = argparse.ArgumentParser(add_help=False)
+
+    group = parser.add_argument_group("criteria from a filter or a message")
+    group.add_argument(
+        "--filter",
+        dest="filter_file",
+        metavar="FILE",
+        help="read the criteria from a filter document, as 'search "
+        "--build-filter --json' prints it; '-' reads standard input. Not "
+        "with criteria flags or --like",
+    )
+    group.add_argument(
+        "--like",
+        type=int,
+        metavar="UID",
+        help="pre-fill the criteria from this message in --folder; a "
+        "criteria flag replaces what was derived for its header",
+    )
+    group.add_argument(
+        "--derive",
+        help="with --like, headers to derive from, comma separated "
+        "(default: auto -- List-Id if present, else From)",
+    )
+
+    return parser
+
+
+# ----------------------------------------------------------------------------
 def action_parser(
     offer: engine.ProviderCapabilities,
 ) -> argparse.ArgumentParser:
-    """The action flags shared by add / apply / from-message."""
+    """The action flags shared by add / apply."""
     parser = argparse.ArgumentParser(add_help=False)
 
     group = parser.add_argument_group("actions")
@@ -2263,7 +2368,8 @@ def mail_safety_parser() -> argparse.ArgumentParser:
     """Safety flags that only mean something for the existing-mail pass.
 
     Kept apart from ``safety_parser`` so a command that never touches mail
-    -- ``remove-rule`` -- does not advertise flags that would do nothing.
+    -- ``add``, ``remove-rule`` -- does not advertise flags that would do
+    nothing.
     """
     parser = argparse.ArgumentParser(add_help=False)
 
@@ -2305,6 +2411,7 @@ def build_parser(
     common = global_parser()
     connection = connection_parser(offer)
     criteria = criteria_parser()
+    sources = criteria_source_parser()
     actions = action_parser(offer)
     safety = safety_parser()
     mail_safety = mail_safety_parser()
@@ -2486,34 +2593,35 @@ def build_parser(
 
     add = command(
         "add",
-        parents=[common, connection, criteria, actions, safety, mail_safety],
-        help="add a rule and apply it to existing mail",
+        parents=[common, connection, criteria, sources, actions],
+        help="save a rule; mail already delivered is left alone",
+        description="Save a rule into the active script, merged with the "
+        "rules already there. The diff is shown, the script is backed up, "
+        "and the new one uploaded. Only new mail is filtered by it; "
+        "'mailctl apply' with the same criteria acts on mail already "
+        "delivered.",
+    )
+    add.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="show the diff; upload nothing",
     )
     _add_rule_flags(add, offer)
     add.set_defaults(handler=cmd_add)
 
-    from_message = command(
-        "from-message",
-        parents=[common, connection, criteria, actions, safety, mail_safety],
-        help="derive criteria from a message, then add the rule",
-    )
-    _add_rule_flags(from_message, offer)
-    from_message.add_argument("--uid", type=int, help="message UID to read")
-    from_message.add_argument(
-        "--search", help="IMAP search expression selecting one message"
-    )
-    from_message.add_argument(
-        "--derive",
-        default="auto",
-        help="headers to derive from, comma separated (default: auto -- "
-        "List-Id if present, else From)",
-    )
-    from_message.set_defaults(handler=cmd_from_message)
-
     apply_cmd = command(
         "apply",
-        parents=[common, connection, criteria, actions, safety, mail_safety],
-        help="apply criteria to existing mail only",
+        parents=[
+            common,
+            connection,
+            criteria,
+            sources,
+            actions,
+            safety,
+            mail_safety,
+        ],
+        help="act on mail already delivered",
     )
     apply_cmd.add_argument(
         "--folder", help=f"source folder; {FOLDER_DEFAULT_HELP}"
@@ -2726,7 +2834,7 @@ def build_parser(
 def _add_rule_flags(
     parser: argparse.ArgumentParser, offer: engine.ProviderCapabilities
 ) -> None:
-    """Attach the rule-authoring flags shared by add and from-message.
+    """Attach add's rule-authoring flags.
 
     Placement needs a provider declaring ``ordering``, and naming or
     activating a script one declaring ``rule_sets``; unoffered, each is
@@ -2754,20 +2862,16 @@ def _add_rule_flags(
         help="overwrite an existing rule of the same name",
     )
     group.add_argument(
-        "--no-apply",
-        dest="no_apply",
-        action="store_true",
-        help="do not touch mail that has already been delivered",
-    )
-    group.add_argument(
         "--no-imap",
         dest="no_imap",
         action="store_true",
-        help="skip IMAP entirely; implies --no-apply and guesses the "
-        "folder delimiter",
+        help="skip IMAP entirely: the target folder is not checked, and "
+        "the folder delimiter is guessed",
     )
     group.add_argument(
-        "--folder", help=f"source folder; {FOLDER_DEFAULT_HELP}"
+        "--folder",
+        help=f"with --like, the folder holding the message; "
+        f"{FOLDER_DEFAULT_HELP}",
     )
     group.add_argument(
         "--delimiter",
@@ -2869,9 +2973,6 @@ def main(argv: list[str] | None = None) -> int:
             "--no-subscribe only applies with --create-folder; to hide a "
             "folder that already exists, use 'mailctl unsubscribe FOLDER'"
         )
-
-    if getattr(args, "no_imap", False):
-        args.no_apply = True
 
     try:
         if args.handler is not cmd_migrate_config:

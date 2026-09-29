@@ -1,0 +1,9 @@
+$ mailctl add --filter <TMP>/restore.sieve --fileinto Lists
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: <TMP>/restore.sieve: filter: unsupported version 2; this mailctl reads version 1
+
+--- sieve calls
+--- imap calls

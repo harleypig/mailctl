@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --yes -v
+$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder -v
 exit: 0
 --- stdout
 [imap] connecting to mail.example.com:993 (ssl=True) as user@example.com
@@ -37,14 +37,7 @@ Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
 [sieve] activating script 'managesieve'
 Uploaded and activated script 'managesieve'
 
-Searching 'INBOX' for existing matches...
-[imap] searching 'INBOX' with [['FROM', 'noreply@github.com']]
-[imap] 3 candidate message(s); re-checking headers
-2 message(s) match:
-  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
-  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
-[imap] MOVE 2 message(s) to 'INBOX.Lists.GitHub'
-Moved 2 message(s) from 'INBOX' to 'INBOX.Lists.GitHub'
+Mail already delivered was not touched; to act on it, run 'mailctl apply' with the same criteria and actions.
 
 --- stderr
 
@@ -61,9 +54,4 @@ Moved 2 message(s) from 'INBOX' to 'INBOX.Lists.GitHub'
 ('login', 'user@example.com')
 ('create_folder', 'INBOX.Lists.GitHub')
 ('subscribe_folder', 'INBOX.Lists.GitHub')
-('select_folder', 'INBOX', True)
-('search', [['FROM', 'noreply@github.com']])
-('fetch', (1, 2, 3))
-('select_folder', 'INBOX', False)
-('move', (1, 2), 'INBOX.Lists.GitHub')
 ('logout',)

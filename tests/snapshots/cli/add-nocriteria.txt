@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: no criteria given -- use --from/--to/--cc/--subject/--list-id/--header
+mailctl: no criteria given -- use --from/--to/--cc/--subject/--list-id/--header, --filter FILE, or --like UID
 
 --- sieve calls
 --- imap calls

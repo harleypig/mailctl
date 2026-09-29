@@ -1,0 +1,13 @@
+$ mailctl apply --from noreply@github.com --fileinto INBOX --yes
+exit: 0
+--- stdout
+Criteria: From contains 'noreply@github.com'
+
+Skipping the existing-mail pass: the rule leaves matching mail in 'INBOX' as it is, so there is nothing to do.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

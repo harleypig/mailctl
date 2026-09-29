@@ -1,0 +1,9 @@
+$ mailctl apply --filter - --fileinto Lists --dry-run
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: standard input: filter is not valid JSON: Expecting value (line 1, column 1)
+
+--- sieve calls
+--- imap calls

@@ -1,0 +1,47 @@
+$ mailctl add --like 2 --folder Lists --fileinto Lists --dry-run
+exit: 0
+--- stdout
+Message uid 2 in 'INBOX.Lists':
+  Date:    Tue, 3 Feb 2026 04:05:06 +0000
+  From:    Someone <noreply@github.com>
+  To:      user@example.com
+  Subject: Issue closed
+
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+Rule 'from-noreply-github-com' on script 'managesieve':
+  when:  From contains 'noreply@github.com'
+  then:  fileinto INBOX.Lists; stop
+
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -11,3 +11,8 @@
+     fileinto "INBOX.Noise";
+     stop;
+ }
++# rule:[from-noreply-github-com]
++if anyof (header :contains "From" "noreply@github.com") {
++    fileinto "INBOX.Lists";
++    stop;
++}
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX.Lists', True)
+('fetch', (2,))
+('logout',)

@@ -363,7 +363,6 @@ def test_the_cli_warns_on_a_failed_subscription_without_calling_it_a_failure(
     "command",
     [
         pytest.param(["add", "--from", "a@b.c"], id="add"),
-        pytest.param(["from-message", "--uid", "1"], id="from-message"),
         pytest.param(["apply", "--from", "a@b.c"], id="apply"),
     ],
 )
@@ -438,17 +437,22 @@ def test_planning_a_real_run_creates_nothing_before_the_decision(
 
 
 # ----------------------------------------------------------------------------
-@pytest.mark.parametrize("command", ["add", "apply", "from-message"])
+@pytest.mark.parametrize("command", ["add", "apply"])
 def test_no_subscribe_without_create_folder_is_refused(command, capsys):
     """#43: a flag that does nothing must not be accepted silently."""
     from mailctl.cli import main
 
-    extra = (
-        ["--uid", "1"] if command == "from-message" else ["--from", "a@b.c"]
-    )
-
     with pytest.raises(SystemExit) as exited:
-        main([command, *extra, "--fileinto", "Lists", "--no-subscribe"])
+        main(
+            [
+                command,
+                "--from",
+                "a@b.c",
+                "--fileinto",
+                "Lists",
+                "--no-subscribe",
+            ]
+        )
 
     assert exited.value.code == 2
     assert "only applies with --create-folder" in capsys.readouterr().err

@@ -8,7 +8,7 @@ User:      user@example.com  (environment)
 Password:  set (via command)  (MAILCTL_PASSWORD_CMD, env file .env)
 IMAP:      mail.from-env-file.example:993  (host: same as host, port: default)
 Sieve:     mail.from-env-file.example:4192 (tls=ssl)  (port: flag --sieve-port, tls: config file <TMP>/config/mailctl/config.toml)
-Folder:    INBOX  (default)  -- read by apply, search, view, from-message
+Folder:    INBOX  (default)  -- read by apply, search, view, and add --like
 
 ManageSieve: connected
   Sieve extensions (* = mailctl's own rules can need it):

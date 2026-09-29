@@ -39,9 +39,10 @@ readonly TESTS=(
   build-filter
   view-keeps-unread
   apply
+  apply-like
   add
   add-create-folder
-  from-message
+  add-like
   remove-rule
   disable-rule
   subscribe
@@ -57,7 +58,6 @@ readonly MUTATING=(
   create-folder
   disable-rule
   enable-rule
-  from-message
   migrate-config
   move-rule
   remove-rule
@@ -484,6 +484,27 @@ t_apply() {
 }
 
 #-----------------------------------------------------------------------------
+t_apply_like() {
+  local folder uid
+
+  run_mailctl folders
+  expect_ok folders || return 1
+  folder=$(pick_folder)
+
+  run_mailctl search --limit 1
+  expect_ok 'search --limit 1' || return 1
+  uid=$(message_marks | awk '{ print $1; exit }')
+  need "$uid" "the folder has no messages" || return 2
+
+  run_mailctl apply --dry-run --like "$uid" --fileinto "$folder"
+  expect_ok "apply --dry-run --like $uid" || return 1
+  expect_nothing_changed || return 1
+
+  expect_line "^Message uid $uid in " || return 1
+  expect_line '^\[dry-run\]|^No existing messages match\.$|^Skipping'
+}
+
+#-----------------------------------------------------------------------------
 t_add() {
   local folder
 
@@ -521,7 +542,7 @@ t_add_create_folder() {
 }
 
 #-----------------------------------------------------------------------------
-t_from_message() {
+t_add_like() {
   local folder uid
 
   run_mailctl folders
@@ -533,10 +554,11 @@ t_from_message() {
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl from-message --dry-run --uid "$uid" --fileinto "$folder"
-  expect_ok 'from-message --dry-run' || return 1
+  run_mailctl add --dry-run --like "$uid" --fileinto "$folder"
+  expect_ok "add --dry-run --like $uid" || return 1
   expect_nothing_changed || return 1
 
+  expect_line "^Message uid $uid in " || return 1
   expect_line '^\[dry-run\] the script was NOT uploaded\.$'
 }
 

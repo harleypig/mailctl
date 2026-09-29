@@ -5,11 +5,11 @@ then changes it (CONVENTIONS.md). Both halves of that showing step are
 covered here because both fail the same way -- silently, by looking
 plausible:
 
-* **Which message a rule came from.** ``from-message`` takes a UID the
+* **Which message a rule came from.** ``--like`` takes a UID the
   operator read out of webmail by hand. The derived criteria are equally
   plausible whichever message produced them, so criteria alone can never
-  catch a mistyped digit; only the message's own headers can. And the
-  command that follows moves mail.
+  catch a mistyped digit; only the message's own headers can. And
+  ``apply --like`` moves mail.
 * **What the diff is really saying.** A merge re-renders the whole script
   through sievelib, so a diff against the server's raw copy reports the
   renderer's indentation as though it were the change -- 29 moved lines
@@ -93,9 +93,9 @@ def removed_lines(diff: str) -> list[str]:
 def test_the_message_block_names_the_uid_and_folder_it_read(capsys):
     """The heading has to repeat what was asked for, not just answer it.
 
-    ``--search`` picks the UID itself, and warns only when more than one
-    message matched -- so the uid on screen is often the first time the
-    operator sees which message the command settled on.
+    ``--like`` normalizes ``--folder`` against the server's list, so the
+    folder on screen is the one actually read, which may not be what was
+    typed.
     """
     print_message(message(From="boss@example.com"), 813, "INBOX")
 

@@ -1,4 +1,4 @@
-$ mailctl from-message --uid 3 --fileinto Lists --dry-run
+$ mailctl add --like 3 --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Message uid 3 in 'INBOX':
@@ -8,8 +8,6 @@ Message uid 3 in 'INBOX':
   Subject: Digest
   List-Id: Some list <dev.lists.example.com>
 
-Derived criteria:
-  List-Id contains 'dev.lists.example.com'
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 Rule 'list-id-dev-lists-example-com' on script 'managesieve':
@@ -35,11 +33,6 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 
 [dry-run] the script was NOT uploaded.
 
-Searching 'INBOX' for existing matches...
-1 message(s) match:
-  uid 3        2026-02-03 04:05:06  Someone <list@lists.example.c… Digest
-[dry-run] would move 1 message(s) to 'INBOX.Lists'
-
 --- stderr
 
 --- sieve calls
@@ -52,9 +45,4 @@ Searching 'INBOX' for existing matches...
 ('login', 'user@example.com')
 ('select_folder', 'INBOX', True)
 ('fetch', (3,))
-('logout',)
-('login', 'user@example.com')
-('select_folder', 'INBOX', True)
-('search', [['HEADER', 'List-Id', 'dev.lists.example.com']])
-('fetch', (1, 2, 3))
 ('logout',)

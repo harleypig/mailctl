@@ -178,7 +178,9 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   `backup` then `restore` byte for byte, `--create-folder` with and without
   `--no-subscribe` and the `subscribe` / `unsubscribe` toggles, `apply`
   moving, flagging and discarding existing mail, `--max-messages` refusing
-  the whole pass, and `view` and the message listing leaving mail unread.
+  the whole pass, one filter document from `search --build-filter --json`
+  driving both `add --filter` and `apply --filter`, and `view` and the
+  message listing leaving mail unread.
   New mail is also handed to `dovecot-lda`, which runs the uploaded script,
   so the going-forward half is seen filing it too.
 - **The oracle is not mailctl.** Each test reads the server back with

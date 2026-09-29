@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-apply
+$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder
 exit: 1
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')

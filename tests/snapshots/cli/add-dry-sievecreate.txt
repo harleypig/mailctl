@@ -34,12 +34,6 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 
 [dry-run] the script was NOT uploaded.
 
-Searching 'INBOX' for existing matches...
-2 message(s) match:
-  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
-  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
-[dry-run] would move 2 message(s) to 'INBOX.Lists.GitHub'
-
 --- stderr
 
 --- sieve calls
@@ -50,7 +44,4 @@ Searching 'INBOX' for existing matches...
 ('logout',)
 --- imap calls
 ('login', 'user@example.com')
-('select_folder', 'INBOX', True)
-('search', [['FROM', 'noreply@github.com']])
-('fetch', (1, 2, 3))
 ('logout',)

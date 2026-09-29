@@ -53,8 +53,8 @@ cannot read is reported by line number, never quoted. Because it takes an
 optional value, put `--env-file` after any positional argument, or write
 `--env-file=PATH`.
 
-`--folder`, on the commands that read mail (`add`, `apply`, `from-message`,
-`search`, `view`), resolves the same way: `MAILCTL_SOURCE_FOLDER`, then
+`--folder`, on the commands that read mail (`apply`, `search`, `view`, and
+`add --like`), resolves the same way: `MAILCTL_SOURCE_FOLDER`, then
 `source_folder` in the config file, then `INBOX`.
 
 `--provider` names the mail host mailctl talks to, and resolves the same
@@ -209,19 +209,29 @@ mailctl create-folder Lists/Archive --no-subscribe
 # See exactly what would change, without changing it.
 mailctl add --from newsletter@example.com --fileinto Lists/News --dry-run
 
-# Do it: merge the rule, upload, activate, then file existing mail.
+# Save the rule: merge it, back up, upload, activate. It filters new mail
+# only; the mail already delivered is left alone.
 mailctl add --from newsletter@example.com --fileinto Lists/News
 
-# Rule only; leave delivered mail alone.
-mailctl add --list-id python-list.python.org --fileinto Lists/Python \
-    --no-apply
+# Then act on the mail already there, with the same criteria and actions.
+# It previews the messages and asks before it moves any.
+mailctl apply --from newsletter@example.com --fileinto Lists/News
 
-# Learn the criteria from a message you already have.
-mailctl from-message --folder INBOX --search 'FROM newsletter@example.com' \
-    --fileinto Lists/News --dry-run
+# Take the criteria from a message you already have, for the rule and then
+# for the mail: its List-Id, else its From, as with 'search --like'. A
+# criteria flag replaces what was taken for its header.
+mailctl add --like 4127 --fileinto Lists/News --dry-run
+mailctl apply --like 4127 --fileinto Lists/News
 
-# Existing mail only; no Sieve change. --create-folder because the target
-# may not exist yet.
+# Or from a filter document (see "Filter documents" below); '-' reads it
+# from standard input.
+mailctl add --filter news.json --fileinto Lists/News
+mailctl apply --filter news.json --fileinto Lists/News
+mailctl search --like 4127 --build-filter --json \
+    | mailctl add --filter - --fileinto Lists/News
+
+# Mail already delivered only, with no rule. --create-folder because the
+# target may not exist yet.
 mailctl apply --subject '[SPAM]' --fileinto Quarantine --create-folder \
     --mark-read
 
@@ -285,20 +295,26 @@ only — what to match, never what to do with it:
 * Any other key is refused, so a misspelt one cannot silently fall back to
   a default.
 
-Reading one back into `add` and `apply` is coming
-([#149](https://github.com/harleypig/mailctl/issues/149)); until then,
-`from-message` remains the way to write a filter from a message.
+`add --filter FILE` and `apply --filter FILE` read one back as their
+criteria, and `--filter -` reads it from standard input — so one document
+can be saved as the rule and applied to the mail already there. It takes
+the place of the criteria flags, so giving both is refused, and so is
+`--filter` with `--like`; the actions still come from the command line.
 
 ## Safety
 
 * `--dry-run` changes nothing, on every mutating command. It prints whatever
-  that command would have changed: the Sieve diff for `add`, `from-message`,
+  that command would have changed: the Sieve diff for `add`,
   `remove-rule`, `disable-rule`, and `enable-rule`; the list of matching
-  messages for `add`, `from-message`, and `apply`; the file that would have
-  been written for `backup`.
-* `from-message` and `search --like` **show you the message first** —
-  Date, From, To, Subject, and List-Id when it has one — before anything
-  is derived from it, and `from-message` before it writes a rule. The UID is something you read out of webmail by hand, and
+  messages for `apply`; the file that would have been written for
+  `backup`.
+* `add` **never touches mail already delivered**; `apply` is the only
+  command that does. After saving a rule, `add` says so and points at
+  `apply`.
+* `--like`, on `search`, `add`, and `apply`, **shows you the message
+  first** — Date, From, To, Subject, and List-Id when it has one — before
+  anything is derived from it, and so before a rule is written or mail is
+  moved. The UID is something you read out of webmail by hand, and
   the derived criteria look equally plausible whichever message produced
   them, so the headers are the only thing that catches a mistyped digit
   before mail starts moving.
@@ -315,7 +331,7 @@ Reading one back into `add` and `apply` is coming
   header. Unicode direction overrides and isolates, which can make
   `invoice_fdp.exe` read as `invoice_exe.pdf`, print as a visible
   `\u202e`-style escape the same way. Everything printable, tabs and line
-  breaks included, comes through as it is. The headers `from-message` and
+  breaks included, comes through as it is. The headers `--like` and
   `apply` show before they act get the same treatment.
 * `view --raw` **into a file or a pipe writes the message exactly as the
   server holds it**, byte for byte, with nothing escaped or re-encoded — so
@@ -362,7 +378,7 @@ Reading one back into `add` and `apply` is coming
   so other rules survive. If the existing script cannot be parsed, mailctl
   stops rather than overwrite it.
 * `checkscript` runs on the server before `putscript`.
-* The existing-mail pass **always previews and always confirms** before it
+* `apply` **always previews and always confirms** before it
   touches anything — `--dry-run` shortens that path, it is not what creates
   it. `--yes` skips the prompts. Deletion says in as many words that it
   cannot be undone; a move says it can be reversed.
@@ -400,7 +416,7 @@ Reading one back into `add` and `apply` is coming
   is the only thing that can create the folder, and mailctl says it may
   not appear in webmail until you run `mailctl subscribe` on it.
 * The folder is **announced when the change is shown and created only when
-  it is applied** — for `add` and `from-message`, once the server has
+  it is applied** — for `add`, once the server has
   accepted the new script and just before it is stored; for `apply`, after
   you confirm the move. A
   dry run, an abort, or a rejected script leaves no stray folder, and an
