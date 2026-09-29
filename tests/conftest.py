@@ -21,11 +21,11 @@ import socket
 
 import pytest
 from sievelib import parser
-from utilities_support import FakeSieveSession
+from utilities_support import FakeSieveSession, mxroute
 
 from mailctl.components.imap import client as imap_client
 from mailctl.config import Config, Secret
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.engine import Session
 from mailctl.providers.mxroute.imap import new_imap_session
 
 # ############################################################################
@@ -423,5 +423,5 @@ def fake_sieve(roundcube_script) -> FakeSieveSession:
 
 # ----------------------------------------------------------------------------
 @pytest.fixture
-def sessions(fake_sieve, imap_session) -> MxrouteProvider:
-    return MxrouteProvider(sieve=fake_sieve, imap=imap_session)
+def sessions(fake_sieve, imap_session) -> Session:
+    return mxroute(sieve=fake_sieve, imap=imap_session)

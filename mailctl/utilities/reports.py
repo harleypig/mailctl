@@ -7,7 +7,8 @@ and connection facts, and the state of each Sieve extension.
 from dataclasses import dataclass, field
 
 from ..config import Config
-from ..providers.base import ExtensionState, Fact, Provider, Wording
+from ..engine import Session
+from ..providers.base import ExtensionState, Fact, Wording
 from ..providers.registry import provider_for
 from .folders import list_folders
 
@@ -41,26 +42,26 @@ class MailProbe:
 
 
 # ----------------------------------------------------------------------------
-def probe_rules(provider: Provider) -> RulesProbe:
+def probe_rules(session: Session) -> RulesProbe:
     """Read what the rule half advertises, and its rule-set listing."""
-    capabilities = provider.rules_capabilities()
-    active, others = provider.list_rule_sets()
+    capabilities = session.transport.rules_capabilities()
+    active, others = session.transport.list_rule_sets()
 
     return RulesProbe(capabilities, active, others)
 
 
 # ----------------------------------------------------------------------------
-def probe_mail(provider: Provider) -> MailProbe:
+def probe_mail(session: Session) -> MailProbe:
     """Read what the mail half advertises, and its folder shape."""
-    listing = list_folders(provider)
-    capabilities = provider.mail_capabilities()
+    listing = list_folders(session)
+    capabilities = session.transport.mail_capabilities()
 
     return MailProbe(
         capabilities,
         listing.delimiter,
         len(listing.folders),
         listing.unsubscribed,
-        provider.mail_facts(capabilities),
+        session.dialect.mail_facts(capabilities),
     )
 
 
@@ -77,7 +78,7 @@ def wording(config: Config) -> Wording:
 # ----------------------------------------------------------------------------
 def connection_facts(config: Config) -> list[Fact]:
     """Where the configured provider connects, as ``config`` resolves it."""
-    return provider_for(config).connection_facts(config)
+    return provider_for(config).dialect.connection_facts(config)
 
 
 # ############################################################################
@@ -87,13 +88,13 @@ def connection_facts(config: Config) -> list[Fact]:
 
 # ----------------------------------------------------------------------------
 def report_extensions(
-    provider: Provider, probe: RulesProbe, config: Config
+    session: Session, probe: RulesProbe, config: Config
 ) -> list[ExtensionState]:
     """One state per extension mailctl knows or the server lists, by name.
 
     Empty for a provider that does not declare ``extensions``.
     """
-    if not provider.capabilities.extensions:
+    if not session.capabilities.extensions:
         return []
 
-    return provider.report_extensions(probe.capabilities, config)
+    return session.dialect.report_extensions(probe.capabilities, config)

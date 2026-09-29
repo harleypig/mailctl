@@ -2,16 +2,11 @@
 
 ``client`` is the protocol session, ``script`` the offline parse / merge /
 render / diff, ``emit`` what a rule can contain and the extensions it
-needs, and ``backup`` the byte-exact backup writer. Everything a
+needs, and ``backup`` where a backup of a script goes. Everything a
 caller needs is re-exported here.
 """
 
-from .backup import (
-    backup_path,
-    backup_script,
-    resolve_backup_target,
-    write_backup,
-)
+from .backup import backup_path, resolve_backup_target
 from .client import (
     Revealable,
     SieveAuthenticationError,
@@ -70,7 +65,6 @@ __all__ = [
     "SieveConnectionError",
     "SieveSession",
     "backup_path",
-    "backup_script",
     "display_diff",
     "emitted_extensions",
     "merge_rule",
@@ -83,5 +77,4 @@ __all__ = [
     "rewrite_hash_comments",
     "rule_names",
     "script_diff",
-    "write_backup",
 ]

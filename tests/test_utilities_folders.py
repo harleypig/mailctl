@@ -11,10 +11,9 @@ conftest, so folder normalization and planning run for real.
 """
 
 import pytest
-from utilities_support import NO_MAILBOX, FakeSieveSession, criteria
+from utilities_support import NO_MAILBOX, FakeSieveSession, criteria, mxroute
 
 from mailctl import MailctlError, utilities
-from mailctl.providers.mxroute import MxrouteProvider
 from mailctl.providers.mxroute.imap import new_imap_session
 from mailctl.utilities.mail import MailActionPlan
 from mailctl.utilities.rules import (
@@ -75,7 +74,7 @@ def test_with_mailbox_and_imap_the_folder_is_made_both_ways(
 # ----------------------------------------------------------------------------
 def test_without_imap_only_sieve_creates_the_folder(fake_sieve, imap_config):
     """--no-imap: nothing can create or subscribe it now (#40)."""
-    live = MxrouteProvider(sieve=fake_sieve, imap=None)
+    live = mxroute(sieve=fake_sieve, imap=None)
 
     plan = utilities.folders.plan_folder(live, imap_config, "New", create=True)
 
@@ -88,7 +87,7 @@ def test_without_imap_only_sieve_creates_the_folder(fake_sieve, imap_config):
 def test_without_mailbox_the_folder_is_planned_for_imap_then_created(
     imap_session, imap_config, fake_imap
 ):
-    live = MxrouteProvider(FakeSieveSession(caps=NO_MAILBOX), imap_session)
+    live = mxroute(FakeSieveSession(caps=NO_MAILBOX), imap_session)
 
     plan = utilities.folders.plan_folder(
         live, imap_config, "New", create=True, subscribe=False
@@ -114,7 +113,7 @@ def test_a_new_folder_is_planned_under_the_servers_namespace_prefix(
     fake_imap.namespace_response = ((("", "."),), None, None)
     session = new_imap_session(imap_config)
     session.open()
-    live = MxrouteProvider(sieve=fake_sieve, imap=session)
+    live = mxroute(sieve=fake_sieve, imap=session)
 
     plan = utilities.folders.plan_folder(
         live, imap_config, "Probe", create=True
@@ -135,7 +134,7 @@ def test_creating_a_folder_that_was_not_planned_for_it_is_refused(
 
 # ----------------------------------------------------------------------------
 def test_without_imap_the_delimiter_is_assumed_and_said_so(imap_config):
-    live = MxrouteProvider(sieve=FakeSieveSession())
+    live = mxroute(sieve=FakeSieveSession())
 
     plan = utilities.folders.plan_folder(live, imap_config, "Lists/GitHub")
 
@@ -148,7 +147,7 @@ def test_without_imap_the_delimiter_is_assumed_and_said_so(imap_config):
 def test_a_folder_that_cannot_be_created_is_planned_then_refused(
     imap_config,
 ):
-    live = MxrouteProvider(sieve=FakeSieveSession(caps=NO_MAILBOX))
+    live = mxroute(sieve=FakeSieveSession(caps=NO_MAILBOX))
 
     plan = utilities.folders.plan_folder(live, imap_config, "New", create=True)
 
@@ -170,7 +169,7 @@ def test_a_folder_that_cannot_be_created_is_planned_then_refused(
 
 # ----------------------------------------------------------------------------
 def imap_created_folder_plan(imap_session, imap_config):
-    live = MxrouteProvider(FakeSieveSession(caps=NO_MAILBOX), imap_session)
+    live = mxroute(FakeSieveSession(caps=NO_MAILBOX), imap_session)
     folder = utilities.folders.plan_folder(
         live, imap_config, "New", create=True
     )
@@ -207,7 +206,7 @@ def test_a_rejected_script_leaves_no_folder_behind(
 ):
     imap_config.backup_dir = tmp_path
     live, plan = imap_created_folder_plan(imap_session, imap_config)
-    live.sieve.reject = True
+    live.transport.sieve.reject = True
 
     with pytest.raises(MailctlError, match="rejected"):
         utilities.rules.execute_script_change(live, imap_config, plan)
@@ -266,7 +265,7 @@ def test_a_rejected_sieve_create_rule_leaves_no_folder_behind(
         RuleRequest(criteria(), ActionSpec(fileinto="New")),
         folder,
     )
-    sessions.sieve.reject = True
+    sessions.transport.sieve.reject = True
 
     with pytest.raises(MailctlError, match="rejected"):
         utilities.rules.execute_script_change(sessions, imap_config, plan)
@@ -352,7 +351,7 @@ def test_a_stale_subscription_to_a_gone_folder_can_be_removed(
     sessions, fake_imap
 ):
     fake_imap.subscriptions.append(((), b".", b"INBOX.Gone"))
-    sessions.imap._read_folders()
+    sessions.transport.imap._read_folders()
 
     plan = utilities.folders.plan_subscription(
         sessions, "Gone", subscribe=False
@@ -436,7 +435,7 @@ def test_the_source_folder_is_normalized_like_the_destination(
 ):
     """--folder Lists and --fileinto Lists name the same folder."""
     fake_imap.listing.append(((), b".", b"INBOX.Lists.X"))
-    sessions.imap._read_folders()
+    sessions.transport.imap._read_folders()
 
     source = utilities.mail.source_folder(sessions, "Lists/X")
 

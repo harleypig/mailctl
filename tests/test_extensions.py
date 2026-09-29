@@ -16,12 +16,13 @@ import re
 from typing import cast
 
 import pytest
+from utilities_support import mxroute
 
 from mailctl import MailctlError, engine, utilities
 from mailctl.components.managesieve import SieveSession, emit
 from mailctl.config import FLAG, Source
 from mailctl.criteria import COMPARE_OPS, MATCH_MODES, Criteria
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.engine import Session
 from mailctl.providers.mxroute import sieve as mxroute_sieve
 from mailctl.providers.mxroute.sieve import merge_rule
 from mailctl.utilities.rules import ActionSpec, RuleRequest
@@ -47,8 +48,8 @@ class FakeSieveSession:
         self.calls: list[tuple] = []
 
     # ------------------------------------------------------------------------
-    def missing_extensions(self, required):
-        return sorted(name for name in required if name not in self.caps)
+    def capabilities(self):
+        return list(self.caps)
 
     # ------------------------------------------------------------------------
     def list_scripts(self):
@@ -80,9 +81,9 @@ class FakeSieveSession:
 
 
 # ----------------------------------------------------------------------------
-def live_sessions(sieve: FakeSieveSession, imap=None) -> MxrouteProvider:
+def live_sessions(sieve: FakeSieveSession, imap=None) -> Session:
     """Sessions over the fake, typed as the session it stands in for."""
-    return MxrouteProvider(cast(SieveSession, sieve), imap)
+    return mxroute(cast(SieveSession, sieve), imap)
 
 
 # ----------------------------------------------------------------------------
@@ -410,7 +411,7 @@ def test_disabling_an_extension_the_server_lacks_changes_nothing(
 def report(caps, config):
     """The report as a name -> state mapping, checking its order on the way."""
     states = utilities.reports.report_extensions(
-        MxrouteProvider(), utilities.reports.RulesProbe(caps, None, []), config
+        mxroute(), utilities.reports.RulesProbe(caps, None, []), config
     )
     names = [state.name for state in states]
 

@@ -29,7 +29,6 @@ import pytest
 
 from mailctl import MailctlError
 from mailctl.components.managesieve import client as client_module
-from mailctl.components.managesieve import write_backup
 from mailctl.components.managesieve.client import (
     DEFAULT_TIMEOUT,
     SieveClient,
@@ -39,6 +38,7 @@ from mailctl.components.managesieve.client import (
 from mailctl.components.managesieve.servers import PLAIN
 from mailctl.config import Secret
 from mailctl.providers.mxroute.sieve import merge_rule, parse_script
+from mailctl.utilities.backup_files import write_backup
 
 # CRLF throughout and a final CRLF: the two things sievelib's getscript
 # loses, in a script shaped like the one Roundcube leaves on MXroute.

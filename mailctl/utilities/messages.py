@@ -12,7 +12,8 @@ from html.parser import HTMLParser
 
 from .. import MailctlError
 from ..criteria import Criteria
-from ..providers.base import MessageSummary, Provider, decode_header_value
+from ..engine import Session
+from ..providers.base import MessageSummary, decode_header_value
 
 # ############################################################################
 # Finding and reading messages
@@ -125,7 +126,7 @@ class MessageContent:
 
 # ----------------------------------------------------------------------------
 def list_messages(
-    provider: Provider,
+    session: Session,
     folder: str = "INBOX",
     criteria: Criteria | None = None,
     search: str | None = None,
@@ -151,9 +152,9 @@ def list_messages(
             f"the message limit must be at least 1, not {limit}"
         )
 
-    folder = provider.normalize(folder)
+    folder = session.transport.normalize(folder)
 
-    messages, more = provider.list_messages(
+    messages, more = session.transport.list_messages(
         folder, criteria=criteria, expression=search, limit=limit
     )
 
@@ -161,7 +162,7 @@ def list_messages(
 
 
 # ----------------------------------------------------------------------------
-def read_message(provider: Provider, folder: str, uid: int) -> MessageContent:
+def read_message(session: Session, folder: str, uid: int) -> MessageContent:
     """Fetch one message whole and decode it, without marking it read.
 
     The folder is selected read-only and the body fetched with
@@ -171,9 +172,9 @@ def read_message(provider: Provider, folder: str, uid: int) -> MessageContent:
     if uid < 1:
         raise MailctlError(f"message UIDs start at 1, not {uid}")
 
-    folder = provider.normalize(folder)
+    folder = session.transport.normalize(folder)
 
-    source, flags = provider.message_source(folder, uid)
+    source, flags = session.transport.message_source(folder, uid)
 
     return parse_message(source, uid=uid, folder=folder, flags=flags)
 

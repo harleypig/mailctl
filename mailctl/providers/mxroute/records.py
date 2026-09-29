@@ -1,61 +1,27 @@
-"""Between the neutral model and the layer-1 libraries' own records.
+"""Between the neutral model and the ``imap`` component's own records.
 
-The ``imap`` and ``managesieve`` components keep records of their own, and
-the engine speaks :mod:`mailctl.providers.model`. The two are field for
-field alike today, so each translation here is a straight copy; keeping it
-in one place is what lets either side change without the other noticing.
+The component keeps records of its own, and the utilities speak
+:mod:`mailctl.providers.model`. The two are field for field alike today, so
+each translation here is a straight copy; keeping it in one place is what
+lets either side change without the other noticing. The ManageSieve
+records -- a placement, a diff -- cross in the dialect (``sieve.py``).
 """
 
-from typing import overload
-
-from ...components import imap as imap_records
-from ...components import managesieve as sieve_records
+from ...components.imap import messages as imap_records
+from ...components.imap.folders import FolderCreation
 from .. import model
 
 __all__ = [
-    "DIFF_LABEL",
-    "display_diff",
     "folder_creation",
     "mail_plan",
     "mail_result",
     "message_summary",
-    "placement",
     "session_plan",
 ]
 
-# What a diff of this host's rule set is called: a Sieve script.
-DIFF_LABEL = "sieve"
-
 
 # ----------------------------------------------------------------------------
-@overload
-def placement(value: model.Placement) -> sieve_records.Placement: ...
-
-
-@overload
-def placement(value: None) -> None: ...
-
-
-def placement(
-    value: model.Placement | None,
-) -> sieve_records.Placement | None:
-    """A neutral placement, as the ManageSieve component takes it."""
-    if value is None:
-        return None
-
-    return sieve_records.Placement(value.where, value.anchor)
-
-
-# ----------------------------------------------------------------------------
-def display_diff(value: sieve_records.DisplayDiff) -> model.DisplayDiff:
-    """A script diff, labelled as one."""
-    return model.DisplayDiff(value.text, value.reformats, DIFF_LABEL)
-
-
-# ----------------------------------------------------------------------------
-def folder_creation(
-    value: imap_records.FolderCreation,
-) -> model.FolderCreation:
+def folder_creation(value: FolderCreation) -> model.FolderCreation:
     return model.FolderCreation(
         value.folder, value.subscribed, value.subscribe_error
     )

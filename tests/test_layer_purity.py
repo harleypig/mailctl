@@ -348,7 +348,7 @@ def test_the_front_guard_would_catch_a_component_import(source):
 @pytest.mark.parametrize(
     "source",
     [
-        "from .providers.mxroute import MxrouteProvider\n",
+        "from .providers.mxroute import MXROUTE\n",
         "from .providers.mxroute.sieve import merge_rule\n",
     ],
 )
@@ -460,3 +460,317 @@ def test_the_neutral_guard_would_catch_a_borrowed_type():
     assert component_imports(source, "mailctl.providers") == [
         "mailctl.components.managesieve"
     ]
+
+
+# ############################################################################
+# The provider's two halves (ADR 0007)
+# ############################################################################
+
+# The dialect is offline and the transport is communication only. Each
+# half's modules are derived, not listed: the module defining the half's
+# class, and every module of the same provider package it imports, however
+# indirectly. A new helper module is held to its half's line the day it is
+# imported.
+
+# Modules that build, edit, or check a rule, and the names they define. A
+# transport may import none of them: it stores what it is handed.
+BUILDING_MODULES = {
+    "mailctl.components.managesieve.script",
+    "mailctl.components.managesieve.emit",
+    "mailctl.rules",
+}
+
+# Modules that open a connection. A dialect may import none of them, nor
+# any name a component's client module defines, however it is spelled: a
+# component package re-exports its client's names. This is a guard on
+# what a module depends on, not on what Python loads -- importing any
+# submodule runs its package's ``__init__`` regardless.
+CONNECTION_MODULES = {
+    "sievelib.managesieve",
+    "mailctl.components.imap.client",
+    "mailctl.components.managesieve.client",
+}
+CONNECTION_LIBRARIES = {"imapclient", "socket", "ssl"}
+
+
+# ----------------------------------------------------------------------------
+def building_names() -> set[str]:
+    """Every public name the building modules define."""
+    from mailctl.components.managesieve import emit, script
+
+    return {
+        name
+        for module in (emit, script)
+        for name in getattr(module, "__all__", vars(module))
+        if not name.startswith("_")
+    } - {"Placement", "DisplayDiff"}
+
+
+# ----------------------------------------------------------------------------
+def connection_names() -> set[str]:
+    """Every public name the components' client modules define."""
+    from mailctl.components.imap import client as imap_client
+    from mailctl.components.managesieve import client as sieve_client
+
+    return {
+        name
+        for module in (imap_client, sieve_client)
+        for name in getattr(module, "__all__", vars(module))
+        if not name.startswith("_")
+    } | {"SieveClient"}
+
+
+# ----------------------------------------------------------------------------
+def module_file(module: str) -> Path | None:
+    """The file a ``mailctl`` module name lives in, if it is one."""
+    parts = module.split(".")
+
+    if parts[0] != "mailctl":
+        return None
+
+    base = PACKAGE.joinpath(*parts[1:])
+
+    for candidate in (base.with_suffix(".py"), base / "__init__.py"):
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
+# ----------------------------------------------------------------------------
+def half_modules(cls: type) -> set[Path]:
+    """The files one half of a provider is made of.
+
+    The file defining ``cls``, and every file of the same provider package
+    it imports, followed transitively. ``from . import records`` names a
+    module, so an imported name that is a sibling file counts too.
+    """
+    import inspect
+
+    start = Path(inspect.getfile(cls))
+    package = package_of(start)
+    seen: set[Path] = set()
+    pending = [start]
+
+    while pending:
+        path = pending.pop()
+
+        if path in seen:
+            continue
+
+        seen.add(path)
+
+        for module, names in imports(path.read_text(), package_of(path)):
+            candidates = [module] + [f"{module}.{name}" for name in names]
+
+            for candidate in candidates:
+                if candidate != package and not candidate.startswith(
+                    f"{package}."
+                ):
+                    continue
+
+                found = module_file(candidate)
+
+                if found is not None and found.name != "__init__.py":
+                    pending.append(found)
+
+    return seen
+
+
+# ----------------------------------------------------------------------------
+def providers_halves() -> dict[str, tuple[set[Path], set[Path]]]:
+    """Each registered provider's dialect files and transport files."""
+    from mailctl.providers.registry import PROVIDERS
+
+    return {
+        name: (half_modules(p.dialect), half_modules(p.transport))
+        for name, p in PROVIDERS.items()
+    }
+
+
+# ----------------------------------------------------------------------------
+def transport_violations(source: str, package: str, dialect: set[str]):
+    """Every import in a transport module of a building helper.
+
+    ``dialect`` is the module names on the provider's dialect side.
+    """
+    names = building_names()
+
+    return [
+        f"{module} {sorted(taken)}".rstrip(" []")
+        for module, taken in imports(source, package)
+        if module in BUILDING_MODULES
+        or module in dialect
+        or any(f"{module}.{name}" in dialect for name in taken)
+        or (module.startswith("mailctl.") and taken & names)
+    ]
+
+
+# ----------------------------------------------------------------------------
+def dialect_violations(source: str, package: str, transport: set[str]):
+    """Every import in a dialect module of something that connects.
+
+    ``transport`` is the module names on the provider's transport side.
+    """
+    names = connection_names()
+
+    return [
+        f"{module} {sorted(taken)}".rstrip(" []")
+        for module, taken in imports(source, package)
+        if module in CONNECTION_MODULES
+        or module.split(".")[0] in CONNECTION_LIBRARIES
+        or module in transport
+        or any(f"{module}.{name}" in transport for name in taken)
+        or (module.startswith("mailctl.components") and taken & names)
+    ]
+
+
+# ----------------------------------------------------------------------------
+def dotted(path: Path) -> str:
+    """The module name of a file under the package."""
+    relative = path.relative_to(PACKAGE.parent).with_suffix("")
+
+    return ".".join(relative.parts)
+
+
+# ----------------------------------------------------------------------------
+def test_the_walk_finds_each_half_of_mxroute():
+    """A derivation that found nothing would pass the guards vacuously."""
+    dialect, transport = providers_halves()["mxroute"]
+    names = {
+        side: {path.relative_to(PACKAGE).as_posix() for path in files}
+        for side, files in (("dialect", dialect), ("transport", transport))
+    }
+
+    assert {
+        "providers/mxroute/dialect.py",
+        "providers/mxroute/sieve.py",
+    } <= names["dialect"]
+    assert {
+        "providers/mxroute/transport.py",
+        "providers/mxroute/imap.py",
+        "providers/mxroute/managesieve.py",
+    } <= names["transport"]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("provider", sorted(providers_halves()))
+def test_no_module_is_on_both_sides(provider):
+    dialect, transport = providers_halves()[provider]
+
+    assert dialect & transport == set()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("provider", sorted(providers_halves()))
+def test_a_transport_imports_no_building_helper(provider):
+    dialect, transport = providers_halves()[provider]
+    dialect_names = {dotted(path) for path in dialect}
+
+    for path in sorted(transport):
+        found = transport_violations(
+            path.read_text(encoding="utf-8"), package_of(path), dialect_names
+        )
+
+        assert found == [], (
+            f"{path.relative_to(PACKAGE)} imports {found}; a transport "
+            f"stores what it is handed and builds nothing (ADR 0007)"
+        )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("provider", sorted(providers_halves()))
+def test_a_dialect_opens_no_connection(provider):
+    dialect, transport = providers_halves()[provider]
+    transport_names = {dotted(path) for path in transport}
+
+    for path in sorted(dialect):
+        found = dialect_violations(
+            path.read_text(encoding="utf-8"), package_of(path), transport_names
+        )
+
+        assert found == [], (
+            f"{path.relative_to(PACKAGE)} imports {found}; a dialect is "
+            f"offline and opens no connection (ADR 0007)"
+        )
+
+
+MXROUTE_DIALECT = {
+    "mailctl.providers.mxroute.dialect",
+    "mailctl.providers.mxroute.sieve",
+}
+MXROUTE_TRANSPORT = {
+    "mailctl.providers.mxroute.transport",
+    "mailctl.providers.mxroute.imap",
+    "mailctl.providers.mxroute.managesieve",
+}
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from ...components.managesieve.script import merge_rule\n",
+        "from ...components.managesieve import render_script\n",
+        "from ...components.managesieve.emit import EMIT_TABLE\n",
+        "from ...rules import read_rules\n",
+        "from . import sieve\n",
+        "from .dialect import MxrouteDialect\n",
+    ],
+)
+def test_the_transport_guard_would_catch_a_building_helper(source):
+    assert transport_violations(
+        source, "mailctl.providers.mxroute", MXROUTE_DIALECT
+    ), source
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from ...components.imap.client import ImapSession\n",
+        "from ...components.managesieve import SieveSession\n",
+        "from ...components.imap import ImapSession\n",
+        "from ...components.managesieve.client import SieveClient\n",
+        "from imapclient import IMAPClient\n",
+        "from sievelib.managesieve import Client\n",
+        "import socket\n",
+        "from .transport import MxrouteTransport\n",
+        "from . import imap\n",
+    ],
+)
+def test_the_dialect_guard_would_catch_a_connection(source):
+    assert dialect_violations(
+        source, "mailctl.providers.mxroute", MXROUTE_TRANSPORT
+    ), source
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("guard", "source"),
+    [
+        ("transport", "from ...components.imap.client import ImapSession\n"),
+        ("transport", "from . import records\n"),
+        ("transport", "from ...criteria import Criteria\n"),
+        (
+            "dialect",
+            "from ...components.managesieve.script import rule_names\n",
+        ),
+        (
+            "dialect",
+            "from ...components.imap.folders import normalize_folder\n",
+        ),
+        ("dialect", "from sievelib import factory\n"),
+        ("dialect", "from ...components.managesieve import script\n"),
+        ("dialect", "from . import sieve as mxroute_sieve\n"),
+    ],
+)
+def test_the_half_guards_allow_what_each_half_may_use(guard, source):
+    """Too wide a guard teaches people to ignore it."""
+    package = "mailctl.providers.mxroute"
+
+    if guard == "transport":
+        assert transport_violations(source, package, MXROUTE_DIALECT) == []
+
+    else:
+        assert dialect_violations(source, package, MXROUTE_TRANSPORT) == []

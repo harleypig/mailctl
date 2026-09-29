@@ -1,7 +1,9 @@
 """Rule sets as the server stores them: read, chosen, and uploaded.
 
 The one upload path, ``upload_script``, is where the backup before every
-upload is taken; every rule change and every restore goes through it.
+upload is taken; every rule change and every restore goes through it. The
+transport reads and stores; the backup and the order of the steps are
+here.
 """
 
 from collections.abc import Callable
@@ -10,7 +12,9 @@ from pathlib import Path
 
 from .. import MailctlError
 from ..config import Config
+from ..engine import Session
 from ..providers.base import Provider
+from .backup_files import write_backup
 from .events import EventSink, ScriptBackedUp, ScriptUploaded
 
 DEFAULT_SCRIPT_NAME = "mailctl"
@@ -30,34 +34,34 @@ LEGACY_SCRIPT_NAME = "mxfilter"
 class ScriptText:
     """One script's source, exactly as the server holds it.
 
-    ``provider`` reads it; it is not part of the value.
+    ``provider``'s dialect reads it; it is not part of the value.
     """
 
     name: str
     source: str
-    provider: Provider | type[Provider] = field(compare=False, repr=False)
+    provider: Provider | Session = field(compare=False, repr=False)
 
     # ------------------------------------------------------------------------
     def rule_names(self) -> list[str]:
         """Parse on demand, so an unparseable script can still be shown."""
-        return self.provider.rule_names(self.source)
+        return self.provider.dialect.rule_names(self.source)
 
 
 # ----------------------------------------------------------------------------
-def list_scripts(provider: Provider) -> tuple[str | None, list[str]]:
+def list_scripts(session: Session) -> tuple[str | None, list[str]]:
     """Return ``(active, others)``."""
-    return provider.list_rule_sets()
+    return session.transport.list_rule_sets()
 
 
 # ----------------------------------------------------------------------------
-def read_script(provider: Provider, name: str | None = None) -> ScriptText:
+def read_script(session: Session, name: str | None = None) -> ScriptText:
     """Return a named script, or the active one."""
-    name = name or provider.active_rule_set()
+    name = name or session.transport.active_rule_set()
 
     if not name:
         raise MailctlError("no active script; name one explicitly")
 
-    return ScriptText(name, provider.read_rule_set(name), provider)
+    return ScriptText(name, session.transport.read_rule_set(name), session)
 
 
 # ############################################################################
@@ -67,7 +71,7 @@ def read_script(provider: Provider, name: str | None = None) -> ScriptText:
 
 # ----------------------------------------------------------------------------
 def fetch_active(
-    provider: Provider, requested: str | None = None
+    session: Session, requested: str | None = None
 ) -> tuple[str, str, str | None]:
     """Return ``(script_name, source, active)`` for the script to edit.
 
@@ -87,8 +91,9 @@ def fetch_active(
     set up before the rename does not grow a duplicate beside it.
     ``DEFAULT_SCRIPT_NAME`` is used only when there is neither.
     """
-    active = provider.active_rule_set()
-    _active, others = provider.list_rule_sets()
+    transport = session.transport
+    active = transport.active_rule_set()
+    _active, others = transport.list_rule_sets()
 
     fallback = (
         LEGACY_SCRIPT_NAME
@@ -98,7 +103,7 @@ def fetch_active(
     name = requested or active or fallback
 
     if name == active or name in others:
-        return (name, provider.read_rule_set(name), active)
+        return (name, transport.read_rule_set(name), active)
 
     return (name, "", active)
 
@@ -118,7 +123,7 @@ def activates(name: str, active: str | None, requested: bool) -> bool:
 
 # ----------------------------------------------------------------------------
 def upload_script(
-    provider: Provider,
+    session: Session,
     config: Config,
     name: str,
     before: str,
@@ -138,21 +143,26 @@ def upload_script(
     so a rejected upload still leaves the user knowing where the copy is.
     ``before_put`` runs once CHECKSCRIPT has accepted the new script and
     before it is stored -- the point where a prerequisite is worth making.
+    The transport only reports each step's success or failure; a failed
+    step raises and nothing after it runs.
     """
     emit = on_event or (lambda event: None)
+    transport = session.transport
 
-    path = provider.backup(before, name, config.backup_dir)
+    path = write_backup(
+        before, session.dialect.backup_path(name, config.backup_dir)
+    )
     emit(ScriptBackedUp(name, path))
 
-    provider.check_rule_set(after)
+    transport.check_rule_set(after)
 
     if before_put:
         before_put()
 
-    provider.store_rule_set(name, after)
+    transport.store_rule_set(name, after)
 
     if activate:
-        provider.activate_rule_set(name)
+        transport.activate_rule_set(name)
 
     emit(ScriptUploaded(name, activate))
 

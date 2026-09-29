@@ -14,6 +14,16 @@ NOTES:
   migration, reports), and the CLI calls the utilities. Every command's
   output is byte-for-byte what it was.
 
+* **Each provider is split into a dialect and a transport; no behaviour
+  change** ([#134]). The dialect is the offline half: it turns a rule into
+  the host's language and back, edits the stored rule set, and holds the
+  host's refusals and wording. The transport is the communication half:
+  it reads and stores what it is handed and reports whether the server
+  accepted it, without building or checking anything. The utilities now
+  do the building, using the dialect for the host-specific parts, and
+  write backup files themselves. Every command's output is byte-for-byte
+  what it was.
+
 ## 0.8.4
 
 NOTES:
@@ -773,3 +783,4 @@ NOTES:
 [#129]: https://github.com/harleypig/mailctl/pull/129
 [#130]: https://github.com/harleypig/mailctl/pull/130
 [#133]: https://github.com/harleypig/mailctl/issues/133
+[#134]: https://github.com/harleypig/mailctl/issues/134

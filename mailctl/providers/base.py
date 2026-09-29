@@ -1,6 +1,6 @@
 """The provider interface: the one shape every host presents (ADR 0006).
 
-A provider is a **two-way translator**. The engine speaks one
+A provider is a **two-way translator**. The utilities speak one
 provider-neutral model -- a rule as :class:`~mailctl.criteria.Criteria`
 plus an :class:`ActionSpec`, folders, messages, capabilities, results, and
 ``MailctlError`` -- and a provider converts it into its host's terms on the
@@ -9,15 +9,23 @@ host's answers back into the same model on the way in (a parsed script
 becomes :class:`~mailctl.rules.Rule` values; a server refusal becomes a
 ``MailctlError``).
 
+It does so in two halves (ADR 0007). The :class:`Dialect` is offline: it
+translates, parses, edits, refuses, and words, and never touches the
+network. The :class:`Transport` is communication only: one exchange with a
+server per operation, or a composite the host performs natively, and it
+builds and validates nothing. A :class:`Provider` names the pair and what
+the host can do. The utilities do the building, asking the dialect for
+the host-specific parts and the transport to read and store.
+
 Sameness is the default. What a host can and cannot do is declared as data
-in :class:`ProviderCapabilities`, and the engine reads that data; it never
-asks which provider it has. An operation a host cannot perform is still
-present on its provider, marked with :func:`declined`, so every registered
-provider answers every call in :data:`OPERATIONS` --
+in :class:`ProviderCapabilities`, and the utilities read that data; they
+never ask which provider they have. An operation a host cannot perform is
+still present on its half, marked with :func:`declined`, so every
+registered provider answers every call in :data:`OPERATIONS` --
 ``tests/test_providers.py`` holds that.
 
 The neutral model itself is :mod:`mailctl.providers.model`, re-exported
-here so a provider or the engine reaches the interface and its records
+here so a provider or a utility reaches the interface and its records
 through one import.
 """
 
@@ -60,6 +68,7 @@ from .model import (
 )
 
 __all__ = [
+    "DIALECT_OPERATIONS",
     "DISCARD",
     "FILEINTO",
     "FLAG",
@@ -69,8 +78,10 @@ __all__ = [
     "PLACE_BEFORE",
     "PLACE_FIRST",
     "PLACE_LAST",
+    "TRANSPORT_OPERATIONS",
     "ActionSpec",
     "DeliveryCreate",
+    "Dialect",
     "DisplayDiff",
     "ExtensionState",
     "Fact",
@@ -84,6 +95,7 @@ __all__ = [
     "Provider",
     "ProviderCapabilities",
     "Specific",
+    "Transport",
     "Wording",
     "action_names",
     "declined",
@@ -196,9 +208,9 @@ def validate_specifics(
 def declined(operation: Callable) -> Callable:
     """Mark an operation as one this provider does not perform.
 
-    The operation is still defined, so the provider stays complete against
-    the interface; calling it raises the one refusal error. Its name must
-    also appear in the provider's ``capabilities.declined``, and the
+    The operation is still defined, so its half stays complete against the
+    interface; calling it raises the one refusal error. Its name must also
+    appear in the provider's ``capabilities.declined``, and the
     exhaustiveness test holds the two together.
     """
     name = operation.__name__
@@ -215,36 +227,37 @@ def declined(operation: Callable) -> Callable:
 
 
 # ############################################################################
-# The interface
+# The dialect -- offline: the neutral model in the host's language and back
 # ############################################################################
 
 
-class Provider(ABC):
-    """One host, presenting the operations the engine uses.
+class Dialect(ABC):
+    """One host's language, spoken offline (ADR 0007).
 
-    A subclass is registered by ``name`` in
-    :mod:`mailctl.providers.registry`. The classmethods need no connection:
-    they validate and translate, so they run before any network work. An
-    instance is one open connection, made by :meth:`open`.
+    Every operation is a classmethod and none touches the network: a
+    dialect translates actions, parses and renders the host's stored rule
+    set, edits it, holds the host's refusals and required features as
+    checks, and words the host for a person. A utility asks it for the
+    host-specific part of a piece of work, and hands what it builds to the
+    transport to save.
     """
 
     name: ClassVar[str]
-    capabilities: ClassVar[ProviderCapabilities]
     wording: ClassVar[Wording]
 
     # ------------------------------------------------------------------------
-    # Before any network work
+    # Refusals and requirements
     # ------------------------------------------------------------------------
 
     @classmethod
     @abstractmethod
     def validate(cls, config: Config) -> None:
-        """Refuse a configuration this provider cannot run under."""
+        """Refuse a configuration this host cannot run under."""
 
     @classmethod
     @abstractmethod
     def refuse_actions(cls, requested: Iterable[str]) -> None:
-        """Refuse, with a pointer, actions this provider will not emit."""
+        """Refuse, with a pointer, actions this host will not take."""
 
     @classmethod
     @abstractmethod
@@ -253,9 +266,9 @@ class Provider(ABC):
     ) -> list:
         """Translate a spec into the host's actions; refuse an empty one.
 
-        ``spec.stop`` arrives settled, never None: the engine has applied
+        ``spec.stop`` arrives settled, never None: the utility has applied
         the default the capabilities give. The result is opaque to the
-        engine: it is carried on the plan and handed back, never
+        utilities: it is carried on the plan and handed back, never
         inspected.
         """
 
@@ -265,6 +278,24 @@ class Provider(ABC):
         cls, spec: ActionSpec, folder: str, use_create: bool
     ) -> set[str]:
         """The host features (extensions) the translated rule needs."""
+
+    @classmethod
+    @abstractmethod
+    def missing_features(
+        cls, needed: set[str], advertised: list[str]
+    ) -> list[str]:
+        """Which of ``needed`` are not among the ``advertised`` features."""
+
+    @classmethod
+    @abstractmethod
+    def delivery_create(
+        cls, config: Config, advertised: list[str] | None
+    ) -> DeliveryCreate:
+        """Whether a rule can create its folder when mail arrives.
+
+        ``advertised`` is what the rule half advertises, or None when that
+        half is not connected.
+        """
 
     @classmethod
     @abstractmethod
@@ -285,20 +316,8 @@ class Provider(ABC):
     ) -> Rule:
         """Read translated actions back as the neutral rule they make."""
 
-    @classmethod
-    @abstractmethod
-    def open(
-        cls,
-        config: Config,
-        *,
-        rules: bool,
-        mail: bool,
-        progress: Progress | None = None,
-    ) -> AbstractContextManager["Provider"]:
-        """Connect the requested halves; close them on the way out."""
-
     # ------------------------------------------------------------------------
-    # Rule sets, offline -- the host's stored form, and the neutral one
+    # Rule sets -- the host's stored form, and the neutral one
     # ------------------------------------------------------------------------
 
     @classmethod
@@ -360,7 +379,23 @@ class Provider(ABC):
         """Every extension mailctl knows or the host lists, and its state."""
 
     # ------------------------------------------------------------------------
-    # Folders, offline
+    # Backups -- where the host's exact bytes are kept on disk
+    # ------------------------------------------------------------------------
+
+    @classmethod
+    @abstractmethod
+    def backup_path(cls, name: str, backup_dir: Path) -> Path:
+        """The fresh file a backup of ``name`` taken now is written to."""
+
+    @classmethod
+    @abstractmethod
+    def backup_target(
+        cls, output: str | None, name: str, backup_dir: Path
+    ) -> Path:
+        """Where a backup of ``name`` goes, ``output`` given or not."""
+
+    # ------------------------------------------------------------------------
+    # Folders
     # ------------------------------------------------------------------------
 
     @classmethod
@@ -376,7 +411,7 @@ class Provider(ABC):
         """
 
     # ------------------------------------------------------------------------
-    # Describing the host, offline
+    # Describing the host
     # ------------------------------------------------------------------------
 
     @classmethod
@@ -393,29 +428,38 @@ class Provider(ABC):
     def mail_facts(cls, capabilities: list[str]) -> list[Fact]:
         """What the mail half's advertised capabilities mean for mailctl."""
 
-    # ------------------------------------------------------------------------
-    # Backups, offline -- the host's exact bytes, on disk
-    # ------------------------------------------------------------------------
+
+# ############################################################################
+# The transport -- communication with the host's servers, and nothing else
+# ############################################################################
+
+
+class Transport(ABC):
+    """One open connection to a host, speaking only to its servers.
+
+    Each operation is one exchange with a server, or a composite the host
+    performs natively (a move and its COPY + EXPUNGE fallback). A transport
+    neither builds nor validates what it is handed: it tries to store it
+    and reports success, or raises ``MailctlError`` with the server's
+    answer. An instance is made by :meth:`open`.
+    """
+
+    name: ClassVar[str]
 
     @classmethod
     @abstractmethod
-    def backup_target(
-        cls, output: str | None, name: str, backup_dir: Path
-    ) -> Path:
-        """Where a backup of ``name`` goes."""
-
-    @classmethod
-    @abstractmethod
-    def write_backup(cls, source: str, target: Path) -> Path:
-        """Write the host's exact bytes to ``target``."""
-
-    @classmethod
-    @abstractmethod
-    def backup(cls, source: str, name: str, backup_dir: Path) -> Path:
-        """Back up ``source`` under a fresh name before an upload."""
+    def open(
+        cls,
+        config: Config,
+        *,
+        rules: bool,
+        mail: bool,
+        progress: Progress | None = None,
+    ) -> AbstractContextManager["Transport"]:
+        """Connect the requested halves; close them on the way out."""
 
     # ------------------------------------------------------------------------
-    # Connected: the rule half
+    # The rule half
     # ------------------------------------------------------------------------
 
     @property
@@ -426,14 +470,6 @@ class Provider(ABC):
     @abstractmethod
     def rules_capabilities(self) -> list[str]:
         """What the rule half advertises, as the host names it."""
-
-    @abstractmethod
-    def missing_features(self, needed: set[str]) -> list[str]:
-        """Which of ``needed`` the host does not advertise."""
-
-    @abstractmethod
-    def delivery_create(self, config: Config) -> DeliveryCreate:
-        """Whether a rule can create its folder when mail arrives."""
 
     @abstractmethod
     def list_rule_sets(self) -> tuple[str | None, list[str]]:
@@ -449,7 +485,8 @@ class Provider(ABC):
 
     @abstractmethod
     def check_rule_set(self, source: str) -> None:
-        """Have the host validate a rule set without storing it."""
+        """Have the host validate a rule set without storing it; raise
+        with the host's verdict when it refuses."""
 
     @abstractmethod
     def store_rule_set(self, name: str, source: str) -> None:
@@ -460,7 +497,7 @@ class Provider(ABC):
         """Make ``name`` the rule set that runs."""
 
     # ------------------------------------------------------------------------
-    # Connected: the mail half -- folders
+    # The mail half -- folders
     # ------------------------------------------------------------------------
 
     @property
@@ -509,7 +546,7 @@ class Provider(ABC):
         """Unsubscribe from a folder."""
 
     # ------------------------------------------------------------------------
-    # Connected: the mail half -- the existing-mail pass and messages
+    # The mail half -- the existing-mail pass and messages
     # ------------------------------------------------------------------------
 
     @abstractmethod
@@ -558,6 +595,35 @@ class Provider(ABC):
         """One message's exact bytes and its flags, left unread."""
 
 
-# Every operation of the interface, by name. The exhaustiveness test holds
-# this equal to the abstract methods above, so it cannot drift from them.
-OPERATIONS = tuple(sorted(Provider.__abstractmethods__))
+# ############################################################################
+# The provider -- one host, as the registry names it
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class Provider:
+    """One host: what it can do, and the two halves that do it.
+
+    ``name`` is what the ``provider`` setting selects it by, and both
+    halves carry the same name, for their refusals. ``dialect`` needs no
+    connection; ``transport`` is opened by the session.
+    """
+
+    name: str
+    capabilities: ProviderCapabilities
+    dialect: type[Dialect]
+    transport: type[Transport]
+
+    # ------------------------------------------------------------------------
+    @property
+    def wording(self) -> Wording:
+        """The words the host is described in; the dialect's."""
+        return self.dialect.wording
+
+
+# Every operation of each half, by name. The exhaustiveness test holds
+# these equal to the abstract methods above, so they cannot drift from
+# them, and holds the two apart, so a name says which half it is on.
+DIALECT_OPERATIONS = tuple(sorted(Dialect.__abstractmethods__))
+TRANSPORT_OPERATIONS = tuple(sorted(Transport.__abstractmethods__))
+OPERATIONS = DIALECT_OPERATIONS + TRANSPORT_OPERATIONS

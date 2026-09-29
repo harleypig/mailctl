@@ -10,10 +10,10 @@ conftest, so folder normalization and planning run for real.
 """
 
 import pytest
-from utilities_support import FakeSieveSession
+from utilities_support import FakeSieveSession, mxroute
 
 from mailctl import MailctlError, utilities
-from mailctl.providers.mxroute import MxrouteProvider
+from mailctl.providers.mxroute import MXROUTE
 
 # ############################################################################
 # Reading the account
@@ -30,7 +30,7 @@ def test_read_script_takes_the_active_one_and_parses_only_on_demand(
     assert script.rule_names() == ["keep-boss", "bin-the-noise"]
 
     # Showing an unparseable script must still be possible.
-    broken = utilities.scripts.ScriptText("broken", "if {{{", MxrouteProvider)
+    broken = utilities.scripts.ScriptText("broken", "if {{{", MXROUTE)
 
     with pytest.raises(MailctlError):
         broken.rule_names()
@@ -38,7 +38,7 @@ def test_read_script_takes_the_active_one_and_parses_only_on_demand(
 
 # ----------------------------------------------------------------------------
 def test_reading_with_no_active_script_says_so():
-    empty = MxrouteProvider(sieve=FakeSieveSession(active=None))
+    empty = mxroute(sieve=FakeSieveSession(active=None))
 
     with pytest.raises(MailctlError, match="name one explicitly"):
         utilities.scripts.read_script(empty)
