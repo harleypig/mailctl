@@ -26,8 +26,9 @@ Disabled rules are never merged, moved, or removed, and a rule mailctl
 cannot fully read is never the basis of a change. Plan, then execute:
 ``plan_optimize`` is read-only and returns the proposals and a diff;
 ``execute_optimize`` uploads through ``scripts.upload_script``, which
-backs up first. The result stays a flat list of rules -- Roundcube
-co-edits the script (ADR 0002).
+backs up first. The result stays a flat list of named rules: a rule is
+found by its name, and ``rules.read_rules`` judges order only over one
+flat list.
 """
 
 from collections.abc import Iterable, Sequence
