@@ -1800,6 +1800,11 @@ def report_folder_rename(result) -> int:
     for check in result.checks:
         mark = "ok  " if check.ok else "FAIL"
         detail = f" -- {check.detail}" if check.detail else ""
+
+        if check.operation:
+            fix = command_for(check.operation, check.arguments)
+            detail = f"{detail}; '{fix}' does"
+
         print(f"  {mark}  {check.label}{detail}")
 
     if result.ok:
@@ -4741,7 +4746,7 @@ def report_failure(args, message: str, code: str | None = None) -> None:
 
 
 # ############################################################################
-# Errors -- the core's condition, with the flags that act on it
+# Errors -- the core's condition, with the flags and commands that act on it
 # ############################################################################
 
 
@@ -4749,6 +4754,13 @@ def report_failure(args, message: str, code: str | None = None) -> None:
 def flag_for(setting: str) -> str:
     """The flag that sets ``setting``: its name, spelt as a flag."""
     return f"--{setting.replace('_', '-')}"
+
+
+# ----------------------------------------------------------------------------
+def command_for(operation: str, arguments: tuple[str, ...] = ()) -> str:
+    """The command line that runs ``operation`` with ``arguments``; the
+    core names the operation, never the command (#183)."""
+    return " ".join(("mailctl", operation, *arguments))
 
 
 # The flag that sets each of 'senders' settings; --min is not its name.
@@ -4761,9 +4773,11 @@ SENDERS_FLAGS = {
 
 # What the CLI says for each coded error (MailctlError.code). The core's
 # message states the condition in words any front-end can show; each entry
-# here adds this front-end's flags, from the message and the error's fields.
-# Most append to the message. The rest rebuild it around a flag the core
-# could not name, keeping the wording the CLI has always printed.
+# here adds this front-end's flags and commands, from the message and the
+# error's fields ("operation", "operations", and "arguments" name a command
+# and what it is given). Most append to the message. The rest rebuild it
+# around a flag or command the core could not name, keeping the wording the
+# CLI has always printed.
 ERROR_TEXT = {
     "no_criteria": lambda message, _: (
         f"{message} -- use --from/--to/--cc/--subject/--list-id/--header/"
@@ -4850,6 +4864,60 @@ ERROR_TEXT = {
     "raw_non_ascii": lambda _, fields: (
         f"{fields['refused']}; use the criteria flags (e.g. --subject) for "
         f"it, which search in {fields['charset']}."
+    ),
+    "no_active_script": lambda message, fields: (
+        f"{message} '{command_for(fields['operation'])}' shows what the "
+        f"account has."
+    ),
+    "no_such_folder": lambda message, fields: (
+        f"{message} '{command_for(fields['operation'])}' lists what exists."
+    ),
+    "folder_unopenable": lambda message, fields: (
+        f"{message} Run '{command_for(fields['operation'])}' to see the exact "
+        f"names this server uses."
+    ),
+    "state_in_rule": lambda _, fields: (
+        f"{fields['before']}: use them with "
+        f"'{command_for(fields['operations'][0])}' to list it, or "
+        f"'{command_for(fields['operations'][1])}' to act on it."
+    ),
+    "replace_disabled": lambda _, fields: (
+        f"{fields['before']} "
+        f"({command_for(fields['operation'], fields['arguments'])}), "
+        f"then replace it"
+    ),
+    "unimplemented_action": lambda message, fields: (
+        f"{message} To see whether the server advertises the extension at "
+        f"all, run '{command_for(fields['operation'])}'."
+    ),
+    "extension_missing": lambda message, fields: (
+        f"{message} '{command_for(fields['operations'][0])}' lists what the "
+        f"server advertises; '{command_for(fields['operations'][1])}' and "
+        f"'{command_for(fields['operations'][2])}' take the same criteria "
+        f"for mail already delivered."
+    ),
+    "rename_inbox": lambda message, fields: (
+        f"{message} '{command_for(fields['operation'])}' moves mail out of "
+        f"INBOX by criteria."
+    ),
+    "rename_not_activated": lambda _, fields: (
+        f"{fields['before']} '{command_for(fields['operation'])}' shows which "
+        f"script is active.{fields['saved']}"
+    ),
+    "rename_interrupted": lambda _, fields: (
+        f"{fields['before']} To undo it, run "
+        f"'{command_for(fields['operation'], fields['arguments'])}'; then the "
+        f"rename can be tried again."
+    ),
+    "baseline_unreadable": lambda _, fields: (
+        f"{fields['before']} run '{command_for(fields['operation'])}' to take "
+        f"a new one."
+    ),
+    "no_baseline": lambda message, fields: (
+        f"{message}; '{command_for(fields['operation'])}' records one"
+    ),
+    "baseline_other_provider": lambda message, fields: (
+        f"{message} '{command_for(fields['operation'])}' replaces it."
     ),
 }
 

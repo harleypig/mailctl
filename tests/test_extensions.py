@@ -19,6 +19,7 @@ import pytest
 from utilities_support import mxroute
 
 from mailctl import MailctlError, engine, utilities
+from mailctl.cli import error_text
 from mailctl.components.managesieve import SieveSession, emit
 from mailctl.config import FLAG, Source
 from mailctl.criteria import COMPARE_OPS, MATCH_MODES, Criteria
@@ -402,7 +403,9 @@ def test_a_body_rule_is_refused_where_the_server_lacks_body(
         utilities.rules.plan_rule(live, imap_config, body_request(), folder)
 
     assert "'body'" in str(caught.value)
-    assert "mailctl apply" in str(caught.value)
+    assert "mailctl apply" not in str(caught.value)
+    assert caught.value.code == "extension_missing"
+    assert "'mailctl apply' take the same criteria" in error_text(caught.value)
 
 
 # ----------------------------------------------------------------------------

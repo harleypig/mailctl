@@ -172,14 +172,22 @@ def plan_subscription(
 
     if subscribe and not listing.exists(folder):
         raise MailctlError(
-            f"no folder named {folder!r} on the server, so there is nothing "
-            f"to subscribe to. {hint}'mailctl folders' lists what exists."
+            (
+                f"no folder named {folder!r} on the server, so there is "
+                f"nothing to subscribe to. {hint}"
+            ).rstrip(),
+            code="no_such_folder",
+            fields={"operation": "folders"},
         )
 
     if not subscribe and not subscribed_now and not listing.exists(folder):
         raise MailctlError(
-            f"no folder or subscription named {folder!r} on the server. "
-            f"{hint}'mailctl folders' lists what exists."
+            (
+                f"no folder or subscription named {folder!r} on the "
+                f"server. {hint}"
+            ).rstrip(),
+            code="no_such_folder",
+            fields={"operation": "folders"},
         )
 
     return SubscriptionPlan(

@@ -115,7 +115,12 @@ where every write path is proved first.
      No string a core module builds names a CLI flag (f-strings included;
      each allowed exception carries its reason), and every error code the
      core raises has a rendering in `cli.ERROR_TEXT`, and every rendering
-     a raiser ([#51][i51]).
+     a raiser ([#51][i51]). Nor does one name a CLI command: `mailctl`
+     followed by any of the parser's own commands, or by an interpolated
+     value, is refused, so the tool's name in prose is not. Every
+     operation a core error or record names in its place is one of those
+     commands ([#183][i183]). Each guard carries a planted case it is seen
+     to catch.
    - The **layer-purity guard** (`test_layer_purity.py`) — the four layers
      of [ADR 0007][adr7] over the components of [ADR 0006][adr6], held line
      by line:
@@ -384,4 +389,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i157]: https://github.com/harleypig/mailctl/issues/157
 [i39]: https://github.com/harleypig/mailctl/issues/39
 [i159]: https://github.com/harleypig/mailctl/issues/159
+[i183]: https://github.com/harleypig/mailctl/issues/183
 [i160]: https://github.com/harleypig/mailctl/issues/160

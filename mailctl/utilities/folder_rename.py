@@ -134,15 +134,20 @@ def _check_names(
         raise MailctlError(
             "INBOX cannot be renamed: IMAP moves its messages into the new "
             "folder and leaves an empty INBOX behind (RFC 3501 section "
-            "6.3.5), which is not a rename. 'mailctl apply' moves mail out "
-            "of INBOX by criteria."
+            "6.3.5), which is not a rename.",
+            code="rename_inbox",
+            fields={"operation": "apply"},
         )
 
     if not listing.exists(old):
         raise MailctlError(
-            f"no folder named {old!r} on the server, so there is nothing "
-            f"to rename. {case_variant_hint(listing.case_variants(old))}"
-            f"'mailctl folders' lists what exists."
+            (
+                f"no folder named {old!r} on the server, so there is "
+                f"nothing to rename. "
+                f"{case_variant_hint(listing.case_variants(old))}"
+            ).rstrip(),
+            code="no_such_folder",
+            fields={"operation": "folders"},
         )
 
     if same_folder(old, new):
@@ -254,11 +259,18 @@ def plan_folder_rename(
 
 @dataclass(frozen=True)
 class PostCondition:
-    """One fact about the account after a rename, read back from it."""
+    """One fact about the account after a rename, read back from it.
+
+    ``operation`` names the command that would set a failed check right,
+    and ``arguments`` what it is given; a front-end offers it in its own
+    terms. Empty where there is none.
+    """
 
     label: str
     ok: bool
     detail: str = ""
+    operation: str = ""
+    arguments: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -316,17 +328,17 @@ def _interrupted(
     except MailctlError:
         stored = None
 
-    undo = (
-        f"To undo it, run 'mailctl rename-folder {plan.new} {plan.old}'; "
-        f"then the rename can be tried again."
-    )
-
     if stored:
-        return MailctlError(
+        before = (
             f"{error}\n{plan.old!r} was renamed to {plan.new!r} and the "
             f"rewritten script was stored as {plan.script!r}, but it could "
-            f"not be activated. 'mailctl list' shows which script is "
-            f"active.{saved}"
+            f"not be activated."
+        )
+
+        return MailctlError(
+            f"{before}{saved}",
+            code="rename_not_activated",
+            fields={"before": before, "saved": saved, "operation": "list"},
         )
 
     state = (
@@ -335,11 +347,21 @@ def _interrupted(
         else "could not be read back to tell"
     )
 
-    return MailctlError(
+    before = (
         f"{error}\n{plan.old!r} was renamed to {plan.new!r}, but the script "
         f"{plan.script!r} {state}: {_rules_left(plan)} still file into the "
-        f"old name, so mail they match cannot be filed there.{saved} "
-        f"{undo}"
+        f"old name, so mail they match cannot be filed there.{saved}"
+    )
+
+    return MailctlError(
+        f"{before} To undo it, rename {plan.new!r} back to {plan.old!r}; "
+        f"then the rename can be tried again.",
+        code="rename_interrupted",
+        fields={
+            "before": before,
+            "operation": "rename-folder",
+            "arguments": (plan.new, plan.old),
+        },
     )
 
 
@@ -470,14 +492,17 @@ def verify_folder_rename(
     checks.append(PostCondition(f"{new!r} exists", listing.exists(new)))
 
     if plan.subscribed:
+        label = f"{new!r} is subscribed, as {old!r} was"
+
         checks.append(
-            PostCondition(
-                f"{new!r} is subscribed, as {old!r} was",
-                listing.is_subscribed(new),
-                ""
-                if listing.is_subscribed(new)
-                else "webmail will not show it; "
-                f"'mailctl subscribe {new}' does",
+            PostCondition(label, True)
+            if listing.is_subscribed(new)
+            else PostCondition(
+                label,
+                False,
+                "webmail will not show it",
+                operation="subscribe",
+                arguments=(new,),
             )
         )
 

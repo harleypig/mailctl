@@ -39,8 +39,9 @@ def plan_backup(
 
     if not name:
         raise MailctlError(
-            "no active script on the server, so there is nothing to back "
-            "up. 'mailctl list' shows what the account has."
+            "no active script on the server, so there is nothing to back up.",
+            code="no_active_script",
+            fields={"operation": "list"},
         )
 
     source = session.transport.read_rule_set(name)

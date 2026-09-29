@@ -949,12 +949,21 @@ def _replace_rule(
     line = _single_line_test(entry["content"]["test"])
 
     if line is None:
-        raise MailctlError(
+        before = (
             f"rule {name!r} cannot be replaced while disabled: its new test "
             f"spans more than one line, and a disabled rule keeps its test "
             f"in a comment on the 'if false' line, where Roundcube looks "
-            f"for it. Enable it first (mailctl enable-rule {name}), then "
-            f"replace it"
+            f"for it. Enable it first"
+        )
+
+        raise MailctlError(
+            f"{before}, then replace it",
+            code="replace_disabled",
+            fields={
+                "before": before,
+                "operation": "enable-rule",
+                "arguments": (name,),
+            },
         )
 
     _switch_off(entry, line)

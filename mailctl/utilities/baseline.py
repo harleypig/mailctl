@@ -317,9 +317,15 @@ def read_baseline(path: Path) -> Baseline | None:
 
 # ----------------------------------------------------------------------------
 def _unreadable(path: Path, why: str) -> MailctlError:
-    return MailctlError(
+    before = (
         f"the baseline {path} cannot be read: {why}. It was left as it is; "
-        f"move it aside and run 'mailctl save-baseline' to take a new one."
+        f"move it aside and"
+    )
+
+    return MailctlError(
+        f"{before} save a new one.",
+        code="baseline_unreadable",
+        fields={"before": before, "operation": "save-baseline"},
     )
 
 
@@ -561,8 +567,9 @@ def check_baseline(
 
     if baseline is None:
         raise MailctlError(
-            f"no baseline has been saved for {path.stem} (looked for "
-            f"{path}); 'mailctl save-baseline' records one"
+            f"no baseline has been saved for {path.stem} (looked for {path})",
+            code="no_baseline",
+            fields={"operation": "save-baseline"},
         )
 
     record = probe_servers(session, config, now=now)
@@ -571,8 +578,9 @@ def check_baseline(
         raise MailctlError(
             f"the baseline {path} was taken through provider "
             f"{baseline.server.provider!r}, and this run uses "
-            f"{record.provider!r}; the two do not describe the same thing. "
-            f"'mailctl save-baseline' replaces it."
+            f"{record.provider!r}; the two do not describe the same thing.",
+            code="baseline_other_provider",
+            fields={"operation": "save-baseline"},
         )
 
     requires = _active_requires(session, record)

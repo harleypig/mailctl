@@ -309,6 +309,15 @@ ENHANCEMENTS:
   are unchanged, and `mailctl test` shows its `Host:` row only for a
   provider that reads a host setting.
 
+* **Errors from below the command line no longer name its commands**
+  ([#183]). A refusal that points somewhere else -- no active script, no
+  such folder, a missing or unreadable baseline, a date filter in a saved
+  rule, an interrupted folder rename -- now names the operation to use as
+  data, and the command line adds `'mailctl list'`, `'mailctl folders'`,
+  `'mailctl save-baseline'`, ... when it prints it, so what `mailctl` says
+  is unchanged. Under `--json` each of these errors now carries a `code`
+  like the refusals of [#51].
+
 BUG FIXES:
 
 * **`apply --keep` with a folder copies the mail there, as the rule
@@ -1209,6 +1218,7 @@ NOTES:
 [#160]: https://github.com/harleypig/mailctl/issues/160
 [#51]: https://github.com/harleypig/mailctl/issues/51
 [#109]: https://github.com/harleypig/mailctl/issues/109
+[#183]: https://github.com/harleypig/mailctl/issues/183
 [#21]: https://github.com/harleypig/mailctl/issues/21
 [#39]: https://github.com/harleypig/mailctl/issues/39
 [#188]: https://github.com/harleypig/mailctl/issues/188
