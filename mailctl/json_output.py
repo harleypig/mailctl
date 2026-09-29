@@ -33,6 +33,7 @@ __all__ = [
     "plan",
     "rules_report",
     "scripts",
+    "sender_report",
 ]
 
 JSON_VERSION = 1
@@ -139,6 +140,33 @@ def message_listing(listing) -> dict:
         if order is None
         else {"key": order.key, "reverse": order.reverse},
         messages=[_summary(item) for item in listing.messages],
+    )
+
+
+# ----------------------------------------------------------------------------
+def sender_report(report) -> dict:
+    """``senders``: the mail counted by ``by``, busiest first.
+
+    ``messages`` and ``unread`` cover every message that matched, and
+    ``groups`` every distinct key, including rows ``--top`` and ``--min``
+    left out of ``senders``. A row's ``key`` is null for mail with none.
+    """
+    return _document(
+        folder=report.folder,
+        by=report.by,
+        messages=report.messages,
+        unread=report.unread,
+        groups=report.groups,
+        senders=[
+            {
+                "key": row.key,
+                "name": row.name,
+                "total": row.total,
+                "unread": row.unread,
+                "unread_percent": row.unread_percent,
+            }
+            for row in report.senders
+        ],
     )
 
 

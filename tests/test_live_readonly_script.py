@@ -33,6 +33,7 @@ ALL_TESTS = [
     "search",
     "search-unread",
     "search-sort",
+    "senders",
     "search-like",
     "build-filter",
     "json",
@@ -217,6 +218,8 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("json-noise", "json"),
         ("counts-missing", "folder-counts"),
         ("baseline-serious", "check-baseline"),
+        ("senders-unsorted", "senders"),
+        ("senders-unread-over", "senders"),
     ],
 )
 def test_a_failing_check_is_not_ok_and_the_run_exits_nonzero(
@@ -307,6 +310,38 @@ def test_folder_counts_names_the_folder_without_a_count(tmp_path):
     assert proc.stdout.splitlines()[2] == (
         "# folders --counts --json: 'INBOX.Lists' has no integer unseen"
     )
+
+
+# ----------------------------------------------------------------------------
+def test_senders_makes_one_call_over_thirty_days_and_passes(tmp_path):
+    """#160: one search and its pages, with the top and a date bound."""
+    proc, calls = run(tmp_path, "senders")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - senders"]
+    assert len(calls) == 1
+    assert calls[0][:2] == ["senders", "--since"]
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", calls[0][2])
+    assert calls[0][3:] == ["--top", "5", "--json"]
+
+
+# ----------------------------------------------------------------------------
+def test_senders_names_the_row_out_of_order(tmp_path):
+    proc, _ = run(tmp_path, "senders", breaks=["senders-unsorted"])
+
+    assert proc.stdout.splitlines()[2] == (
+        "# senders --json: the rows are not busiest first"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_mailbox_over_the_ceiling_skips_senders(tmp_path):
+    proc, calls = run(tmp_path, "senders", breaks=["senders-overcap"])
+
+    assert proc.returncode == 0
+    assert proc.stdout.splitlines()[1].startswith(
+        "ok 1 - senders # SKIP more mail since "
+    )
+    assert len(calls) == 1
 
 
 # ----------------------------------------------------------------------------

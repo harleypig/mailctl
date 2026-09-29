@@ -1,0 +1,44 @@
+$ mailctl senders --by domain --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "folder": "INBOX",
+  "by": "domain",
+  "messages": 7,
+  "unread": 4,
+  "groups": 3,
+  "senders": [
+    {
+      "key": "github.com",
+      "name": "",
+      "total": 3,
+      "unread": 2,
+      "unread_percent": 66.7
+    },
+    {
+      "key": "example.com",
+      "name": "",
+      "total": 3,
+      "unread": 1,
+      "unread_percent": 33.3
+    },
+    {
+      "key": "lists.example.com",
+      "name": "",
+      "total": 1,
+      "unread": 1,
+      "unread_percent": 100.0
+    }
+  ]
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', 'ALL')
+('fetch', (7, 6, 5, 4, 3, 2, 1))
+('logout',)

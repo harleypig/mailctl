@@ -35,6 +35,11 @@ faults to inject, so a test can watch a check go red:
   and ``check-baseline`` exit 1)
 - ``baseline-info``   -- ``check-baseline`` finds informational drift (3)
 - ``baseline-serious`` -- ``check-baseline`` finds serious drift (4)
+- ``senders-unsorted`` -- ``senders --json`` lists a quieter sender first
+- ``senders-unread-over`` -- a ``senders --json`` row has more unread than
+  total
+- ``senders-overcap`` -- ``senders`` is refused, the search finding more
+  than ``--max-messages``
 """
 
 import json
@@ -353,6 +358,35 @@ def counted() -> list[dict]:
 
 
 # ----------------------------------------------------------------------------
+def senders() -> dict:
+    """The body of 'senders --json', busiest first."""
+    rows = [
+        {"key": key, "name": "", "total": total, "unread": unread}
+        | {"unread_percent": round(100 * unread / total, 1)}
+        for key, total, unread in (
+            ("noreply@github.com", 9, 6),
+            ("news@example.com", 4, 4),
+            (None, 1, 0),
+        )
+    ]
+
+    if "senders-unsorted" in BREAK:
+        rows.reverse()
+
+    if "senders-unread-over" in BREAK:
+        rows[1]["unread"] = 5
+
+    return {
+        "folder": "INBOX",
+        "by": "address",
+        "messages": 14,
+        "unread": 10,
+        "groups": 3,
+        "senders": rows,
+    }
+
+
+# ----------------------------------------------------------------------------
 def document(command: str) -> str:
     """A --json document shaped like the real one for ``command``."""
     if command == "search" and option("--sort"):
@@ -371,6 +405,9 @@ def document(command: str) -> str:
 
     elif command == "search":
         body = {"folder": "INBOX", "more": True, "sort": None, "messages": []}
+
+    elif command == "senders":
+        body = senders()
 
     elif command == "folders" and "--counts" in ARGV:
         body = {"delimiter": ".", "prefix": None, "folders": counted()}
@@ -461,9 +498,18 @@ def main() -> int:
 
         return 1
 
+    if command == "senders" and "senders-overcap" in BREAK:
+        print(
+            "mailctl: the search found 7342 message(s) in 'INBOX' but "
+            "--max-messages is 5000, so no header was read.",
+            file=sys.stderr,
+        )
+
+        return 1
+
     if (
         "--json" in ARGV
-        and command in ("search", "folders", "rules")
+        and command in ("search", "folders", "rules", "senders")
         and "--build-filter" not in ARGV
     ):
         out = document(command)

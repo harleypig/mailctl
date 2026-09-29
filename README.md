@@ -228,6 +228,13 @@ mailctl search --like 4127 --build-filter --json > news.json
 mailctl search --from newsletter@example.com --json
 mailctl search --from newsletter@example.com --uids-only
 
+# Who sends the most mail, and how much of it is unread: the list to make
+# filters from. By address, domain, or List-Id; the same criteria flags
+# narrow it. Nothing is marked read. Refused above --max-messages (5000).
+mailctl senders --since 2026-09-01
+mailctl senders --folder Lists --by list-id --unread --top 10
+mailctl senders --by domain --min 5 --json
+
 # Read one by UID. It stays unread, and no attachment is saved.
 mailctl view 4127
 mailctl view 4127 --headers-only
@@ -363,20 +370,21 @@ the place of the criteria flags, so giving both is refused, and so is
 
 ## Output for scripts
 
-`--json` prints a command's result as one JSON document on stdout, and
-nothing else there: whatever the command says on the way goes to stderr.
-It is offered where the output is data — `search`, `view`, `folders`,
-`rules`, `list`, `check-baseline`, `show-baseline` — and on every write
-command's plan, where it needs `--dry-run`; `backup` and `save-baseline`,
-which write only a local file, have none. `test` is a report for a person and has none. `probe --json`
-prints its own versioned document (above), with the same stdout and error
-handling.
+`--json` prints a command's result as one JSON document on stdout, and nothing
+else there: whatever the command says on the way goes to stderr. It is offered
+where the output is data — `search`, `view`, `folders`, `rules`, `list`,
+`senders`, `check-baseline`, `show-baseline` — and on every write command's
+plan, where it needs `--dry-run`; `backup` and `save-baseline`, which write
+only a local file, have none. `test` is a report for a person and has none.
+`probe --json` prints its own versioned document (above), with the same stdout
+and error handling.
 
 | Command | Document |
 |---------|----------|
 | `list` | `{"version", "scripts": [{"name", "active"}]}` |
 | `folders` | `{"version", "delimiter", "prefix", "folders": [{"name", "subscribed"}]}`; with `--counts`, each folder also has `"messages", "unseen", "size"` (`null` where the server gave none) |
 | `search` | `{"version", "folder", "more", "sort", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
+| `senders` | `{"version", "folder", "by", "messages", "unread", "groups", "senders": [{"key", "name", "total", "unread", "unread_percent"}]}` — busiest first; `messages`, `unread`, and `groups` count everything matched, rows `--top` and `--min` left out included; `key` is `null` for mail with no address or no List-Id |
 | `view` | `{"version", "message": {"uid", "folder", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
 | `rules` | `{"version", "script", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — what else a plan holds depends on the command |
@@ -452,9 +460,9 @@ and save again.
   the derived criteria look equally plausible whichever message produced
   them, so the headers are the only thing that catches a mistyped digit
   before mail starts moving.
-* `search` and `view` **never mark mail read**. The folder is opened
-  read-only, and the message is fetched in the form that leaves its read
-  flag alone, so either guard alone would be enough.
+* `search`, `view`, and `senders` **never mark mail read**. The folder
+  is opened read-only, and the message is fetched in the form that leaves
+  its read flag alone, so either guard alone would be enough.
 * `mark` is the command that does change a message's flags, and **only
   the messages you name**. It reads their flags first — without marking
   anything read — and shows, per message, what it has now and what would
@@ -467,18 +475,18 @@ and save again.
   of plain ASCII (`$Todo`, `Work-1`); a space, a bracket, or a leading `\`
   is refused, since `\Seen` and `\Flagged` are set by name and no other
   system flag is.
-* **Mail content is treated as hostile on the way to your terminal.** A
-  sender controls every header, the body, and the attachment names, and
-  escape sequences in them can recolour your terminal, retitle it, or plant
-  a link whose text lies about where it goes. So `search` and `view` —
-  `--raw` on a terminal included — print every control character as a
-  visible `\xNN` escape instead of sending it to the terminal, and headers
-  are kept to one line so a decoded line break cannot forge another
-  header. Unicode direction overrides and isolates, which can make
-  `invoice_fdp.exe` read as `invoice_exe.pdf`, print as a visible
-  `\u202e`-style escape the same way. Everything printable, tabs and line
-  breaks included, comes through as it is. The headers `--like` and
-  `apply` show before they act get the same treatment.
+* **Mail content is treated as hostile on the way to your terminal.** A sender
+  controls every header, the body, and the attachment names, and escape
+  sequences in them can recolour your terminal, retitle it, or plant a link
+  whose text lies about where it goes. So `search`, `senders`, and `view` —
+  `--raw` on a terminal included — print every control character as a visible
+  `\xNN` escape instead of sending it to the terminal, and headers are kept to
+  one line so a decoded line break cannot forge another header. Unicode
+  direction overrides and isolates, which can make `invoice_fdp.exe` read as
+  `invoice_exe.pdf`, print as a visible `\u202e`-style escape the same way.
+  Everything printable, tabs and line breaks included, comes through as it is.
+  The headers `--like` and `apply` show before they act get the same
+  treatment.
 * `view --raw` **into a file or a pipe writes the message exactly as the
   server holds it**, byte for byte, with nothing escaped or re-encoded — so
   `mailctl view 4127 --raw > message.eml` saves a copy any mail program

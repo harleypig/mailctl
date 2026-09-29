@@ -1,0 +1,44 @@
+$ mailctl senders --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "folder": "INBOX",
+  "by": "address",
+  "messages": 4,
+  "unread": 4,
+  "groups": 3,
+  "senders": [
+    {
+      "key": "noreply@github.com",
+      "name": "Someone",
+      "total": 2,
+      "unread": 2,
+      "unread_percent": 100.0
+    },
+    {
+      "key": "evil@example.com",
+      "name": "Evil\u001b]0;pwn\u0007",
+      "total": 1,
+      "unread": 1,
+      "unread_percent": 100.0
+    },
+    {
+      "key": "list@lists.example.com",
+      "name": "Someone",
+      "total": 1,
+      "unread": 1,
+      "unread_percent": 100.0
+    }
+  ]
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', 'ALL')
+('fetch', (9, 3, 2, 1))
+('logout',)

@@ -40,6 +40,20 @@ BREAKING CHANGES:
 
 FEATURES:
 
+* **`mailctl senders` shows who sends the most mail, and how much of it is
+  left unread** ([#160]) — the list to make filters from. It counts a
+  folder's mail by sender address (lower-cased), by `--by domain`, or by
+  `--by list-id` (the bracketed List-Id; mail with none is one row),
+  busiest first, with the unread count and share; ties go to the most
+  unread. It takes `search`'s criteria flags, so `--since 2026-09-01` or
+  `--unread` narrows what is counted. `--top N` (default 20, `0` for all)
+  and `--min N` trim the rows, never the totals. It is one search and then
+  the headers of what it found, a page of 250 per request, and nothing is
+  marked read. Above `--max-messages` (default 5000) it refuses before
+  reading a header, rather than counting part of the mailbox. The table
+  ends with the `search --build-filter` line that makes a filter from the
+  top row; `--json` prints the report as a versioned document instead.
+
 * **`mailctl folders --counts` shows each folder's total and unread
   messages** ([#157]), for a morning digest or a cron job. The counts come
   from one IMAP `LIST ... RETURN (STATUS ...)` (`LIST-STATUS`, RFC 5819) —
@@ -1088,3 +1102,4 @@ NOTES:
 [#168]: https://github.com/harleypig/mailctl/issues/168
 [#175]: https://github.com/harleypig/mailctl/issues/175
 [#157]: https://github.com/harleypig/mailctl/issues/157
+[#160]: https://github.com/harleypig/mailctl/issues/160

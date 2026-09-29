@@ -1,0 +1,19 @@
+$ mailctl senders --from example.com --since 2026-01-01
+exit: 0
+--- stdout
+4 message(s) in 'INBOX', 2 unread; 3 group(s) by address, busiest first:
+  Total   Unread  Unread%  Sender
+      2        1      50%  boss@example.com (Boss Über)
+      1        1     100%  list@lists.example.com (Someone)
+      1        0       0%  news@example.com (News)
+To build a filter for a row: mailctl search --from boss@example.com --build-filter
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'example.com'], 'SINCE', '1-Jan-2026'])
+('fetch', (7, 6, 5, 4, 3, 2, 1))
+('logout',)

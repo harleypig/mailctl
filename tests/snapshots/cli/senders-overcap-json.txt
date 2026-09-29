@@ -1,0 +1,13 @@
+$ mailctl senders --json --max-messages 2
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 1, "error": {"message": "the search found 7 message(s) in 'INBOX' but --max-messages is 2, so no header was read. A count of the first 2 would read as a count of them all. Narrow it (--since, --older-than, --unread, --from, ...) or re-run with --max-messages 7 or higher."}}
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', 'ALL')
+('logout',)

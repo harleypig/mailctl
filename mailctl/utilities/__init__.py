@@ -22,6 +22,7 @@ stores (ADR 0007). One module per subject:
 
 ``rules``      checking, reading, planning, and uploading rules
 ``scripts``    rule sets as stored: read, chosen, and uploaded
+``senders``    who sends the mail in a folder, and how much is unread
 ``backup``     backing up the active script, and restoring one
 ``baseline``   a saved probe per host, and drift from it
 ``backup_files`` writing a backup's exact bytes to disk
@@ -47,6 +48,7 @@ from . import (
     reports,
     rules,
     scripts,
+    senders,
 )
 
 __all__ = [
@@ -62,4 +64,5 @@ __all__ = [
     "reports",
     "rules",
     "scripts",
+    "senders",
 ]

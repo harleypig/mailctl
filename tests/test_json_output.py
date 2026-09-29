@@ -197,7 +197,8 @@ def test_every_server_write_with_a_dry_run_offers_json():
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "name", ["search", "view", "folders", "rules", "list", "probe"]
+    "name",
+    ["search", "view", "folders", "rules", "list", "probe", "senders"],
 )
 def test_the_data_commands_offer_json(name):
     assert "json" in dests(subcommands()[name])

@@ -14,6 +14,7 @@ validation -- change it. ``--dry-run`` stops after the "show it" step.
 import argparse
 import contextlib
 import re
+import shlex
 import sys
 import traceback
 
@@ -2946,6 +2947,93 @@ def describe_marks(add, remove) -> str:
     return "; ".join(parts)
 
 
+# Rows 'senders' shows unless --top says otherwise; --top 0 shows every one.
+DEFAULT_SENDERS_TOP = 20
+
+# How 'senders' names a row with no key, and the search flag, per grouping,
+# that builds a filter for a row -- the domain one prefixed with '@'.
+NO_SENDER_KEY = {
+    "address": "(no address)",
+    "domain": "(no domain)",
+    "list-id": "(no list-id)",
+}
+SENDER_FILTER_FLAG = {
+    "address": ("--from", ""),
+    "domain": ("--from", "@"),
+    "list-id": ("--list-id", ""),
+}
+
+
+# ----------------------------------------------------------------------------
+def cmd_senders(args) -> int:
+    """Count a folder's mail by sender, busiest first, with unread."""
+    config = configure(args)
+    criteria = criteria_from_args(args)
+
+    with connect(config, args, rules=False, mail=True) as sessions:
+        report = utilities.senders.count_senders(
+            sessions,
+            config.source_folder,
+            criteria=criteria,
+            by=args.by,
+            top=args.top or None,
+            minimum=args.minimum,
+            max_messages=args.max_messages,
+        )
+
+    if args.json:
+        return emit_json(args, json_output.sender_report(report))
+
+    return print_senders(report)
+
+
+# ----------------------------------------------------------------------------
+def print_senders(report) -> int:
+    """Print a sender report as a table, and how to filter one row."""
+    folder = safe_line(report.folder)
+
+    if not report.messages:
+        print(f"No messages found in {folder!r}.")
+
+        return 0
+
+    print(
+        f"{report.messages} message(s) in {folder!r}, {report.unread} "
+        f"unread; {report.groups} group(s) by {report.by}, busiest first:"
+    )
+    print(f"{'Total':>7}  {'Unread':>7}  {'Unread%':>7}  Sender")
+
+    for row in report.senders:
+        label = row.key if row.key is not None else NO_SENDER_KEY[report.by]
+
+        if row.name:
+            label = f"{label} ({row.name})"
+
+        print(
+            f"{row.total:>7}  {row.unread:>7}  "
+            f"{row.unread_percent:>6.0f}%  {clip(label, 70)}"
+        )
+
+    if len(report.senders) < report.groups:
+        print(
+            f"Showing {len(report.senders)} of {report.groups}; --top N "
+            f"shows more (0 for every one), --min N hides the small ones."
+        )
+
+    example = next((row.key for row in report.senders if row.key), None)
+
+    if example is not None:
+        flag, prefix = SENDER_FILTER_FLAG[report.by]
+        value = shlex.quote(safe_line(prefix + example))
+
+        print(
+            f"To build a filter for a row: mailctl search {flag} {value} "
+            f"--build-filter"
+        )
+
+    return 0
+
+
 # ############################################################################
 # Argument parsing
 # ############################################################################
@@ -3713,6 +3801,56 @@ def build_parser(
     )
     shape.add_argument("--json", action="store_true", help=JSON_HELP)
     view.set_defaults(handler=cmd_view)
+
+    senders = command(
+        "senders",
+        parents=[common, connection, criteria],
+        help="count a folder's mail by sender, with how much is unread",
+        description="Count the mail in a folder by sender -- the address, "
+        "its domain, or the mailing list -- busiest first, with how many "
+        "are unread: the mail worth a filter. Takes the same criteria "
+        "flags as 'search', such as --since or --unread. One search finds "
+        "the mail and its headers are read a page at a time; nothing is "
+        "marked read, and nothing is changed.",
+    )
+    senders.add_argument(
+        "--folder", help=f"folder to count; {FOLDER_DEFAULT_HELP}"
+    )
+    senders.add_argument(
+        "--by",
+        choices=utilities.senders.GROUPINGS,
+        default="address",
+        help="count by sender address, its domain, or the List-Id header; "
+        "default address",
+    )
+    senders.add_argument(
+        "--top",
+        type=int,
+        default=DEFAULT_SENDERS_TOP,
+        metavar="N",
+        help=f"show the N busiest; 0 shows every one. Default "
+        f"{DEFAULT_SENDERS_TOP}",
+    )
+    senders.add_argument(
+        "--min",
+        dest="minimum",
+        type=int,
+        default=1,
+        metavar="N",
+        help="leave out any that sent fewer than N messages; default 1",
+    )
+    senders.add_argument(
+        "--max-messages",
+        dest="max_messages",
+        type=int,
+        default=utilities.senders.DEFAULT_MAX_MESSAGES,
+        metavar="N",
+        help=f"refuse, reading no header, if the search finds more than "
+        f"N messages, rather than counting some of them (default "
+        f"{utilities.senders.DEFAULT_MAX_MESSAGES})",
+    )
+    senders.add_argument("--json", action="store_true", help=JSON_HELP)
+    senders.set_defaults(handler=cmd_senders)
 
     mark = command(
         "mark",
