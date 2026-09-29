@@ -198,6 +198,26 @@ def test_the_emit_table_matches_the_require_line_sievelib_writes():
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "header", ["body", "Body", "exists", "size", "notes", "notify", "anyof"]
+)
+def test_a_header_named_like_a_test_changes_no_require(header):
+    """A header called ``body`` is a header test, so it needs nothing the
+    base language does not have, and the table and the script agree
+    (#175)."""
+    built = Criteria()
+    built.add(header, "x")
+    actions = [("fileinto", "INBOX.x")]
+
+    script = render(actions, built)
+
+    assert script.startswith('require ["fileinto"];')
+    assert emit.emitted_extensions(
+        actions, built.sieve_conditions(), built.sieve_matchtype()
+    ) == {"fileinto"}
+
+
+# ----------------------------------------------------------------------------
 def test_every_word_a_rule_emits_is_in_the_emit_table():
     """Every command, test, and tag in a rendered rule has a table entry.
 

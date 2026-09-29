@@ -555,14 +555,16 @@ class Criteria:
 
     # ------------------------------------------------------------------------
     def sieve_conditions(self) -> list[tuple[str, ...]]:
-        """Return sievelib condition tuples for these criteria.
+        """Return the Sieve condition tuples for these criteria.
 
-        A header term is ``(header, :comparator, value)``, which sievelib
-        turns into a ``header`` test; a body term is ``("body", ":text",
-        ":contains", value)``, the ``body`` extension's test over the
-        message's text parts (RFC 5173's default transform, written out).
-        Values are escaped here because sievelib quotes but does not
-        escape. Date and state filters have no Sieve form and are refused.
+        A header term is ``(header, :comparator, value)``, a ``header``
+        test on that name whatever the name spells (#175); a body term is
+        ``("body", ":text", ":contains", value)``, the ``body`` extension's
+        test over the message's text parts (RFC 5173's default transform,
+        written out). The two are told apart by length. Names and values
+        are escaped here, since they are quoted but not escaped on the way
+        into the script. Date and state filters have no Sieve form and are
+        refused.
         """
         self.check_deliverable()
         self.require_terms()
@@ -570,7 +572,11 @@ class Criteria:
         tag = f":{self.compare}"
 
         conditions: list[tuple[str, ...]] = [
-            (term.header, tag, escape_sieve_string(term.value))
+            (
+                escape_sieve_string(term.header),
+                tag,
+                escape_sieve_string(term.value),
+            )
             for term in self.terms
         ]
         conditions += [

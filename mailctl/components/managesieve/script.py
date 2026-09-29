@@ -729,12 +729,96 @@ def resolve_position(
 
 
 # ----------------------------------------------------------------------------
+def _quoted(value: str) -> str:
+    """``value`` as a Sieve quoted string; the caller has escaped it."""
+    return f'"{value}"'
+
+
+# ----------------------------------------------------------------------------
+def _condition(condition: tuple, parent: commands.Command) -> commands.Command:
+    """Build one test from a condition tuple, told apart by its length.
+
+    ``(header, :matchtype, value)`` is a ``header`` test and ``("body",
+    :transform, :matchtype, value)`` a ``body`` test. sievelib's own
+    builder reads the first element as a test name before it is a header
+    name -- ``notes`` became ``not header "notes"``, ``exists`` an
+    ``exists`` test (#175) -- so the header name is never handed to it.
+    """
+    if len(condition) == 3:
+        header, match_type, value = condition
+        test = commands.get_command_instance("header", parent)
+        test.check_next_arg("tag", match_type)
+        test.check_next_arg("string", _quoted(header))
+        test.check_next_arg("string", _quoted(value))
+
+        return test
+
+    if len(condition) == 4 and condition[0] == "body":
+        _, transform, match_type, value = condition
+        test = commands.get_command_instance("body", parent, False)
+        test.check_next_arg("tag", transform)
+        test.check_next_arg("tag", match_type)
+        test.check_next_arg("stringlist", f"[{_quoted(value)}]")
+
+        return test
+
+    raise ValueError(f"not a header or body condition: {condition!r}")
+
+
+# ----------------------------------------------------------------------------
+def _build_rule(
+    filters: factory.FiltersSet,
+    conditions: list[tuple],
+    actions: list[tuple],
+    matchtype: str,
+) -> commands.Command:
+    """Build a rule's ``if`` command, recording what it requires.
+
+    The shape and the ``require`` order are sievelib's ``addfilter``'s --
+    tests first, then each action and its tags -- so the script renders
+    byte for byte as it did for every header name sievelib read right.
+    """
+    rule = commands.get_command_instance("if")
+    combinator = commands.get_command_instance(matchtype, rule)
+
+    for condition in conditions:
+        test = _condition(condition, rule)
+
+        if test.extension is not None:
+            filters.require(test.extension)
+
+        combinator.check_next_arg("test", test)
+
+    rule.check_next_arg("test", combinator)
+
+    for name, *arguments in actions:
+        action = commands.get_command_instance(name, rule, False)
+
+        if action.extension is not None:
+            filters.require(action.extension)
+
+        for argument in arguments:
+            filters.check_if_arg_is_extension(argument)
+
+            if argument.startswith(":"):
+                kind, value = "tag", argument
+
+            else:
+                kind, value = "string", _quoted(argument)
+
+            action.check_next_arg(kind, value, check_extension=False)
+
+        rule.addchild(action)
+
+    return rule
+
+
+# ----------------------------------------------------------------------------
 def _move_rule(filters: factory.FiltersSet, name: str, position: int) -> None:
     """Move ``name`` to ``position``, which counts the other rules only.
 
-    sievelib has no insert-at API: ``addfilter`` appends, and
-    ``updatefilter`` deliberately leaves a rule where it was. Its filters
-    are a plain list, though, so placement is a reorder of that list.
+    A new rule is appended, and a replaced one is left where it was. The
+    filters are a plain list, so placement is a reorder of that list.
 
     Pulling the entry out before putting it back is what makes ``position``
     mean the same thing here as in :func:`resolve_position` -- after the
@@ -742,7 +826,7 @@ def _move_rule(filters: factory.FiltersSet, name: str, position: int) -> None:
 
     That equality rests on both ends agreeing about *which* entry leaves,
     and the agreement is that it is the **first** of that name: the one
-    ``updatefilter`` rewrites, the one popped below, and the one
+    :func:`_replace_rule` rewrites, the one popped below, and the one
     :func:`resolve_position` leaves out. A script with a duplicated name
     is where the three could disagree, and where they once did.
     """
@@ -798,7 +882,15 @@ def merge_rule(
         _replace_rule(filters, name, conditions, actions, matchtype)
 
     else:
-        filters.addfilter(name, conditions, actions, matchtype)
+        filters.filters.append(
+            {
+                "name": name,
+                "content": _build_rule(
+                    filters, conditions, actions, matchtype
+                ),
+                "enabled": True,
+            }
+        )
 
     _move_rule(filters, name, position)
 
@@ -815,16 +907,17 @@ def _replace_rule(
 ) -> None:
     """Give a named rule new content, keeping it disabled if it was.
 
-    sievelib's ``updatefilter`` re-disables a disabled rule by wrapping it,
+    The entry keeps its place and its comments; only its content changes.
+    A disabled rule is switched off again in Roundcube's own form, the new
+    test after ``false`` -- sievelib's ``updatefilter`` wrapped it instead,
     ``if false { if <test> { ... } }``, which Roundcube shows as enabled
-    (#168). So the rule is updated as though enabled and then switched off
-    in Roundcube's own form, the new test after ``false``.
+    (#168).
     """
     entry = _named_entry(filters, name)
     disabled = not entry["enabled"]
 
     entry["enabled"] = True
-    filters.updatefilter(name, name, conditions, actions, matchtype)
+    entry["content"] = _build_rule(filters, conditions, actions, matchtype)
 
     if not disabled:
         return

@@ -195,6 +195,19 @@ BUG FIXES:
   is replaced. A new test that cannot fit on one line is refused while
   the rule is disabled: enable it first, then replace it.
 
+* **A header's name is only ever a header name** ([#175]). A `--header`
+  (or a filter document's header, or one derived by `--like`) whose name
+  looked like a Sieve test was written as that test. `--header notes=x`,
+  and any name starting with `not`, became `not header ...`, which the
+  server accepted and which filed exactly the mail it should have left;
+  `true` matched every message and `false` none; `exists` and `address`
+  wrote the wrong test; `body`, `size`, `envelope`, and `currentdate`
+  failed. Each is now a `header` test on that name. Two smaller faults in
+  the same step are fixed with it: a header name containing `"` is
+  escaped rather than ending the string early, and a value or folder
+  starting with `'` is quoted rather than written bare. Rules on any other
+  header are written exactly as before.
+
 NOTES:
 
 * **The engine is split into the session and the utilities; no behaviour
@@ -1021,3 +1034,4 @@ NOTES:
 [#149]: https://github.com/harleypig/mailctl/issues/149
 [#151]: https://github.com/harleypig/mailctl/issues/151
 [#168]: https://github.com/harleypig/mailctl/issues/168
+[#175]: https://github.com/harleypig/mailctl/issues/175
