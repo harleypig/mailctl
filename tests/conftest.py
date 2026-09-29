@@ -341,6 +341,46 @@ class FakeIMAPClient:
         self.listing.append(((), b".", folder.encode()))
 
     # ------------------------------------------------------------------------
+    def rename_folder(self, old: str, new: str) -> None:
+        """RENAME as RFC 3501 section 6.3.5 has it: the folder and those
+        under it move, and the subscription list is left as it was."""
+        self._maybe_fail("rename_folder")
+        self.calls.append(("rename_folder", old, new))
+
+        def moved(name: bytes) -> bytes:
+            text = name.decode()
+
+            if text == old or text.startswith(old + "."):
+                return (new + text[len(old) :]).encode()
+
+            return name
+
+        self.listing = [
+            (flags, separator, moved(name))
+            for flags, separator, name in self.listing
+        ]
+
+        # Rebound, not edited: a snapshot scenario hands every run the same
+        # counts mapping.
+        self.counts = {
+            (new if name == old else name): counts
+            for name, counts in self.counts.items()
+        }
+
+    # ------------------------------------------------------------------------
+    def folder_status(self, folder: str, what=None) -> dict:
+        self._maybe_fail("folder_status")
+        self.calls.append(("folder_status", folder, tuple(what or ())))
+
+        # STATUS MESSAGES is the first of a folder's LIST-STATUS counts; a
+        # folder with none holds every message in ``messages``.
+        counts = self.counts.get(folder)
+
+        return {
+            b"MESSAGES": len(self.messages) if counts is None else counts[0]
+        }
+
+    # ------------------------------------------------------------------------
     def select_folder(self, folder: str, readonly: bool = True) -> None:
         self._maybe_fail("select_folder")
         self.calls.append(("select_folder", folder, readonly))

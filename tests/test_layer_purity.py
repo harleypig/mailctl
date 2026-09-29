@@ -1254,6 +1254,8 @@ KNOWN_READERS = (
     "backup.plan_restore",
     "flags.plan_mark",
     "folders.list_folder_counts",
+    "folder_rename.plan_folder_rename",
+    "folder_rename.verify_folder_rename",
     "folders.list_folders",
     "folders.plan_folder",
     "folders.plan_folder_creation",
@@ -1515,6 +1517,19 @@ def test_the_analysis_sees_the_writes_that_exist():
         "add_flags",
         "remove_flags",
     }
+
+
+# ----------------------------------------------------------------------------
+def test_the_analysis_sees_a_rename_s_three_writes():
+    """RENAME and the subscription fixes are made in a nested function
+    handed to the upload as its before-put step; the script's store is
+    reached through ``upload_script``."""
+    assert {
+        "rename_folder",
+        "subscribe",
+        "unsubscribe",
+        "store_rule_set",
+    } <= UTILITY_REACH["folder_rename.execute_folder_rename"]
 
 
 # ----------------------------------------------------------------------------

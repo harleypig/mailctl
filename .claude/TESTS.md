@@ -58,10 +58,10 @@ where every write path is proved first.
    - `config` — the flag → env → file → default resolution order, and that a
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
-     `scripts`, `backup`, `baseline`, `flags`, `folders`, `mail`,
-     `messages`, `senders`, and `reports` under `mailctl/utilities/`; a
-     backup's bytes on disk are `test_backup.py`, and the migration
-     utility `test_migration.py`) —
+     `scripts`, `backup`, `baseline`, `flags`, `folders`,
+     `folder_rename`, `mail`, `messages`, `senders`, and `reports` under
+     `mailctl/utilities/`; a backup's bytes on disk are `test_backup.py`,
+     and the migration utility `test_migration.py`) —
      every plan and execute step driven with plain inputs over a session,
      as any front-end would call it. The safety
      policy is pinned here, since it lives here: an upload backs up first
@@ -202,6 +202,10 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   And baselines: one saved from the server checks clean against it, saving
   writes nothing there, and drift made by editing the saved file exits 3 or
   4 as documented.
+  `rename-folder` in `test_rename_folder.py` ([#5][i5]): the folder and
+  its subfolder moved, both subscribed under the new names and gone from
+  `LSUB` under the old, the message count kept, and the script's bytes
+  changed only in the two folder names.
   New mail is also handed to `dovecot-lda`, which runs the uploaded script,
   so the going-forward half is seen filing it too — by header, and by
   body through an `add --body` rule.
@@ -323,6 +327,7 @@ scripts/live-readonly.sh list rules    # run only the named checks
 `TESTARGS` passes extra flags through, e.g. a run filter for a scoped live
 pass: `make testlive TESTARGS='-k sieve'`.
 
+[i5]: https://github.com/harleypig/mailctl/issues/5
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md

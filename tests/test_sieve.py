@@ -1907,3 +1907,81 @@ def test_a_value_that_starts_with_an_apostrophe_is_still_quoted(reparse):
 def test_a_condition_that_is_neither_header_nor_body_is_refused():
     with pytest.raises(ValueError, match="not a header or body condition"):
         merge_rule("", "r", [("size", ":over", "1", "2")], [("keep",)])
+
+
+# ############################################################################
+# Filing targets repointed in place (#5)
+# ############################################################################
+
+# The folder named four ways that are not a filing target -- a header
+# test's key, a hash comment, a bracket comment, a flag list -- beside the
+# two that are. Only the last two may change.
+RETARGET_SCRIPT = (
+    'require ["fileinto","imap4flags"];\n'
+    "# rule:[a]\n"
+    'if header :is "x-folder" "Old" # Old stays here\n'
+    "{\n"
+    '  /* file into "Old" */ fileinto :flags ["Old"] "Old";\n'
+    '\tfileinto   "Old.Kid" ;\n'
+    "}\n"
+)
+
+
+# ----------------------------------------------------------------------------
+def test_retarget_changes_the_filing_strings_and_nothing_else():
+    after = script_module.retarget_fileinto(
+        RETARGET_SCRIPT, {"Old": "New", "Old.Kid": "New.Kid"}
+    )
+
+    assert after == RETARGET_SCRIPT.replace(
+        '["Old"] "Old";', '["Old"] "New";'
+    ).replace('"Old.Kid" ;', '"New.Kid" ;')
+
+
+# ----------------------------------------------------------------------------
+def test_retarget_with_nothing_to_rename_returns_the_script_as_it_was():
+    assert (
+        script_module.retarget_fileinto(RETARGET_SCRIPT, {"Other": "X"})
+        == RETARGET_SCRIPT
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_retarget_reads_and_writes_escaped_folder_names():
+    text = 'require ["fileinto"];\nif true {\n  fileinto "A\\"q";\n}\n'
+
+    after = script_module.retarget_fileinto(text, {'A"q': 'B\\z"'})
+
+    assert (
+        after
+        == 'require ["fileinto"];\nif true {\n  fileinto "B\\\\z\\"";\n}\n'
+    )
+    assert script_module.fileinto_targets(parse_script(after)) == [
+        ("Unnamed rule 1", 'B\\z"')
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_filing_targets_include_a_disabled_rule(roundcube_script):
+    disabled = disable_rule(roundcube_script, "bin-the-noise")
+
+    assert script_module.fileinto_targets(parse_script(disabled)) == [
+        ("keep-boss", "INBOX.Boss"),
+        ("bin-the-noise", "INBOX.Noise"),
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_rewrite_that_does_not_come_out_as_asked_is_refused(monkeypatch):
+    """The parse-both check is what stands behind the splice; seen to
+    fire here by making the splice write the wrong name."""
+    monkeypatch.setattr(script_module, "_requote", lambda value: '"Wrong"')
+
+    with pytest.raises(MailctlError, match="rewritten in place"):
+        script_module.retarget_fileinto(RETARGET_SCRIPT, {"Old": "New"})
+
+
+# ----------------------------------------------------------------------------
+def test_a_script_the_lexer_cannot_scan_is_refused():
+    with pytest.raises(MailctlError, match="cannot scan"):
+        script_module.retarget_fileinto('fileinto "Old";\n@\n', {"Old": "N"})

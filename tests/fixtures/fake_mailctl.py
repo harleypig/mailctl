@@ -579,6 +579,16 @@ def main() -> int:
             f"subscribe to it\n"
         )
 
+    elif command == "rename-folder":
+        out = (
+            f"Rename IMAP folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}' "
+            f"(3 messages)\n\n[dry-run] nothing was renamed, and the script "
+            f"was NOT uploaded.\n"
+        )
+
+        if "rename-renames" in BREAK:
+            out += f"Renamed IMAP folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}'\n"
+
     else:
         print(f"fake mailctl: no canned output for {command}", file=sys.stderr)
 

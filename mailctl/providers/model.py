@@ -44,6 +44,7 @@ __all__ = [
     "FetchedMessage",
     "FolderCreation",
     "FolderListing",
+    "FolderReference",
     "FolderStatus",
     "MailActionPlan",
     "MailActionResult",
@@ -369,6 +370,19 @@ class FolderCreation:
     folder: str
     subscribed: bool
     subscribe_error: str = ""
+
+
+@dataclass(frozen=True)
+class FolderReference:
+    """A rule that files mail into a folder, named as the rule names it.
+
+    One per filing action, in rule order, so a rule filing into two
+    folders is two references. ``rule`` is the rule's name in the stored
+    rule set; ``folder`` is the target exactly as stored, unescaped.
+    """
+
+    rule: str
+    folder: str
 
 
 # ############################################################################

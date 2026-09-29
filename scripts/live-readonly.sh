@@ -55,6 +55,7 @@ readonly TESTS=(
   disable-rule
   subscribe
   create-folder
+  rename-folder
   unchanged
 )
 
@@ -70,6 +71,7 @@ readonly MUTATING=(
   migrate-config
   move-rule
   remove-rule
+  rename-folder
   restore
   save-baseline
   subscribe
@@ -243,7 +245,8 @@ readonly SENDERS_CHECK
 
 # Lines mailctl prints only when it has actually changed something.
 CHANGED_RE='^(Backed up|Created IMAP|Uploaded|Moved [0-9]|Flagged [0-9]'
-CHANGED_RE+='|Deleted [0-9]|Marked [0-9]|Subscribed|Unsubscribed|Restored)'
+CHANGED_RE+='|Deleted [0-9]|Marked [0-9]|Subscribed|Unsubscribed|Restored'
+CHANGED_RE+='|Renamed IMAP|Removed .* from the subscription list)'
 readonly CHANGED_RE
 
 ##############################################################################
@@ -1000,6 +1003,28 @@ t_create_folder() {
 
     return 1
   fi
+}
+
+#-----------------------------------------------------------------------------
+# A real folder, renamed to a name nothing has, planned and never done.
+t_rename_folder() {
+  local folder probe
+
+  run_mailctl folders
+  expect_ok folders || return 1
+  folder=$(pick_folder)
+
+  [[ ${folder^^} == INBOX ]] && folder=''
+  need "$folder" "no subscribed folder but INBOX to plan a rename of" \
+    || return 2
+
+  probe="MailctlReadonlyProbe-$(date -u +%Y%m%dT%H%M%S)-$$"
+
+  run_mailctl rename-folder --dry-run "$folder" "$probe"
+  expect_ok 'rename-folder --dry-run' || return 1
+  expect_nothing_changed || return 1
+
+  expect_line '^\[dry-run\] nothing was renamed'
 }
 
 #-----------------------------------------------------------------------------

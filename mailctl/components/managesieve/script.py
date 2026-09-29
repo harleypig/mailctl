@@ -14,8 +14,9 @@ dialect; this module knows none of them.
 
 import difflib
 import io
+import re
 import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, TextIO, cast
 
@@ -38,12 +39,14 @@ __all__ = [
     "disable_rule",
     "display_diff",
     "enable_rule",
+    "fileinto_targets",
     "merge_rule",
     "move_rule",
     "parse_script",
     "remove_rule",
     "render_script",
     "resolve_position",
+    "retarget_fileinto",
     "rewrite_hash_comments",
     "rule_names",
     "script_diff",
@@ -1048,3 +1051,161 @@ def display_diff(
         text=script_diff(normalized, after, name),
         reformats=normalized != before,
     )
+
+
+# ############################################################################
+# Filing targets -- read, and repointed in place
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def _unquote(token: str) -> str:
+    """A quoted string's value: the quotes off, each ``\\x`` read as ``x``
+    (RFC 5228 section 2.4.2). Anything else -- a ``text:`` block -- is
+    returned as it stands."""
+    if len(token) < 2 or not token.startswith('"') or not token.endswith('"'):
+        return token
+
+    return re.sub(r"\\(.)", r"\1", token[1:-1], flags=re.DOTALL)
+
+
+# ----------------------------------------------------------------------------
+def _requote(value: str) -> str:
+    """``value`` as a Sieve quoted string, its backslashes and quotes
+    escaped."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+# ----------------------------------------------------------------------------
+def _commands(command: commands.Command) -> Iterable[commands.Command]:
+    """``command`` and every command inside it, in script order."""
+    yield command
+
+    for child in command.children:
+        yield from _commands(child)
+
+
+# ----------------------------------------------------------------------------
+def fileinto_targets(filters: factory.FiltersSet) -> list[tuple[str, str]]:
+    """``(rule name, folder)`` for every ``fileinto``, in script order.
+
+    A disabled rule's are included: switching it back on files there
+    again, so a folder it names is still one it depends on.
+    """
+    found = []
+
+    for entry in filters.filters:
+        for command in _commands(entry["content"]):
+            if isinstance(command, commands.FileintoCommand):
+                found.append(
+                    (entry["name"], _unquote(str(command["mailbox"])))
+                )
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def retarget_fileinto(text: str, renames: Mapping[str, str]) -> str:
+    """Repoint each ``fileinto`` whose folder is a key of ``renames``.
+
+    Only the folder's string is replaced, where it sits in ``text``; every
+    other byte is kept, so a rule that files nowhere renamed -- and every
+    comment, and the host's own layout -- survives exactly, which a parse
+    and re-render would not. The folder is the last argument before the
+    ``fileinto``'s semicolon, whatever tags precede it.
+
+    The result is checked by parsing both scripts: its targets must be the
+    old ones with exactly the renames applied, or it is refused rather
+    than handed back half-done. So is a script the lexer cannot scan.
+    """
+    raw = text.encode("utf-8")
+    lexer = parser.Lexer(parser.Parser.lrules)
+    edits: list[tuple[int, int, bytes]] = []
+    inside = False
+    last: tuple[str, bytes, int] | None = None
+
+    try:
+        for token_type, value in lexer.scan(raw):
+            start = lexer.pos
+
+            if token_type in ("hash_comment", "bracket_comment"):
+                continue
+
+            if not inside:
+                inside = (
+                    token_type == "identifier" and value.lower() == b"fileinto"
+                )
+                last = None
+
+                continue
+
+            if token_type in ("left_cbracket", "right_cbracket"):
+                inside, last = False, None
+
+            elif token_type == "semicolon":
+                edit = (
+                    _retarget_edit(raw, last, renames)
+                    if last is not None and last[0] == "string"
+                    else None
+                )
+
+                if edit is not None:
+                    edits.append(edit)
+
+                inside, last = False, None
+
+            else:
+                last = (token_type, value, start)
+
+    except parser.ParseError as error:
+        raise MailctlError(
+            f"cannot scan the Sieve script to rewrite its folders -- {error}"
+        ) from error
+
+    pieces = []
+    cursor = 0
+
+    for start, end, replacement in edits:
+        pieces += [raw[cursor:start], replacement]
+        cursor = end
+
+    after = b"".join([*pieces, raw[cursor:]]).decode("utf-8")
+    expected = [
+        renames.get(folder, folder)
+        for _, folder in fileinto_targets(parse_script(text))
+    ]
+
+    if [folder for _, folder in fileinto_targets(parse_script(after))] != (
+        expected
+    ):
+        raise MailctlError(
+            "a rule's folder could not be rewritten in place, so the "
+            "script is left as it is"
+        )
+
+    return after
+
+
+# ----------------------------------------------------------------------------
+def _retarget_edit(
+    raw: bytes, token: tuple[str, bytes, int], renames: Mapping[str, str]
+) -> tuple[int, int, bytes] | None:
+    """The splice that repoints one ``fileinto`` string, or None."""
+    _, value, start = token
+
+    # The lexer's position is the token's start only while its generator
+    # is suspended at the yield; check it, since splicing at a wrong offset
+    # would rewrite some other part of the user's script.
+    if raw[start : start + len(value)] != value:
+        raise MailctlError(
+            "cannot locate a folder in the Sieve script safely; this is a "
+            "mailctl/sievelib version mismatch, not a problem with your "
+            "script"
+        )
+
+    new = renames.get(_unquote(value.decode("utf-8")))
+
+    if new is None:
+        return None
+
+    return (start, start + len(value), _requote(new).encode("utf-8"))

@@ -103,6 +103,29 @@ FEATURES:
   `mailctl test` adds one line saying whether there is drift, and never
   fails over it.
 
+* **`mailctl rename-folder OLD NEW` renames a folder and repoints the
+  rules that file into it** ([#5]). The folders under it move with it. A
+  rename is three changes, and mailctl makes all three: IMAP `RENAME`;
+  the subscription, which `RENAME` leaves behind (RFC 3501 section 6.3.5),
+  so each moved folder that was subscribed is subscribed under its new
+  name and its old name dropped — without it the folder vanishes from
+  webmail; and every rule in the active script filing into an old name.
+  Only those folder names change in the script: every other byte,
+  comments and layout included, is kept, rather than the whole script
+  being re-rendered. The plan — the folders, their message count, the
+  rules, and the diff — is shown first, then `--dry-run` stops (`--json`
+  prints it as a document) or you are asked to confirm. The new script is
+  backed up and validated (`CHECKSCRIPT`) before the folder is touched,
+  and stored straight after the rename, so the time a rule points at a
+  missing folder is as short as it can be. Afterwards the account is read
+  back: the old name gone, the new one there, subscribed where the old one
+  was, holding at least the messages it did, the folders under it moved,
+  and no rule still filing into an old name. Any of those failing is a
+  non-zero exit that names it. A failure part-way is never retried; the
+  error says what state the account is in and how to undo it. `INBOX`
+  cannot be renamed, and a `NEW` that exists — or differs from an existing
+  folder only in case — is refused.
+
 * **`mailctl probe` prints what a provider record needs** ([#101]). It
   reads both servers and changes nothing: the date and time in UTC, where
   each half connects, each server's identity (IMAP `ID`, ManageSieve
@@ -1050,6 +1073,7 @@ NOTES:
   ruleset.
 
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
+[#5]: https://github.com/harleypig/mailctl/issues/5
 [#158]: https://github.com/harleypig/mailctl/issues/158
 [#159]: https://github.com/harleypig/mailctl/issues/159
 [#53]: https://github.com/harleypig/mailctl/issues/53

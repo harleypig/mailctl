@@ -1,0 +1,11 @@
+$ mailctl rename-folder lists Archive
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: no folder named 'INBOX.lists' on the server, so there is nothing to rename. 'INBOX.Lists' exists, but folder names are case-sensitive. 'mailctl folders' lists what exists.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

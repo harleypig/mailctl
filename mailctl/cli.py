@@ -308,6 +308,22 @@ def render_event(event) -> None:
     elif isinstance(event, utilities.events.FolderCreated):
         report_folder_creation(event.result)
 
+    elif isinstance(event, utilities.events.FolderRenamed):
+        under = (
+            f", with the {event.children} folder"
+            f"{'s' if event.children != 1 else ''} under it"
+            if event.children
+            else ""
+        )
+        print(f"Renamed IMAP folder {event.old!r} to {event.new!r}{under}")
+
+    elif isinstance(event, utilities.events.SubscriptionChanged):
+        if event.subscribed:
+            print(f"Subscribed to {event.folder!r}")
+
+        else:
+            print(f"Removed {event.folder!r} from the subscription list")
+
 
 # ----------------------------------------------------------------------------
 def print_activation(plan) -> None:
@@ -1623,6 +1639,149 @@ def report_existing_folder(plan: utilities.folders.FolderCreationPlan) -> None:
         f"not show it; nothing was changed. 'mailctl subscribe {folder}' "
         f"shows it."
     )
+
+
+# ----------------------------------------------------------------------------
+def cmd_rename_folder(args) -> int:
+    """Rename a folder, carry its subscription, and repoint its rules."""
+    config = configure(args)
+
+    with connect(config, args, rules=True, mail=True) as sessions:
+        plan = utilities.folder_rename.plan_folder_rename(
+            sessions, args.old, args.new
+        )
+
+        if args.json:
+            return emit_json(args, json_output.folder_rename_plan(plan))
+
+        print_folder_rename(plan)
+
+        if args.dry_run:
+            print(
+                "\n[dry-run] nothing was renamed, and the script was NOT "
+                "uploaded."
+            )
+
+            return 0
+
+        count = len(plan.retargets)
+        rules = (
+            f" and repoint {count} filing action{'s' if count != 1 else ''}"
+            if count
+            else ""
+        )
+
+        if not confirm(
+            f"Rename folder {plan.old!r} to {plan.new!r}{rules}?", args.yes
+        ):
+            print("Aborted; nothing was changed.")
+
+            return 0
+
+        result = utilities.folder_rename.execute_folder_rename(
+            sessions, config, plan, render_event
+        )
+
+    return report_folder_rename(result)
+
+
+# ----------------------------------------------------------------------------
+def print_folder_rename(plan) -> None:
+    """Show what a rename would move, subscribe, and rewrite."""
+    for requested, folder in (
+        (plan.requested_old, plan.old),
+        (plan.requested_new, plan.new),
+    ):
+        if requested != folder:
+            print(
+                f"Folder {requested!r} resolves to {folder!r} "
+                f"(delimiter {plan.delimiter!r})"
+            )
+
+    count = plan.messages
+    print(
+        f"Rename IMAP folder {plan.old!r} to {plan.new!r} ({count} "
+        f"message{'s' if count != 1 else ''})"
+    )
+
+    if plan.children:
+        count = len(plan.children)
+        print(
+            f"  The {count} folder{'s' if count != 1 else ''} under it "
+            f"move{'' if count != 1 else 's'} with it:"
+        )
+
+        for move in plan.children:
+            print(f"    {move.old!r} -> {move.new!r}")
+
+    shown = [move.new for move in plan.moves if move.subscribed]
+    hidden = [move.new for move in plan.moves if not move.subscribed]
+
+    if shown:
+        print(
+            f"  Subscribed after the rename, as before: "
+            f"{', '.join(repr(name) for name in shown)}"
+        )
+
+    if hidden:
+        print(
+            f"  Left unsubscribed, as before: "
+            f"{', '.join(repr(name) for name in hidden)}"
+        )
+
+    if plan.missing_parents:
+        count = len(plan.missing_parents)
+        parents = ", ".join(repr(name) for name in plan.missing_parents)
+        print(
+            f"  Parent folder{'s' if count > 1 else ''} {parents} "
+            f"{'do' if count > 1 else 'does'} not exist; the IMAP server is "
+            f"expected to create {'them' if count > 1 else 'it'}."
+        )
+
+    if not plan.retargets:
+        print(
+            f"\nNo rule in {plan.script!r} files into {plan.old!r} or a "
+            f"folder under it; the script is left alone."
+        )
+
+        return
+
+    print(f"\nRules in {plan.script!r} that file into it:")
+
+    for item in plan.retargets:
+        print(f"  {item.rule}: {item.old!r} -> {item.new!r}")
+
+    print_script_diff(plan.diff)
+    print_activation(plan)
+
+
+# ----------------------------------------------------------------------------
+def report_folder_rename(result) -> int:
+    """Say what a rename changed, then what reading the account back found.
+
+    A check that failed is a non-zero exit: a rename that lands the folder
+    and not its subscription looks like success to every other test.
+    """
+    for error in result.subscription_errors:
+        warn(error)
+
+    print("\nChecked after the rename:")
+
+    for check in result.checks:
+        mark = "ok  " if check.ok else "FAIL"
+        detail = f" -- {check.detail}" if check.detail else ""
+        print(f"  {mark}  {check.label}{detail}")
+
+    if result.ok:
+        return 0
+
+    print(
+        "mailctl: the rename did not fully land; the checks marked FAIL "
+        "above say what is wrong",
+        file=sys.stderr,
+    )
+
+    return 1
 
 
 # ----------------------------------------------------------------------------
@@ -3584,6 +3743,26 @@ def build_parser(
         "show it until 'mailctl subscribe NAME'",
     )
     create_folder.set_defaults(handler=cmd_create_folder)
+
+    rename_folder = command(
+        "rename-folder",
+        parents=[common, connection, safety],
+        help="rename a folder, and repoint the rules that file into it",
+        description="Rename a folder over IMAP, together with every folder "
+        "under it, and repoint every rule in the active script that files "
+        "into any of them. IMAP's RENAME leaves subscriptions behind, so "
+        "each moved folder that was subscribed is subscribed under its "
+        "new name, and the old name is dropped from the list. Only the "
+        "folder names in the rules change; every other byte of the script "
+        "is kept. What would change is shown first and you are asked to "
+        "confirm; the new script is backed up and validated (CHECKSCRIPT) "
+        "before the folder is touched, and afterwards the account is read "
+        "back to check that everything landed. INBOX cannot be renamed, "
+        "and NEW must not exist yet.",
+    )
+    rename_folder.add_argument("old", metavar="OLD")
+    rename_folder.add_argument("new", metavar="NEW")
+    rename_folder.set_defaults(handler=cmd_rename_folder)
 
     test = command(
         "test",

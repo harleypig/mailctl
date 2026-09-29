@@ -1,0 +1,50 @@
+$ mailctl rename-folder Lists Archive --dry-run
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Folder 'Archive' resolves to 'INBOX.Archive' (delimiter '.')
+Rename IMAP folder 'INBOX.Lists' to 'INBOX.Archive' (360 messages)
+  The 1 folder under it moves with it:
+    'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
+  Subscribed after the rename, as before: 'INBOX.Archive', 'INBOX.Archive.GitHub'
+
+Rules in 'managesieve' that file into it:
+  lists: 'INBOX.Lists' -> 'INBOX.Archive'
+  github: 'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -2,7 +2,7 @@
+ # rule:[lists]
+ if header :contains "list-id" "lists.example.com"
+ {
+-	fileinto "INBOX.Lists";
++	fileinto "INBOX.Archive";
+ 	stop;
+ }
+ # my own note
+@@ -14,5 +14,5 @@
+ # rule:[github]
+ if false # header :contains "from" "noreply@github.com"
+ {
+-	fileinto "INBOX.Lists.GitHub";
++	fileinto "INBOX.Archive.GitHub";
+ }
+
+--- end diff ---
+
+[dry-run] nothing was renamed, and the script was NOT uploaded.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('folder_status', 'INBOX.Lists', ('MESSAGES',))
+('logout',)

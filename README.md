@@ -257,6 +257,12 @@ mailctl unsubscribe Lists/Noisy --dry-run
 mailctl create-folder Lists/News --dry-run
 mailctl create-folder Lists/Archive --no-subscribe
 
+# Rename a folder, and the folders under it. Its subscription comes with
+# it, and every rule filing into it is repointed; nothing else in the
+# script changes. The account is read back afterwards to check it landed.
+mailctl rename-folder Github.Notificaitons Github.Notifications --dry-run
+mailctl rename-folder Lists/Old Lists/Archive
+
 # See exactly what would change, without changing it.
 mailctl add --from newsletter@example.com --fileinto Lists/News --dry-run
 
@@ -399,7 +405,9 @@ and error handling.
 * `received` is ISO 8601 in local time, with no offset, because the
   server's date reaches mailctl without one.
 * A plan's `changes` is `false` where the command would do nothing; its
-  `diff`, on a script change, is then `null`.
+  `diff`, on a script change, is then `null`. A `rename-folder` plan always
+  changes something; its `diff` is `null` when no rule files into the
+  folder, and the script is then left alone.
 * A `search` listing's `sort` is `null` for newest first, else
   `{"key", "reverse"}` as `--sort` and `--reverse` gave them, and
   `messages` are in that order. `more` is `true` when there may be
@@ -449,7 +457,8 @@ and save again.
   that command would have changed: the Sieve diff for `add`,
   `remove-rule`, `disable-rule`, and `enable-rule`; the list of matching
   messages for `apply`; the file that would have been written for
-  `backup`.
+  `backup`; the folders that would move, and the Sieve diff, for
+  `rename-folder`.
 * `add` **never touches mail already delivered**; `apply` is the only
   command that does. After saving a rule, `add` says so and points at
   `apply`.
@@ -460,6 +469,17 @@ and save again.
   the derived criteria look equally plausible whichever message produced
   them, so the headers are the only thing that catches a mistyped digit
   before mail starts moving.
+* `rename-folder` **validates the rewritten script before it touches the
+  folder**, then renames, fixes the subscriptions, and stores the script
+  straight after, so a rule points at a missing folder for as short a
+  time as possible. It edits only the folder names in the rules; every
+  other byte of the script is kept. It does not report success on the
+  folder list alone: it reads the account back and checks the new name is
+  subscribed where the old one was, holds at least the messages the old
+  one did, and that no rule still files into an old name, exiting
+  non-zero naming any that failed. A step that fails part-way is not
+  retried; the error says what was done and how to undo it
+  (`mailctl rename-folder NEW OLD`).
 * `search`, `view`, and `senders` **never mark mail read**. The folder
   is opened read-only, and the message is fetched in the form that leaves
   its read flag alone, so either guard alone would be enough.
