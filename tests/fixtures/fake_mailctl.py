@@ -17,6 +17,7 @@ faults to inject, so a test can watch a check go red:
 - ``like-drops-source`` -- ``search --like`` does not list its own message
 - ``filter-on-stdout`` -- ``--build-filter --json`` shows the message on
   stdout, ahead of the document
+- ``switch-uploads``  -- ``disable-rule --dry-run`` uploads anyway
 """
 
 import json
@@ -296,6 +297,16 @@ def main() -> int:
 
     elif command == "remove-rule":
         out = DIFF
+
+    elif command == "disable-rule":
+        out = DIFF
+
+        if "switch-uploads" in BREAK:
+            out += "Uploaded and activated script 'managesieve'\n"
+
+    elif command == "enable-rule":
+        out = "Rule 'keep boss' is already enabled in 'managesieve'; "
+        out += "nothing to change.\n"
 
     elif command == "subscribe":
         out = "'INBOX' is already subscribed; nothing to change.\n"

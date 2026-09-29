@@ -88,6 +88,7 @@ FULL = ProviderCapabilities(
     ordering=True,
     stop=True,
     rule_sets=True,
+    disable=True,
     actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
     extensions=True,
     raw_query=True,
@@ -178,7 +179,7 @@ class FakeDialect(Dialect):
                 stops="stop" in entry["actions"],
                 index=index,
             )
-            rules.append(rule)
+            rules.append(replace(rule, disabled=entry.get("off", False)))
 
         return rules
 
@@ -199,6 +200,29 @@ class FakeDialect(Dialect):
         entries = json.loads(source)
 
         return json.dumps([e for e in entries if e["name"] != name])
+
+    @classmethod
+    def disable_rule(cls, source, name):
+        return cls._switch(source, name, off=True)
+
+    @classmethod
+    def enable_rule(cls, source, name):
+        return cls._switch(source, name, off=False)
+
+    @classmethod
+    def _switch(cls, source, name, off):
+        entries = json.loads(source)
+        entry = next((e for e in entries if e["name"] == name), None)
+
+        if entry is None:
+            raise MailctlError(f"no rule named {name!r}")
+
+        if entry.get("off", False) == off:
+            return source
+
+        entry["off"] = off
+
+        return json.dumps(entries)
 
     @classmethod
     def move_rule(cls, source, name, placement):
@@ -428,6 +452,7 @@ UNORDERED = Provider(
         ordering=False,
         stop=True,
         rule_sets=True,
+        disable=True,
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
@@ -455,6 +480,7 @@ STOPLESS = Provider(
         ordering=True,
         stop=False,
         rule_sets=True,
+        disable=True,
         actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
@@ -608,6 +634,9 @@ def drive(session: Session, config: Config) -> None:
     utilities.rules.missing_extensions(session, spec, folder)
     plan = utilities.rules.plan_rule(session, config, request, folder)
     utilities.rules.execute_script_change(session, config, plan)
+
+    switch = utilities.rules.plan_switch(session, "github", enable=False)
+    utilities.rules.execute_script_change(session, config, switch)
 
     utilities.scripts.list_scripts(session)
     utilities.rules.read_rules(session)
@@ -858,9 +887,11 @@ def test_the_fake_really_stored_the_rule_and_moved_the_mail(
 
     drive(session, imap_config)
 
-    assert FakeDialect.rule_names(fake_transport(session).scripts["main"]) == [
-        "keep-boss",
-        "github",
+    stored = FakeDialect.read_rules(fake_transport(session).scripts["main"])
+
+    assert [(rule.name, rule.disabled) for rule in stored] == [
+        ("keep-boss", False),
+        ("github", True),
     ]
 
 
@@ -1086,12 +1117,13 @@ def test_mxroute_translates_every_record_it_returns(
 def test_mxroute_capabilities_are_what_sieve_over_managesieve_offers():
     caps = MXROUTE.capabilities
 
-    assert (caps.ordering, caps.stop, caps.rule_sets, caps.extensions) == (
-        True,
-        True,
-        True,
-        True,
-    )
+    assert (
+        caps.ordering,
+        caps.stop,
+        caps.rule_sets,
+        caps.disable,
+        caps.extensions,
+    ) == (True, True, True, True, True)
     assert caps.actions == {FILEINTO, DISCARD, FLAG_ACTION, KEEP}
     assert caps.declined == frozenset()
     assert dict(caps.specifics) == {}
@@ -1338,6 +1370,16 @@ class BareDialect(UnorderedDialect):
 
     name = "bare"
 
+    @classmethod
+    @declined
+    def disable_rule(cls, source, name):
+        """No rule can be switched off."""
+
+    @classmethod
+    @declined
+    def enable_rule(cls, source, name):
+        """No rule can be switched on."""
+
 
 class BareTransport(FakeTransport):
     name = "bare"
@@ -1351,10 +1393,13 @@ BARE = Provider(
         ordering=False,
         stop=False,
         rule_sets=True,
+        disable=False,
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
-        declined=frozenset(("move_rule", "position")),
+        declined=frozenset(
+            ("move_rule", "position", "disable_rule", "enable_rule")
+        ),
     ),
     BareDialect,
     BareTransport,
@@ -1434,6 +1479,38 @@ def test_move_rule_is_not_listed_without_ordering(bare, capsys, monkeypatch):
 
 
 # ----------------------------------------------------------------------------
+def test_disable_and_enable_are_not_listed_without_disable(
+    bare, capsys, monkeypatch
+):
+    listed = help_text(capsys)
+
+    assert "disable-rule" in listed
+    assert "enable-rule" in listed
+
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+    text = help_text(capsys)
+
+    assert "disable-rule" not in text
+    assert "enable-rule" not in text
+
+
+# ----------------------------------------------------------------------------
+def test_the_bare_fake_declines_exactly_what_it_does_not_declare():
+    assert declined_operations(BARE) == BARE.capabilities.declined
+
+
+# ----------------------------------------------------------------------------
+def test_a_switch_is_refused_by_a_host_without_disable(bare):
+    """The utility holds the line for any front-end, not only the CLI."""
+    session = fake_session(BARE)
+
+    with pytest.raises(MailctlError, match="'disable' capability"):
+        utilities.rules.plan_switch(session, "keep-boss", enable=False)
+
+    assert session.opened == ()
+
+
+# ----------------------------------------------------------------------------
 def test_no_stop_is_not_offered_without_stop(bare, capsys):
     assert "--no-stop" not in help_text(capsys, "add", "--provider", "bare")
     assert "--no-stop" in help_text(capsys, "add")
@@ -1487,6 +1564,8 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
             "'ordering'",
         ),
         (["move-rule", "x", "--first"], "'ordering'"),
+        (["disable-rule", "x", "--yes"], "'disable'"),
+        (["enable-rule", "x", "--yes"], "'disable'"),
         (["list", "--sieve-port", "4190"], "flag --sieve-port"),
         (["list", "--disable-extension", "mailbox"], "disabled_extensions"),
         (["search", "--raw", "ALL"], "'raw_query'"),
@@ -1494,6 +1573,8 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     ids=[
         "placement",
         "move-rule",
+        "disable-rule",
+        "enable-rule",
         "connection-flag",
         "disable-extension",
         "raw-query",

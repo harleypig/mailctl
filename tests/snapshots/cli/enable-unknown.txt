@@ -1,0 +1,14 @@
+$ mailctl enable-rule phantom --yes
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: no rule named 'phantom' in the active script. Known rules: keep-boss, bin-the-noise
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

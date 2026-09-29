@@ -29,7 +29,9 @@ from mailctl.config import Config, load_config
 from mailctl.criteria import Criteria, escape_sieve_string
 from mailctl.providers.mxroute import managesieve as mxroute_managesieve
 from mailctl.providers.mxroute.sieve import (
+    disable_rule,
     display_diff,
+    enable_rule,
     merge_rule,
     move_rule,
     parse_script,
@@ -1355,6 +1357,168 @@ def test_a_replaced_disabled_rule_drops_the_stale_test():
     )
 
     assert "invoice" not in merged
+
+
+# ############################################################################
+# Switching a rule off and on (#158)
+# ############################################################################
+
+# A rule of several tests. Roundcube writes it on the `if false` line as
+# `allof (a, b)` -- the tests joined by ", " -- and so does sievelib.
+MULTI_TEST_SCRIPT = """require ["fileinto", "body"];
+# rule:[invoices]
+if allof (header :contains ["from", "sender"] "billing@example.com",
+          not header :is "subject" "receipt",
+          body :contains "invoice")
+{
+\tfileinto "INBOX.Bills";
+\tstop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter"
+{
+\tfileinto "INBOX.Noise";
+\tstop;
+}
+"""
+
+MULTI_TEST_LINE = (
+    'if false # allof (header :contains ["from", "sender"] '
+    '"billing@example.com", not header :is "subject" "receipt", '
+    'body :contains "invoice")\n{\n'
+)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_disable_writes_the_test_where_roundcube_reads_it(newline, reparse):
+    disabled = disable_rule(
+        MULTI_TEST_SCRIPT.replace("\n", newline), "invoices"
+    )
+
+    assert "# rule:[invoices]\n" + MULTI_TEST_LINE in disabled
+
+    after_if = disabled.split("# rule:[invoices]\nif", 1)[1]
+
+    assert ROUNDCUBE_DISABLED.match(after_if)
+    assert 'fileinto "INBOX.Bills";' in disabled
+    assert 'if header :contains "subject" "newsletter" {' in disabled
+    reparse(disabled)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_disable_then_enable_is_the_rule_it_started_as(newline, reparse):
+    start = MULTI_TEST_SCRIPT.replace("\n", newline)
+
+    restored = enable_rule(disable_rule(start, "invoices"), "invoices")
+
+    assert restored == render_script(parse_script(start))
+    reparse(restored)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_a_rule_roundcube_disabled_is_enabled(newline, reparse):
+    enabled = enable_rule(DISABLED_SCRIPT.replace("\n", newline), "paused")
+
+    assert (
+        "# rule:[paused]\n"
+        'if anyof (header :contains "subject" "invoice") {\n'
+        '    fileinto "INBOX.Bills";\n'
+    ) in enabled
+    assert "if false" not in enabled
+    reparse(enabled)
+
+
+# ----------------------------------------------------------------------------
+def test_a_rule_sievelib_disabled_is_enabled_too(reparse):
+    """sievelib's disablefilter wraps the rule in ``if false { ... }``,
+    which is what a --replace of a disabled rule currently writes."""
+    wrapped = merge_simple(
+        DISABLED_SCRIPT, "paused", "INBOX.Other", replace=True
+    )
+
+    enabled = enable_rule(wrapped, "paused")
+
+    assert "if false" not in enabled
+    assert 'fileinto "INBOX.Other";' in enabled
+    reparse(enabled)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("switch", "script", "name"),
+    [
+        (disable_rule, DISABLED_SCRIPT, "paused"),
+        (enable_rule, DISABLED_SCRIPT, "bin-the-noise"),
+    ],
+    ids=["disable", "enable"],
+)
+def test_a_rule_already_switched_returns_the_script_untouched(
+    switch, script, name
+):
+    assert switch(script, name) is script
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("switch", [disable_rule, enable_rule])
+def test_switching_an_unknown_rule_names_the_real_ones(switch):
+    with pytest.raises(
+        MailctlError,
+        match=r"no rule named 'phantom'.*Known rules: paused, bin-the-noise",
+    ):
+        switch(DISABLED_SCRIPT, "phantom")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("kept", "reason"),
+    [
+        ("", "nothing to restore"),
+        ("# was a subject test", "not a Sieve test"),
+        ('# anyof (header :contains "subject"', "not a Sieve test"),
+        ('# header :contains "a" "b" {} if true', "not a Sieve test"),
+        ('# body :contains "invoice"', "not a Sieve test"),
+    ],
+    ids=["nothing", "prose", "truncated", "trailing-block", "not-required"],
+)
+def test_a_test_that_cannot_be_read_back_is_refused_naming_the_rule(
+    kept, reason
+):
+    script = DISABLED_SCRIPT.replace(
+        '# anyof (header :contains "subject" "invoice")', kept
+    )
+
+    with pytest.raises(MailctlError, match=r"'paused' cannot be enabled") as e:
+        enable_rule(script, "paused")
+
+    assert reason in str(e.value)
+
+
+# ----------------------------------------------------------------------------
+def test_a_test_on_several_lines_cannot_be_disabled():
+    script = """require ["fileinto"];
+# rule:[long]
+if header :contains "subject" text:
+one
+.
+{
+    fileinto "INBOX.Long";
+}
+"""
+
+    with pytest.raises(MailctlError, match="'long' cannot be disabled"):
+        disable_rule(script, "long")
+
+
+# ----------------------------------------------------------------------------
+def test_a_rule_with_no_if_cannot_be_disabled():
+    with pytest.raises(MailctlError, match="no 'if' test"):
+        disable_rule(
+            'require ["fileinto"];\n# rule:[all]\nfileinto "INBOX.All";\n',
+            "all",
+        )
 
 
 # ----------------------------------------------------------------------------

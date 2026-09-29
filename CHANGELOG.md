@@ -58,6 +58,20 @@ FEATURES:
   [#149], so there is no release without a way to write a filter from a
   message.
 
+* **Switch a rule off without deleting it: `mailctl disable-rule NAME` and
+  `mailctl enable-rule NAME`** ([#158]). A disabled rule stays in the
+  script, written the way Roundcube's filter screen writes one -- `if
+  false # <its test>`, with the rule's actions kept -- so a rule switched
+  off in mailctl shows as off in webmail, and one switched off in webmail
+  can be switched back on with `enable-rule`. Like every change, each
+  shows the diff first, backs up the script, and asks before uploading;
+  `--dry-run` stops after the diff and `--yes` skips the question. A rule
+  already in the state asked for is left alone, with a message saying
+  so. `enable-rule` refuses a rule whose kept test it cannot read back,
+  rather than guessing one. `mailctl rules` marks a disabled rule
+  `[disabled]` and shows the test it would have, and a disabled rule is
+  never reported as blocking, or blocked by, another.
+
 ENHANCEMENTS:
 
 * **A command given bad input fails before logging in** ([#137]). The CLI
@@ -862,6 +876,7 @@ NOTES:
   ruleset.
 
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
+[#158]: https://github.com/harleypig/mailctl/issues/158
 [#53]: https://github.com/harleypig/mailctl/issues/53
 [#52]: https://github.com/harleypig/mailctl/issues/52
 [#54]: https://github.com/harleypig/mailctl/issues/54

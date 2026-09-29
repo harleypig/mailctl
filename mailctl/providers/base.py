@@ -144,6 +144,8 @@ class ProviderCapabilities:
       a rule within; ``False`` means every rule is evaluated on its own.
     * ``stop`` -- a rule can end evaluation so later rules do not run.
     * ``rule_sets`` -- the host stores several named rule sets, one active.
+    * ``disable`` -- a rule can be switched off and back on without being
+      removed.
     * ``actions`` -- the neutral action names (``ActionSpec``) it can emit.
     * ``extensions`` -- it reports rule-language extensions by name.
     * ``raw_query`` -- a message search may be given as a query in the
@@ -160,6 +162,7 @@ class ProviderCapabilities:
     ordering: bool
     stop: bool
     rule_sets: bool
+    disable: bool
     actions: frozenset[str]
     extensions: bool
     raw_query: bool
@@ -365,6 +368,22 @@ class Dialect(ABC):
     @abstractmethod
     def move_rule(cls, source: str, name: str, placement: Placement) -> str:
         """Move a named rule within a stored rule set."""
+
+    @classmethod
+    @abstractmethod
+    def disable_rule(cls, source: str, name: str) -> str:
+        """Switch a named rule off, keeping it in the stored rule set.
+
+        Returns ``source`` unchanged when the rule is already off.
+        """
+
+    @classmethod
+    @abstractmethod
+    def enable_rule(cls, source: str, name: str) -> str:
+        """Switch a named rule that is off back on.
+
+        Returns ``source`` unchanged when the rule is already on.
+        """
 
     @classmethod
     @abstractmethod

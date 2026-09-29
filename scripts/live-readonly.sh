@@ -43,6 +43,7 @@ readonly TESTS=(
   add-create-folder
   from-message
   remove-rule
+  disable-rule
   subscribe
   create-folder
   unchanged
@@ -54,6 +55,8 @@ readonly MUTATING=(
   apply
   backup
   create-folder
+  disable-rule
+  enable-rule
   from-message
   migrate-config
   move-rule
@@ -562,6 +565,36 @@ t_remove_rule() {
 
   expect_line '^--- sieve diff ---$' || return 1
   expect_line '^\[dry-run\] the script was NOT uploaded\.$'
+}
+
+#-----------------------------------------------------------------------------
+# Both switches on one rule: whichever state it is in, one of the two plans a
+# change and the other says there is nothing to do.
+t_disable_rule() {
+  local name switch
+  local planned='^\[dry-run\] the script was NOT uploaded\.$'
+
+  run_mailctl show
+  expect_ok show || return 1
+
+  name=$(sed -n 's/^# rule:\[\(.*\)\]$/\1/p' "$OUT" | head -n 1)
+
+  if [[ -z $name ]] && grep -q '^# rule:\[' "$OUT"; then
+    fail "show has '# rule:[' markers, but none parsed as a name"
+
+    return 1
+  fi
+
+  need "$name" "the active script has no rules" || return 2
+
+  for switch in disable enable; do
+    run_mailctl "$switch-rule" --dry-run "$name"
+    expect_ok "$switch-rule --dry-run" || return 1
+    expect_nothing_changed || return 1
+
+    expect_line "$planned|already ${switch}d in .*; nothing to change\.$" \
+      || return 1
+  done
 }
 
 #-----------------------------------------------------------------------------

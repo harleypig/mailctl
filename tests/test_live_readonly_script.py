@@ -36,6 +36,7 @@ ALL_TESTS = [
     "add-create-folder",
     "from-message",
     "remove-rule",
+    "disable-rule",
     "subscribe",
     "create-folder",
     "unchanged",
@@ -46,6 +47,8 @@ MUTATING = [
     "apply",
     "backup",
     "create-folder",
+    "disable-rule",
+    "enable-rule",
     "from-message",
     "migrate-config",
     "move-rule",
@@ -265,6 +268,23 @@ def test_a_marker_that_does_not_parse_fails_rather_than_skips(tmp_path):
     assert proc.returncode == 1
     assert proc.stdout.splitlines()[1] == "not ok 1 - remove-rule"
     assert not any(call[0] == "remove-rule" for call in calls)
+
+
+# ----------------------------------------------------------------------------
+def test_disable_rule_plans_both_switches_on_a_real_rule_name(tmp_path):
+    proc, calls = run(tmp_path, "disable-rule")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - disable-rule"]
+    assert ["disable-rule", "--dry-run", "keep boss"] in calls
+    assert ["enable-rule", "--dry-run", "keep boss"] in calls
+
+
+# ----------------------------------------------------------------------------
+def test_disable_rule_fails_when_a_switch_reports_a_change(tmp_path):
+    proc, _ = run(tmp_path, "disable-rule", breaks=["switch-uploads"])
+
+    assert proc.returncode == 1
+    assert proc.stdout.splitlines()[1] == "not ok 1 - disable-rule"
 
 
 # ############################################################################

@@ -93,6 +93,17 @@ def check_move(config: Config) -> None:
 
 
 # ----------------------------------------------------------------------------
+def check_switch(config: Config) -> None:
+    """Refuse disabling or enabling a rule under a provider without
+    ``disable``.
+
+    Needs no connection, so a front-end calls it before connecting;
+    :func:`plan_switch` holds the same line for any other caller.
+    """
+    require_capability(provider_for(config), "disable")
+
+
+# ----------------------------------------------------------------------------
 def require_capability(provider: Provider | Session, name: str) -> None:
     """Refuse work needing a capability the provider does not declare."""
     if getattr(provider.capabilities, name):
@@ -107,6 +118,7 @@ def require_capability(provider: Provider | Session, name: str) -> None:
 
 # What a request asks for, in words, when it needs each capability.
 CAPABILITY_CONSTRUCTS = {
+    "disable": "switch a rule off or on without removing it",
     "ordering": "place a rule at a position in evaluation order",
     "raw_query": "search with a query in its own search language",
     "rule_sets": "name or activate one of several rule sets",
@@ -308,6 +320,29 @@ class MovePlan:
         return self.from_index != self.to_index
 
 
+@dataclass(frozen=True)
+class SwitchPlan:
+    """A rule switched off or on, not yet uploaded.
+
+    ``enable`` is the state asked for. A rule already in it leaves the
+    script as it was, and ``changes`` is False.
+    """
+
+    rule: str
+    enable: bool
+    script: str
+    before: str
+    after: str
+    diff: DisplayDiff
+    active: str | None
+    activate: bool
+
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        return self.after != self.before
+
+
 # ----------------------------------------------------------------------------
 def missing_extensions(
     session: Session, spec: ActionSpec, folder: FolderPlan
@@ -499,10 +534,47 @@ def plan_move(
 
 
 # ----------------------------------------------------------------------------
+def plan_switch(
+    session: Session,
+    rule: str,
+    enable: bool,
+    script: str | None = None,
+    activate: bool = False,
+) -> SwitchPlan:
+    """Switch a named rule off (``enable`` False) or on, without uploading.
+
+    The rule is kept either way; only whether it runs changes. Refused,
+    before the script is read, by a provider that does not declare
+    ``disable``.
+    """
+    require_capability(session, "disable")
+
+    name, before, active = fetch_active(session, script)
+
+    if not before.strip():
+        raise MailctlError(f"script {name!r} is empty")
+
+    dialect = session.dialect
+    switch = dialect.enable_rule if enable else dialect.disable_rule
+    after = switch(before, rule)
+
+    return SwitchPlan(
+        rule=rule,
+        enable=enable,
+        script=name,
+        before=before,
+        after=after,
+        diff=dialect.diff(before, after, name),
+        active=active,
+        activate=activates(name, active, activate),
+    )
+
+
+# ----------------------------------------------------------------------------
 def execute_script_change(
     session: Session,
     config: Config,
-    plan: RulePlan | RemovalPlan | MovePlan,
+    plan: RulePlan | RemovalPlan | MovePlan | SwitchPlan,
     on_event: EventSink | None = None,
 ) -> Path:
     """Upload a planned rule change; return the backup's path.

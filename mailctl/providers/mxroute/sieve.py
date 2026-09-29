@@ -47,7 +47,9 @@ __all__ = [
     "check_rule_extensions",
     "component_placement",
     "describe_actions",
+    "disable_rule",
     "display_diff",
+    "enable_rule",
     "merge_rule",
     "move_rule",
     "parse_script",
@@ -405,6 +407,18 @@ def merge_rule(
 def remove_rule(existing: str, name: str) -> str:
     """``managesieve.remove_rule``, with Roundcube's rule names."""
     return _script.remove_rule(existing, name, ROUNDCUBE_DIALECT)
+
+
+# ----------------------------------------------------------------------------
+def disable_rule(existing: str, name: str) -> str:
+    """``managesieve.disable_rule``, with Roundcube's rule names."""
+    return _script.disable_rule(existing, name, ROUNDCUBE_DIALECT)
+
+
+# ----------------------------------------------------------------------------
+def enable_rule(existing: str, name: str) -> str:
+    """``managesieve.enable_rule``, with Roundcube's rule names."""
+    return _script.enable_rule(existing, name, ROUNDCUBE_DIALECT)
 
 
 # ----------------------------------------------------------------------------

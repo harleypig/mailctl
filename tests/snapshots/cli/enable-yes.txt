@@ -1,0 +1,37 @@
+$ mailctl enable-rule keep-boss --yes
+exit: 0
+--- stdout
+Enable rule 'keep-boss' in script 'managesieve':
+
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,8 +1,7 @@
+ require ["fileinto", "imap4flags"];
+ 
+ # rule:[keep-boss]
+-if false # allof (header :contains "from" "boss@example.com")
+-{
++if allof (header :contains "from" "boss@example.com") {
+     fileinto "INBOX.Boss";
+     setflag "\\Flagged";
+     stop;
+
+--- end diff ---
+Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Uploaded and activated script 'managesieve'
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('checkscript',)
+('putscript', 'managesieve', 'require ["fileinto", "imap4flags"];\n\n# rule:[keep-boss]\nif allof (header :contains "from" "boss@example.com") {\n    fileinto "INBOX.Boss";\n    setflag "\\\\Flagged";\n    stop;\n}\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter" {\n    fileinto "INBOX.Noise";\n    stop;\n}\n')
+('setactive', 'managesieve')
+('logout',)
+--- imap calls

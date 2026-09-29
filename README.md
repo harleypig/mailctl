@@ -233,6 +233,12 @@ mailctl remove-rule from-newsletter-example-com
 mailctl move-rule from-newsletter-example-com --first --dry-run
 mailctl move-rule from-newsletter-example-com --after keep-boss
 
+# Switch a rule off without deleting it, and back on. Written the way
+# Roundcube writes it, so webmail shows it as disabled too.
+mailctl disable-rule from-newsletter-example-com --dry-run
+mailctl disable-rule from-newsletter-example-com
+mailctl enable-rule from-newsletter-example-com
+
 # Save the active script, byte for byte, before you touch anything.
 mailctl backup
 mailctl backup --output ~/mailctl-before-first-run.sieve
@@ -287,8 +293,9 @@ Reading one back into `add` and `apply` is coming
 
 * `--dry-run` changes nothing, on every mutating command. It prints whatever
   that command would have changed: the Sieve diff for `add`, `from-message`,
-  and `remove-rule`; the list of matching messages for `add`, `from-message`,
-  and `apply`; the file that would have been written for `backup`.
+  `remove-rule`, `disable-rule`, and `enable-rule`; the list of matching
+  messages for `add`, `from-message`, and `apply`; the file that would have
+  been written for `backup`.
 * `from-message` and `search --like` **show you the message first** —
   Date, From, To, Subject, and List-Id when it has one — before anything
   is derived from it, and `from-message` before it writes a rule. The UID is something you read out of webmail by hand, and
