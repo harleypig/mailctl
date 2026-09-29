@@ -30,6 +30,7 @@ from utilities_support import DEFAULT_UIDVALIDITY
 
 from mailctl import __version__, cli
 from mailctl.components.managesieve import client as sieve_client
+from mailctl.components.managesieve.responses import ServerWarning
 
 SNAPSHOTS = Path(__file__).parent / "snapshots" / "cli"
 
@@ -82,7 +83,15 @@ class FakeSieveClient:
 
     # ------------------------------------------------------------------------
     def __init__(
-        self, caps, active, script, reject, others=None, stray=0, extra=b""
+        self,
+        caps,
+        active,
+        script,
+        reject,
+        others=None,
+        stray=0,
+        extra=b"",
+        warnings=None,
     ):
         self.caps = caps
         self.extra = extra
@@ -92,6 +101,11 @@ class FakeSieveClient:
         self.active = active
         self.reject = reject
         self.calls: list[tuple] = []
+
+        # By command, the WARNINGS text its OK carries, as SieveClient
+        # leaves it in ``warning`` (#208).
+        self.warnings = warnings or {}
+        self.warning = None
 
     # ------------------------------------------------------------------------
     def connect(self, user, password, starttls=False, ssl=False):
@@ -130,13 +144,20 @@ class FakeSieveClient:
     # ------------------------------------------------------------------------
     def checkscript(self, content):
         self.calls.append(("checkscript",))
+        self._warn("checkscript")
 
         return not self.reject
+
+    # ------------------------------------------------------------------------
+    def _warn(self, command):
+        text = self.warnings.get(command)
+        self.warning = None if text is None else ServerWarning(text)
 
     # ------------------------------------------------------------------------
     def putscript(self, name, content):
         self.calls.append(("putscript", name, content))
         self.scripts[name] = content
+        self._warn("putscript")
 
         return True
 
@@ -187,8 +208,10 @@ def message(
 # ahead of SIEVE), imap_caps (what IMAP advertises), password
 # (MAILCTL_PASSWORD's value), folders (further folders, as (name, subscribed)
 # pairs), imap_failures (an IMAPClient method, and the error text it
-# raises), imap_welcome (the greeting), and imap_responses (an IMAPClient
-# method, and the response lines the server sends while it runs).
+# raises), imap_welcome (the greeting), imap_responses (an IMAPClient
+# method, and the response lines the server sends while it runs), and
+# sieve_warnings (checkscript or putscript, and the WARNINGS text its OK
+# carries).
 
 # Host from the env file over the exported MAILCTL_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
@@ -511,6 +534,23 @@ ALERTS = {
     },
 }
 
+# #208: Pigeonhole's WARNINGS, one per line, naming the stored script on
+# PUTSCRIPT and a temporary file on CHECKSCRIPT.
+FLAG_WARNING = (
+    "warning: IMAP flag '\\Bogus' specified for the addflag command is "
+    "invalid and will be ignored (only first invalid is reported)."
+)
+SIEVE_WARNINGS = {
+    "sieve_warnings": {
+        "checkscript": f"1790698792.M906065P27.tmp: line 16: {FLAG_WARNING}",
+        "putscript": (
+            f"managesieve: line 16: {FLAG_WARNING}\r\n"
+            "managesieve: line 17: warning: specified date part 'bogus' "
+            "is not known.\r\n"
+        ),
+    }
+}
+
 HOSTILE = {
     "add-like-hostile": (
         [
@@ -545,6 +585,15 @@ HOSTILE = {
     "folders-alert-hostile": (
         ["folders"],
         {"imap_welcome": b"* OK [ALERT] \x1b]0;pwned\x07\x1b[31mred"},
+    ),
+    # #208: a server's warning is its own text too.
+    "add-warnings-hostile": (
+        ["add", *GITHUB, "--flag", "\\Bogus"],
+        {
+            "sieve_warnings": {
+                "putscript": "line 1: \x1b]0;pwned\x07\x1b[31mred\r\nnext"
+            }
+        },
     ),
     "show-hostile": (["show"], {"script": HOSTILE_SCRIPT}),
     "rules-hostile": (["rules"], {"script": HOSTILE_SCRIPT}),
@@ -1403,6 +1452,18 @@ SCENARIOS = {
     "add-vacation": (["add", *GITHUB, "--vacation", "hi"], {}),
     "add-discard": (["add", *GITHUB, "--discard"], {}),
     "add-flag-only": (["add", *GITHUB, "--flag", "\\Flagged"], {}),
+    # #208: PUTSCRIPT's WARNINGS are shown on stderr without --verbose, a
+    # line each; CHECKSCRIPT's, the same warnings about a temporary file,
+    # only under --verbose. --json is a dry run, which uploads nothing.
+    "add-warnings": (["add", *GITHUB, "--flag", "\\Bogus"], SIEVE_WARNINGS),
+    "add-warnings-verbose": (
+        ["add", *GITHUB, "--flag", "\\Bogus", "-v"],
+        SIEVE_WARNINGS,
+    ),
+    "add-warnings-json": (
+        ["add", *GITHUB, "--flag", "\\Bogus", "--dry-run", "--json"],
+        SIEVE_WARNINGS,
+    ),
     "add-keep-only": (["add", *GITHUB, "--keep"], {}),
     "add-default-folder-extmissing": (
         ["add", *GITHUB, "--dry-run"],
@@ -2187,6 +2248,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         options.get("others"),
         options.get("stray", 0),
         options.get("sieve_extra", b""),
+        options.get("sieve_warnings"),
     )
 
     imap.messages = {

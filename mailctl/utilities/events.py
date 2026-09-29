@@ -5,7 +5,7 @@ of these records as each step lands, so a front-end can show progress
 without the utilities writing anything themselves.
 
 ``ServerAlert`` is the other thing a front-end is told as it happens: an
-alert the server sent, which arrives as a message on the session's
+alert or a warning the server sent, which arrives as a message on the session's
 ``progress`` callback rather than here, since any command can meet one.
 """
 

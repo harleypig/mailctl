@@ -6,6 +6,17 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 
 BUG FIXES:
 
+* **A warning the ManageSieve server gives about a stored script is now
+  shown** ([#208]). A server can accept a script while warning that part
+  of it may not do what was meant — an IMAP flag it will ignore, say —
+  and the ManageSieve standard says a client should show that warning.
+  mailctl dropped it. It now prints each line of it on standard error, as
+  `mailctl: warning from the sieve server: <text>`, whether or not
+  `--verbose` is given, once per run; the text is the server's, so
+  control characters in it are shown escaped. The same warnings from the
+  check made just before the upload, which name a temporary file rather
+  than the script, are shown only under `--verbose`.
+
 * **A warning the IMAP server marks as an alert is now shown** ([#205]).
   An IMAP server can flag a message for the user's attention — a mailbox
   nearly full, maintenance tonight — and the IMAP standard says a client
@@ -1297,4 +1308,5 @@ NOTES:
 [#196]: https://github.com/harleypig/mailctl/issues/196
 [#10]: https://github.com/harleypig/mailctl/issues/10
 [#205]: https://github.com/harleypig/mailctl/issues/205
+[#208]: https://github.com/harleypig/mailctl/issues/208
 [#204]: https://github.com/harleypig/mailctl/issues/204

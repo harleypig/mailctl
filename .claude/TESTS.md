@@ -125,8 +125,11 @@ where every write path is proved first.
      `SieveClient` against a scripted socket that replays a server's bytes:
      GETSCRIPT byte-exact whatever the script ends with ([#90][i90]), the
      whole CAPABILITY response kept, the read timeout honoured, and nothing
-     printed even with sievelib's debug flag forced on. Its server-module
-     selection and capability parsing are `test_managesieve_servers.py`.
+     printed even with sievelib's debug flag forced on; an OK's `WARNINGS`,
+     quoted or literal, reaching `progress`, and a literal read whole
+     ([#208][i208]); the CLI's half is the `add-warnings*` snapshots. Its
+     server-module selection and capability parsing are
+     `test_managesieve_servers.py`.
    - The **presentation guard** (`test_core_no_presentation.py`) — no core
      module prints, prompts, or exits, and neither the session nor any
      utility imports a front-end or reads the terminal or the environment.
@@ -258,7 +261,9 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   ([#205][i205]): the image's post-login script (`image/postlogin.sh`)
   sends one to a user whose name starts with `alert-`, and it reaches
   stderr, under `--json` too, with stdout untouched; any other user is
-  sent nothing, so no other test meets one. And
+  sent nothing, so no other test meets one. A Sieve `WARNINGS` in
+  `test_sieve_warnings.py` ([#208][i208]): Pigeonhole warns on `addflag
+  "\\Bogus"`, and PUTSCRIPT's warning reaches stderr once. And
   baselines: one saved from the server checks clean against it, saving
   writes nothing there, and drift made by editing the saved file exits 3 or
   4 as documented.
@@ -433,4 +438,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i192]: https://github.com/harleypig/mailctl/issues/192
 [i204]: https://github.com/harleypig/mailctl/issues/204
 [i205]: https://github.com/harleypig/mailctl/issues/205
+[i208]: https://github.com/harleypig/mailctl/issues/208
 [i160]: https://github.com/harleypig/mailctl/issues/160

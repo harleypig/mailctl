@@ -2,7 +2,8 @@
 
 ``client`` is the protocol session, ``script`` the offline parse / merge /
 render / diff, ``emit`` what a rule can contain and the extensions it
-needs, and ``backup`` where a backup of a script goes. Everything a
+needs, ``backup`` where a backup of a script goes, and ``responses`` the
+WARNINGS a response carries. Everything a
 caller needs is re-exported here.
 """
 
@@ -21,6 +22,7 @@ from .emit import (
     REQUIRED_EXTENSIONS,
     emitted_extensions,
 )
+from .responses import ServerWarning
 from .script import (
     FILTERSET_NAME,
     PLACE_AFTER,
@@ -67,6 +69,7 @@ __all__ = [
     "NameDialect",
     "Placement",
     "Revealable",
+    "ServerWarning",
     "SieveAuthenticationError",
     "SieveConnectionError",
     "SieveSession",

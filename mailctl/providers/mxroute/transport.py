@@ -17,6 +17,7 @@ from ...components import imap as imap_component
 from ...components import managesieve as sieve_component
 from ...components.imap import alerts as imap_alerts
 from ...components.imap.client import ImapSession
+from ...components.managesieve import responses as sieve_responses
 from ...components.managesieve.client import SieveSession
 from ...config import Config
 from ...criteria import Criteria
@@ -97,16 +98,24 @@ class MxrouteTransport(Transport):
     def _channel(self, name: str):
         """The progress callback for one server, tagged with its name.
 
-        An alert the server sent crosses into the neutral model on the way.
+        An alert or a warning the server sent crosses into the neutral
+        model on the way.
         """
         progress = self.progress
 
         if progress is None:
             return None
 
-        def relay(message: str | imap_alerts.ServerAlert) -> None:
+        def relay(
+            message: str
+            | imap_alerts.ServerAlert
+            | sieve_responses.ServerWarning,
+        ) -> None:
             if isinstance(message, imap_alerts.ServerAlert):
                 progress(name, records.server_alert(message))
+
+            elif isinstance(message, sieve_responses.ServerWarning):
+                progress(name, records.server_warning(message))
 
             else:
                 progress(name, message)

@@ -201,7 +201,9 @@ def test_the_transport_hands_over_the_neutral_record(fake_imap, imap_config):
 
     alert = [item for item in received if not isinstance(item[1], str)]
 
-    assert alert == [("imap", model.ServerAlert("Maintenance tonight"))]
+    assert alert == [
+        ("imap", model.ServerAlert("Maintenance tonight", kind="alert"))
+    ]
     assert type(alert[0][1]) is model.ServerAlert
 
 

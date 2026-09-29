@@ -146,7 +146,8 @@ __all__ = [
 
 # (channel, message) -- the channel names which of a provider's sessions
 # the message came from. A message is step-by-step progress, or a
-# ServerAlert, which a front-end shows even when it shows no progress.
+# ServerAlert -- an alert or a warning -- which a front-end shows even
+# when it shows no progress.
 Progress = Callable[[str, str | ServerAlert], None]
 
 

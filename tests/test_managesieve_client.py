@@ -15,11 +15,14 @@ closed here (ADR 0006 S1, S4, S5, S8, S9) live in how the wire is read:
   the base64 AUTHENTICATE payload: the password.
 * **S9 / #95** -- a connection that closes mid-response is an error.
   sievelib's own reader asks for the next line forever.
+* **#208** -- an OK's WARNINGS text is kept, and read whole when it is a
+  literal; sievelib drops the text and leaves a literal unread.
 
 They also stand guard over sievelib's private names, which the wrapper
 reaches into; a sievelib release that renames one fails here first.
 """
 
+import argparse
 import inspect
 import signal
 import socket
@@ -27,7 +30,7 @@ from typing import cast
 
 import pytest
 
-from mailctl import MailctlError
+from mailctl import MailctlError, cli
 from mailctl.components.managesieve import client as client_module
 from mailctl.components.managesieve.client import (
     DEFAULT_TIMEOUT,
@@ -35,8 +38,10 @@ from mailctl.components.managesieve.client import (
     SieveConnectionError,
     SieveSession,
 )
+from mailctl.components.managesieve.responses import ServerWarning
 from mailctl.components.managesieve.servers import PLAIN
 from mailctl.config import Secret
+from mailctl.providers.mxroute import records
 from mailctl.providers.mxroute.sieve import merge_rule, parse_script
 from mailctl.utilities.backup_files import write_backup
 
@@ -502,3 +507,200 @@ def test_an_empty_script_name_is_not_listed(data):
     while ``mailctl test`` said there were no others.
     """
     assert open_session(data).list_scripts() == ("managesieve", [])
+
+
+# ############################################################################
+# WARNINGS (#208)
+# ############################################################################
+
+# What Pigeonhole sent a real PUTSCRIPT of a script with two invalid flags:
+# the warnings as a literal, a line each, then the response's own CRLF.
+PIGEONHOLE_WARNINGS = (
+    b"probe: line 2: warning: IMAP flag '\\Bogus' specified for the addflag "
+    b"command is invalid and will be ignored (only first invalid is "
+    b"reported).\r\n"
+    b"probe: line 3: warning: IMAP flag '\\Other' specified for the addflag "
+    b"command is invalid and will be ignored (only first invalid is "
+    b"reported).\r\n"
+)
+
+LISTED = b'"probe" ACTIVE\r\nOK "Listed."\r\n'
+
+
+# ----------------------------------------------------------------------------
+def warned(data: bytes) -> tuple[SieveSession, list]:
+    """A session over ``data`` whose progress messages are collected."""
+    session = open_session(data)
+    received: list = []
+    session.progress = received.append
+
+    assert session.client is not None
+    session.client._private("capabilities")["VERSION"] = "1.0"
+
+    return session, received
+
+
+# ----------------------------------------------------------------------------
+def shown(received: list) -> list[str]:
+    """The warnings among the progress messages, by their text."""
+    return [item.text for item in received if isinstance(item, ServerWarning)]
+
+
+# ----------------------------------------------------------------------------
+def test_a_putscript_warning_in_a_quoted_string_reaches_progress():
+    """RFC 5804 section 2.6's own example. Red if an OK's text is dropped,
+    as sievelib drops it."""
+    session, received = warned(
+        b'OK (WARNINGS) "line 8: server redirect action limit is 2, '
+        b'this redirect might be ignored"\r\n'
+    )
+
+    session.put_script("s", "keep;")
+
+    assert shown(received) == [
+        "line 8: server redirect action limit is 2, this redirect might "
+        "be ignored"
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_putscript_warning_in_a_literal_is_read_whole():
+    """Pigeonhole's form. Red if the literal is left unread: the next
+    command then reads the warning as its own answer, and LISTSCRIPTS
+    lists each line of it as a script."""
+    data = b"OK (WARNINGS) {%d}\r\n" % len(PIGEONHOLE_WARNINGS)
+    session, received = warned(data + PIGEONHOLE_WARNINGS + b"\r\n" + LISTED)
+
+    session.put_script("probe", "keep;")
+
+    assert shown(received) == [
+        PIGEONHOLE_WARNINGS.decode().strip(),
+    ]
+    assert session.list_scripts() == ("probe", [])
+
+
+# ----------------------------------------------------------------------------
+def test_a_checkscript_warning_is_progress_quoted():
+    """The PUTSCRIPT after it says the same about the stored script, so
+    this one is progress: a string, the server's text as a repr."""
+    session, received = warned(
+        b'OK (WARNINGS) "1790.tmp: line 2: warning: \\"x\\" \\\\ y"\r\n'
+    )
+
+    session.check_script("keep;")
+
+    assert shown(received) == []
+    assert received[-1] == (
+        "CHECKSCRIPT warned: '1790.tmp: line 2: warning: \"x\" \\\\ y'"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_hostile_warning_text_is_neutralised_wherever_it_is_shown(capsys):
+    """The text is the server's. Red if the CLI prints a warning without
+    escaping it, or if CHECKSCRIPT's is put in progress unquoted."""
+    hostile = b"line 1: \x1b]0;pwned\x07\x1b[31mred"
+    literal_text = b"{%d}\r\n%s\r\n" % (len(hostile), hostile)
+    ok = b"OK (WARNINGS) " + literal_text
+    session, received = warned(ok + ok)
+
+    session.check_script("keep;")
+    session.put_script("s", "keep;")
+
+    assert shown(received) == [hostile.decode()]
+    assert "\x1b" not in received[-2]
+
+    args = argparse.Namespace(verbose=False)
+    emit = cli.progress_from_args(args)
+
+    for message in received:
+        if isinstance(message, ServerWarning):
+            emit("sieve", records.server_warning(message))
+
+    captured = capsys.readouterr()
+
+    assert captured.out == ""
+    assert captured.err == (
+        "mailctl: warning from the sieve server: "
+        "line 1: \\x1b]0;pwned\\x07\\x1b[31mred\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "status",
+    [
+        pytest.param(b'OK "PUTSCRIPT completed."', id="plain"),
+        pytest.param(b"OK", id="bare"),
+        pytest.param(b"OK (WARNINGS)", id="warnings-no-text"),
+        pytest.param(b'OK (WARNINGS) "  "', id="warnings-blank"),
+        pytest.param(b'OK (TAG "x") "done"', id="other-code"),
+    ],
+)
+def test_an_ok_with_nothing_to_warn_about_warns_nothing(status):
+    session, received = warned(status + b"\r\n")
+
+    session.put_script("s", "keep;")
+
+    assert shown(received) == []
+
+
+# ----------------------------------------------------------------------------
+def test_an_ok_literal_under_another_code_is_still_read():
+    """Any OK's literal is the response's, whatever its code."""
+    session, _received = warned(b'OK (TAG "x") {4}\r\ndone\r\n' + LISTED)
+
+    session.put_script("probe", "keep;")
+
+    assert session.list_scripts() == ("probe", [])
+
+
+# ----------------------------------------------------------------------------
+def test_a_warning_is_the_last_responses_only():
+    """Red if ``warning`` outlives its response: a clean upload after a
+    warned one would repeat the old warning."""
+    session, received = warned(b'OK (WARNINGS) "first"\r\nOK "clean"\r\n')
+
+    session.put_script("s", "keep;")
+    session.put_script("s", "keep;")
+
+    assert shown(received) == ["first"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_refusal_after_a_warning_leaves_no_warning_behind():
+    """Red if a NO keeps the OK's warning before it in ``warning``."""
+    session, _received = warned(b'OK (WARNINGS) "first"\r\nNO "full"\r\n')
+
+    session.put_script("s", "keep;")
+
+    with pytest.raises(MailctlError, match="PUTSCRIPT"):
+        session.put_script("s", "keep;")
+
+    assert session.client is not None
+    assert session.client.warning is None
+
+
+# ----------------------------------------------------------------------------
+def test_the_warnings_code_is_case_insensitive():
+    session, received = warned(b'OK (warnings) "lower"\r\n')
+
+    session.put_script("s", "keep;")
+
+    assert shown(received) == ["lower"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_warning_literal_cut_short_fails(no_hang):
+    session, _received = warned(b"OK (WARNINGS) {40}\r\nline 2: war")
+
+    with pytest.raises(MailctlError, match=r"PUTSCRIPT.*closed by server"):
+        session.put_script("s", "keep;")
+
+
+# ----------------------------------------------------------------------------
+def test_a_warning_literal_with_no_line_end_after_it_fails():
+    session, _received = warned(b"OK (WARNINGS) {4}\r\nwarnjunk\r\n")
+
+    with pytest.raises(MailctlError, match="no line end after its text"):
+        session.put_script("s", "keep;")

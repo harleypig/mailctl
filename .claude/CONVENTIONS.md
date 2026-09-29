@@ -212,7 +212,7 @@ layer may call.
   - `model.py` — the provider-neutral model the utilities speak:
     `ActionSpec`, `Placement`, `DisplayDiff`, the folder and message
     records, the host's own words as data (`Wording`, `Fact`), and an
-    alert the server sent (`ServerAlert`). It and
+    alert or warning the server sent (`ServerAlert`, by `kind`). It and
     `base.py` import nothing from layer 1 (`tests/test_layer_purity.py`).
   - `registry.py` — `PROVIDERS`, every provider by name, and
     `provider_for(config)`.
@@ -248,9 +248,11 @@ layer may call.
   - `managesieve/client.py` — `SieveClient`, sievelib's client with ADR
     0006's gaps S1/S4/S5/S8 closed (byte-exact GETSCRIPT, the whole
     CAPABILITY response, a configurable read timeout, debug output
-    impossible), and `SieveSession` on it, taking plain connection
-    parameters.
+    impossible), an OK's text read whole, and `SieveSession` on it, taking
+    plain connection parameters.
   - `managesieve/capabilities.py` — the CAPABILITY response as data.
+  - `managesieve/responses.py` — `ServerWarning`, and the `WARNINGS` a
+    status response carries; offline.
   - `managesieve/script.py` — the offline script handling (parse / merge /
     move / remove / rearrange / render / diff), rule names through a
     `NameDialect`, and `UNIMPLEMENTED_ACTIONS`.
@@ -380,10 +382,10 @@ a `progress` callback, and the steps of a change (backup written, script
 uploaded, folder created) leave the utilities through an `on_event`
 callback; the CLI decides whether and how to show either. The same
 `progress` callback carries a `ServerAlert` when an IMAP server sends an
-`ALERT` (`providers.base.Progress`), and the CLI shows each one on stderr
-with or without `--verbose`, the same text once per run, since RFC 9051
-section 7.1 has a client present it; ManageSieve defines no alert. Do not
-add a second output path beside them.
+`ALERT` (`providers.base.Progress`), or a ManageSieve server a PUTSCRIPT
+`WARNINGS` (RFC 5804 section 1.3; CHECKSCRIPT's are verbose progress), and
+the CLI shows each one on stderr with or without `--verbose`, the same text
+once per run. Do not add a second output path beside them.
 
 **A core message names no front-end's flag or command.** It states the
 condition and carries a `MailctlError` code, which the front-end renders

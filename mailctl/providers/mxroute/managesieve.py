@@ -18,6 +18,7 @@ from ...components.managesieve.client import (
     SieveConnectionError,
     SieveSession,
 )
+from ...components.managesieve.responses import ServerWarning
 from ...config import DEFAULT, DEFAULT_SIEVE_PORT, DEFAULT_SIEVE_TLS, Config
 
 __all__ = ["sieve_session"]
@@ -27,7 +28,7 @@ __all__ = ["sieve_session"]
 @contextmanager
 def sieve_session(
     config: Config,
-    progress: Callable[[str], None] | None = None,
+    progress: Callable[[str | ServerWarning], None] | None = None,
 ) -> Iterator[SieveSession]:
     """Open a ManageSieve session for ``config`` and close it afterwards.
 
