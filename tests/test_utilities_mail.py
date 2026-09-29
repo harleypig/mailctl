@@ -120,6 +120,94 @@ def test_an_approved_plan_is_executed(sessions, mailbox):
 
 
 # ----------------------------------------------------------------------------
+def test_keep_with_a_folder_copies_rather_than_moves(sessions, mailbox):
+    """``fileinto "X"; keep;`` files a copy and leaves the original (#188).
+
+    Red if the pass ignores ``keep`` and moves, or expunges after copying.
+    """
+    plan = utilities.mail.plan_mail(
+        sessions,
+        criteria(),
+        ActionSpec(fileinto="Lists", keep=True),
+        "INBOX",
+        "INBOX.Lists",
+    )
+
+    assert plan.copies
+    assert not plan.moves
+
+    result = utilities.mail.execute_mail(sessions, plan, max_messages=2)
+
+    assert result.copied == 2
+    assert result.moved == 0
+    assert ("copy", (1, 2), "INBOX.Lists") in mailbox.calls
+    assert not {"move", "expunge", "uid_expunge"} & set(mailbox.names())
+    assert not any(
+        call[0] == "add_flags" and b"\\Deleted" in call[2]
+        for call in mailbox.calls
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_kept_copy_carries_the_flags_added_first(sessions, mailbox):
+    """``addflag`` reaches what a rule files and what it keeps, so the
+    originals are flagged before the copy is made. Red if the copy goes
+    first, and the copies lack the flag."""
+    plan = utilities.mail.plan_mail(
+        sessions,
+        criteria(),
+        ActionSpec(fileinto="Lists", keep=True, flags=("\\Seen",)),
+        "INBOX",
+        "INBOX.Lists",
+    )
+
+    result = utilities.mail.execute_mail(sessions, plan, max_messages=2)
+
+    assert (result.flagged, result.copied, result.moved) == (2, 2, 0)
+    assert [
+        name for name in mailbox.names() if name in ("add_flags", "copy")
+    ] == [
+        "add_flags",
+        "copy",
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_discard_with_keep_neither_deletes_nor_files(sessions, mailbox):
+    """``discard; keep;`` leaves the message where it is (RFC 5228 section
+    4.4), and a discarding rule writes no ``fileinto``. Red if keep is lost
+    under discard, which deletes, or if the folder survives, which files."""
+    plan = utilities.mail.plan_mail(
+        sessions,
+        criteria(),
+        ActionSpec(fileinto="Lists", discard=True, keep=True, flags=("x",)),
+        "INBOX",
+        "INBOX.Lists",
+    )
+
+    assert not plan.discard
+    assert not plan.moves
+    assert not plan.copies
+
+    result = utilities.mail.execute_mail(sessions, plan, max_messages=2)
+
+    assert (result.flagged, result.deleted, result.copied) == (2, 0, 0)
+    assert not {"copy", "move", "expunge", "uid_expunge"} & set(
+        mailbox.names()
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_discard_without_keep_still_deletes(sessions, mailbox):
+    plan = utilities.mail.plan_mail(
+        sessions, criteria(), ActionSpec(discard=True), "INBOX", ""
+    )
+
+    assert plan.discard
+    assert utilities.mail.execute_mail(sessions, plan, 2).deleted == 2
+
+
+# ----------------------------------------------------------------------------
 def test_a_plan_over_the_cap_is_refused_whole(sessions, mailbox):
     plan = utilities.mail.plan_mail(
         sessions, criteria(), ActionSpec(), "INBOX", "INBOX.Lists"
@@ -334,6 +422,11 @@ def test_the_mail_pass_creates_its_folder_once_and_only_on_execute(
         (ActionSpec(fileinto="Lists"), "INBOX.Lists", False),
         (ActionSpec(keep=True, flags=("\\Seen",)), "", False),
         (ActionSpec(discard=True), "", False),
+        (ActionSpec(fileinto="Lists", keep=True), "INBOX.Lists", False),
+        (ActionSpec(fileinto="INBOX", keep=True), "inbox", True),
+        (ActionSpec(discard=True, keep=True), "", True),
+        (ActionSpec(discard=True, keep=True), "INBOX.Lists", True),
+        (ActionSpec(discard=True, keep=True, flags=("\\Seen",)), "", False),
     ],
 )
 def test_a_mail_pass_that_changes_nothing_is_recognised(

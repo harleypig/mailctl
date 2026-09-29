@@ -441,6 +441,10 @@ class MailActionPlan:
     The front-end decides whether to render it, confirm it, or have it
     carried out -- which is what makes a dry run a matter of not executing
     it.
+
+    ``discard`` means the messages are deleted. ``keep`` leaves them where
+    they are, so a plan with a destination files a copy there rather than
+    moving them -- what ``fileinto`` then ``keep`` does in a rule.
     """
 
     source: str
@@ -448,6 +452,7 @@ class MailActionPlan:
     flags: list[str]
     discard: bool
     messages: list[MessageSummary] = field(default_factory=list)
+    keep: bool = False
 
     # ------------------------------------------------------------------------
     @property
@@ -465,6 +470,18 @@ class MailActionPlan:
     @property
     def moves(self) -> bool:
         """Whether executing this plan relocates mail."""
+        return self._files and not self.keep
+
+    # ------------------------------------------------------------------------
+    @property
+    def copies(self) -> bool:
+        """Whether executing this plan files a copy, leaving the original."""
+        return self._files and self.keep
+
+    # ------------------------------------------------------------------------
+    @property
+    def _files(self) -> bool:
+        """Whether the plan puts its messages in another folder."""
         return bool(
             self.destination
             and not self.discard
@@ -485,6 +502,7 @@ class MailActionResult:
     flagged: int = 0
     moved: int = 0
     deleted: int = 0
+    copied: int = 0
 
 
 # ############################################################################

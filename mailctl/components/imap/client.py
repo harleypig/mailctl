@@ -903,6 +903,47 @@ class ImapSession:
         return len(uids)
 
     # ------------------------------------------------------------------------
+    def copy_messages(
+        self, folder: str, uids: list[int], destination: str
+    ) -> int:
+        """COPY ``uids`` from ``folder`` into ``destination``.
+
+        The originals are left as they were: nothing is flagged
+        ``\\Deleted`` and nothing is expunged. The copies carry the
+        originals' flags (RFC 3501 section 6.4.7). Sent in chunks, and a
+        failure after the first says how many were copied, because a
+        second run copies those again.
+        """
+        client = self._require_client()
+
+        if not uids:
+            return 0
+
+        self._ensure_selected(folder)
+        self._log(f"COPY {len(uids)} message(s) to {destination!r}")
+
+        copied = 0
+
+        try:
+            for chunk in chunked(uids):
+                client.copy(chunk, destination)
+                copied += len(chunk)
+
+        except IMAPClientError as exc:
+            done = (
+                f" {copied} of {len(uids)} were copied before it failed, "
+                f"and copying again would copy them a second time."
+                if copied
+                else ""
+            )
+
+            raise MailctlError(
+                f"could not copy messages to {destination!r} -- {exc}.{done}"
+            ) from exc
+
+        return copied
+
+    # ------------------------------------------------------------------------
     def delete(self, uids: list[int]) -> int:
         """Delete messages from the selected folder, permanently."""
         client = self._require_client()

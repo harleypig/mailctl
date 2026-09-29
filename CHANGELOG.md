@@ -311,6 +311,18 @@ ENHANCEMENTS:
 
 BUG FIXES:
 
+* **`apply --keep` with a folder copies the mail there, as the rule
+  does** ([#188]). The rule `add` saves for `--fileinto X --keep` files a
+  copy into X and leaves the message in the inbox, but `apply` with the
+  same actions moved the mail already there into X. It now copies: each
+  message stays where it is, a copy lands in X, and both carry any flag
+  asked for. The dry run says "would copy ... leaving them in", the
+  prompt asks to copy, and `--json` marks the plan `"copies": true` (a
+  new key, false for every other plan). `apply --discard --keep`
+  permanently deleted the matching mail, while the rule keeps it, since an
+  explicit keep outlasts a discard. It now deletes nothing and files
+  nothing, and with no flag to add it skips the existing-mail pass.
+
 * **Your own comments in the filter script are kept** ([#7]). A comment
   you wrote in the script -- `# this one is for the accountant` -- was
   dropped the first time mailctl added, moved, or removed a rule, while
@@ -1199,3 +1211,4 @@ NOTES:
 [#109]: https://github.com/harleypig/mailctl/issues/109
 [#21]: https://github.com/harleypig/mailctl/issues/21
 [#39]: https://github.com/harleypig/mailctl/issues/39
+[#188]: https://github.com/harleypig/mailctl/issues/188

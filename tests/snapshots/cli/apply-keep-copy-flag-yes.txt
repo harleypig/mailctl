@@ -1,0 +1,25 @@
+$ mailctl apply --from noreply@github.com --fileinto Lists --keep --mark-read --yes
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Criteria: From contains 'noreply@github.com'
+
+Searching 'INBOX' for existing matches...
+2 message(s) match:
+  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
+  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+Flagged 2 message(s) with \Seen
+Copied 2 message(s) from 'INBOX' to 'INBOX.Lists'; the originals stay in 'INBOX'
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (1, 2, 3))
+('select_folder', 'INBOX', False)
+('add_flags', (1, 2), (b'\\Seen',))
+('copy', (1, 2), 'INBOX.Lists')
+('logout',)

@@ -526,6 +526,9 @@ class FakeTransport(Transport):
     def apply_mail(self, plan):
         return MailActionResult(moved=plan.count)
 
+    def copy_messages(self, folder, uids, destination):
+        return len(uids)
+
     def add_flags(self, folder, uids, flags):
         for uid in uids:
             self.flags[uid] = (*self.flags.get(uid, ()), *flags)
@@ -808,6 +811,11 @@ def drive(session: Session, config: Config) -> None:
         session, criteria, spec, source, folder.folder
     )
     utilities.mail.execute_mail(session, mail, folder=folder)
+
+    kept = utilities.mail.plan_mail(
+        session, criteria, replace(spec, keep=True), source, folder.folder
+    )
+    utilities.mail.execute_mail(session, kept, folder=folder)
 
     add, remove = utilities.flags.mark_flags(read=True, flagged=False)
     marks = utilities.flags.plan_mark(session, "INBOX", [7, 8], add, remove)

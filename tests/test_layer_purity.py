@@ -1483,7 +1483,7 @@ def test_the_write_operations_come_from_the_classification():
     without an edit, and a read is never mistaken for one."""
     assert "store_rule_set" in WRITE_OPERATIONS
     assert "apply_mail" in WRITE_OPERATIONS
-    assert {"add_flags", "remove_flags"} <= WRITE_OPERATIONS
+    assert {"add_flags", "remove_flags", "copy_messages"} <= WRITE_OPERATIONS
     assert "read_rule_set" not in WRITE_OPERATIONS
     assert "check_rule_set" not in WRITE_OPERATIONS
 
@@ -1513,6 +1513,7 @@ def test_the_analysis_sees_the_writes_that_exist():
     were it blind to either, every read-only utility would pass."""
     assert "store_rule_set" in UTILITY_REACH["scripts.upload_script"]
     assert "apply_mail" in UTILITY_REACH["mail.execute_mail"]
+    assert "copy_messages" in UTILITY_REACH["mail.execute_mail"]
     assert "store_rule_set" in UTILITY_REACH["backup.execute_restore"]
     assert "create_folder" in UTILITY_REACH["rules.execute_script_change"]
     assert UTILITY_REACH["flags.execute_mark"] == {

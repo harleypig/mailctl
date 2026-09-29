@@ -51,13 +51,17 @@ def mail_pass_is_noop(spec: ActionSpec, source: str, destination: str) -> bool:
 
     A rule that only keeps mail, or files it into the folder it is already
     in, has nothing to do to delivered mail -- searching for it and asking
-    about it would be a prompt that changes nothing.
+    about it would be a prompt that changes nothing. Nor has one that
+    discards and keeps: an explicit ``keep`` outlives ``discard`` (RFC 5228
+    section 4.4), and a discarding rule files nowhere.
     """
-    return (
-        not spec.discard
-        and not spec.flags
-        and (not destination or same_folder(destination, source))
-    )
+    if spec.flags:
+        return False
+
+    if spec.discard:
+        return spec.keep
+
+    return not destination or same_folder(destination, source)
 
 
 # ----------------------------------------------------------------------------
@@ -95,8 +99,16 @@ def plan_mail(
         else []
     )
 
+    # The rule's own meaning: a discarding rule files nowhere, and an
+    # explicit keep outlives the discard (RFC 5228 section 4.4), so only a
+    # discard without keep deletes.
     return MailActionPlan(
-        source, destination, list(spec.flags), spec.discard, messages
+        source,
+        "" if spec.discard else destination,
+        list(spec.flags),
+        spec.discard and not spec.keep,
+        messages,
+        keep=spec.keep,
     )
 
 
@@ -184,13 +196,29 @@ def execute_mail(
 
     ``folder`` is the destination's plan; one due for IMAP creation is
     created here, after the decision, rather than while planning.
+
+    A plan that keeps its messages is flagged where they are and then
+    copied, so the copy carries the flags too -- as a rule's ``addflag``
+    reaches both what it files and what it keeps.
     """
     check_message_cap(plan, max_messages)
 
     if folder is not None:
         realize_folder(session, folder, on_event)
 
-    return session.transport.apply_mail(plan)
+    if not plan.copies:
+        return session.transport.apply_mail(plan)
+
+    transport = session.transport
+    flagged = 0
+
+    if plan.flags and plan.uids:
+        transport.add_flags(plan.source, plan.uids, plan.flags)
+        flagged = plan.count
+
+    copied = transport.copy_messages(plan.source, plan.uids, plan.destination)
+
+    return MailActionResult(flagged=flagged, copied=copied)
 
 
 # ############################################################################
