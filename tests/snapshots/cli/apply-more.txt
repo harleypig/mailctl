@@ -1,0 +1,24 @@
+$ mailctl apply --body merged --since 2026-09-01 --flagged --fileinto Lists --dry-run
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Criteria: body contains 'merged' AND received on or after 2026-09-01 AND flagged
+
+Searching 'INBOX' for existing matches...
+5 message(s) match:
+  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
+  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+  uid 3        2026-02-03 04:05:06  Someone <list@lists.example.c… Digest
+  uid 4        2026-02-03 04:05:06  Boss <boss@example.com>        Q3 report — draft
+  uid 5        2026-02-03 04:05:06  News <news@example.com>        Weekly
+[dry-run] would move 5 message(s) to 'INBOX.Lists'
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['BODY', 'merged'], 'SINCE', '1-Sep-2026', 'FLAGGED'])
+('fetch', (1, 2, 3, 4, 5))
+('logout',)

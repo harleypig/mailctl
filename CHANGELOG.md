@@ -69,6 +69,28 @@ FEATURES:
   `--build-filter --json` still prints the filter document. `test` offers no
   `--json`: it is a report for a person.
 
+* **Search by body, date, and read or flagged state** ([#152]). `search`,
+  `apply`, and `add` take `--body TEXT` (the body contains it; repeatable),
+  `--since DATE` and `--before DATE` (received on or after, or before, as
+  `YYYY-MM-DD`), `--older-than AGE` (`30d` or `3w`: `--before` a date
+  counted back from today), `--unread`, and `--flagged`. `--body` is
+  combined with the header criteria under `--match` and is always a
+  substring test, so it is refused with `--compare is` or `matches`; the
+  dates and states are always ANDed with the rest. `add` refuses the dates
+  and states, saying why — a message being delivered is new, unread, and
+  unflagged — and pointing at `search` and `apply`; so does `add --filter`
+  with a document carrying one, and `add` keeps `--before` for placing the
+  rule. `add --body` writes the Sieve `body` test and is refused, naming
+  the extension, on a server that does not advertise `body` or when
+  `disabled_extensions` turns it off; `mailctl test` now marks `body` as
+  one mailctl's rules can need. The filter document gains optional
+  `body`, `since`, `before`, `older_than_days`, `unread`, and `flagged`
+  keys, still under `version: 1` — an older mailctl refuses a document
+  using them rather than misreading it — and `search --build-filter` shows
+  them. A bad date or age is refused naming the flag, before connecting.
+  The README's *Body, dates, and state* says how the Sieve and IMAP sides
+  read a body differently.
+
 * **`mailctl help [COMMAND]`** ([#153]). `mailctl help` prints what
   `mailctl --help` prints, and `mailctl help add` what `mailctl add --help`
   prints, with the same exit code. It follows the provider as a command's
@@ -989,6 +1011,7 @@ NOTES:
 [#154]: https://github.com/harleypig/mailctl/issues/154
 [#150]: https://github.com/harleypig/mailctl/issues/150
 [#101]: https://github.com/harleypig/mailctl/issues/101
+[#152]: https://github.com/harleypig/mailctl/issues/152
 [#153]: https://github.com/harleypig/mailctl/issues/153
 [#155]: https://github.com/harleypig/mailctl/issues/155
 [#147]: https://github.com/harleypig/mailctl/issues/147

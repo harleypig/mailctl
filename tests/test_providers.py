@@ -74,6 +74,7 @@ from mailctl.providers.base import (
     Transport,
     Wording,
     declined,
+    refuse,
 )
 from mailctl.providers.base import (
     FLAG as FLAG_ACTION,
@@ -153,6 +154,11 @@ class FakeDialect(Dialect):
     @classmethod
     def check_actions(cls, config, actions):
         pass
+
+    @classmethod
+    def check_criteria(cls, config, criteria, advertised):
+        if criteria.body:
+            raise refuse(cls.name, "test a message's body", "it keeps From")
 
     @classmethod
     def describe_actions(cls, actions):
@@ -1778,3 +1784,25 @@ def test_help_shows_the_selected_providers_offer(bare, capsys, argv):
     assert text != help_text(capsys, "add")
     assert "--first" not in text
     assert BareTransport.opened == 0
+
+
+# ############################################################################
+# Criteria a host's rules cannot test (#152)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_host_that_cannot_test_the_body_refuses_it_by_name(fakes):
+    """The dialect answers for its own rule language: the fake keeps only
+    From, so a body test is refused naming the provider, before anything
+    is stored."""
+    request = github_rule()
+    request.criteria.add_body("merged")
+    session = fake_session()
+    before = dict(fake_transport(session).scripts)
+    folder = utilities.folders.plan_folder(session, Config(), "Lists")
+
+    with pytest.raises(MailctlError, match="the fake provider cannot test"):
+        utilities.rules.plan_rule(session, Config(), request, folder)
+
+    assert fake_transport(session).scripts == before

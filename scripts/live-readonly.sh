@@ -36,6 +36,7 @@ readonly TESTS=(
   folders
   backup
   search
+  search-unread
   search-like
   build-filter
   json
@@ -464,6 +465,26 @@ t_search() {
   rows=$(message_marks | wc -l)
 
   ((rows <= 5)) || fail "--limit 5 listed $rows rows"
+}
+
+#-----------------------------------------------------------------------------
+# One call: the state and date filters reach the server and come back
+# narrowed. The dates are not checked row by row -- SINCE compares the
+# server's date, and a message near midnight can show either side of it.
+t_search_unread() {
+  local since rows
+
+  since=$(date -d '30 days ago' +%F 2> /dev/null || date -v-30d +%F)
+
+  run_mailctl search --unread --since "$since" --limit 5
+  expect_ok "search --unread --since $since --limit 5" || return 1
+
+  rows=$(message_marks | wc -l)
+
+  ((rows <= 5)) || fail "--limit 5 listed $rows rows" || return 1
+
+  message_marks | awk '$2 !~ /N/ { bad = 1 } END { exit bad }' \
+    || fail "--unread listed a message that is not unread"
 }
 
 #-----------------------------------------------------------------------------

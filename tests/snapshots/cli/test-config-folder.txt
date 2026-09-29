@@ -12,6 +12,7 @@ Folder:    Lists  (config file <TMP>/config/mailctl/config.toml)  -- read by app
 
 ManageSieve: connected
   Sieve extensions (* = mailctl's own rules can need it):
+    * body        unavailable
       copy        unavailable
       enotify     unavailable
       envelope    unavailable

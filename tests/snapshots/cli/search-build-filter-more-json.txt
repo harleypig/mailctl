@@ -1,0 +1,27 @@
+$ mailctl search --build-filter --json --from noreply@github.com --body merged --before 2026-09-28 --older-than 30d --flagged
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "criteria": {
+    "match": "any",
+    "compare": "contains",
+    "terms": [
+      {
+        "header": "From",
+        "value": "noreply@github.com"
+      }
+    ],
+    "body": [
+      "merged"
+    ],
+    "before": "2026-09-28",
+    "older_than_days": 30,
+    "flagged": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls

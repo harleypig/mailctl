@@ -15,6 +15,7 @@ faults to inject, so a test can watch a check go red:
 - ``backup-writes``   -- ``backup --dry-run`` writes its file anyway
 - ``backup-writes-elsewhere`` -- it writes some other file beside it
 - ``like-drops-source`` -- ``search --like`` does not list its own message
+- ``unread-lists-read`` -- ``search --unread`` lists a message already read
 - ``filter-on-stdout`` -- ``--build-filter --json`` shows the message on
   stdout, ahead of the document
 - ``switch-uploads``  -- ``disable-rule --dry-run`` uploads anyway
@@ -228,6 +229,15 @@ def search() -> str:
         unread = uid != 1 and "no-unread" not in BREAK
         mark = "N" if unread and str(uid) != read_uid else ""
         mark += "F" if str(uid) == flagged_uid else ""
+
+        # The server narrows --unread; the fault is one that does not.
+        if (
+            "--unread" in ARGV
+            and "N" not in mark
+            and "unread-lists-read" not in BREAK
+        ):
+            continue
+
         rows.append(
             f"{uid:>8}  {'2026-02-03 04:05:06':<19}  {'131B':>6}  "
             f"{mark:<4}  {'News <news@example.com>':<28}  Weekly"

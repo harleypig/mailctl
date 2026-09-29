@@ -90,6 +90,7 @@ A disabled extension counts as not advertised:
 | `mailbox` | Writes plain `fileinto`, never `fileinto :create`, and creates a new folder over IMAP instead. With `--no-imap` a folder that needs creating is refused, as it is on a server without `mailbox`. |
 | `fileinto` | Refuses a rule that files mail into a folder. `--discard`, `--keep`, and flag-only rules still work. |
 | `imap4flags` | Refuses a rule that sets a flag (`--mark-read`, `--flag`). |
+| `body` | Refuses a rule with a `--body` test. `search --body` and `apply --body` are unaffected: they never write Sieve. |
 | any other name in the table below | Nothing today — mailctl writes none of them — but it holds if a later version does. |
 
 A refusal names the setting and where it came from. A name mailctl does not
@@ -110,6 +111,7 @@ else the server advertises — and what each one adds to Sieve:
 | `fileinto` | RFC 5228 | `fileinto`: deliver into a named folder instead of INBOX | every rule that files mail |
 | `imap4flags` | RFC 5232 | `setflag` / `addflag` / `removeflag`, the `hasflag` test, and `:flags` | flag actions (`addflag`) |
 | `mailbox` | RFC 5490 | `fileinto :create`, and the `mailboxexists` test | `:create` |
+| `body` | RFC 5173 | the `body` test: match the message's text rather than its headers | `--body` on `add` |
 | `copy` | RFC 3894 | `:copy` on `fileinto` / `redirect`: file a copy and keep the message in INBOX too | no |
 | `envelope` | RFC 5228 | the `envelope` test: match the SMTP envelope rather than the headers | no |
 | `regex` | draft-ietf-sieve-regex, never an RFC | a `:regex` match type | no |
@@ -185,6 +187,12 @@ mailctl folders
 mailctl search
 mailctl search --folder Lists/News --from newsletter@example.com
 mailctl search --raw 'UNSEEN SINCE 1-Sep-2026' --limit 50
+
+# By body text, arrival date, and read or flagged state (see "Body, dates,
+# and state" below). Dates are YYYY-MM-DD; --older-than takes 30d or 3w.
+mailctl search --body 'build failed' --since 2026-09-01
+mailctl search --unread --older-than 3w
+mailctl apply --flagged --before 2026-01-01 --fileinto Archive --dry-run
 
 # Find mail like one you have: criteria taken from message 4127 (its
 # List-Id, else its From; --derive picks the headers). A criteria flag
@@ -299,7 +307,11 @@ only — what to match, never what to do with it:
     "compare": "contains",
     "terms": [
       {"header": "List-Id", "value": "news.example.com"}
-    ]
+    ],
+    "body": ["unsubscribe"],
+    "since": "2026-09-01",
+    "older_than_days": 30,
+    "unread": true
   }
 }
 ```
@@ -310,8 +322,20 @@ only — what to match, never what to do with it:
   mean what the flags of the same name mean, and default the same way when
   left out.
 * `terms` is one or more header and value pairs; neither may be empty.
+* `body` is one or more texts the body must contain, as `--body`.
+* `since` and `before` are dates, `YYYY-MM-DD`, as `--since` and
+  `--before`. `older_than_days` is a whole number of days, as
+  `--older-than` (`3w` is written `21`); it stays an age, so a document
+  saved today still means "older than 30 days" when it is used next month.
+* `unread` and `flagged` are `true` or `false`, as the flags; `false` is the
+  same as leaving the key out.
+* Every key but `version` and `criteria` is optional, and only the ones
+  given are written, but at least one of `terms`, `body`, the dates, or the
+  states must be there.
 * Any other key is refused, so a misspelt one cannot silently fall back to
-  a default.
+  a default. That is also why the keys added since the format first shipped
+  did not change its version: an older mailctl refuses a document that uses
+  them rather than misreading it.
 
 `add --filter FILE` and `apply --filter FILE` read one back as their
 criteria, and `--filter -` reads it from standard input — so one document
@@ -581,6 +605,51 @@ filters need domain-owner credentials, and mailctl logs in as a mailbox. So:
 * A filter set in the panel is invisible here. If a rule never seems to fire,
   the mail may never have reached Sieve: check the panel's filters, if your
   account has them.
+
+## Body, dates, and state
+
+`search`, `apply`, and `add` take four more kinds of criterion beside the
+header flags:
+
+* `--body TEXT` — the message body contains `TEXT`, case-insensitively.
+  Repeatable. It is combined with the header criteria under `--match`, like
+  another header: `--from ci@example.org --body failed` is either one by
+  default, both with `--match all`. It is always a substring test, so
+  `--body` with `--compare is` or `--compare matches` is refused.
+* `--since DATE` and `--before DATE` — received on or after `DATE`, or
+  before it, as `YYYY-MM-DD`. `--since 2026-09-01 --before 2026-10-01` is
+  September. "Received" is the date the server gave the message when it
+  arrived, not its `Date:` header.
+* `--older-than AGE` — received more than `AGE` ago, as days (`30d`) or
+  weeks (`3w`); `0d` is refused. It is `--before` a date counted back from
+  the day the command runs.
+* `--unread` and `--flagged` — only messages in that state.
+
+The dates and states are always **ANDed** with everything else, whatever
+`--match` says: `--from a --from b --unread` is unread mail from either
+sender, never "from a, or unread".
+
+**`add` refuses the dates and states.** A rule runs as each message is
+delivered, and every message being delivered is new: unread, unflagged,
+and zero days old. A rule testing any of those would be always true or
+never true, so `add` says why and points at `search` and `apply`, which is
+where they mean something. So does `add --filter` given a document that
+carries one. `add` has no date `--before` at all: its `--before RULE`
+places the rule in the script.
+
+**`--body` on `add` needs the server's Sieve `body` extension.** A rule
+with a body test is refused, naming the extension, on a server that does
+not advertise it or when `disabled_extensions` turns it off; there is no
+fallback for a test. `search` and `apply` never write Sieve, so they take
+`--body` either way.
+
+**The two halves read slightly different text.** The Sieve `body` test
+reads the message's text parts, decoded. IMAP's search, which `search` and
+`apply` use, reads whatever parts the server decodes, which may include an
+attachment's text. So `apply --body` can find a word the rule would not.
+mailctl takes the server's answer on the body, and on the dates and states,
+rather than re-checking it: re-checking a body would mean downloading every
+candidate, and IMAP answers the dates and states exactly.
 
 ## `--compare` tests the whole header value
 

@@ -425,6 +425,10 @@ def rule_from_criteria(
         for term in criteria.terms
     )
 
+    # A body test is not modelled: whether one covers another turns on
+    # the message text, not on anything a header comparison can decide.
+    unmodelled = tuple(f"body :contains {value!r}" for value in criteria.body)
+
     return Rule(
         index=index,
         name=name,
@@ -432,6 +436,7 @@ def rule_from_criteria(
         tests=tests,
         actions=tuple(actions),
         stops=stops,
+        unmodelled=unmodelled,
     )
 
 

@@ -32,6 +32,8 @@ EMIT_TABLE: dict[str, str | None] = {
     ":create": "mailbox",
     # tests, their match types, and the combinators joining them
     "header": None,
+    "body": "body",
+    ":text": "body",
     ":contains": None,
     ":is": None,
     ":matches": None,
@@ -71,8 +73,9 @@ def emitted_extensions(
     """Return the extensions a rule's actions and tests need, by EMIT_TABLE.
 
     An action tuple is ``(command, *arguments)``; any argument that is a
-    ``:tag`` counts. A condition is ``(header, :matchtype, value)``, the
-    shape ``Criteria.sieve_conditions`` builds.
+    ``:tag`` counts. A condition is ``(header, :matchtype, value)`` or
+    ``("body", :transform, :matchtype, value)``, the shapes
+    ``Criteria.sieve_conditions`` builds, told apart by their length.
     """
     names = []
 
@@ -85,7 +88,11 @@ def emitted_extensions(
         ]
 
     for condition in conditions:
-        names += ["header", condition[1]]
+        if len(condition) == 4:
+            names += list(condition[:3])
+
+        else:
+            names += ["header", condition[1]]
 
     if matchtype:
         names.append(matchtype)

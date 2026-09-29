@@ -220,6 +220,8 @@ def check_rule(
 
     validate_specifics(provider.name, caps.specifics, request.specifics)
 
+    request.criteria.check_deliverable()
+
 
 # ----------------------------------------------------------------------------
 def resolve_stop(provider: Provider | Session, spec: ActionSpec) -> ActionSpec:
@@ -244,14 +246,19 @@ def default_rule_name(criteria: Criteria) -> str:
     ``subject-café``): Roundcube's ``# rule:[...]`` marker holds UTF-8, so
     there is nothing to gain from dropping them. NFC first, so an accent
     typed as a combining mark stays on its letter instead of becoming a
-    separator.
+    separator. With no header term, the first body test names it
+    (``body-...``).
     """
-    term = criteria.terms[0]
+    if criteria.terms:
+        label, value = criteria.terms[0].header, criteria.terms[0].value
 
-    value = unicodedata.normalize("NFC", term.value)
+    else:
+        label, value = "body", criteria.body[0]
+
+    value = unicodedata.normalize("NFC", value)
     slug = re.sub(r"[\W_]+", "-", value).strip("-").lower()
 
-    return f"{term.header.lower()}-{slug}"[:60] or DEFAULT_SCRIPT_NAME
+    return f"{label.lower()}-{slug}"[:60] or DEFAULT_SCRIPT_NAME
 
 
 # ############################################################################
@@ -414,7 +421,9 @@ def plan_rule(
     A rule the provider cannot express is refused before the script is
     read (:func:`check_rule`). A rule needing an extension named in
     ``disabled_extensions`` is refused; the one with a fallback,
-    ``mailbox``, was already dropped by :func:`plan_folder`.
+    ``mailbox``, was already dropped by :func:`plan_folder`. Criteria the
+    host's rules cannot test -- a body test on a server without the
+    feature, say -- are refused too, since a test has no fallback.
     """
     check_rule(config, request, session)
     request.criteria.require_terms()
@@ -427,6 +436,9 @@ def plan_rule(
         folder.use_create,
     )
     dialect.check_actions(config, actions)
+    dialect.check_criteria(
+        config, request.criteria, session.transport.rules_capabilities()
+    )
     name = request.name or default_rule_name(request.criteria)
     script, before, active = fetch_active(session, request.script)
 
@@ -589,6 +601,9 @@ def execute_script_change(
 
     if isinstance(plan, RulePlan):
         session.dialect.check_actions(config, plan.actions)
+        session.dialect.check_criteria(
+            config, plan.criteria, session.transport.rules_capabilities()
+        )
         folder = plan.folder
 
         def before_put():

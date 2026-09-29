@@ -181,12 +181,17 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   `--no-subscribe` and the `subscribe` / `unsubscribe` toggles, `apply`
   moving, flagging and discarding existing mail, `--max-messages` refusing
   the whole pass, one filter document from `search --build-filter --json`
-  driving both `add --filter` and `apply --filter`, and `view` and the
-  message listing leaving mail unread.
+  driving both `add --filter` and `apply --filter`, `view` and the
+  message listing leaving mail unread, and `search` and `apply --dry-run`
+  selecting appended mail by body (a non-ASCII one included), arrival
+  date, `--older-than`, and read or flagged state, alone and together
+  ([#152][i152]). Its dates are counted from the day it runs, so it means
+  the same whenever it does.
   One read is here too: `probe --json` checked against what the server
   says about itself, and against printing the password.
   New mail is also handed to `dovecot-lda`, which runs the uploaded script,
-  so the going-forward half is seen filing it too.
+  so the going-forward half is seen filing it too — by header, and by
+  body through an `add --body` rule.
 - **The oracle is not mailctl.** Each test reads the server back with
   sievelib's and IMAPClient's own clients, and a byte-exact claim with the
   script file on the container's disk, so a write that mailctl both gets
@@ -248,7 +253,11 @@ It is **not** the pytest live tier above, and the difference is the point:
 
 **Every future read-only live check goes here** (operator, 2026-09-28). A
 check that only reads, or only plans with `--dry-run`, is added to this
-script, not to `tests/live/`.
+script, not to `tests/live/`. `search-unread` is one: a single `search
+--unread --since <30 days ago> --limit 5`, checking the date and state
+filters reach MXroute and every row it lists is unread ([#152][i152]). It
+does not check each row's date, since a message near midnight can show on
+either side of the server's.
 
 ## Live-test credentials & safety
 
@@ -307,5 +316,6 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [adr7]: ../adr/0007-interfaces-utilities-session-provider-layering.md
 [i99]: https://github.com/harleypig/mailctl/issues/99
 [i135]: https://github.com/harleypig/mailctl/issues/135
+[i152]: https://github.com/harleypig/mailctl/issues/152
 [i154]: https://github.com/harleypig/mailctl/issues/154
 [i49]: https://github.com/harleypig/mailctl/issues/49

@@ -1,0 +1,9 @@
+$ mailctl add --body merged --compare is --fileinto L
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: a body criterion is always a substring test, so it cannot be combined with --compare is; use --compare contains (the default)
+
+--- sieve calls
+--- imap calls

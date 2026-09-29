@@ -1253,6 +1253,165 @@ SCENARIOS = {
         ["apply", "--filter", "-", *GITHUB, "--fileinto", "Lists"],
         {"stdin": FILTER_DOC},
     ),
+    # #152: body, date, and state criteria. Dates are fixed ones, never
+    # --older-than, whose date moves with the day the snapshot is run.
+    "search-more": (
+        [
+            "search",
+            "--body",
+            "merged",
+            "--since",
+            "2026-09-01",
+            "--before",
+            "2026-09-28",
+            "--unread",
+            "--flagged",
+        ],
+        MAIL,
+    ),
+    "search-body-nonascii": (["search", "--body", "Café"], MAIL),
+    "search-bad-date": (["search", "--since", "1/9/2026"], {}),
+    "search-bad-age": (["search", "--older-than", "0d"], {}),
+    "search-empty-range": (
+        ["search", "--since", "2026-09-28", "--before", "2026-09-01"],
+        {},
+    ),
+    "search-build-filter-more": (
+        [
+            "search",
+            "--build-filter",
+            *GITHUB,
+            "--body",
+            "merged",
+            "--since",
+            "2026-09-01",
+            "--older-than",
+            "3w",
+            "--unread",
+        ],
+        {},
+    ),
+    "search-build-filter-more-json": (
+        [
+            "search",
+            "--build-filter",
+            "--json",
+            *GITHUB,
+            "--body",
+            "merged",
+            "--before",
+            "2026-09-28",
+            "--older-than",
+            "30d",
+            "--flagged",
+        ],
+        {},
+    ),
+    "apply-more": (
+        [
+            "apply",
+            "--body",
+            "merged",
+            "--since",
+            "2026-09-01",
+            "--flagged",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
+        MAIL,
+    ),
+    "add-body": (
+        [
+            "add",
+            *GITHUB,
+            "--body",
+            "merged",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
+        {"caps": [*FULL, "body"]},
+    ),
+    "add-body-json": (
+        [
+            "add",
+            *GITHUB,
+            "--body",
+            "merged",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--json",
+        ],
+        {"caps": [*FULL, "body"]},
+    ),
+    "apply-more-json": (
+        [
+            "apply",
+            "--body",
+            "merged",
+            "--since",
+            "2026-09-01",
+            "--before",
+            "2026-09-28",
+            "--flagged",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--json",
+        ],
+        MAIL,
+    ),
+    "search-more-json": (
+        [
+            "search",
+            "--body",
+            "merged",
+            "--unread",
+            "--since",
+            "2026-09-01",
+            "--json",
+        ],
+        MAIL,
+    ),
+    "add-body-unadvertised": (
+        ["add", "--body", "merged", "--fileinto", "Lists", "--dry-run"],
+        {},
+    ),
+    "add-body-disabled": (
+        [
+            "add",
+            "--body",
+            "merged",
+            "--disable-extension",
+            "body",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
+        {"caps": [*FULL, "body"]},
+    ),
+    "add-body-compare-is": (
+        ["add", "--body", "merged", "--compare", "is", "--fileinto", "L"],
+        {},
+    ),
+    "add-state-refused": (
+        ["add", *GITHUB, "--unread", "--fileinto", "Lists"],
+        {},
+    ),
+    "add-before-is-placement": (
+        ["add", *GITHUB, "--before", "2026-09-01", "--fileinto", "Lists"],
+        {},
+    ),
+    "add-filter-state-refused": (
+        ["add", "--filter", "<FILE>", "--fileinto", "Lists"],
+        {
+            "file": FILTER_DOC.replace(
+                '"compare"', '"since": "2026-09-01",\n    "compare"'
+            )
+        },
+    ),
     # #82: disabled_extensions, from a flag and from the config file, and
     # what 'add' does with it -- refuse, or fall back to IMAP creation.
     "test-disabled": (

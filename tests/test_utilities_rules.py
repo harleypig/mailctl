@@ -9,12 +9,15 @@ side is the real ``ImapSession`` over the ``FakeIMAPClient`` double from
 conftest, so folder normalization and planning run for real.
 """
 
+from datetime import date
+
 import pytest
 from utilities_support import FakeSieveSession, criteria, mxroute
 
 from mailctl import MailctlError, utilities
 from mailctl.components.managesieve import rule_names
 from mailctl.config import Config
+from mailctl.criteria import Criteria
 from mailctl.providers.mxroute import MxrouteDialect
 from mailctl.providers.mxroute.sieve import (
     merge_rule,
@@ -103,6 +106,50 @@ def test_the_default_rule_name_is_derived_from_the_first_criterion():
         utilities.rules.default_rule_name(criteria())
         == "from-noreply-github-com"
     )
+
+
+# ----------------------------------------------------------------------------
+def test_a_body_only_rule_is_named_after_its_body():
+    terms = Criteria()
+    terms.add_body("Build Failed!")
+
+    assert utilities.rules.default_rule_name(terms) == "body-build-failed"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "given",
+    [
+        {"since": date(2026, 9, 1)},
+        {"older_than": 30},
+        {"unread": True},
+        {"flagged": True},
+    ],
+    ids=lambda given: next(iter(given)),
+)
+def test_a_rule_testing_date_or_state_is_refused_before_connecting(given):
+    """#152: checked by check_rule, which needs no session, so a front-end
+    refuses it before any login -- and plan_rule refuses it again for a
+    caller that skipped the check."""
+    built = Criteria(**given)
+    built.add("From", "noreply@github.com")
+    request = RuleRequest(built, ActionSpec("Lists"))
+
+    with pytest.raises(MailctlError, match="cannot test") as caught:
+        utilities.rules.check_rule(Config(), request)
+
+    assert "'mailctl apply'" in str(caught.value)
+
+
+# ----------------------------------------------------------------------------
+def test_plan_rule_refuses_date_or_state_too(sessions, imap_config):
+    built = Criteria(unread=True)
+    built.add("From", "noreply@github.com")
+    request = RuleRequest(built, ActionSpec("Lists"))
+    folder = utilities.folders.plan_folder(sessions, imap_config, "Lists")
+
+    with pytest.raises(MailctlError, match="given: unread"):
+        utilities.rules.plan_rule(sessions, imap_config, request, folder)
 
 
 # ----------------------------------------------------------------------------

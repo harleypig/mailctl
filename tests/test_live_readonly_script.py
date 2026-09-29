@@ -29,6 +29,7 @@ ALL_TESTS = [
     "folders",
     "backup",
     "search",
+    "search-unread",
     "search-like",
     "build-filter",
     "json",
@@ -202,6 +203,7 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("backup-writes", "backup"),
         ("backup-writes-elsewhere", "backup"),
         ("like-drops-source", "search-like"),
+        ("unread-lists-read", "search-unread"),
         ("filter-on-stdout", "build-filter"),
         ("mark-writes", "mark"),
         ("mark-reports-change", "mark"),
@@ -423,3 +425,19 @@ def test_nothing_from_the_environment_reaches_the_output(tmp_path):
 
     assert SENTINEL not in proc.stdout
     assert SENTINEL not in proc.stderr
+
+
+# ----------------------------------------------------------------------------
+def test_search_unread_is_one_call_with_the_state_and_date_filters(tmp_path):
+    """#152: one search, asking for unread mail from the last 30 days."""
+    proc, calls = run(tmp_path, "search-unread")
+
+    assert proc.returncode == 0, proc.stdout
+    assert len(calls) == 1
+
+    (argv,) = calls
+
+    assert argv[:2] == ["search", "--unread"]
+    assert argv[2] == "--since"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", argv[3])
+    assert argv[4:] == ["--limit", "5"]

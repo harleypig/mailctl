@@ -1,0 +1,50 @@
+$ mailctl add --from noreply@github.com --body merged --fileinto Lists --dry-run
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+Rule 'from-noreply-github-com' on script 'managesieve':
+  when:  From contains 'noreply@github.com' OR body contains 'merged'
+  then:  fileinto INBOX.Lists; stop
+
+Before this rule is reached:
+  ? 'from-noreply-github-com' may never run -- 'keep-boss' carries stop and one of the two uses a condition this check does not model, so overlap cannot be ruled out
+  ? 'from-noreply-github-com' may never run -- 'bin-the-noise' carries stop and one of the two uses a condition this check does not model, so overlap cannot be ruled out
+
+
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,4 +1,4 @@
+-require ["fileinto", "imap4flags"];
++require ["fileinto", "imap4flags", "body"];
+ 
+ # rule:[keep-boss]
+ if header :contains "from" "boss@example.com" {
+@@ -11,3 +11,8 @@
+     fileinto "INBOX.Noise";
+     stop;
+ }
++# rule:[from-noreply-github-com]
++if anyof (header :contains "From" "noreply@github.com", body :contains :text ["merged"]) {
++    fileinto "INBOX.Lists";
++    stop;
++}
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

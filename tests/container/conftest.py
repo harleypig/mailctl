@@ -430,10 +430,16 @@ class Account:
         return active
 
     # ------------------------------------------------------------------------
-    def append(self, folder: str, message: bytes, flags=()) -> int:
-        """APPEND ``message`` to ``folder`` and return its UID."""
+    def append(self, folder: str, message: bytes, flags=(), when=None) -> int:
+        """APPEND ``message`` to ``folder`` and return its UID.
+
+        ``when`` is the internal date to give it -- the arrival date IMAP's
+        SINCE and BEFORE compare -- or None for now.
+        """
         with self.imap() as client:
-            response = client.append(folder, message, flags=flags)
+            response = client.append(
+                folder, message, flags=flags, msg_time=when
+            )
 
         # UIDPLUS: "[APPENDUID <validity> <uid>] Append completed."
         return int(response.split(b"]")[0].split()[-1])

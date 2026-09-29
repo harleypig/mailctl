@@ -276,6 +276,26 @@ def test_every_key_of_an_anyof_must_be_covered():
 
 
 # ----------------------------------------------------------------------------
+def test_a_body_alternative_keeps_a_covered_anyof_uncertain():
+    """A body test is not modelled (#152), so a rule whose header term an
+    earlier rule covers may still fire on its body term: never CERTAIN.
+    Dropping the body from the model would call this rule dead."""
+    existing = build(
+        rule("Lists", 'header :contains "to" "@lists.example.com"')
+    )
+
+    criteria = Criteria(match="any")
+    criteria.add("to", "announce@lists.example.com")
+    criteria.add_body("release notes")
+
+    candidate = rule_from_criteria("New", criteria, ("fileinto",))
+    analysis = analyze_placement(existing, candidate)
+
+    assert candidate.unmodelled == ("body :contains 'release notes'",)
+    assert analysis.dead_on_arrival[0].certainty == POSSIBLE
+
+
+# ----------------------------------------------------------------------------
 def test_one_covered_term_is_enough_for_an_allof():
     """An ``allof`` fires only when every term does, so covering one wins."""
     existing = build(

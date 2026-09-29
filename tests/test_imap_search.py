@@ -15,6 +15,7 @@ is what ``imapclient<5`` in ``pyproject.toml`` bounds.
 """
 
 import re
+from datetime import date
 
 import pytest
 from imapclient import IMAPClient
@@ -250,3 +251,70 @@ def test_a_non_ascii_raw_expression_is_refused_with_a_pointer(imap_session):
     one cannot be sent correctly at all; the criteria flags can."""
     with pytest.raises(MailctlError, match="criteria flags"):
         imap_session.raw_search("INBOX", "SUBJECT café")
+
+
+# ############################################################################
+# Body, dates, and state (#152)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("shape", ["flat", "or"])
+def test_a_non_ascii_body_value_is_sent_as_one_utf8_literal(
+    imap_session, fake_imap, wire, shape
+):
+    """``--body`` takes #89's path: one whole literal under CHARSET UTF-8,
+    alone or inside an OR with a header term."""
+    fake_imap.messages = {}
+    criteria = Criteria(match="any")
+
+    if shape == "or":
+        criteria.add("to", "nobody@example.com")
+
+    criteria.add_body("Café crème")
+
+    matching(imap_session, criteria)
+
+    skeleton, literals = parse_wire(wire[-1])
+
+    assert skeleton.startswith(b"A1 UID SEARCH CHARSET UTF-8 "), skeleton
+    assert literals == ["Café crème".encode()], wire[-1]
+    assert balanced(skeleton), wire[-1]
+
+
+# ----------------------------------------------------------------------------
+def test_dates_and_state_go_on_the_wire_as_plain_atoms(imap_session, wire):
+    """IMAP's date form, unquoted and outside any group, ANDed after the
+    tests; an ASCII search stays free of CHARSET."""
+    criteria = Criteria(
+        match="any",
+        since=date(2026, 9, 1),
+        before=date(2026, 9, 28),
+        unread=True,
+        flagged=True,
+    )
+    criteria.add("from", "a@example.com")
+    criteria.add_body("merged")
+
+    matching(imap_session, criteria)
+
+    assert wire[-1] == (
+        b"A1 UID SEARCH (OR (FROM a@example.com) (BODY merged)) "
+        b"SINCE 1-Sep-2026 BEFORE 28-Sep-2026 UNSEEN FLAGGED\r\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_non_ascii_body_with_a_date_keeps_the_date_outside_the_literal(
+    imap_session, wire
+):
+    criteria = Criteria(since=date(2026, 9, 1))
+    criteria.add_body("équipe")
+
+    matching(imap_session, criteria)
+
+    skeleton, literals = parse_wire(wire[-1])
+
+    assert literals == ["équipe".encode()], wire[-1]
+    assert skeleton.endswith(b"SINCE 1-Sep-2026\r\n"), skeleton
+    assert balanced(skeleton), wire[-1]

@@ -10,6 +10,7 @@ on its own.
 
 import json
 import re
+from datetime import date
 
 import pytest
 
@@ -25,6 +26,8 @@ from mailctl.criteria import (
     load_filter,
     longest_literal,
     merge_criteria,
+    parse_age,
+    parse_date,
     sieve_pattern_to_regex,
 )
 
@@ -701,7 +704,7 @@ def document(**criteria) -> str:
         ),
         pytest.param(
             json.dumps({"version": 1, "criteria": {"match": "any"}}),
-            "lacks terms",
+            "holds no terms, body, dates, or state",
             id="no-terms",
         ),
         pytest.param(document(terms=[]), "non-empty list", id="empty-terms"),
@@ -732,5 +735,377 @@ def document(**criteria) -> str:
     ],
 )
 def test_a_malformed_filter_is_refused_by_name(text, error):
+    with pytest.raises(MailctlError, match=re.escape(error)):
+        load_filter(text)
+
+
+# ############################################################################
+# Body, dates, and state (#152)
+# ############################################################################
+
+TODAY = date(2026, 9, 29)
+
+
+# ----------------------------------------------------------------------------
+def more(**given) -> Criteria:
+    """A From term, a body term, and whatever date or state is given."""
+    criteria = Criteria(**given)
+    criteria.add("from", "a@x.org")
+    criteria.add_body("merged")
+
+    return criteria
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("2026-09-01", date(2026, 9, 1)),
+        (" 2026-02-28 ", date(2026, 2, 28)),
+        ("2024-02-29", date(2024, 2, 29)),
+    ],
+)
+def test_a_date_is_read_as_yyyy_mm_dd(text, expected):
+    assert parse_date(text, "--since") == expected
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        ("1/9/2026", "must be a date as YYYY-MM-DD"),
+        ("20260901", "must be a date as YYYY-MM-DD"),
+        ("2026-W36-1", "must be a date as YYYY-MM-DD"),
+        ("2026-9-1", "must be a date as YYYY-MM-DD"),
+        ("yesterday", "must be a date as YYYY-MM-DD"),
+        ("", "must be a date as YYYY-MM-DD"),
+        ("2026-02-30", "is not a real date"),
+        ("2026-13-01", "is not a real date"),
+    ],
+)
+def test_any_other_date_is_refused_naming_the_flag(text, error):
+    with pytest.raises(MailctlError, match=error) as caught:
+        parse_date(text, "--since")
+
+    assert str(caught.value).startswith("--since")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("text", "days"), [("1d", 1), ("30d", 30), ("3w", 21), (" 2w ", 14)]
+)
+def test_an_age_is_days_or_weeks(text, days):
+    assert parse_age(text, "--older-than") == days
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        ("0d", "at least 1d"),
+        ("0w", "at least 1d"),
+        ("30", "days or weeks"),
+        ("1m", "days or weeks"),
+        ("3W", "days or weeks"),
+        ("-1d", "days or weeks"),
+        ("1.5w", "days or weeks"),
+    ],
+)
+def test_any_other_age_is_refused_naming_the_flag(text, error):
+    with pytest.raises(MailctlError, match=error) as caught:
+        parse_age(text, "--older-than")
+
+    assert str(caught.value).startswith("--older-than")
+
+
+# ----------------------------------------------------------------------------
+def test_a_since_not_before_before_is_refused():
+    with pytest.raises(MailctlError, match="since must be earlier"):
+        Criteria(since=date(2026, 9, 1), before=date(2026, 9, 1))
+
+
+# ----------------------------------------------------------------------------
+def test_a_zero_age_is_refused_even_when_built_directly():
+    with pytest.raises(MailctlError, match="at least one day"):
+        Criteria(older_than=0)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("compare", ["is", "matches"])
+def test_a_body_test_is_refused_under_a_whole_value_compare(compare):
+    """IMAP can only say a body contains a string, so any other body
+    comparison would make the rule and the pass disagree."""
+    with pytest.raises(MailctlError, match=f"--compare {compare}"):
+        Criteria(compare=compare).add_body("x")
+
+    with pytest.raises(MailctlError, match=f"--compare {compare}"):
+        Criteria(compare=compare, body=["x"])
+
+
+# ----------------------------------------------------------------------------
+def test_an_empty_body_value_is_refused():
+    with pytest.raises(MailctlError, match="empty value"):
+        Criteria().add_body("")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "given",
+    [
+        {"body": ["x"]},
+        {"since": date(2026, 9, 1)},
+        {"before": date(2026, 9, 1)},
+        {"older_than": 7},
+        {"unread": True},
+        {"flagged": True},
+    ],
+    ids=lambda given: next(iter(given)),
+)
+def test_each_new_criterion_alone_is_a_criterion(given):
+    criteria = Criteria(**given)
+
+    assert criteria
+    assert criteria.require_terms() is None
+
+
+# ----------------------------------------------------------------------------
+def test_state_filters_are_named_in_a_fixed_order():
+    criteria = Criteria(
+        flagged=True,
+        unread=True,
+        older_than=3,
+        before=date(2026, 9, 2),
+        since=date(2026, 9, 1),
+    )
+
+    assert criteria.state_filters() == [
+        "since",
+        "before",
+        "older-than",
+        "unread",
+        "flagged",
+    ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "given",
+    [
+        {"since": date(2026, 9, 1)},
+        {"before": date(2026, 9, 1)},
+        {"older_than": 7},
+        {"unread": True},
+        {"flagged": True},
+    ],
+    ids=lambda given: next(iter(given)),
+)
+def test_a_saved_rule_refuses_every_date_and_state_filter(given):
+    """New mail is unread, unflagged, and zero days old at delivery, so a
+    rule testing any of these would not mean what it says."""
+    criteria = more(**given)
+
+    with pytest.raises(MailctlError, match="cannot test") as caught:
+        criteria.sieve_conditions()
+
+    message = str(caught.value)
+
+    assert "mailctl search" in message
+    assert "mailctl apply" in message
+
+    with pytest.raises(MailctlError, match="cannot test"):
+        criteria.check_deliverable()
+
+
+# ----------------------------------------------------------------------------
+def test_body_becomes_the_body_extension_s_contains_test():
+    criteria = more()
+    criteria.add_body('say "hi" \\ bye')
+
+    assert criteria.sieve_conditions() == [
+        ("From", ":contains", "a@x.org"),
+        ("body", ":text", ":contains", "merged"),
+        ("body", ":text", ":contains", 'say \\"hi\\" \\\\ bye'),
+    ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("match", MATCH_MODES)
+def test_body_terms_are_combined_with_header_terms_under_match(match):
+    criteria = more(match=match)
+
+    group = [["FROM", "a@x.org"], ["BODY", "merged"]]
+    expected = group if match == "all" else [["OR", *group]]
+
+    assert criteria.imap_search_key() == expected
+    assert criteria.sieve_matchtype() == f"{match}of"
+
+
+# ----------------------------------------------------------------------------
+def test_dates_and_state_are_anded_after_the_tests_in_imap_s_date_form():
+    criteria = more(
+        since=date(2026, 9, 1),
+        before=date(2026, 10, 12),
+        unread=True,
+        flagged=True,
+    )
+
+    assert criteria.imap_search_key(["NOT", "DELETED"]) == [
+        ["OR", ["FROM", "a@x.org"], ["BODY", "merged"]],
+        "SINCE",
+        "1-Sep-2026",
+        "BEFORE",
+        "12-Oct-2026",
+        "UNSEEN",
+        "FLAGGED",
+        "NOT",
+        "DELETED",
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_older_than_counts_back_from_the_day_it_is_searched():
+    """Sugar for BEFORE today-N, worked out when the search is made, so a
+    saved filter keeps meaning "older than N days"."""
+    criteria = Criteria(older_than=30)
+
+    assert criteria.imap_search_key(today=TODAY) == ["BEFORE", "30-Aug-2026"]
+    assert criteria.imap_search_key(today=date(2026, 3, 1)) == [
+        "BEFORE",
+        "30-Jan-2026",
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_state_alone_searches_without_a_test_group():
+    assert Criteria(unread=True).imap_search_key() == ["UNSEEN"]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("match", MATCH_MODES)
+def test_the_recheck_takes_the_server_s_word_on_body_and_state(match):
+    """Nothing in the headers can confirm a body term or a date, and IMAP
+    answers both exactly, so the headers decide only the header terms."""
+    criteria = more(match=match, unread=True)
+    other = {"FROM": ["b@y.org"]}
+
+    assert criteria.matches(other) is (match == "any")
+    assert criteria.matches({"FROM": ["a@x.org"]}) is True
+    assert Criteria(flagged=True).matches(other) is True
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("given", "described"),
+    [
+        (
+            {"since": date(2026, 9, 1), "unread": True},
+            "(From contains 'a@x.org' OR body contains 'merged') AND "
+            "received on or after 2026-09-01 AND unread",
+        ),
+        (
+            {"match": "all", "before": date(2026, 9, 1), "flagged": True},
+            "From contains 'a@x.org' AND body contains 'merged' AND "
+            "received before 2026-09-01 AND flagged",
+        ),
+        (
+            {"older_than": 1},
+            "(From contains 'a@x.org' OR body contains 'merged') AND "
+            "older than 1 day",
+        ),
+    ],
+)
+def test_describe_names_body_dates_and_state(given, described):
+    assert more(**given).describe() == described
+
+
+# ----------------------------------------------------------------------------
+def test_describe_with_state_alone():
+    assert Criteria(older_than=14, unread=True).describe() == (
+        "older than 14 days AND unread"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_merging_keeps_body_and_takes_the_explicit_state():
+    derived = make(("From", "a@x.org"))
+    explicit = Criteria(body=["merged"], unread=True, since=date(2026, 9, 1))
+
+    merged = merge_criteria(derived, explicit)
+
+    assert merged.terms == [Term("From", "a@x.org")]
+    assert merged.body == ["merged"]
+    assert merged.state_filters() == ["since", "unread"]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "given",
+    [
+        {},
+        {"since": date(2026, 9, 1), "before": date(2026, 9, 28)},
+        {"older_than": 21, "unread": True, "flagged": True},
+        {"match": "all", "before": date(2026, 1, 31)},
+    ],
+)
+def test_body_dates_and_state_round_trip_through_a_filter(given):
+    criteria = more(**given)
+    criteria.add_body("Caf\u00e9")
+
+    assert load_filter(dump_filter(criteria)) == criteria
+
+
+# ----------------------------------------------------------------------------
+def test_new_criteria_are_written_only_when_given():
+    """A document of header terms reads exactly as it did before #152, and
+    a new one names each criterion it carries and nothing else."""
+    document = json.loads(
+        dump_filter(Criteria(body=["x"], older_than=7, unread=True))
+    )
+
+    assert document == {
+        "version": 1,
+        "criteria": {
+            "match": "any",
+            "compare": "contains",
+            "body": ["x"],
+            "older_than_days": 7,
+            "unread": True,
+        },
+    }
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("criteria", "error"),
+    [
+        pytest.param({"body": []}, "'body' must be a non-empty list", id="b0"),
+        pytest.param(
+            {"body": "x"}, "'body' must be a non-empty list", id="b1"
+        ),
+        pytest.param({"body": [""]}, "non-empty string", id="b2"),
+        pytest.param({"body": [3]}, "non-empty string", id="b3"),
+        pytest.param(
+            {"body": ["x"], "compare": "is"}, "--compare is", id="b-is"
+        ),
+        pytest.param({"since": "1/9/2026"}, "YYYY-MM-DD", id="since-form"),
+        pytest.param({"since": 20260901}, "YYYY-MM-DD string", id="since-int"),
+        pytest.param({"before": "2026-02-30"}, "not a real date", id="bef"),
+        pytest.param(
+            {"since": "2026-09-02", "before": "2026-09-01"},
+            "since must be earlier",
+            id="range",
+        ),
+        pytest.param({"older_than_days": 0}, "1 or more", id="age-0"),
+        pytest.param({"older_than_days": "7"}, "1 or more", id="age-str"),
+        pytest.param({"older_than_days": True}, "1 or more", id="age-bool"),
+        pytest.param({"unread": "yes"}, "true or false", id="unread"),
+        pytest.param({"flagged": 1}, "true or false", id="flagged"),
+        pytest.param({"older_than": 7}, "unknown key", id="misspelt-age"),
+        pytest.param({"unread": False}, "holds no terms", id="nothing"),
+    ],
+)
+def test_a_malformed_new_criterion_is_refused_by_name(criteria, error):
+    text = json.dumps({"version": 1, "criteria": criteria})
+
     with pytest.raises(MailctlError, match=re.escape(error)):
         load_filter(text)

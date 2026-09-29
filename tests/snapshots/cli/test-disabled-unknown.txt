@@ -11,7 +11,7 @@ Sieve:     mail.example.com:4190 (tls=starttls)  (default)
 Folder:    INBOX  (default)  -- read by apply, search, view, and add --like
 
 --- stderr
-mailctl: disabled_extensions: unknown Sieve extension(s) 'mailbx' (from flag --disable-extension). Known: fileinto, imap4flags, mailbox, copy, envelope, enotify, vacation, regex, spamtest, extlists
+mailctl: disabled_extensions: unknown Sieve extension(s) 'mailbx' (from flag --disable-extension). Known: body, fileinto, imap4flags, mailbox, copy, envelope, enotify, vacation, regex, spamtest, extlists
 
 --- sieve calls
 --- imap calls

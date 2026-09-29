@@ -332,6 +332,16 @@ class Dialect(ABC):
 
     @classmethod
     @abstractmethod
+    def check_criteria(
+        cls, config: Config, criteria: Criteria, advertised: list[str]
+    ) -> None:
+        """Refuse criteria a rule on this host cannot test: a feature the
+        rule half does not ``advertised``, or one the configuration has
+        turned off. Date and state filters are refused before this, by the
+        utilities, whatever the host."""
+
+    @classmethod
+    @abstractmethod
     def describe_actions(cls, actions: list) -> str:
         """Translated actions as one line a person reads, host escaping
         undone: the plan's summary, beside the diff that shows the source.
