@@ -43,6 +43,7 @@ __all__ = [
     "merge_rule",
     "move_rule",
     "parse_script",
+    "rearrange_rules",
     "remove_rule",
     "render_script",
     "resolve_position",
@@ -1007,6 +1008,156 @@ def move_rule(
     _move_rule(filters, name, position)
 
     return render_script(filters, dialect)
+
+
+# ----------------------------------------------------------------------------
+def rearrange_rules(
+    existing: str,
+    layout: Iterable[tuple[int, Iterable[int]]],
+    dialect: NameDialect = SIEVELIB_DIALECT,
+) -> str:
+    """Reorder, merge, and drop rules; return the new script source.
+
+    ``layout`` is ``(index, absorbed)`` pairs in the new order, each index
+    counting the script's rules as they stand. A rule named by no pair is
+    dropped. A rule with ``absorbed`` indexes takes their keys into its
+    own key list, in order, and their comments above its own; the rules
+    absorbed are dropped. Every rule keeps its own content otherwise, and
+    the result stays a flat list of rules -- nothing is nested.
+
+    A merge is refused unless every rule in it is enabled, tests one
+    header with one ``header`` test, and matches the survivor's header,
+    match type, comparator, and actions exactly: a key list is an OR, so
+    only then is one rule the same filter as the several.
+    """
+    filters = parse_script(existing, dialect)
+    entries = cast(list[dict[str, Any]], filters.filters)
+    slots = [(index, list(absorbed)) for index, absorbed in layout]
+    named = [
+        index
+        for survivor, absorbed in slots
+        for index in (survivor, *absorbed)
+    ]
+
+    if len(set(named)) != len(named) or not all(
+        0 <= index < len(entries) for index in named
+    ):
+        raise MailctlError(
+            "a rearrangement must name each rule in the script at most once"
+        )
+
+    arranged = []
+
+    for survivor, absorbed in slots:
+        entry = entries[survivor]
+
+        if absorbed:
+            _absorb(entry, [entries[index] for index in absorbed])
+
+        arranged.append(entry)
+
+    filters.filters = arranged
+
+    return render_script(filters, dialect)
+
+
+# ----------------------------------------------------------------------------
+def _absorb(entry: dict[str, Any], others: list[dict[str, Any]]) -> None:
+    """Take the keys of ``others`` into ``entry``'s one header test."""
+    test = _sole_header(entry)
+    shape = _header_shape(test)
+    actions = _action_source(entry["content"])
+    keys = _key_tokens(test)
+
+    for other in others:
+        theirs = _sole_header(other)
+
+        if _header_shape(theirs) != shape or (
+            _action_source(other["content"]) != actions
+        ):
+            raise MailctlError(
+                f"rule {other['name']!r} cannot be merged into "
+                f"{entry['name']!r}: they do not test the same header the "
+                f"same way with the same actions"
+            )
+
+        keys += [key for key in _key_tokens(theirs) if key not in keys]
+        entry["comments"] = [
+            *entry.get("comments", []),
+            *other.get("comments", []),
+        ]
+
+    test.arguments["key-list"] = keys if len(keys) > 1 else keys[0]
+
+
+# ----------------------------------------------------------------------------
+def _sole_header(entry: dict[str, Any]) -> commands.Command:
+    """The one ``header`` test of an enabled rule, or refused."""
+    command = entry["content"]
+    test = (
+        command.arguments.get("test")
+        if isinstance(command, commands.IfCommand)
+        else None
+    )
+
+    if isinstance(test, commands.AnyofCommand | commands.AllofCommand):
+        children = test.arguments.get("tests") or []
+        test = children[0] if len(children) == 1 else None
+
+    if (
+        not isinstance(test, commands.HeaderCommand)
+        or len(_string_list(test.arguments.get("header-names"))) != 1
+    ):
+        raise MailctlError(
+            f"rule {entry['name']!r} cannot be merged: only an enabled rule "
+            f"with one header test on one header can be"
+        )
+
+    return test
+
+
+# ----------------------------------------------------------------------------
+def _header_shape(test: commands.Command) -> tuple[str, str, str]:
+    """What a ``header`` test compares, apart from its keys: the header
+    (names are case-insensitive), the match type, and the comparator."""
+    (header,) = _string_list(test.arguments.get("header-names"))
+    match_type = str(test.arguments.get("match-type") or ":is").lower()
+    comparator = str(
+        (test.extra_arguments or {}).get("comparator") or '"i;ascii-casemap"'
+    )
+
+    return _unquote(header).lower(), match_type, _unquote(comparator)
+
+
+# ----------------------------------------------------------------------------
+def _key_tokens(test: commands.Command) -> list[str]:
+    """A ``header`` test's keys, as the quoted Sieve source they were."""
+    return list(_string_list(test.arguments.get("key-list")))
+
+
+# ----------------------------------------------------------------------------
+def _string_list(argument: Any) -> list[str]:
+    """A string or a string list argument, as a list of its tokens."""
+    if argument is None:
+        return []
+
+    if isinstance(argument, list | tuple):
+        return [str(item) for item in argument]
+
+    return [str(argument)]
+
+
+# ----------------------------------------------------------------------------
+def _action_source(command: commands.Command) -> list[str]:
+    """A rule's actions, each as Sieve source."""
+    rendered = []
+
+    for child in command.children:
+        buffer = io.StringIO()
+        child.tosieve(target=buffer)
+        rendered.append(buffer.getvalue().strip())
+
+    return rendered
 
 
 # ----------------------------------------------------------------------------

@@ -34,7 +34,7 @@ from ...components.managesieve.script import (
 )
 from ...config import DEFAULT, Config, Source
 from ...criteria import Criteria, escape_sieve_string
-from ...rules import Rule, rule_from_criteria
+from ...rules import Rule, Slot, rule_from_criteria
 from ..base import (
     ActionSpec,
     DisplayDiff,
@@ -472,6 +472,16 @@ def move_rule(existing: str, name: str, placement: Placement) -> str:
     """``managesieve.move_rule``, with Roundcube's rule names."""
     return _script.move_rule(
         existing, name, component_placement(placement), ROUNDCUBE_DIALECT
+    )
+
+
+# ----------------------------------------------------------------------------
+def rearrange_rules(existing: str, layout: Iterable[Slot]) -> str:
+    """``managesieve.rearrange_rules``, with Roundcube's rule names."""
+    return _script.rearrange_rules(
+        existing,
+        [(slot.index, slot.absorbs) for slot in layout],
+        ROUNDCUBE_DIALECT,
     )
 
 

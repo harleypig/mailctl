@@ -1,0 +1,51 @@
+$ mailctl optimize-rules --skip merge --skip redundant --dry-run
+exit: 0
+--- stdout
+Script 'managesieve': 9 rules read.
+Not considered: redundant, merge.
+
+Move -- a broader rule ahead of it stops all of its mail, so it never runs. Moved, its mail gets its own actions instead:
+  'Github billing' to just before 'Github catchall'
+
+Left alone -- mailctl will not change these on a guess:
+  ? 'Github billing' carries stop and may catch mail meant for 'Any shop' first; whether it does cannot be decided from the rules alone
+  ? 'Any shop' carries stop and may catch mail meant for 'Bike shop' first; whether it does cannot be decided from the rules alone
+
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,13 +1,13 @@
+ require ["fileinto"];
+ 
++# rule:[Github billing]
++if allof (header :contains "from" "billing@github.com") {
++    fileinto "INBOX.Github.Billing";
++    stop;
++}
+ # rule:[Github catchall]
+ if allof (header :contains "from" "github.com") {
+     fileinto "INBOX.Github";
+-    stop;
+-}
+-# rule:[Github billing]
+-if allof (header :contains "from" "billing@github.com") {
+-    fileinto "INBOX.Github.Billing";
+     stop;
+ }
+ # rule:[Github again]
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

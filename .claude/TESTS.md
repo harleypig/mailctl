@@ -60,8 +60,9 @@ where every write path is proved first.
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
      `scripts`, `backup`, `baseline`, `flags`, `folders`,
-     `folder_rename`, `mail`, `messages`, `senders`, and `reports` under
-     `mailctl/utilities/`; a backup's bytes on disk are `test_backup.py`,
+     `folder_rename`, `mail`, `messages`, `optimize`, `senders`, and
+     `reports` under `mailctl/utilities/`; a backup's bytes on disk are
+     `test_backup.py`,
      and the migration utility `test_migration.py`) —
      every plan and execute step driven with plain inputs over a session,
      as any front-end would call it. The safety
@@ -221,9 +222,12 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   `rename-folder` in `test_rename_folder.py` ([#5][i5]): the folder and its
   subfolder moved, both subscribed under the new names and gone from `LSUB`
   under the old, the message count kept, and the script's bytes changed only
-  in the two folder names. New mail is also handed to `dovecot-lda`, which
-  runs the uploaded script, so the going-forward half is seen filing it too —
-  by header, and by body through an `add --body` rule.
+  in the two folder names. `optimize-rules` in `test_optimize_rules.py`
+  ([#21][i21]): the same messages handed to `dovecot-lda` before and after a
+  merge and a removal land in the same folders, and a reorder moves only the
+  starved rule's mail. New mail is also handed to `dovecot-lda`, which runs
+  the uploaded script, so the going-forward half is seen filing it too — by
+  header, and by body through an `add --body` rule.
 - **The oracle is not mailctl.** Each test reads the server back with
   sievelib's and IMAPClient's own clients, and a byte-exact claim with the
   script file on the container's disk, so a write that mailctl both gets
@@ -291,7 +295,10 @@ script, not to `tests/live/`. `search-unread` is one: a single `search
 --unread --since <30 days ago> --limit 5`, checking the date and state
 filters reach MXroute and every row it lists is unread ([#152][i152]). It
 does not check each row's date, since a message near midnight can show on
-either side of the server's.
+either side of the server's. `optimize-rules` is another: one
+`optimize-rules --dry-run --json`, checking the plan is well formed, has a
+diff exactly when it proposes a change, and uploaded nothing
+([#21][i21]).
 
 ## Live-test credentials & safety
 
@@ -359,6 +366,7 @@ pass: `make testlive TESTARGS='-k sieve'`.
 
 [i5]: https://github.com/harleypig/mailctl/issues/5
 [i51]: https://github.com/harleypig/mailctl/issues/51
+[i21]: https://github.com/harleypig/mailctl/issues/21
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md

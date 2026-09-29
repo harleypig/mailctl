@@ -4,7 +4,7 @@ exit: SystemExit(2)
 
 --- stderr
 usage: mailctl [-h] [--version] [--verbose] [--debug]
-               {list,show,rules,backup,restore,folders,subscribe,unsubscribe,create-folder,rename-folder,test,probe,save-baseline,show-baseline,check-baseline,add,apply,search,view,senders,mark,remove-rule,move-rule,disable-rule,enable-rule,migrate-config,help}
+               {list,show,rules,backup,restore,folders,subscribe,unsubscribe,create-folder,rename-folder,test,probe,save-baseline,show-baseline,check-baseline,add,apply,search,view,senders,mark,remove-rule,move-rule,optimize-rules,disable-rule,enable-rule,migrate-config,help}
                ...
 mailctl: error: unrecognized arguments: --no-apply
 

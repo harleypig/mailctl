@@ -29,6 +29,7 @@ __all__ = [
     "mark_plan",
     "message",
     "message_listing",
+    "optimize_plan",
     "placement",
     "plan",
     "rules_report",
@@ -362,6 +363,47 @@ def folder_rename_plan(record) -> dict:
         rules=[
             {"rule": item.rule, "old": item.old, "new": item.new}
             for item in record.retargets
+        ],
+        **activation(record),
+    )
+
+
+# ----------------------------------------------------------------------------
+def optimize_plan(record) -> dict:
+    """``optimize-rules``: each rule to remove, move, or merge, and what
+    was left alone for want of certainty. ``considered`` names the kinds
+    of change looked for."""
+    proposals = record.proposals
+
+    return plan(
+        "optimize-rules",
+        **change(record.changes, record.diff),
+        considered=list(record.kinds),
+        removals=[
+            {"rule": item.rule, "covered_by": item.covered_by}
+            for item in proposals.removals
+        ],
+        reorders=[
+            {"rule": item.rule, "before": item.before}
+            for item in proposals.reorders
+        ],
+        merges=[
+            {
+                "into": item.into,
+                "absorbed": list(item.absorbed),
+                "header": item.header,
+                "match_type": item.match_type,
+                "keys": list(item.keys),
+            }
+            for item in proposals.merges
+        ],
+        uncertain=[
+            {
+                "kind": item.kind,
+                "rules": list(item.rules),
+                "reason": item.reason,
+            }
+            for item in proposals.uncertain
         ],
         **activation(record),
     )

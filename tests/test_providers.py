@@ -202,8 +202,9 @@ class FakeDialect(Dialect):
         rules = []
 
         for index, entry in enumerate(json.loads(source or "[]")):
+            senders = entry["from"]
             criteria = Criteria()
-            criteria.add("From", entry["from"])
+            criteria.add("From", senders if isinstance(senders, str) else "-")
             rule = rule_from_criteria(
                 entry["name"],
                 criteria,
@@ -211,9 +212,32 @@ class FakeDialect(Dialect):
                 stops="stop" in entry["actions"],
                 index=index,
             )
+
+            # A merged rule's senders are a list, one test with many keys.
+            if not isinstance(senders, str):
+                test = replace(rule.tests[0], keys=tuple(senders))
+                rule = replace(rule, tests=(test,))
+
             rules.append(replace(rule, disabled=entry.get("off", False)))
 
         return rules
+
+    @classmethod
+    def rearrange_rules(cls, source, layout):
+        entries = json.loads(source or "[]")
+        arranged = []
+
+        for slot in layout:
+            entry = dict(entries[slot.index])
+
+            if slot.absorbs:
+                senders = [entry["from"]]
+                senders += [entries[index]["from"] for index in slot.absorbs]
+                entry["from"] = senders
+
+            arranged.append(entry)
+
+        return json.dumps(arranged)
 
     @classmethod
     def add_rule(cls, source, name, criteria, actions, *, replace, placement):
@@ -563,6 +587,11 @@ class UnorderedDialect(FakeDialect):
 
     @classmethod
     @declined
+    def rearrange_rules(cls, source, layout):
+        """No order to improve."""
+
+    @classmethod
+    @declined
     def position(cls, names, placement, name):
         """No position to resolve."""
 
@@ -584,7 +613,7 @@ UNORDERED = Provider(
         raw_query=False,
         mark=True,
         folder_counts=True,
-        declined=frozenset(("move_rule", "position")),
+        declined=frozenset(("move_rule", "position", "rearrange_rules")),
     ),
     UnorderedDialect,
     UnorderedTransport,
@@ -1630,6 +1659,7 @@ BARE = Provider(
             (
                 "move_rule",
                 "position",
+                "rearrange_rules",
                 "disable_rule",
                 "enable_rule",
                 "add_flags",
@@ -2261,3 +2291,126 @@ def test_the_test_report_has_no_host_row_for_a_host_without_one(
     assert code == 0
     assert "\nHost:" not in text
     assert "\nUser:" in text
+
+
+# ############################################################################
+# Optimizing a rule set, on a host with nothing in common with MXroute (#21)
+# ############################################################################
+
+# The same two rules on each host: one filter apart from the sender.
+TWIN_SIEVE = """require ["fileinto"];
+# rule:[github]
+if header :contains "from" "noreply@github.com"
+{
+\tfileinto "x";
+\tstop;
+}
+# rule:[gitlab]
+if header :contains "from" "noreply@gitlab.com"
+{
+\tfileinto "x";
+\tstop;
+}
+"""
+
+
+# ----------------------------------------------------------------------------
+def optimize(session: Session, config: Config) -> None:
+    plan = utilities.optimize.plan_optimize(session)
+    utilities.optimize.execute_optimize(session, config, plan)
+
+
+# ----------------------------------------------------------------------------
+def test_optimizing_makes_the_same_calls_whichever_provider(fakes, tmp_path):
+    """The proposals are the utility's, over the neutral rules: each host
+    is asked the same things, in the same shape, and only rewrites."""
+    config = Config(backup_dir=tmp_path)
+    real = Recorder(mxroute(sieve=rule_session(TWIN_SIEVE)))
+    session = fake_session()
+    fake_transport(session).scripts["main"] = json.dumps(
+        [_stored("github", GITHUB), _stored("gitlab", "noreply@gitlab.com")]
+    )
+    fake = Recorder(session)
+
+    optimize(real.session, config)
+    optimize(fake.session, config)
+
+    assert "dialect.rearrange_rules" in [call[0] for call in real.calls]
+    assert fake.calls == real.calls
+
+
+# ----------------------------------------------------------------------------
+def test_the_fake_really_merged_its_rules(fakes, tmp_path):
+    session = fake_session()
+    transport = fake_transport(session)
+    transport.scripts["main"] = json.dumps(
+        [_stored("github", GITHUB), _stored("gitlab", "noreply@gitlab.com")]
+    )
+
+    optimize(session, Config(backup_dir=tmp_path))
+
+    (merged,) = FakeDialect.read_rules(transport.scripts["main"])
+
+    assert merged.name == "github"
+    assert merged.tests[0].keys == (GITHUB, "noreply@gitlab.com")
+
+
+# ----------------------------------------------------------------------------
+def test_optimizing_is_refused_by_a_host_without_ordering(fakes):
+    """Refused before the rule set is read."""
+    session = fake_session(UNORDERED)
+
+    with pytest.raises(MailctlError, match="the unordered provider cannot"):
+        utilities.optimize.plan_optimize(session)
+
+    assert fake_transport(session).opened == 0
+
+
+# ----------------------------------------------------------------------------
+def test_optimize_rules_is_listed_only_where_ordering_is(
+    bare, capsys, monkeypatch
+):
+    """Hidden, not removed: given anyway, it is refused by name before
+    anything connects."""
+    assert "optimize-rules" in help_text(capsys)
+
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    assert "optimize-rules" not in help_text(capsys)
+    assert cli.main(["optimize-rules", "--dry-run"]) == 1
+    assert "the bare provider cannot" in capsys.readouterr().err
+    assert BareTransport.opened == 0
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("json_flag", [[], ["--json"]], ids=["text", "json"])
+def test_optimize_rules_speaks_in_the_fake_hosts_words(
+    fakes, capsys, monkeypatch, json_flag
+):
+    """#109 for #21: a proposal of each kind, in words owing nothing to
+    Sieve -- no ``:contains``, no MXroute, no Roundcube."""
+    stored = [
+        {"name": "all", "from": "github.com", "actions": ["file:G", "stop"]},
+        {
+            "name": "bills",
+            "from": "bills@github.com",
+            "actions": ["file:B", "stop"],
+        },
+        {"name": "again", "from": GITHUB, "actions": ["file:G", "stop"]},
+        _stored("one", "one@x.test"),
+        _stored("two", "two@x.test"),
+    ]
+    start = FakeTransport.__init__
+
+    def seeded(self, *args, **kwargs):
+        start(self, *args, **kwargs)
+        self.scripts["main"] = json.dumps(stored)
+
+    monkeypatch.setattr(FakeTransport, "__init__", seeded)
+
+    code, text = run_fake(capsys, "optimize-rules", "--dry-run", *json_flag)
+
+    assert code == 0, text
+    assert not HOST_WORDS.search(text), text
+    assert ":contains" not in text
+    assert "again" in text and "bills" in text and "two" in text

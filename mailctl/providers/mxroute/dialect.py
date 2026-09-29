@@ -8,7 +8,7 @@ Nothing here opens a connection -- the ManageSieve and IMAP sessions are
 the transport's (``transport.py``).
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from ...components.imap.capabilities import CHECKED_CAPABILITIES
@@ -25,7 +25,7 @@ from ...components.managesieve.script import (
 )
 from ...config import Config
 from ...criteria import Criteria
-from ...rules import Rule, read_rules
+from ...rules import Rule, Slot, read_rules
 from ..base import (
     ActionSpec,
     CountSupport,
@@ -225,6 +225,11 @@ class MxrouteDialect(Dialect):
     @classmethod
     def enable_rule(cls, source: str, name: str) -> str:
         return mxroute_sieve.enable_rule(source, name)
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def rearrange_rules(cls, source: str, layout: Sequence[Slot]) -> str:
+        return mxroute_sieve.rearrange_rules(source, layout)
 
     # ------------------------------------------------------------------------
     @classmethod

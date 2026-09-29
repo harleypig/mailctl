@@ -2698,6 +2698,131 @@ def cmd_move_rule(args) -> int:
 
 
 # ----------------------------------------------------------------------------
+def cmd_optimize_rules(args) -> int:
+    """Propose a better arrangement of the rules, and apply it if asked."""
+    config = configure(args)
+    utilities.optimize.check_optimize(config)
+    kinds = [
+        kind for kind in utilities.optimize.KINDS if kind not in args.skip
+    ]
+
+    with connect(config, args) as sessions:
+        plan = utilities.optimize.plan_optimize(
+            sessions, args.script, kinds, args.activate
+        )
+
+        if args.json:
+            return emit_json(args, json_output.optimize_plan(plan))
+
+        print_optimize(plan)
+
+        if not plan.changes:
+            return 0
+
+        if args.dry_run:
+            print("\n[dry-run] the script was NOT uploaded.")
+
+            return 0
+
+        proposals = plan.proposals
+        count = (
+            len(proposals.removals)
+            + len(proposals.reorders)
+            + len(proposals.merges)
+        )
+
+        if not confirm(
+            f"Apply {count} change{'s' if count != 1 else ''} to "
+            f"{plan.script!r}?",
+            args.yes,
+        ):
+            print("Aborted; nothing was changed.")
+
+            return 0
+
+        utilities.optimize.execute_optimize(
+            sessions, config, plan, render_event
+        )
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def print_optimize(plan) -> None:
+    """Show what would be removed, moved, and merged, what is left alone
+    for want of certainty, and the diff."""
+    proposals = plan.proposals
+    count = len(plan.rules)
+    skipped = [
+        kind for kind in utilities.optimize.KINDS if kind not in plan.kinds
+    ]
+
+    print(
+        f"Script {plan.script!r}: {count} rule{'s' if count != 1 else ''} "
+        f"read."
+    )
+
+    if skipped:
+        print(f"Not considered: {', '.join(skipped)}.")
+
+    if proposals.removals:
+        print(
+            "\nRemove -- it can never run, and an earlier rule that stops "
+            "does exactly the same to all of its mail:"
+        )
+
+        for item in proposals.removals:
+            print(
+                f"  {safe_line(item.rule)!r}  (covered by "
+                f"{safe_line(item.covered_by)!r})"
+            )
+
+    if proposals.reorders:
+        print(
+            "\nMove -- a broader rule ahead of it stops all of its mail, so "
+            "it never runs. Moved, its mail gets its own actions instead:"
+        )
+
+        for item in proposals.reorders:
+            print(
+                f"  {safe_line(item.rule)!r} to just before "
+                f"{safe_line(item.before)!r}"
+            )
+
+    if proposals.merges:
+        print(
+            "\nMerge -- the same test on the same header, with the same "
+            "actions; one rule with a key list files exactly the same mail:"
+        )
+
+        for item in proposals.merges:
+            absorbed = ", ".join(
+                repr(safe_line(name)) for name in item.absorbed
+            )
+            print(
+                f"  {absorbed} into {safe_line(item.into)!r}, which keeps its "
+                f"name: {safe_line(item.header)} {item.match_type}"
+            )
+
+            for key in item.keys:
+                print(f"      {safe_line(key)!r}")
+
+    if proposals.uncertain:
+        print("\nLeft alone -- mailctl will not change these on a guess:")
+
+        for item in proposals.uncertain:
+            print(f"  ? {safe_line(item.reason)}")
+
+    if not plan.changes:
+        print(f"\nNothing to change in {plan.script!r}.")
+
+        return
+
+    print_script_diff(plan.diff)
+    print_activation(plan)
+
+
+# ----------------------------------------------------------------------------
 def cmd_switch_rule(args) -> int:
     """Switch a named rule off or on, keeping it in the script."""
     config = configure(args)
@@ -4175,6 +4300,37 @@ def build_parser(
         help="immediately after the rule named OTHER",
     )
     move.set_defaults(handler=cmd_move_rule)
+
+    optimize = command(
+        "optimize-rules",
+        offer.ordering,
+        parents=[common, connection, safety],
+        help="propose a better order for the rules, and merge duplicates",
+        description="Read the active script's rules and propose a better "
+        "arrangement: remove a rule that can never run and would only "
+        "repeat an earlier rule, move a specific rule ahead of a broader "
+        "one that starves it, and merge consecutive rules that test the "
+        "same header the same way with the same actions into one rule "
+        "with a key list. Only what the rules' own conditions decide is "
+        "changed; anything less certain is reported and left alone, and "
+        "disabled rules are never moved, merged, or removed. The script "
+        "stays a flat list of rules. It is backed up first and you are "
+        "asked to confirm.",
+    )
+    optimize.add_argument("--script", help="script name; default active")
+    optimize.add_argument(
+        "--activate", action="store_true", help=ACTIVATE_HELP
+    )
+    optimize.add_argument(
+        "--skip",
+        action="append",
+        default=[],
+        choices=utilities.optimize.KINDS,
+        metavar="KIND",
+        help="do not propose this kind of change: redundant, reorder, or "
+        "merge; repeatable",
+    )
+    optimize.set_defaults(handler=cmd_optimize_rules)
 
     for enable, name in ((False, "disable-rule"), (True, "enable-rule")):
         verb = "enable" if enable else "disable"

@@ -31,6 +31,7 @@ stores (ADR 0007). One module per subject:
 ``folder_rename`` renaming a folder and repointing the rules filing into it
 ``mail``       the existing-mail pass, and criteria from a message
 ``messages``   finding and reading messages
+``optimize``   proposing a better arrangement of the rules, and applying it
 ``migration``  what the rename from ``mxfilter`` left behind
 ``reports``    probes, provider wording, and extension state
 ``events``     the steps of a change, as a front-end is told of them
@@ -47,6 +48,7 @@ from . import (
     mail,
     messages,
     migration,
+    optimize,
     reports,
     rules,
     scripts,
@@ -64,6 +66,7 @@ __all__ = [
     "mail",
     "messages",
     "migration",
+    "optimize",
     "reports",
     "rules",
     "scripts",

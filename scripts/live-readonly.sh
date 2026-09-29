@@ -56,6 +56,7 @@ readonly TESTS=(
   subscribe
   create-folder
   rename-folder
+  optimize-rules
   unchanged
 )
 
@@ -70,6 +71,7 @@ readonly MUTATING=(
   mark
   migrate-config
   move-rule
+  optimize-rules
   remove-rule
   rename-folder
   restore
@@ -242,6 +244,51 @@ need(
 )
 PYTHON
 readonly SENDERS_CHECK
+
+# What `optimize-rules --dry-run --json` must hold: it parses, it is version
+# 1, it is that command's plan, every proposal list is a list, `changes`
+# says whether any proposal was made, and a diff is there exactly when it
+# does. Prints the first problem found and exits non-zero.
+read -r -d '' OPTIMIZE_CHECK << 'PYTHON'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        doc = json.load(handle)
+
+except ValueError as exc:
+    sys.exit(f"not JSON: {exc}")
+
+
+def need(ok, what):
+    if not ok:
+        sys.exit(what)
+
+
+need(isinstance(doc, dict), "not a JSON object")
+need(doc.get("version") == 1, "version is not 1")
+
+plan = doc.get("plan")
+
+need(isinstance(plan, dict), "no plan")
+need(plan.get("command") == "optimize-rules", "not an optimize-rules plan")
+
+for name in ("removals", "reorders", "merges", "uncertain", "considered"):
+    need(isinstance(plan.get(name), list), f"no {name} list")
+
+proposed = bool(plan["removals"] or plan["reorders"] or plan["merges"])
+
+need(plan.get("changes") is proposed, "changes disagrees with the proposals")
+
+if proposed:
+    diff = plan.get("diff")
+    need(isinstance(diff, dict) and diff.get("text"), "changes but no diff")
+
+else:
+    need(plan.get("diff") is None, "a diff with nothing proposed")
+PYTHON
+readonly OPTIMIZE_CHECK
 
 # Lines mailctl prints only when it has actually changed something.
 CHANGED_RE='^(Backed up|Created IMAP|Uploaded|Moved [0-9]|Flagged [0-9]'
@@ -1025,6 +1072,19 @@ t_rename_folder() {
   expect_nothing_changed || return 1
 
   expect_line '^\[dry-run\] nothing was renamed'
+}
+
+#-----------------------------------------------------------------------------
+# One call: the whole rule set's proposals, planned and never applied.
+t_optimize_rules() {
+  local problem
+
+  run_mailctl optimize-rules --dry-run --json
+  expect_ok 'optimize-rules --dry-run --json' || return 1
+  expect_nothing_changed || return 1
+
+  problem=$(python3 -c "$OPTIMIZE_CHECK" "$RAW" 2>&1) \
+    || fail "optimize-rules --json: ${problem:-not a plan document}"
 }
 
 #-----------------------------------------------------------------------------

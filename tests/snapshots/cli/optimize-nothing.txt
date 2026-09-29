@@ -1,0 +1,16 @@
+$ mailctl optimize-rules --yes
+exit: 0
+--- stdout
+Script 'managesieve': 2 rules read.
+
+Nothing to change in 'managesieve'.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

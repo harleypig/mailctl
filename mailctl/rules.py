@@ -26,6 +26,7 @@ message" -- is a different problem and belongs to the engine adopted in
 ADR 0004, not here.
 """
 
+import io
 from dataclasses import dataclass, field
 
 from . import MailctlError
@@ -38,8 +39,10 @@ __all__ = [
     "HeaderTest",
     "Rule",
     "Shadow",
+    "Slot",
     "analyze_placement",
     "audit",
+    "covers",
     "read_rules",
     "rule_from_criteria",
 ]
@@ -128,6 +131,12 @@ class Rule:
     # it.
     disabled: bool = False
 
+    # Each action as the host writes it, arguments included, where
+    # ``actions`` holds only the names: two rules with equal effects do
+    # the same thing to a message (``fileinto "Trash"`` is not
+    # ``fileinto "Junk"``).
+    effects: tuple[str, ...] = ()
+
     # ------------------------------------------------------------------------
     @property
     def modelled(self) -> bool:
@@ -143,6 +152,19 @@ class Shadow:
     broad: str
     narrow: str
     reason: str
+
+
+@dataclass(frozen=True)
+class Slot:
+    """One place in a rearranged rule set: the rule at ``index`` in the
+    set as it stands, with the rules at ``absorbs`` merged into it.
+
+    A layout is a sequence of slots in the new order; a rule no slot
+    names is removed.
+    """
+
+    index: int
+    absorbs: tuple[int, ...] = ()
 
 
 @dataclass
@@ -331,11 +353,22 @@ def _read_condition(test) -> tuple[str, list[HeaderTest], list[str]]:
 
 
 # ----------------------------------------------------------------------------
-def _read_actions(children) -> tuple[list[str], bool]:
-    """Return the action names of a rule, and whether it ends evaluation."""
+def _read_actions(children) -> tuple[list[str], bool, list[str]]:
+    """Return a rule's action names, whether it ends evaluation, and each
+    action as sievelib renders it."""
     actions = [getattr(child, "name", "?") for child in children]
 
-    return actions, "stop" in actions
+    return actions, "stop" in actions, [_render(child) for child in children]
+
+
+# ----------------------------------------------------------------------------
+def _render(command) -> str:
+    """One command as Sieve source. Only the ends are trimmed: spacing
+    inside a quoted argument is part of its value."""
+    buffer = io.StringIO()
+    command.tosieve(target=buffer)
+
+    return buffer.getvalue().strip()
 
 
 # ----------------------------------------------------------------------------
@@ -369,7 +402,9 @@ def read_rules(filters) -> list[Rule]:
         if disabled and test is None:
             leftovers = ["a test kept in a form mailctl cannot read"]
 
-        actions, stops = _read_actions(getattr(content, "children", []) or [])
+        actions, stops, effects = _read_actions(
+            getattr(content, "children", []) or []
+        )
 
         rules.append(
             Rule(
@@ -381,6 +416,7 @@ def read_rules(filters) -> list[Rule]:
                 stops=stops,
                 unmodelled=tuple(leftovers),
                 disabled=disabled,
+                effects=tuple(effects),
             )
         )
 
@@ -416,7 +452,8 @@ def rule_from_criteria(
     """Build a Rule for something not in the script yet.
 
     Lets a rule about to be added be compared against the ones already
-    there, using the same code path as any two existing rules.
+    there, using the same code path as any two existing rules. The
+    actions stand in for its effects.
     """
     combinator = ANYOF if criteria.match == "any" else ALLOF
 
@@ -437,6 +474,7 @@ def rule_from_criteria(
         actions=tuple(actions),
         stops=stops,
         unmodelled=unmodelled,
+        effects=tuple(actions),
     )
 
 
@@ -603,6 +641,14 @@ def _covers(broad: Rule, narrow: Rule) -> str:
         return CERTAIN
 
     return _possible(broad, narrow)
+
+
+# ----------------------------------------------------------------------------
+def covers(broad: Rule, narrow: Rule) -> str:
+    """CERTAIN, POSSIBLE, or "" for whether ``broad`` fires on every
+    message ``narrow`` fires on -- the relation :func:`audit` is built on,
+    with nothing said about order or ``stop``."""
+    return _covers(broad, narrow)
 
 
 # ----------------------------------------------------------------------------

@@ -169,6 +169,9 @@ layer may call.
     search to what the rule really matches and the `--max-messages`
     ceiling; and criteria derived from a message.
   - `messages.py` — finding and reading messages, read-only.
+  - `optimize.py` — a better arrangement of the rule set proposed from the
+    rules' own conditions (redundant rules removed, starved rules moved,
+    same-filter rules merged), then uploaded.
   - `senders.py` — a folder's mail counted by sender, read-only.
   - `migration.py` — what the rename from `mxfilter` left behind.
   - `reports.py` — the probes behind `mailctl test`, the provider's wording
@@ -232,7 +235,8 @@ layer may call.
     parameters.
   - `managesieve/capabilities.py` — the CAPABILITY response as data.
   - `managesieve/script.py` — the offline script handling (parse / merge /
-    move / remove / render / diff), rule names through a `NameDialect`, and
+    move / remove / rearrange / render / diff), rule names through a
+    `NameDialect`, and
     `UNIMPLEMENTED_ACTIONS`.
   - `managesieve/emit.py` — `EMIT_TABLE`, every command, test, and tag
     mailctl can put in a rule and the Sieve extension each needs; offline.
