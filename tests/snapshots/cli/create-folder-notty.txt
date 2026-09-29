@@ -1,0 +1,13 @@
+$ mailctl create-folder New
+exit: 1
+--- stdout
+Folder 'New' resolves to 'INBOX.New' (delimiter '.')
+Will create IMAP folder 'INBOX.New' and subscribe to it
+
+--- stderr
+mailctl: Create folder 'INBOX.New'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

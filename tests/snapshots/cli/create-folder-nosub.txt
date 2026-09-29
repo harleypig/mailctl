@@ -1,0 +1,14 @@
+$ mailctl create-folder New --no-subscribe --yes
+exit: 0
+--- stdout
+Folder 'New' resolves to 'INBOX.New' (delimiter '.')
+Will create IMAP folder 'INBOX.New', not subscribed (--no-subscribe)
+Created IMAP folder 'INBOX.New'; not subscribed (--no-subscribe), so it will not appear in webmail ('mailctl subscribe INBOX.New' shows it later).
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('create_folder', 'INBOX.New')
+('logout',)

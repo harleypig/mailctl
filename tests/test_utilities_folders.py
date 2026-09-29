@@ -11,6 +11,7 @@ conftest, so folder normalization and planning run for real.
 """
 
 import pytest
+from imapclient.exceptions import IMAPClientError
 from utilities_support import NO_MAILBOX, FakeSieveSession, criteria, mxroute
 
 from mailctl import MailctlError, utilities
@@ -443,3 +444,129 @@ def test_the_source_folder_is_normalized_like_the_destination(
     assert utilities.mail.mail_pass_is_noop(
         ActionSpec(fileinto="Lists/X"), source, "INBOX.Lists.X"
     )
+
+
+# ############################################################################
+# A folder created on its own -- 'mailctl create-folder' (#155)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_new_folder_is_planned_then_created_and_subscribed(
+    sessions, fake_imap
+):
+    plan = utilities.folders.plan_folder_creation(sessions, "Lists/GitHub")
+
+    assert not plan.exists
+    assert plan.target.folder == "INBOX.Lists.GitHub"
+    assert plan.missing_parents == ()
+    assert "create_folder" not in fake_imap.names()
+
+    result = utilities.folders.execute_folder_creation(sessions, plan)
+
+    assert result.folder == "INBOX.Lists.GitHub"
+    assert result.subscribed
+    assert ("create_folder", "INBOX.Lists.GitHub") in fake_imap.calls
+    assert ("subscribe_folder", "INBOX.Lists.GitHub") in fake_imap.calls
+
+
+# ----------------------------------------------------------------------------
+def test_a_new_folder_can_be_created_unsubscribed(sessions, fake_imap):
+    plan = utilities.folders.plan_folder_creation(
+        sessions, "New", subscribe=False
+    )
+
+    result = utilities.folders.execute_folder_creation(sessions, plan)
+
+    assert not result.subscribed
+    assert not result.subscribe_error
+    assert "subscribe_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_new_folder_goes_under_the_servers_namespace_prefix(
+    fake_imap, fake_sieve, imap_config
+):
+    """#116: an empty personal prefix creates ``X``, not ``INBOX.X``."""
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.namespace_response = ((("", "."),), None, None)
+    session = new_imap_session(imap_config)
+    session.open()
+    live = mxroute(sieve=fake_sieve, imap=session)
+
+    plan = utilities.folders.plan_folder_creation(live, "Probe")
+
+    assert plan.target.folder == "Probe"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("name", "subscribed"), [("Lists", True), ("INBOX.spam", False)]
+)
+def test_an_existing_folder_is_planned_as_nothing_to_create(
+    sessions, fake_imap, name, subscribed
+):
+    """Its subscription is reported, not changed: subscribing an existing
+    folder is 'mailctl subscribe', not a side effect of create-folder."""
+    plan = utilities.folders.plan_folder_creation(sessions, name)
+
+    assert plan.exists
+    assert plan.subscribed_now is subscribed
+    assert utilities.folders.execute_folder_creation(sessions, plan) is None
+    assert "create_folder" not in fake_imap.names()
+    assert "subscribe_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_inbox_itself_exists_whatever_its_case(sessions):
+    assert utilities.folders.plan_folder_creation(sessions, "inbox").exists
+
+
+# ----------------------------------------------------------------------------
+def test_a_case_variant_of_an_existing_folder_is_refused(sessions, fake_imap):
+    """#56: 'lists' would be a second folder beside INBOX.Lists."""
+    with pytest.raises(
+        MailctlError, match=r"not creating 'INBOX\.lists': 'INBOX\.Lists'"
+    ):
+        utilities.folders.plan_folder_creation(sessions, "lists")
+
+    assert "create_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_missing_parents_are_named_in_the_plan(sessions):
+    """IMAP CREATE is expected to make the levels above (RFC 3501 6.3.3);
+    the plan says which those are, outermost first."""
+    plan = utilities.folders.plan_folder_creation(sessions, "Work/2026/Q3")
+
+    assert plan.target.folder == "INBOX.Work.2026.Q3"
+    assert plan.missing_parents == ("INBOX.Work", "INBOX.Work.2026")
+
+
+# ----------------------------------------------------------------------------
+def test_an_empty_name_is_refused(sessions):
+    with pytest.raises(MailctlError, match="empty folder name"):
+        utilities.folders.plan_folder_creation(sessions, "/")
+
+
+# ----------------------------------------------------------------------------
+def test_a_create_the_server_refuses_is_raised(sessions, fake_imap):
+    fake_imap.failures["create_folder"] = IMAPClientError("NO [NOPERM]")
+    plan = utilities.folders.plan_folder_creation(sessions, "New")
+
+    with pytest.raises(MailctlError, match="could not create folder"):
+        utilities.folders.execute_folder_creation(sessions, plan)
+
+    assert "subscribe_folder" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_failed_subscription_keeps_the_created_folder(sessions, fake_imap):
+    fake_imap.subscribe_takes_effect = False
+    plan = utilities.folders.plan_folder_creation(sessions, "New")
+
+    result = utilities.folders.execute_folder_creation(sessions, plan)
+
+    assert result.folder == "INBOX.New"
+    assert not result.subscribed
+    assert "still does not list it" in result.subscribe_error

@@ -1201,6 +1201,106 @@ def cmd_subscribe(args) -> int:
 
 
 # ----------------------------------------------------------------------------
+def cmd_create_folder(args) -> int:
+    """Create a folder on its own, subscribed unless declined."""
+    config = configure(args)
+
+    with connect(config, args, rules=False, mail=True) as sessions:
+        plan = utilities.folders.plan_folder_creation(
+            sessions, args.folder, args.subscribe
+        )
+        target = plan.target
+
+        if target.requested != target.folder:
+            print(
+                f"Folder {target.requested!r} resolves to {target.folder!r} "
+                f"(delimiter {target.delimiter!r})"
+            )
+
+        if plan.exists:
+            report_existing_folder(plan)
+
+            return 0
+
+        if plan.missing_parents:
+            count = len(plan.missing_parents)
+            parents = ", ".join(repr(name) for name in plan.missing_parents)
+            print(
+                f"Parent folder{'s' if count > 1 else ''} {parents} "
+                f"{'do' if count > 1 else 'does'} not exist either; the IMAP "
+                f"server is expected to create "
+                f"{'them' if count > 1 else 'it'} along with "
+                f"{target.folder!r}"
+                + (
+                    f", and only {target.folder!r} is subscribed."
+                    if target.subscribe
+                    else "."
+                )
+            )
+
+        then = (
+            " and subscribe to it"
+            if target.subscribe
+            else ", not subscribed (--no-subscribe)"
+        )
+        lead = "[dry-run] would create" if args.dry_run else "Will create"
+        print(f"{lead} IMAP folder {target.folder!r}{then}")
+
+        if args.dry_run:
+            return 0
+
+        if not confirm(f"Create folder {target.folder!r}?", args.yes):
+            print("Aborted; nothing was created.")
+
+            return 0
+
+        result = utilities.folders.execute_folder_creation(sessions, plan)
+
+    if result is not None:
+        report_folder_creation(result)
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def report_existing_folder(plan: utilities.folders.FolderCreationPlan) -> None:
+    """Say that a folder asked for already exists, and how it is shown.
+
+    Nothing is created or subscribed: an existing folder's subscription is
+    a setting of its own, changed with 'subscribe' / 'unsubscribe', so it
+    is pointed at rather than changed as a side effect of asking to create.
+    """
+    folder = plan.target.folder
+
+    if plan.subscribed_now:
+        print(
+            f"{folder!r} already exists and is subscribed; nothing to change."
+        )
+
+        if not plan.target.subscribe:
+            print(
+                f"  --no-subscribe only shapes a folder this command "
+                f"creates; 'mailctl unsubscribe {folder}' hides it."
+            )
+
+        return
+
+    if not plan.target.subscribe:
+        print(
+            f"{folder!r} already exists and is not subscribed; nothing to "
+            f"change."
+        )
+
+        return
+
+    print(
+        f"{folder!r} already exists but is not subscribed, so webmail does "
+        f"not show it; nothing was changed. 'mailctl subscribe {folder}' "
+        f"shows it."
+    )
+
+
+# ----------------------------------------------------------------------------
 def cmd_test(args) -> int:
     """Connect to both services and report what they support."""
     config = configure(args)
@@ -2217,6 +2317,28 @@ def build_parser(
             help="say what would change; change nothing",
         )
         toggle.set_defaults(handler=cmd_subscribe)
+
+    create_folder = command(
+        "create-folder",
+        parents=[common, connection, safety],
+        help="create a folder over IMAP, and subscribe to it",
+        description="Create a folder over IMAP and subscribe to it, so "
+        "webmail shows it. The folder name is normalized like every other: "
+        "'Lists/GitHub' and 'INBOX.Lists.GitHub' name the same folder, and "
+        "a new one goes where the server says new folders belong. What "
+        "would be created is shown first, and you are asked to confirm. A "
+        "folder that already exists is left as it is; one that differs "
+        "from an existing folder only in case is refused.",
+    )
+    create_folder.add_argument("folder", metavar="NAME")
+    create_folder.add_argument(
+        "--no-subscribe",
+        dest="subscribe",
+        action="store_false",
+        help="create the folder without subscribing to it; webmail will not "
+        "show it until 'mailctl subscribe NAME'",
+    )
+    create_folder.set_defaults(handler=cmd_create_folder)
 
     test = command(
         "test",

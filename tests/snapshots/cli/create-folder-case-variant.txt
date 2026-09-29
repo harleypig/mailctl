@@ -1,0 +1,11 @@
+$ mailctl create-folder lists --yes
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: not creating 'INBOX.lists': 'INBOX.Lists' exists, but folder names are case-sensitive. Creating it would put a second folder beside it. To use the existing folder, give its name as listed.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)
