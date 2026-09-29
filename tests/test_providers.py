@@ -118,6 +118,18 @@ class FakeDialect(Dialect):
         rules_service="Fake rules",
         mail_service="Fake mail",
         extensions="Fake extensions",
+        extension="Fake extension",
+        host="Fakehost",
+        filters="Fakescript filters",
+        rule_language="Fakescript",
+        rule_set="Fakescript rule set",
+        rule_sets="Fakescript rule sets",
+        validation="a JSON parse",
+        disabled_form="marked off in its JSON",
+        backup_file="<script>.json",
+        delivery_create="folder creation on delivery",
+        file_action="file",
+        create_action="file and create",
         notes=("the fake host keeps its rules as JSON.",),
     )
 
@@ -2096,3 +2108,156 @@ def test_a_folder_rename_runs_through_a_second_provider(fakes, tmp_path):
         )
     ] == ["INBOX.Archive", "x"]
     assert result.ok, result.checks
+
+
+# ############################################################################
+# Nothing about MXroute in another host's help or errors (#109, #51)
+# ############################################################################
+
+# What would give MXroute away in text written for another host: its name,
+# the rule language it speaks, the webmail that writes the same script, and
+# ManageSieve's own command. Case matters: "mxroute", the provider's name
+# as a setting takes it, is how --provider's help names the default.
+HOST_WORDS = re.compile(r"Sieve|MXroute|MXRoute|Roundcube|CHECKSCRIPT")
+
+
+# ----------------------------------------------------------------------------
+def commands_for(provider: str) -> list[str]:
+    """Every subcommand the parser built for ``provider`` has, offered or
+    not, read off the parser rather than listed."""
+    offer = registry.PROVIDERS[provider]
+    parser = cli.build_parser(offer.capabilities, offer.wording)
+    subparsers = next(
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+
+    return sorted(subparsers.choices)
+
+
+# ----------------------------------------------------------------------------
+def test_the_command_list_is_read_off_the_parser(fakes):
+    """Vacuous if it read nothing; too narrow if it missed a command."""
+    names = commands_for("fake")
+
+    assert {"add", "list", "move-rule", "disable-rule", "help"} <= set(names)
+    assert len(names) > 20
+
+
+# ----------------------------------------------------------------------------
+def test_another_hosts_help_says_nothing_about_mxroute(
+    fakes, capsys, monkeypatch
+):
+    """#109: every help page the fake's parser builds is in its own words.
+
+    MXroute's help is unchanged: the snapshot and help tests hold that."""
+    monkeypatch.setenv("MAILCTL_PROVIDER", "fake")
+    pages = {"(top)": help_text(capsys)}
+
+    for name in commands_for("fake"):
+        pages[name] = help_text(capsys, name)
+
+    found = {
+        name: sorted(set(HOST_WORDS.findall(text)))
+        for name, text in pages.items()
+        if HOST_WORDS.search(text)
+    }
+
+    assert found == {}
+    assert "Manage Fakehost Fakescript filters" in pages["(top)"]
+
+
+# ----------------------------------------------------------------------------
+def test_the_host_words_check_sees_mxroutes_help(capsys):
+    """The check above, pointed at a host it should catch."""
+    assert HOST_WORDS.search(help_text(capsys))
+    assert HOST_WORDS.search(help_text(capsys, "disable-rule"))
+
+
+# ----------------------------------------------------------------------------
+def run_fake(capsys, *argv: str) -> tuple[int, str]:
+    """``mailctl ARGV --provider fake``: its exit code, and all it said."""
+    code = cli.main([*argv, "--provider", "fake"])
+    captured = capsys.readouterr()
+
+    return code, captured.out + captured.err
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "said"),
+    [
+        pytest.param(
+            [
+                "add",
+                "--from",
+                GITHUB,
+                "--fileinto",
+                "New",
+                "--create-folder",
+                "--no-imap",
+            ],
+            "the server does not advertise folder creation on delivery and "
+            "--no-imap was given, so 'New' cannot be created",
+            id="needs-mail",
+        ),
+        pytest.param(
+            [
+                "apply",
+                "--from",
+                GITHUB,
+                "--fileinto",
+                "Lists",
+                "--max-messages",
+                "0",
+                "--yes",
+            ],
+            "but --max-messages is 0. NO existing message",
+            id="max-messages",
+        ),
+        pytest.param(
+            ["add", "--from", GITHUB, "--fileinto", "Lists", "--dry-run"],
+            "",
+            id="add-plan",
+        ),
+        pytest.param(["list"], "* main", id="list"),
+    ],
+)
+def test_another_hosts_output_and_errors_are_in_its_own_words(
+    fakes, capsys, monkeypatch, argv, said
+):
+    """#109: a refusal, a plan, and a listing under the fake carry its
+    words, and #51's flags are the CLI's, added to the core's condition."""
+    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
+
+    _code, text = run_fake(capsys, *argv)
+
+    assert said in text
+    assert not HOST_WORDS.search(text), text
+
+
+# ----------------------------------------------------------------------------
+def test_the_fake_says_it_has_no_rule_sets_in_its_own_words(
+    fakes, capsys, monkeypatch
+):
+    monkeypatch.setattr(FakeTransport, "list_rule_sets", lambda _: ("", []))
+
+    code, text = run_fake(capsys, "list")
+
+    assert code == 0
+    assert text == "No Fakescript rule sets on the server.\n"
+
+
+# ----------------------------------------------------------------------------
+def test_the_test_report_has_no_host_row_for_a_host_without_one(
+    fakes, capsys, monkeypatch
+):
+    """#109: the fake reads no host setting, so no Host row is printed."""
+    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
+
+    code, text = run_fake(capsys, "test")
+
+    assert code == 0
+    assert "\nHost:" not in text
+    assert "\nUser:" in text

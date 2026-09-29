@@ -91,13 +91,17 @@ def count_senders(
             f"{', '.join(GROUPINGS)}"
         )
 
-    for label, value in (
-        ("--top", top),
-        ("--min", minimum),
-        ("--max-messages", max_messages),
+    for setting, label, value in (
+        ("top", "the number of rows", top),
+        ("minimum", "the minimum count", minimum),
+        ("max_messages", "the message ceiling", max_messages),
     ):
         if value is not None and value < 1:
-            raise MailctlError(f"{label} must be at least 1, not {value}")
+            raise MailctlError(
+                f"{label} must be at least 1, not {value}",
+                code="at_least_one",
+                fields={"setting": setting, "value": value},
+            )
 
     if criteria is not None and not criteria:
         criteria = None
@@ -112,13 +116,23 @@ def count_senders(
         uids = transport.search_messages(folder, "ALL")
 
     if len(uids) > max_messages:
+        why = (
+            f"A count of the first {max_messages} would read as a count of "
+            f"them all."
+        )
+
         raise MailctlError(
             f"the search found {len(uids)} message(s) in {folder!r} but "
-            f"--max-messages is {max_messages}, so no header was read. A "
-            f"count of the first {max_messages} would read as a count of "
-            f"them all. Narrow it (--since, --older-than, --unread, "
-            f"--from, ...) or re-run with --max-messages {len(uids)} or "
-            f"higher."
+            f"the ceiling is {max_messages}, so no header was read. {why} "
+            f"Narrow the search, or raise the ceiling to {len(uids)} or "
+            f"higher.",
+            code="senders_ceiling",
+            fields={
+                "count": len(uids),
+                "folder": folder,
+                "limit": max_messages,
+                "why": why,
+            },
         )
 
     totals: Counter = Counter()

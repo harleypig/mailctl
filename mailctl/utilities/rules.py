@@ -196,10 +196,7 @@ def check_rule(
     requested = action_names(request.actions, folder)
 
     if not requested:
-        raise MailctlError(
-            "no action requested -- use --fileinto, --discard, --mark-read, "
-            "--flag, or --keep"
-        )
+        raise MailctlError("no action requested", code="no_action")
 
     unsupported = requested - caps.actions
 
@@ -428,7 +425,7 @@ def plan_rule(
     """
     check_rule(config, request, session)
     request.criteria.require_terms()
-    check_folder(folder)
+    check_folder(session, folder)
 
     dialect = session.dialect
     actions = dialect.translate_actions(

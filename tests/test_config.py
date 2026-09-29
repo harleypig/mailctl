@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from mailctl import MailctlError
-from mailctl.cli import build_parser, configure
+from mailctl.cli import build_parser, configure, error_text
 from mailctl.config import (
     CONFIG_FILE,
     DEFAULT,
@@ -195,6 +195,22 @@ def test_no_password_and_no_prompter_is_an_actionable_error():
     """A core module with nowhere to ask must fail, never block on stdin."""
     with pytest.raises(MailctlError, match="MAILCTL_PASSWORD_CMD"):
         Config().password()
+
+
+# ----------------------------------------------------------------------------
+def test_the_cli_puts_its_password_flags_first_among_the_ways():
+    """#51: the core names the settings; the CLI adds its flags ahead of
+    them, as the message has always read."""
+    with pytest.raises(MailctlError) as caught:
+        Config().password()
+
+    assert "--password" not in str(caught.value)
+    assert error_text(caught.value) == (
+        "no password available -- pass --password-file, --password-cmd, or "
+        "--password, set MAILCTL_PASSWORD_FILE, MAILCTL_PASSWORD_CMD, or "
+        "MAILCTL_PASSWORD, or put password_file / password_cmd in the config "
+        "file"
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -631,8 +647,11 @@ def test_require_lists_every_missing_setting_and_its_flag():
     message = str(caught.value)
 
     assert "host, user, imap_host" in message
-    assert "--imap-host" in message
+    assert "--imap-host" not in message
     assert str(config_path()) in message
+    assert "Set --host, --user, --imap-host, the matching" in error_text(
+        caught.value
+    )
 
 
 # ----------------------------------------------------------------------------

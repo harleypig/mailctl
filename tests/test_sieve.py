@@ -14,6 +14,7 @@ import re
 import pytest
 
 from mailctl import MailctlError
+from mailctl.cli import error_text
 from mailctl.components.managesieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
@@ -383,8 +384,10 @@ def test_a_roundcube_name_collides_without_replace(roundcube_script):
     Before the name survived parsing this raised nothing and appended a
     second rule -- the silent failure, since the first one carries ``stop``.
     """
-    with pytest.raises(MailctlError, match=r"already exists.*--replace"):
+    with pytest.raises(MailctlError, match=r"already exists") as caught:
         merge_simple(roundcube_script, "keep-boss", "INBOX.Elsewhere")
+
+    assert caught.value.code == "rule_exists"
 
 
 # ----------------------------------------------------------------------------
@@ -530,8 +533,10 @@ def test_merge_refuses_a_duplicate_name_without_replace():
     """Silently overwriting a rule the user named is a data loss too."""
     existing = merge_simple("", "shared", "INBOX.First")
 
-    with pytest.raises(MailctlError, match=r"already exists.*--replace"):
+    with pytest.raises(MailctlError, match=r"already exists") as caught:
         merge_simple(existing, "shared", "INBOX.Second")
+
+    assert caught.value.code == "rule_exists"
 
 
 # ----------------------------------------------------------------------------
@@ -683,8 +688,9 @@ def test_an_unknown_anchor_is_refused_and_the_known_names_listed(where):
     message = str(raised.value)
 
     assert "'typo'" in message
-    assert f"--{where}" in message
+    assert f"place this rule {where}" in message
     assert "one, two, three" in message
+    assert raised.value.fields["where"] == where
 
 
 # ----------------------------------------------------------------------------
@@ -696,7 +702,7 @@ def test_a_rule_cannot_be_placed_relative_to_itself(where):
     to work out its position, and the realistic cause is a user who meant
     to name a different rule.
     """
-    with pytest.raises(MailctlError, match="names the rule being added"):
+    with pytest.raises(MailctlError, match="is the rule being added"):
         merge_simple(
             three_rules(),
             "two",
@@ -1788,6 +1794,25 @@ def test_the_hint_does_not_guess_for_a_config_built_by_hand():
 
     assert "is the RFC 5804 / Dovecot default" not in hint
     assert "port 1 and TLS mode none" in hint
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("tls", "other"),
+    [("starttls", "ssl (implicit TLS)"), ("ssl", "starttls")],
+)
+def test_the_cli_names_the_flag_for_the_other_tls_mode(tls, other):
+    """#51: the provider names the mode; the CLI says how to choose it, in
+    the words it always used."""
+    config = load_config(argparse.Namespace(sieve_tls=tls))
+    error = mxroute_managesieve._advice(config).error("refused.")
+
+    assert "--sieve-tls " not in str(error)
+    assert f"The other TLS mode, {other}, is the alternative." in str(error)
+    assert f" Try --sieve-tls {other} as the alternative. Also " in (
+        error_text(error)
+    )
+    assert error_text(error).startswith("refused. MXRoute does not publish")
 
 
 # ############################################################################

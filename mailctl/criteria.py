@@ -299,12 +299,12 @@ class Criteria:
     def __post_init__(self):
         if self.match not in MATCH_MODES:
             raise MailctlError(
-                f"--match must be one of {', '.join(MATCH_MODES)}"
+                f"the match mode must be one of {', '.join(MATCH_MODES)}"
             )
 
         if self.compare not in COMPARE_OPS:
             raise MailctlError(
-                f"--compare must be one of {', '.join(COMPARE_OPS)}"
+                f"the comparison must be one of {', '.join(COMPARE_OPS)}"
             )
 
         if self.body:
@@ -354,8 +354,10 @@ class Criteria:
         if self.compare != "contains":
             raise MailctlError(
                 f"a body criterion is always a substring test, so it "
-                f"cannot be combined with --compare {self.compare}; use "
-                f"--compare contains (the default)"
+                f"cannot be combined with the {self.compare!r} comparison; "
+                f"only 'contains' (the default) can be used with it",
+                code="body_compare",
+                fields={"compare": self.compare},
             )
 
     # ------------------------------------------------------------------------
@@ -379,11 +381,7 @@ class Criteria:
         what someone meant to type.
         """
         if not self:
-            raise MailctlError(
-                "no criteria given -- use --from/--to/--cc/--subject/"
-                "--list-id/--header/--body, or --since/--before/"
-                "--older-than/--unread/--flagged"
-            )
+            raise MailctlError("no criteria given", code="no_criteria")
 
     # ------------------------------------------------------------------------
     def check_deliverable(self) -> None:

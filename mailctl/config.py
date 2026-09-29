@@ -105,13 +105,13 @@ DERIVED = "derived"
 PROMPT = "prompt"
 
 # Every way of supplying a password, in one message, because a user who
-# sees this has just found out that none of them is in place.
-NO_PASSWORD_MESSAGE = (
-    "no password available -- pass --password-file, --password-cmd, or "
-    "--password, set MAILCTL_PASSWORD_FILE, MAILCTL_PASSWORD_CMD, or "
-    "MAILCTL_PASSWORD, or put password_file / password_cmd in the config "
-    "file"
+# sees this has just found out that none of them is in place. A front-end
+# adds its own ways (the CLI's flags) ahead of these.
+NO_PASSWORD_SETTINGS = (
+    "set MAILCTL_PASSWORD_FILE, MAILCTL_PASSWORD_CMD, or MAILCTL_PASSWORD, "
+    "or put password_file / password_cmd in the config file"
 )
+NO_PASSWORD_MESSAGE = f"no password available -- {NO_PASSWORD_SETTINGS}"
 
 # What password_state() reports for each kind of source. A literal from a
 # flag and one from the environment are the same kind of value and are
@@ -487,10 +487,10 @@ class Config:
             self._password_origin = Source(PROMPT)
 
         else:
-            raise MailctlError(NO_PASSWORD_MESSAGE)
+            raise _no_password()
 
         if not self._password:
-            raise MailctlError(NO_PASSWORD_MESSAGE)
+            raise _no_password()
 
         return self._password
 
@@ -523,12 +523,12 @@ class Config:
         if not missing:
             return
 
-        hints = ", ".join(f"--{name.replace('_', '-')}" for name in missing)
-
         raise MailctlError(
             f"missing required setting(s): {', '.join(missing)}. "
-            f"Set {hints}, the matching MAILCTL_* variable, or add it to "
-            f"{config_path()}"
+            f"Set the matching MAILCTL_* variable, or add it to "
+            f"{config_path()}",
+            code="missing_settings",
+            fields={"settings": tuple(missing), "config": str(config_path())},
         )
 
 
@@ -1116,3 +1116,13 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
 def _flag_name(dest: str) -> str:
     """Spell an argparse ``dest`` the way the user typed it."""
     return f"--{dest.replace('_', '-')}"
+
+
+# ----------------------------------------------------------------------------
+def _no_password() -> MailctlError:
+    """The refusal when no password source is in place."""
+    return MailctlError(
+        NO_PASSWORD_MESSAGE,
+        code="no_password",
+        fields={"settings": NO_PASSWORD_SETTINGS},
+    )

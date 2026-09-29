@@ -329,22 +329,28 @@ def plan_folder(
 
 
 # ----------------------------------------------------------------------------
-def check_folder(plan: FolderPlan) -> None:
+def check_folder(session: Session, plan: FolderPlan) -> None:
     """Refuse a folder that was asked to be created and cannot be."""
     if plan.status != FOLDER_UNCREATABLE:
         return
 
+    words = session.wording
+
     if plan.mailbox_disabled_by is not None:
-        raise MailctlError(
-            f"the Sieve 'mailbox' extension is disabled by mailctl "
+        reason = (
+            f"{words.delivery_create} is disabled by mailctl "
             f"(disabled_extensions, from "
-            f"{plan.mailbox_disabled_by.describe()}) and --no-imap was "
-            f"given, so {plan.folder!r} cannot be created"
+            f"{plan.mailbox_disabled_by.describe()})"
         )
 
+    else:
+        reason = f"the server does not advertise {words.delivery_create}"
+
     raise MailctlError(
-        f"the server does not advertise the Sieve 'mailbox' extension "
-        f"and --no-imap was given, so {plan.folder!r} cannot be created"
+        f"{reason}, and without the {words.mail_service} connection "
+        f"{plan.folder!r} cannot be created",
+        code="needs_mail",
+        fields={"reason": reason, "folder": plan.folder},
     )
 
 

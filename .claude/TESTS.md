@@ -107,6 +107,10 @@ where every write path is proved first.
      module prints, prompts, or exits, and neither the session nor any
      utility imports a front-end or reads the terminal or the environment.
      `components/`, `providers/`, and `utilities/` are walked, not listed.
+     No string a core module builds names a CLI flag (f-strings included;
+     each allowed exception carries its reason), and every error code the
+     core raises has a rendering in `cli.ERROR_TEXT`, and every rendering
+     a raiser ([#51][i51]).
    - The **layer-purity guard** (`test_layer_purity.py`) — the four layers
      of [ADR 0007][adr7] over the components of [ADR 0006][adr6], held line
      by line:
@@ -328,6 +332,7 @@ scripts/live-readonly.sh list rules    # run only the named checks
 pass: `make testlive TESTARGS='-k sieve'`.
 
 [i5]: https://github.com/harleypig/mailctl/issues/5
+[i51]: https://github.com/harleypig/mailctl/issues/51
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md

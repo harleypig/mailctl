@@ -42,10 +42,7 @@ DEFAULT_MAX_MESSAGES = 500
 def require_mail_action(folder: FolderPlan, spec: ActionSpec) -> None:
     """Refuse an existing-mail pass that would do nothing to a message."""
     if not folder.folder and not spec.discard and not spec.flags:
-        raise MailctlError(
-            "nothing to do -- use --fileinto, --discard, --mark-read, "
-            "or --flag"
-        )
+        raise MailctlError("nothing to do", code="no_mail_action")
 
 
 # ----------------------------------------------------------------------------
@@ -156,17 +153,22 @@ def check_message_cap(plan: MailActionPlan, max_messages: int) -> None:
     if plan.count <= max_messages:
         return
 
+    why = (
+        f"NO existing message was touched -- a partial batch is never "
+        f"processed, because handling the first {max_messages} and "
+        f"reporting success would read as having handled them all."
+    )
     raise MailctlError(
-        f"{plan.count} message(s) match but --max-messages is "
-        f"{max_messages}. NO existing message was touched -- a "
-        f"partial batch is never processed, because handling the first "
-        f"{max_messages} and reporting success would read as "
-        f"having handled them all. Re-run with --max-messages "
-        f"{plan.count} (or higher) to process every match. Note that "
-        f"--yes does NOT lift this cap: it skips the confirmation "
-        f"prompt, whereas the cap is a ceiling you set deliberately. "
-        f"Any Sieve rule in this command was already uploaded and "
-        f"applies to new mail regardless."
+        f"{plan.count} message(s) match but the ceiling is {max_messages}. "
+        f"{why} A ceiling of {plan.count} (or higher) processes every "
+        f"match; confirming does not lift it, since the ceiling is set "
+        f"deliberately.",
+        code="max_messages",
+        fields={
+            "count": plan.count,
+            "limit": max_messages,
+            "why": why,
+        },
     )
 
 

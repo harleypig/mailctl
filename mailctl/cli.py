@@ -46,6 +46,7 @@ from .utilities.messages import (
     SortOrder,
     decode_header_value,
 )
+from .utilities.reports import Wording
 from .utilities.rules import (
     PLACE_AFTER,
     PLACE_BEFORE,
@@ -71,9 +72,10 @@ DRIFT_SERIOUS_EXIT = 4
 DRIFT_VERSION = 1
 PREVIEW_LIMIT = 20
 
+# Formatted with the provider's Wording, which names the rule language.
 ACTIVATE_HELP = (
-    "make the script the active one, the one Sieve runs. Without it, a "
-    "--script other than the active one is stored but left inactive"
+    "make the script the active one, the one {rule_language} runs. Without "
+    "it, a --script other than the active one is stored but left inactive"
 )
 
 # --folder has no argparse default: one there would outrank
@@ -687,7 +689,8 @@ def settle_folder(sessions, plan: utilities.folders.FolderPlan, args) -> None:
     been shown and decided on -- so a dry run, an abort, or a rejected
     plan leaves no stray folder behind.
     """
-    utilities.folders.check_folder(plan)
+    utilities.folders.check_folder(sessions, plan)
+    words = sessions.wording
 
     if plan.status == utilities.folders.FOLDER_MISSING:
         warn(
@@ -697,8 +700,8 @@ def settle_folder(sessions, plan: utilities.folders.FolderPlan, args) -> None:
 
     elif plan.status == utilities.folders.FOLDER_SIEVE_CREATES:
         print(
-            f"Folder {plan.folder!r} will be created by Sieve "
-            f"(fileinto :create)"
+            f"Folder {plan.folder!r} will be created by "
+            f"{words.rule_language} ({words.create_action})"
         )
 
         if plan.subscribe:
@@ -715,10 +718,10 @@ def settle_folder(sessions, plan: utilities.folders.FolderPlan, args) -> None:
             # inventing a fact about the server, which is the failure
             # CONVENTIONS.md 'Confidence' exists to prevent.
             print(
-                "  Nothing promises Sieve will subscribe to a folder it "
-                "creates, so it may not appear in webmail until you "
-                f"subscribe to it: once the first message has created it, "
-                f"run 'mailctl subscribe {plan.folder}'."
+                f"  Nothing promises {words.rule_language} will subscribe to "
+                "a folder it creates, so it may not appear in webmail until "
+                "you subscribe to it: once the first message has created "
+                f"it, run 'mailctl subscribe {plan.folder}'."
             )
 
     elif plan.status == utilities.folders.FOLDER_IMAP_CREATE:
@@ -726,17 +729,18 @@ def settle_folder(sessions, plan: utilities.folders.FolderPlan, args) -> None:
 
         if plan.mailbox_disabled_by is not None:
             print(
-                "  The rule says plain 'fileinto', not 'fileinto :create': "
-                "the Sieve 'mailbox' extension is disabled by mailctl "
-                f"({plan.mailbox_disabled_by.describe()})."
+                f"  The rule says plain '{words.file_action}', not "
+                f"'{words.create_action}': {words.delivery_create} is "
+                f"disabled by mailctl ({plan.mailbox_disabled_by.describe()})."
             )
 
     elif plan.status == utilities.folders.FOLDER_BOTH_CREATE:
         announce_folder_creation(plan, args.dry_run)
 
         print(
-            "  The rule also says 'fileinto :create', so Sieve recreates "
-            "the folder if it is ever deleted."
+            f"  The rule also says '{words.create_action}', so "
+            f"{words.rule_language} recreates the folder if it is ever "
+            f"deleted."
         )
 
 
@@ -829,12 +833,13 @@ def print_script_diff(report: DisplayDiff) -> None:
 
 
 # ----------------------------------------------------------------------------
-def warn_missing_extensions(missing: list[str]) -> None:
+def warn_missing_extensions(missing: list[str], words: Wording) -> None:
     """Warn about extensions the rule needs but the server does not list."""
     if missing:
         warn(
             f"the server does not advertise: {', '.join(missing)}. The "
-            f"upload will be validated with CHECKSCRIPT and may be rejected."
+            f"upload will be validated with {words.validation} and may be "
+            f"rejected."
         )
 
 
@@ -1042,7 +1047,7 @@ def cmd_list(args) -> int:
             return emit_json(args, json_output.scripts(active, others))
 
         if not active and not others:
-            print("No Sieve scripts on the server.")
+            print(f"No {sessions.wording.rule_sets} on the server.")
 
             return 0
 
@@ -1654,7 +1659,7 @@ def cmd_rename_folder(args) -> int:
         if args.json:
             return emit_json(args, json_output.folder_rename_plan(plan))
 
-        print_folder_rename(plan)
+        print_folder_rename(plan, sessions.wording)
 
         if args.dry_run:
             print(
@@ -1686,7 +1691,7 @@ def cmd_rename_folder(args) -> int:
 
 
 # ----------------------------------------------------------------------------
-def print_folder_rename(plan) -> None:
+def print_folder_rename(plan, words: Wording) -> None:
     """Show what a rename would move, subscribe, and rewrite."""
     for requested, folder in (
         (plan.requested_old, plan.old),
@@ -1700,7 +1705,8 @@ def print_folder_rename(plan) -> None:
 
     count = plan.messages
     print(
-        f"Rename IMAP folder {plan.old!r} to {plan.new!r} ({count} "
+        f"Rename {words.mail_service} folder {plan.old!r} to {plan.new!r} "
+        f"({count} "
         f"message{'s' if count != 1 else ''})"
     )
 
@@ -1734,8 +1740,9 @@ def print_folder_rename(plan) -> None:
         parents = ", ".join(repr(name) for name in plan.missing_parents)
         print(
             f"  Parent folder{'s' if count > 1 else ''} {parents} "
-            f"{'do' if count > 1 else 'does'} not exist; the IMAP server is "
-            f"expected to create {'them' if count > 1 else 'it'}."
+            f"{'do' if count > 1 else 'does'} not exist; the "
+            f"{words.mail_service} server is expected to create "
+            f"{'them' if count > 1 else 'it'}."
         )
 
     if not plan.retargets:
@@ -1792,7 +1799,12 @@ def cmd_test(args) -> int:
 
     print(f"Sources:   {', '.join(s.describe() for s in config.consulted)}")
     print(f"Provider:  {config.provider}  ({origin_of(config, 'provider')})")
-    print(f"Host:      {config.host}  ({origin_of(config, 'host')})")
+
+    # The host setting is the provider's own, so a provider that does not
+    # read it gets no row for it.
+    if "host" in engine.capabilities_for(config).settings:
+        print(f"Host:      {config.host}  ({origin_of(config, 'host')})")
+
     print(f"User:      {config.user}  ({origin_of(config, 'user')})")
     print(
         f"Password:  {state}{password_origin_suffix(config)}"
@@ -1890,7 +1902,7 @@ def print_baseline_summary(config, args) -> None:
             check = utilities.baseline.check_baseline(sessions, config)
 
     except MailctlError as exc:
-        reason = str(exc).split("\n")[0]
+        reason = error_text(exc).split("\n")[0]
 
         print(f"\nBaseline:  not checked -- {reason}")
 
@@ -2467,7 +2479,7 @@ def cmd_add(args) -> int:
 
         missing = utilities.rules.missing_extensions(sessions, spec, folder)
 
-        warn_missing_extensions(missing)
+        warn_missing_extensions(missing, sessions.wording)
 
         plan = utilities.rules.plan_rule(
             sessions, config, rule_request(args, criteria, spec), folder
@@ -3229,7 +3241,7 @@ def global_parser() -> argparse.ArgumentParser:
 
 # ----------------------------------------------------------------------------
 def connection_parser(
-    offer: engine.ProviderCapabilities,
+    offer: engine.ProviderCapabilities, words: Wording
 ) -> argparse.ArgumentParser:
     """Flags shared by every subcommand that connects to the server.
 
@@ -3311,7 +3323,7 @@ def connection_parser(
         dest="disable_extension",
         action="append",
         metavar="NAME",
-        help="never emit this Sieve extension, even if the server "
+        help=f"never emit this {words.extension}, even if the server "
         "advertises it; repeatable, and replaces "
         "MAILCTL_DISABLED_EXTENSIONS / disabled_extensions for this run; "
         "'none' disables nothing. 'mailctl test' lists the names"
@@ -3323,7 +3335,9 @@ def connection_parser(
 
 
 # ----------------------------------------------------------------------------
-def criteria_parser(dated_before: bool = True) -> argparse.ArgumentParser:
+def criteria_parser(
+    words: Wording, dated_before: bool = True
+) -> argparse.ArgumentParser:
     """The criteria flags shared by add / apply / search.
 
     ``dated_before`` False leaves out ``--before DATE``, for ``add``, whose
@@ -3394,8 +3408,9 @@ def criteria_parser(dated_before: bool = True) -> argparse.ArgumentParser:
         choices=COMPARE_OPS,
         help="comparison used for every criterion; default contains. "
         "Note that 'is' and 'matches' test the WHOLE header value, as "
-        "Sieve does -- so --compare matches --from '*@list.org' will "
-        "not match 'Name <a@list.org>'; write '*@list.org*'",
+        f"{words.rule_language} does -- so --compare matches --from "
+        "'*@list.org' will not match 'Name <a@list.org>'; write "
+        "'*@list.org*'",
     )
 
     return parser
@@ -3545,6 +3560,7 @@ def mail_safety_parser() -> argparse.ArgumentParser:
 # ----------------------------------------------------------------------------
 def build_parser(
     offer: engine.ProviderCapabilities | None = None,
+    words: Wording | None = None,
 ) -> argparse.ArgumentParser:
     """Construct the full argument parser.
 
@@ -3552,13 +3568,16 @@ def build_parser(
     (:func:`provider_offer`); what it does not declare is not offered --
     left out of help and usage, though still parsed, so that giving it
     anyway reaches the engine's refusal naming the provider rather than
-    argparse's "unrecognized arguments". None is the default provider.
+    argparse's "unrecognized arguments". ``words`` is the same provider's
+    wording, which the help is written in. None is the default provider.
     """
     offer = offer or engine.capabilities_for(Config())
+    words = words or utilities.reports.wording(Config())
+    activate_help = ACTIVATE_HELP.format(rule_language=words.rule_language)
     common = global_parser()
-    connection = connection_parser(offer)
-    criteria = criteria_parser()
-    rule_criteria = criteria_parser(dated_before=False)
+    connection = connection_parser(offer, words)
+    criteria = criteria_parser(words)
+    rule_criteria = criteria_parser(words, dated_before=False)
     sources = criteria_source_parser()
     actions = action_parser(offer)
     safety = safety_parser()
@@ -3566,7 +3585,7 @@ def build_parser(
 
     parser = argparse.ArgumentParser(
         prog="mailctl",
-        description="Manage MXRoute Sieve filters and apply them to "
+        description=f"Manage {words.host} {words.filters} and apply them to "
         "existing mail.",
     )
 
@@ -3601,13 +3620,13 @@ def build_parser(
         return subparsers.add_parser(name, **kwargs)
 
     listing = command(
-        "list", parents=[common, connection], help="list Sieve scripts"
+        "list", parents=[common, connection], help=f"list {words.rule_sets}"
     )
     listing.add_argument("--json", action="store_true", help=JSON_HELP)
     listing.set_defaults(handler=cmd_list)
 
     show = command(
-        "show", parents=[common, connection], help="print a Sieve script"
+        "show", parents=[common, connection], help=f"print a {words.rule_set}"
     )
     show.add_argument("name", nargs="?", help="script name; default active")
     show.set_defaults(handler=cmd_show)
@@ -3630,8 +3649,8 @@ def build_parser(
         "backup",
         parents=[common, connection],
         help="save the active script to a file",
-        description="Save the active Sieve script to a file, byte for byte "
-        "as the server has it -- no banner lines, nothing reformatted "
+        description=f"Save the active {words.rule_set} to a file, byte for "
+        "byte as the server has it -- no banner lines, nothing reformatted "
         "(which is what 'mailctl show' adds, and why it is not a backup). "
         "The file is written mode 0600, in a directory created 0700 if it "
         "was not there. Nothing on the server is touched. 'mailctl "
@@ -3644,8 +3663,7 @@ def build_parser(
         help="where to write it. A PATH ending in '/', or naming a "
         "directory that already exists, means 'put the default filename "
         "in here'; anything else is the exact file to write. Default: "
-        "the backup directory (--backup-dir), named "
-        "<script>-<UTC timestamp>.sieve",
+        f"the backup directory (--backup-dir), named {words.backup_file}",
     )
     backup.add_argument(
         "--dry-run",
@@ -3659,12 +3677,12 @@ def build_parser(
         "restore",
         parents=[common, connection, safety],
         help="upload a backup file over the active script, or --script",
-        description="Replace the active Sieve script -- or the one --script "
-        "names -- with a backup file, "
+        description=f"Replace the active {words.rule_set} -- or the one "
+        "--script names -- with a backup file, "
         "byte for byte. The difference between the file and what the "
         "server has now is shown first, the current script is backed up "
         "before anything is sent, the server validates the file "
-        "(CHECKSCRIPT), and you are asked to confirm. No other stored "
+        f"({words.validation}), and you are asked to confirm. No other stored "
         "script is touched. Unlike every other change mailctl makes, "
         "this REPLACES the script rather than merging into it -- any rule "
         "added since the backup was taken is removed, which the diff "
@@ -3674,7 +3692,7 @@ def build_parser(
         "file", metavar="FILE", help="a file written by 'mailctl backup'"
     )
     restore.add_argument("--script", help="script name; default active")
-    restore.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
+    restore.add_argument("--activate", action="store_true", help=activate_help)
     restore.add_argument(
         "--allow-empty",
         dest="allow_empty",
@@ -3685,7 +3703,9 @@ def build_parser(
     restore.set_defaults(handler=cmd_restore)
 
     folders = command(
-        "folders", parents=[common, connection], help="list IMAP folders"
+        "folders",
+        parents=[common, connection],
+        help=f"list {words.mail_service} folders",
     )
     folders.add_argument(
         "--counts",
@@ -3725,8 +3745,9 @@ def build_parser(
     create_folder = command(
         "create-folder",
         parents=[common, connection, safety],
-        help="create a folder over IMAP, and subscribe to it",
-        description="Create a folder over IMAP and subscribe to it, so "
+        help=f"create a folder over {words.mail_service}, and subscribe to it",
+        description=f"Create a folder over {words.mail_service} and "
+        "subscribe to it, so "
         "webmail shows it. The folder name is normalized like every other: "
         "'Lists/GitHub' and 'INBOX.Lists.GitHub' name the same folder, and "
         "a new one goes where the server says new folders belong. What "
@@ -3748,16 +3769,18 @@ def build_parser(
         "rename-folder",
         parents=[common, connection, safety],
         help="rename a folder, and repoint the rules that file into it",
-        description="Rename a folder over IMAP, together with every folder "
-        "under it, and repoint every rule in the active script that files "
-        "into any of them. IMAP's RENAME leaves subscriptions behind, so "
+        description=f"Rename a folder over {words.mail_service}, together "
+        "with every folder under it, and repoint every rule in the active "
+        f"script that files into any of them. {words.mail_service}'s "
+        "RENAME leaves subscriptions behind, so "
         "each moved folder that was subscribed is subscribed under its "
         "new name, and the old name is dropped from the list. Only the "
         "folder names in the rules change; every other byte of the script "
         "is kept. What would change is shown first and you are asked to "
-        "confirm; the new script is backed up and validated (CHECKSCRIPT) "
-        "before the folder is touched, and afterwards the account is read "
-        "back to check that everything landed. INBOX cannot be renamed, "
+        "confirm; the new script is backed up and validated "
+        f"({words.validation}) before the folder is touched, and "
+        "afterwards the account is read back to check that everything "
+        "landed. INBOX cannot be renamed, "
         "and NEW must not exist yet.",
     )
     rename_folder.add_argument("old", metavar="OLD")
@@ -3867,7 +3890,7 @@ def build_parser(
         help="show the diff; upload nothing",
     )
     add.add_argument("--json", action="store_true", help=JSON_PLAN_HELP)
-    _add_rule_flags(add, offer)
+    _add_rule_flags(add, offer, words)
     add.set_defaults(handler=cmd_add)
 
     apply_cmd = command(
@@ -4105,7 +4128,7 @@ def build_parser(
     )
     remove.add_argument("rule_name", metavar="NAME")
     remove.add_argument("--script", help="script name; default active")
-    remove.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
+    remove.add_argument("--activate", action="store_true", help=activate_help)
     remove.set_defaults(handler=cmd_remove_rule)
 
     move = command(
@@ -4114,15 +4137,15 @@ def build_parser(
         parents=[common, connection, safety],
         help="move a named rule to a new position, unchanged",
         description="Reorder one rule without restating it: only its "
-        "position changes. Sieve runs rules in order and 'stop' ends the "
-        "run, so the move is judged where the rule lands -- what would "
-        "stop it running, and what it would now stop -- before the diff "
-        "is shown. The script is backed up first and you are asked to "
-        "confirm.",
+        f"position changes. {words.rule_language} runs rules in order and "
+        "'stop' ends the run, so the move is judged where the rule lands "
+        "-- what would stop it running, and what it would now stop -- "
+        "before the diff is shown. The script is backed up first and you "
+        "are asked to confirm.",
     )
     move.add_argument("rule_name", metavar="NAME")
     move.add_argument("--script", help="script name; default active")
-    move.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
+    move.add_argument("--activate", action="store_true", help=activate_help)
 
     where = move.add_argument_group("position").add_mutually_exclusive_group(
         required=True
@@ -4162,14 +4185,13 @@ def build_parser(
             help=f"{verb} a named rule, keeping it in the script",
             description=f"Switch one rule {'on' if enable else 'off'} "
             "without removing it. A disabled rule stays in the script, "
-            "written the way Roundcube writes one -- 'if false # <its "
-            "test>' -- so the webmail shows it as disabled too. The script "
-            "is backed up first and you are asked to confirm.",
+            f"{words.disabled_form}. The script is backed up first and you "
+            "are asked to confirm.",
         )
         switch.add_argument("rule_name", metavar="NAME")
         switch.add_argument("--script", help="script name; default active")
         switch.add_argument(
-            "--activate", action="store_true", help=ACTIVATE_HELP
+            "--activate", action="store_true", help=activate_help
         )
         switch.set_defaults(handler=cmd_switch_rule, enable=enable)
 
@@ -4230,7 +4252,9 @@ def build_parser(
 
 # ----------------------------------------------------------------------------
 def _add_rule_flags(
-    parser: argparse.ArgumentParser, offer: engine.ProviderCapabilities
+    parser: argparse.ArgumentParser,
+    offer: engine.ProviderCapabilities,
+    words: Wording,
 ) -> None:
     """Attach add's rule-authoring flags.
 
@@ -4252,7 +4276,10 @@ def _add_rule_flags(
     group.add_argument(
         "--activate",
         action="store_true",
-        help=offered("rule_sets", ACTIVATE_HELP),
+        help=offered(
+            "rule_sets",
+            ACTIVATE_HELP.format(rule_language=words.rule_language),
+        ),
     )
     group.add_argument(
         "--replace",
@@ -4263,8 +4290,8 @@ def _add_rule_flags(
         "--no-imap",
         dest="no_imap",
         action="store_true",
-        help="skip IMAP entirely: the target folder is not checked, and "
-        "the folder delimiter is guessed",
+        help=f"skip {words.mail_service} entirely: the target folder is not "
+        f"checked, and the folder delimiter is guessed",
     )
     group.add_argument(
         "--folder",
@@ -4324,8 +4351,9 @@ def _add_rule_flags(
 # ----------------------------------------------------------------------------
 def provider_offer(
     argv: list[str] | None,
-) -> engine.ProviderCapabilities | None:
-    """The selected provider's capabilities, read ahead of the real parse.
+) -> tuple[engine.ProviderCapabilities, Wording] | None:
+    """The selected provider's capabilities and wording, read ahead of the
+    real parse.
 
     The subcommand parsers are built from what the provider declares, so
     the provider has to be known first: a first pass reads only
@@ -4343,8 +4371,12 @@ def provider_offer(
 
     try:
         known, _rest = first.parse_known_args(argv)
+        config = load_config(known)
 
-        return engine.capabilities_for(load_config(known))
+        return (
+            engine.capabilities_for(config),
+            utilities.reports.wording(config),
+        )
 
     except (argparse.ArgumentError, SystemExit, MailctlError):
         return None
@@ -4353,7 +4385,7 @@ def provider_offer(
 # ----------------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, dispatch, and turn failures into diagnostics."""
-    parser = build_parser(provider_offer(argv))
+    parser = build_parser(*(provider_offer(argv) or ()))
     args = parser.parse_args(argv)
 
     # The same parse as 'mailctl [COMMAND] --help', on the parser built for
@@ -4403,7 +4435,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.debug:
             traceback.print_exc()
 
-        report_failure(args, str(exc))
+        report_failure(args, error_text(exc), exc.code)
 
         return 1
 
@@ -4430,11 +4462,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # ----------------------------------------------------------------------------
-def report_failure(args, message: str) -> None:
+def report_failure(args, message: str, code: str | None = None) -> None:
     """Say on stderr why the run failed: as one line of JSON under --json,
     the last line stderr holds."""
     if getattr(args, "json", False):
-        document = json_output.error(message)
+        document = json_output.error(message, code)
 
         sys.stderr.write(json_output.dumps(document, indent=None))
 
@@ -4445,3 +4477,126 @@ def report_failure(args, message: str) -> None:
     message = message.replace("\n", "\n  ")
 
     print(f"mailctl: {message}", file=sys.stderr)
+
+
+# ############################################################################
+# Errors -- the core's condition, with the flags that act on it
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def flag_for(setting: str) -> str:
+    """The flag that sets ``setting``: its name, spelt as a flag."""
+    return f"--{setting.replace('_', '-')}"
+
+
+# The flag that sets each of 'senders' settings; --min is not its name.
+SENDERS_FLAGS = {
+    "top": "--top",
+    "minimum": "--min",
+    "max_messages": "--max-messages",
+}
+
+
+# What the CLI says for each coded error (MailctlError.code). The core's
+# message states the condition in words any front-end can show; each entry
+# here adds this front-end's flags, from the message and the error's fields.
+# Most append to the message. The rest rebuild it around a flag the core
+# could not name, keeping the wording the CLI has always printed.
+ERROR_TEXT = {
+    "no_criteria": lambda message, _: (
+        f"{message} -- use --from/--to/--cc/--subject/--list-id/--header/"
+        f"--body, or --since/--before/--older-than/--unread/--flagged"
+    ),
+    "body_compare": lambda _, fields: (
+        f"a body criterion is always a substring test, so it cannot be "
+        f"combined with --compare {fields['compare']}; use --compare "
+        f"contains (the default)"
+    ),
+    "no_action": lambda message, _: (
+        f"{message} -- use --fileinto, --discard, --mark-read, --flag, or "
+        f"--keep"
+    ),
+    "no_mail_action": lambda message, _: (
+        f"{message} -- use --fileinto, --discard, --mark-read, or --flag"
+    ),
+    "no_marks": lambda message, _: (
+        f"{message} -- use --read, --unread, --flag, --unflag, --keyword, "
+        f"or --no-keyword"
+    ),
+    "no_password": lambda _, fields: (
+        f"no password available -- pass --password-file, --password-cmd, "
+        f"or --password, {fields['settings']}"
+    ),
+    "missing_settings": lambda _, fields: (
+        f"missing required setting(s): {', '.join(fields['settings'])}. "
+        f"Set {', '.join(flag_for(name) for name in fields['settings'])}, "
+        f"the matching MAILCTL_* variable, or add it to {fields['config']}"
+    ),
+    "check_settings": lambda _, fields: (
+        f"{fields['reason']} Check "
+        f"{' and '.join(flag_for(name) for name in fields['settings'])}."
+    ),
+    "try_setting": lambda _, fields: (
+        f"{fields['before']} Try {flag_for(fields['setting'])} "
+        f"{fields['value']}{fields['note']} as the alternative. "
+        f"{fields['after']}"
+    ),
+    "needs_mail": lambda _, fields: (
+        f"{fields['reason']} and --no-imap was given, so "
+        f"{fields['folder']!r} cannot be created"
+    ),
+    "max_messages": lambda _, fields: (
+        f"{fields['count']} message(s) match but --max-messages is "
+        f"{fields['limit']}. {fields['why']} Re-run with --max-messages "
+        f"{fields['count']} (or higher) to process every match. Note that "
+        f"--yes does NOT lift this cap: it skips the confirmation prompt, "
+        f"whereas the cap is a ceiling you set deliberately."
+    ),
+    "empty_backup": lambda message, _: (
+        f"{message} Pass --allow-empty if that is what you want."
+    ),
+    "restore_needs_script": lambda _, __: (
+        "no active script on the server to restore over. Name the script "
+        "to restore with --script NAME; with nothing active it is "
+        "activated. 'mailctl list' shows what the account has."
+    ),
+    "no_host": lambda message, _: f"{message}; set --host or MAILCTL_HOST",
+    "rule_exists": lambda message, _: (
+        f"{message} Use --replace to overwrite it, or --name to pick another."
+    ),
+    "self_anchor": lambda _, fields: (
+        f"--{fields['where']} {fields['anchor']!r} names the rule being "
+        f"{fields['verb']}, which has no position to be relative to. Name "
+        f"another rule, or use --first / --last."
+    ),
+    "unknown_anchor": lambda _, fields: (
+        f"no rule named {fields['anchor']!r} in the active script, so "
+        f"--{fields['where']} has nothing to place this rule against. "
+        f"Known rules: {fields['known']}"
+    ),
+    "at_least_one": lambda _, fields: (
+        f"{SENDERS_FLAGS[fields['setting']]} must be at least 1, not "
+        f"{fields['value']}"
+    ),
+    "senders_ceiling": lambda _, fields: (
+        f"the search found {fields['count']} message(s) in "
+        f"{fields['folder']!r} but --max-messages is {fields['limit']}, so "
+        f"no header was read. {fields['why']} Narrow it (--since, "
+        f"--older-than, --unread, --from, ...) or re-run with "
+        f"--max-messages {fields['count']} or higher."
+    ),
+    "raw_non_ascii": lambda _, fields: (
+        f"{fields['refused']}; use the criteria flags (e.g. --subject) for "
+        f"it, which search in {fields['charset']}."
+    ),
+}
+
+
+# ----------------------------------------------------------------------------
+def error_text(exc: MailctlError) -> str:
+    """What the CLI says for ``exc``: its message, with this front-end's
+    flags added where the error's code has any."""
+    render = ERROR_TEXT.get(exc.code or "")
+
+    return str(exc) if render is None else render(str(exc), exc.fields)

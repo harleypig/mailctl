@@ -77,13 +77,13 @@ def test_a_term_refuses_an_empty_header():
 
 # ----------------------------------------------------------------------------
 def test_an_unknown_match_mode_is_refused():
-    with pytest.raises(MailctlError, match=r"--match must be one of"):
+    with pytest.raises(MailctlError, match=r"the match mode must be one of"):
         Criteria(match="either")
 
 
 # ----------------------------------------------------------------------------
 def test_an_unknown_compare_op_is_refused():
-    with pytest.raises(MailctlError, match=r"--compare must be one of"):
+    with pytest.raises(MailctlError, match=r"the comparison must be one of"):
         Criteria(compare="regex")
 
 
@@ -835,11 +835,14 @@ def test_a_zero_age_is_refused_even_when_built_directly():
 def test_a_body_test_is_refused_under_a_whole_value_compare(compare):
     """IMAP can only say a body contains a string, so any other body
     comparison would make the rule and the pass disagree."""
-    with pytest.raises(MailctlError, match=f"--compare {compare}"):
+    with pytest.raises(MailctlError, match=f"the '{compare}' comparison"):
         Criteria(compare=compare).add_body("x")
 
-    with pytest.raises(MailctlError, match=f"--compare {compare}"):
+    with pytest.raises(MailctlError) as caught:
         Criteria(compare=compare, body=["x"])
+
+    assert caught.value.code == "body_compare"
+    assert caught.value.fields == {"compare": compare}
 
 
 # ----------------------------------------------------------------------------
@@ -1085,7 +1088,9 @@ def test_new_criteria_are_written_only_when_given():
         pytest.param({"body": [""]}, "non-empty string", id="b2"),
         pytest.param({"body": [3]}, "non-empty string", id="b3"),
         pytest.param(
-            {"body": ["x"], "compare": "is"}, "--compare is", id="b-is"
+            {"body": ["x"], "compare": "is"},
+            "the 'is' comparison",
+            id="b-is",
         ),
         pytest.param({"since": "1/9/2026"}, "YYYY-MM-DD", id="since-form"),
         pytest.param({"since": 20260901}, "YYYY-MM-DD string", id="since-int"),

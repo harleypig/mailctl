@@ -87,7 +87,12 @@ def imap_session(
 
     except ImapConnectionError as exc:
         raise MailctlError(
-            f"{exc} Check --imap-host and --imap-port."
+            f"{exc} Check the IMAP host and port settings.",
+            code="check_settings",
+            fields={
+                "reason": str(exc),
+                "settings": ("imap_host", "imap_port"),
+            },
         ) from exc
 
     try:

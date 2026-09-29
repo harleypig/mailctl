@@ -17,7 +17,9 @@ without a server:
 ``cli``          argument parsing and the subcommand implementations
 """
 
+from collections.abc import Mapping
 from importlib.metadata import PackageNotFoundError, version
+from types import MappingProxyType
 
 __all__ = ["MailctlError", "__version__"]
 
@@ -44,4 +46,26 @@ class MailctlError(Exception):
     this (or a subclass) with a message written for a human. ``cli.main``
     turns it into a one-line diagnostic and a non-zero exit; the raw
     traceback is only shown under ``--debug``.
+
+    The message states the condition in words every front-end can show,
+    so it never names one front-end's controls (a flag, a button). Where a
+    front-end has advice of its own to add -- which of its flags acts on
+    the condition -- ``code`` names the condition and ``fields`` carries
+    the values that advice needs; each code's fields are fixed where it is
+    raised. An uncoded error is shown as its message alone.
     """
+
+    code: str | None = None
+    fields: Mapping[str, object] = MappingProxyType({})
+
+    # ------------------------------------------------------------------------
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        code: str | None = None,
+        fields: Mapping[str, object] | None = None,
+    ):
+        super().__init__(message)
+        self.code = code
+        self.fields = MappingProxyType(dict(fields or {}))

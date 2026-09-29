@@ -132,8 +132,8 @@ def read_backup_file(
     if not text.strip() and not allow_empty:
         raise MailctlError(
             f"backup {source} is empty; restoring it would remove every "
-            f"rule from the script. Pass --allow-empty if that is what you "
-            f"want."
+            f"rule from the script.",
+            code="empty_backup",
         )
 
     return BackupFile(source, text)
@@ -164,8 +164,8 @@ def plan_restore(
     if script is None and active is None:
         raise MailctlError(
             "no active script on the server to restore over. Name the "
-            "script to restore with --script NAME; with nothing active it "
-            "is activated. 'mailctl list' shows what the account has."
+            "script to restore; with nothing active it is activated.",
+            code="restore_needs_script",
         )
 
     return RestorePlan(

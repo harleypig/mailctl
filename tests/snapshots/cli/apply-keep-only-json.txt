@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-{"version": 1, "error": {"message": "nothing to do -- use --fileinto, --discard, --mark-read, or --flag"}}
+{"version": 1, "error": {"message": "nothing to do -- use --fileinto, --discard, --mark-read, or --flag", "code": "no_mail_action"}}
 
 --- sieve calls
 --- imap calls

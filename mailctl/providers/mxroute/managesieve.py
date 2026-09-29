@@ -10,6 +10,7 @@ or checks a script.
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from ... import MailctlError
 from ...components.managesieve.client import (
@@ -49,7 +50,7 @@ def sieve_session(
         session.open()
 
     except SieveConnectionError as exc:
-        raise MailctlError(f"{exc} {_connection_hint(config)}") from exc
+        raise _advice(config).error(str(exc)) from exc
 
     except SieveAuthenticationError as exc:
         raise MailctlError(
@@ -70,8 +71,55 @@ DEFAULT_PORT_AND_TLS = f"{DEFAULT_SIEVE_PORT} + {DEFAULT_SIEVE_TLS}"
 
 
 # ----------------------------------------------------------------------------
+@dataclass(frozen=True)
+class _Hint:
+    """The advice for a failed connection, around the TLS mode to try.
+
+    Kept in parts so a front-end can put its own way of choosing the mode
+    between them; :meth:`text` is the advice with the mode named plainly.
+    """
+
+    before: str
+    mode: str
+    after: str
+
+    # ------------------------------------------------------------------------
+    @property
+    def note(self) -> str:
+        return " (implicit TLS)" if self.mode == "ssl" else ""
+
+    # ------------------------------------------------------------------------
+    def text(self) -> str:
+        return (
+            f"{self.before} The other TLS mode, {self.mode}{self.note}, is "
+            f"the alternative. {self.after}"
+        )
+
+    # ------------------------------------------------------------------------
+    def error(self, reason: str) -> MailctlError:
+        """The connection failure ``reason``, with this advice."""
+        return MailctlError(
+            f"{reason} {self.text()}",
+            code="try_setting",
+            fields={
+                "before": f"{reason} {self.before}",
+                "setting": "sieve_tls",
+                "value": self.mode,
+                "note": self.note,
+                "after": self.after,
+            },
+        )
+
+
+# ----------------------------------------------------------------------------
 def _connection_hint(config: Config) -> str:
-    """Return a hint tuned to the port and TLS mode that failed.
+    """Return a hint tuned to the port and TLS mode that failed."""
+    return _advice(config).text()
+
+
+# ----------------------------------------------------------------------------
+def _advice(config: Config) -> _Hint:
+    """The hint for a failed connection, tuned to its port and TLS mode.
 
     MXRoute documents neither a ManageSieve port nor whether it speaks
     STARTTLS or implicit TLS. 4190 is the IANA-registered port (RFC 5804)
@@ -106,21 +154,12 @@ def _connection_hint(config: Config) -> str:
             f"{DEFAULT_PORT_AND_TLS}."
         )
 
-    hints = [
-        f"MXRoute does not publish its ManageSieve port or TLS mode; {used}"
-    ]
-
-    if config.sieve_tls == "starttls":
-        hints.append("Try --sieve-tls ssl (implicit TLS) as the alternative.")
-
-    else:
-        hints.append("Try --sieve-tls starttls as the alternative.")
-
-    hints.append(
-        "Also confirm the hostname (the panel's Email Clients page shows it; "
-        "it is per-account, the same as your primary MX record), that "
-        f"outbound {config.sieve_port} is not blocked, and if all else "
-        f"fails ask MXRoute support which port and TLS mode to use."
+    return _Hint(
+        before=f"MXRoute does not publish its ManageSieve port or TLS "
+        f"mode; {used}",
+        mode="ssl" if config.sieve_tls == "starttls" else "starttls",
+        after="Also confirm the hostname (the panel's Email Clients page "
+        "shows it; it is per-account, the same as your primary MX record), "
+        f"that outbound {config.sieve_port} is not blocked, and if all "
+        f"else fails ask MXRoute support which port and TLS mode to use.",
     )
-
-    return " ".join(hints)
