@@ -1012,6 +1012,22 @@ def test_mxroute_declares_no_specifics_so_any_is_refused():
         utilities.rules.check_rule(Config(), request)
 
 
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "actions",
+    [ActionSpec(), ActionSpec(stop=True)],
+    ids=["nothing", "stop-only"],
+)
+def test_a_rule_with_no_action_is_refused_before_connecting(actions):
+    """#137: refused by the utilities, so a front-end never logs in for it."""
+    criteria = Criteria()
+    criteria.add("From", GITHUB)
+    request = RuleRequest(criteria=criteria, actions=actions)
+
+    with pytest.raises(MailctlError, match="no action requested"):
+        utilities.rules.check_rule(Config(), request)
+
+
 # ############################################################################
 # mxroute hands back the neutral model, never its components' records
 # ############################################################################

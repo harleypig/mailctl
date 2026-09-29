@@ -7,5 +7,3 @@ mailctl: nothing to do -- use --fileinto, --discard, --mark-read, or --flag
 
 --- sieve calls
 --- imap calls
-('login', 'user@example.com')
-('logout',)

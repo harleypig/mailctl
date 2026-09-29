@@ -1,6 +1,9 @@
 """The CLI's own presentation of failures, apart from any one command."""
 
+import pytest
+
 from mailctl import MailctlError, cli
+from mailctl.components.managesieve import client as sieve_client
 from mailctl.config import Config
 
 
@@ -56,3 +59,40 @@ def test_an_unusable_password_is_reported_and_handed_back():
 
     assert state == "not usable"
     assert isinstance(failure, MailctlError)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        pytest.param(
+            ["messages", "--from", "a@b.c", "--search", "ALL"],
+            id="messages-criteria-and-search",
+        ),
+        pytest.param(["apply", "--from", "a@b.c"], id="apply-no-action"),
+        pytest.param(["add", "--from", "a@b.c"], id="add-no-action"),
+    ],
+)
+def test_bad_input_fails_before_any_login(argv, fake_imap, monkeypatch):
+    """#137: the CLI connects each half on first use, so input refused
+    before a server is needed never logs in or asks for the password."""
+    import getpass
+
+    def no_prompt(_prompt):
+        pytest.fail("the password prompt was reached")
+
+    monkeypatch.setattr(getpass, "getpass", no_prompt)
+
+    sieve_logins = []
+    monkeypatch.setattr(
+        sieve_client.SieveSession,
+        "open",
+        lambda *args, **kwargs: sieve_logins.append(args),
+    )
+    monkeypatch.setenv("MAILCTL_HOST", "mail.example.com")
+    monkeypatch.setenv("MAILCTL_USER", "user@example.com")
+
+    assert cli.main(argv) == 1
+
+    assert fake_imap.calls == []
+    assert sieve_logins == []

@@ -6,8 +6,4 @@ exit: 1
 mailctl: no action requested -- use --fileinto, --discard, --mark-read, --flag, or --keep
 
 --- sieve calls
-('connect',)
-('logout',)
 --- imap calls
-('login', 'user@example.com')
-('logout',)

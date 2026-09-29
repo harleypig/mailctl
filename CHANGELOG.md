@@ -4,6 +4,16 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+ENHANCEMENTS:
+
+* **A command given bad input fails before logging in** ([#137]). The CLI
+  now connects to each server the first time a command needs it, rather
+  than to every server it might need before starting, and `mailctl add`
+  refuses a rule with no action before connecting. So `mailctl messages`
+  given both criteria and `--search`, or `mailctl apply` or `mailctl add`
+  with no action, stops with its error before logging in to either server
+  or asking for the password. What each command prints is unchanged.
+
 NOTES:
 
 * **The engine is split into the session and the utilities; no behaviour
@@ -34,8 +44,7 @@ NOTES:
   reported and never sent again, because it may already have taken
   effect. Calls on one connection take turns, and fetching messages
   always selects the folder it names instead of relying on the last one
-  selected. The CLI still connects what each command needs up front, and
-  its output is byte-for-byte what it was.
+  selected. The CLI's output is byte-for-byte what it was.
 
 ## 0.8.4
 
@@ -798,3 +807,4 @@ NOTES:
 [#133]: https://github.com/harleypig/mailctl/issues/133
 [#134]: https://github.com/harleypig/mailctl/issues/134
 [#135]: https://github.com/harleypig/mailctl/issues/135
+[#137]: https://github.com/harleypig/mailctl/issues/137

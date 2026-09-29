@@ -180,21 +180,23 @@ def test_a_half_the_session_may_not_open_is_never_opened(
 
 
 # ----------------------------------------------------------------------------
-def test_eager_opens_what_was_asked_for_mail_first(
+def test_open_all_opens_what_was_asked_for_mail_first(
     fake_imap, imap_config, fake_sieve_client, monkeypatch
 ):
-    """The CLI's shape: each named half up front, IMAP before ManageSieve,
-    and closed the other way round."""
+    """Each named half up front, IMAP before ManageSieve, and closed the
+    other way round."""
     order = []
     monkeypatch.setattr(fake_imap, "logout", lambda: order.append("imap"))
     fake_sieve_client.logout = lambda: order.append("sieve")
 
-    with engine.connect(imap_config, eager=True) as live:
+    with engine.connect(imap_config) as live:
+        live.open_all()
         assert live.opened == (MAIL, RULES)
 
     assert order == ["sieve", "imap"]
 
-    with engine.connect(imap_config, rules=False, eager=True) as live:
+    with engine.connect(imap_config, rules=False) as live:
+        live.open_all()
         assert live.opened == (MAIL,)
 
 
