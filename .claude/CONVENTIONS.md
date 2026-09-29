@@ -18,6 +18,8 @@ to end. It does two things, and the second is the reason it exists:
    Writing the Sieve rule alone leaves every message already delivered exactly
    where it was.
 
+They are two commands, `add` then `apply` (*The command surface*).
+
 Distribution name and package are both `mailctl`; the console entry point is
 `mailctl = "mailctl.cli:main"`. It is **not published anywhere** — see
 [RELEASING.md](../RELEASING.md).
@@ -343,12 +345,19 @@ them.
 > There may be some parameters differences between cli, tui, gui, and web but
 > the commands should all be available in all environments.
 
-So every operation the utilities offer is a command in every front-end —
-CLI, TUI, GUI, and web. **Parameters may differ per front-end; availability
-may not.** A capability wanted for one front-end is built into the
-utilities and exposed in all of them; a feature only one front-end has is a
-gap in the others, not a design choice. The CLI is the only front-end today,
-so today this means the CLI exposes every utility operation.
+So every operation lives in the utilities and is callable by every
+front-end — CLI, TUI, GUI, and web. **Parameters may differ per front-end;
+availability may not.** A capability wanted for one front-end is built into
+the utilities and exposed in all of them; a feature only one front-end has
+is a gap in the others, not a design choice.
+
+**An interface may leave out an operation that does not fit its medium**
+(operator, 2026-09-28, [#145][i145]). "Next message" is a stateless
+utility: a TUI stepping through a folder calls it, and the one-shot CLI
+does not expose it. What is left out is left out for the medium, never
+because the work was built into one front-end. The CLI is the only
+front-end today, so today this means the CLI exposes every utility
+operation that fits a command line.
 
 **The CLI comes first, and it is the baseline.** The operator, 2026-09-28:
 
@@ -360,8 +369,8 @@ so today this means the CLI exposes every utility operation.
 So the order is **CLI, then TUI, then GUI and web**. The CLI is the
 automation surface, and it is built first; a later front-end is built on
 what the CLI already exposes, never backfilled into it. Read with the
-paragraph above, this is why the CLI exposing every utility operation is
-the standing state rather than a stopgap.
+paragraph above, this is why the CLI exposing every utility operation that
+fits it is the standing state rather than a stopgap.
 
 **Per-folder retention is the shape of automation this means**
 ([ICEBOX.md][icebox-retention] › *Per-folder retention — expire mail after N
@@ -370,9 +379,62 @@ one-shot CLI: a scheduler (cron or a systemd timer) runs it, rather than the
 tool growing a daemon.
 
 One consequence, because automation is the CLI's job: **its output and exit
-codes are a contract a script depends on.** Change them deliberately, never
-as a side effect. The CLI snapshots (TESTS.md) are what make such a change
-visible.
+codes are a contract a script depends on** — every exit code, and every
+output that is data (*The command surface* › `--json`). Change them
+deliberately, never as a side effect. The CLI snapshots (TESTS.md) are what
+make such a change visible.
+
+## The command surface
+
+**This is the target, and most of it is not built yet.** The decisions are
+the operator's, 2026-09-28 ([#145][i145]); the implementing issues are
+[#147][i147] through [#155][i155]. Until they land the CLI still has
+`messages` (with `--search` for a raw query), `from-message`, and `add`
+running the existing-mail pass after it saves the rule. Where this section
+and the CLI disagree, the CLI is what runs and this is where it is going.
+
+**Read and write are separate at every layer.** A command, a utility, and a
+transport operation each either changes the server or does not, even where
+one server command could do both. A new write that has a read twin is a
+separate operation, never a mode switch on the read. The transport's
+classification (*Providers*) already names each operation's kind;
+[#154][i154] guards that a read-only utility never calls a write.
+
+**Commands are flat, grouped in the help and the docs.** `mailctl search`,
+never a subcommand group. The grouping is presentation, not part of a
+command's name. `mailctl help [command]` prints the same as `--help`
+([#153][i153]).
+
+**`add` saves a filter; `apply` acts on mail already delivered.** `add`
+writes the rule into the active script and touches no message; `apply` is
+the only command that acts on existing mail ([#149][i149]). Both take their
+criteria as flags **or** as `--filter FILE|-` (a filter file, or `-` for
+stdin), never both, and both take `--like UID`, which pre-fills the
+criteria from a message.
+
+**The split was decided over a recorded objection** (operator, 2026-09-28):
+it puts the tool's two halves, the rule and the existing mail, in two
+commands. `apply` taking the same `--like` and `--filter` as `add` is what
+keeps the two in step.
+
+**`search` finds messages and never writes.** It replaces `messages`
+([#147][i147]):
+
+- `--like UID` pre-fills the criteria from a message, and `--build-filter
+  [--json]` prints the filter those criteria make and saves nothing
+  ([#148][i148]). `from-message` is folded into `search --like`, `add
+  --like`, and `apply --like`.
+- `--raw QUERY` is the escape hatch, a query in the host's own search
+  language. Each provider declares it, and it is offered only where
+  declared, like every other capability-gated option (*Providers*).
+
+**`view` stays read-only; `mark` is its write twin.** `mark UID` takes
+`--read`, `--unread`, `--flag`, and `--unflag`, over separate add-flag and
+remove-flag transport operations ([#150][i150]).
+
+**`--json` is offered where the output is data a script consumes**
+([#151][i151]). A report for a person, such as `test`, offers none, and its
+layout is not a contract; the contract is its exit code.
 
 ## Providers
 
@@ -1082,5 +1144,14 @@ will read it.
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i10]: https://github.com/harleypig/mailctl/issues/10
 [i106]: https://github.com/harleypig/mailctl/issues/106
+[i145]: https://github.com/harleypig/mailctl/issues/145
+[i147]: https://github.com/harleypig/mailctl/issues/147
+[i148]: https://github.com/harleypig/mailctl/issues/148
+[i149]: https://github.com/harleypig/mailctl/issues/149
+[i150]: https://github.com/harleypig/mailctl/issues/150
+[i151]: https://github.com/harleypig/mailctl/issues/151
+[i153]: https://github.com/harleypig/mailctl/issues/153
+[i154]: https://github.com/harleypig/mailctl/issues/154
+[i155]: https://github.com/harleypig/mailctl/issues/155
 [icebox-retention]: ../ICEBOX.md#per-folder-retention--expire-mail-after-n-days
 [da495]: https://github.com/harleypig/dotagents/issues/495
