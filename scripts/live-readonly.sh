@@ -42,6 +42,7 @@ readonly TESTS=(
   search-sort
   senders
   search-like
+  uidvalidity
   build-filter
   json
   view-keeps-unread
@@ -188,6 +189,35 @@ if any(later > earlier for earlier, later in zip(sizes, sizes[1:])):
     sys.exit(f"sizes are not largest first: {sizes}")
 PYTHON
 readonly SORT_CHECK
+
+# What `search --limit 1 --json` must hold for the uidvalidity check: a
+# version 1 listing whose uidvalidity is a whole number from 1 up. Prints
+# the value and the newest message's UID, which is empty for an empty
+# folder, or the first problem found and exits non-zero.
+read -r -d '' UIDVALIDITY_CHECK << 'PYTHON'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        doc = json.load(handle)
+
+except ValueError as exc:
+    sys.exit(f"not JSON: {exc}")
+
+validity = doc.get("uidvalidity")
+
+if doc.get("version") != 1 or not isinstance(doc.get("messages"), list):
+    sys.exit("not a version 1 listing")
+
+if type(validity) is not int or validity < 1:
+    sys.exit(f"uidvalidity is {validity!r}, not a whole number from 1")
+
+uids = [message.get("uid") for message in doc["messages"]]
+
+print(validity, *uids[:1])
+PYTHON
+readonly UIDVALIDITY_CHECK
 
 # What `senders --json` must hold: it parses, it is version 1, no more than
 # five rows, each with whole counts and unread no more than its total, the
@@ -777,6 +807,36 @@ t_search_like() {
   # is listed unless five newer matches arrived in between.
   message_marks | awk -v uid="$uid" '$1 == uid { f = 1 } END { exit !f }' \
     || fail "uid $uid is not listed by criteria derived from it"
+}
+
+#-----------------------------------------------------------------------------
+# Three calls (#204): the newest UID and the folder's UIDVALIDITY from one
+# listing; view takes the UID pinned to that value; and view refuses it
+# pinned to any other, as a UID from before a renumbering.
+t_uidvalidity() {
+  local found validity uid other
+
+  run_mailctl search --limit 1 --json
+  expect_ok 'search --limit 1 --json' || return 1
+
+  found=$(python3 -c "$UIDVALIDITY_CHECK" "$RAW" 2>&1) \
+    || fail "search --json: ${found:-not a listing document}" || return 1
+
+  read -r validity uid <<< "$found"
+  need "$uid" "the folder has no messages" || return 2
+
+  run_mailctl view "$uid" --uidvalidity "$validity"
+  expect_ok "view $uid --uidvalidity $validity" || return 1
+
+  other=$((validity > 1 ? validity - 1 : validity + 1))
+
+  run_mailctl view "$uid" --uidvalidity "$other"
+
+  ((RC == 1)) \
+    || fail "view $uid --uidvalidity $other exited $RC, not 1" || return 1
+
+  grep -q 'renumbered' "$ERR" \
+    || fail "view $uid --uidvalidity $other was not refused as renumbered"
 }
 
 #-----------------------------------------------------------------------------

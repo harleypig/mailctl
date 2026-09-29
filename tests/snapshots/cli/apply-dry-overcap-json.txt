@@ -37,6 +37,7 @@ exit: 0
     "over_limit": true,
     "mail": {
       "source": "INBOX",
+      "uidvalidity": 1727000000,
       "destination": "INBOX.Lists",
       "flags": [],
       "discard": false,

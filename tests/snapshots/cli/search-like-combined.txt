@@ -9,7 +9,7 @@ Message uid 2 in 'INBOX':
 
 Criteria: From contains 'noreply@github.com' AND Subject contains 'Issue'
 
-1 message(s) in 'INBOX', newest first:
+1 message(s) in 'INBOX' (UIDVALIDITY 1727000000), newest first:
      UID  Received               Size  Mark  From                          Subject
        2  2026-02-03 04:05:06    121B  N     Someone <noreply@github.com>  Issue closed
 Marks: N unread, F flagged, R replied, D deleted, @ attachment

@@ -136,7 +136,7 @@ Marks: `[built]` built, `[partial]` partly built, `[—]` not built;
 
 ## Offline and sync
 
-* MUST — **Reset folders**: stop acting on remembered message IDs once the server has renumbered the folder. [RFC 4549 §4.1][4549-4.1], [RFC 2683 §3.4.3][2683-3.4.3] `[—]`
+* MUST — **Reset folders**: stop acting on remembered message IDs once the server has renumbered the folder. [RFC 4549 §4.1][4549-4.1], [RFC 2683 §3.4.3][2683-3.4.3] `[partial]`
 * MAY — **Offline reading**: read and change mail while disconnected, and sync later. [RFC 4549][4549] `[—]` `[out]`
 * MAY — **Fast resync**: catch up on changes made elsewhere without rereading the folder. [RFC 7162][7162] `[—]` `[out]`
 

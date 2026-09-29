@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from .. import MailctlError
 from ..engine import Session
 from .rules import require_capability
+from .uids import check_uidvalidity, require_pinnable
 
 # The two system flags mark sets and clears by name, as IMAP spells them.
 SEEN = "\\Seen"
@@ -47,12 +48,15 @@ class MessageMark:
 @dataclass(frozen=True)
 class MarkPlan:
     """What marking ``uids`` in ``folder`` would change, worked out but not
-    yet done. ``messages`` follows the order the UIDs were given in."""
+    yet done. ``messages`` follows the order the UIDs were given in, and
+    ``uidvalidity`` is what they were valid under, None where the host
+    reports none."""
 
     folder: str
     add: tuple[str, ...]
     remove: tuple[str, ...]
     messages: list[MessageMark] = field(default_factory=list)
+    uidvalidity: int | None = None
 
     # ------------------------------------------------------------------------
     @property
@@ -142,6 +146,7 @@ def plan_mark(
     uids: Iterable[int],
     add: Iterable[str] = (),
     remove: Iterable[str] = (),
+    uidvalidity: int | None = None,
 ) -> MarkPlan:
     """Read the flags ``uids`` have in ``folder`` and plan what changes.
 
@@ -149,8 +154,13 @@ def plan_mark(
     folder does not hold refuses the whole plan, naming it, rather than
     marking the rest and reporting success. Refused before anything
     connects by a provider that does not declare ``mark``.
+
+    ``uidvalidity`` is what the UIDs were valid under when they were
+    listed; where the folder's is now another, the plan is refused before
+    the UIDs are read (:func:`~mailctl.utilities.uids.check_uidvalidity`).
     """
     require_capability(session, "mark")
+    require_pinnable(session, uidvalidity)
 
     add, remove = tuple(add), tuple(remove)
     wanted = _unique_uids(uids)
@@ -163,6 +173,7 @@ def plan_mark(
 
     transport = session.transport
     folder = session.dialect.normalize(folder, transport.list_folders())
+    validity = check_uidvalidity(session, folder, uidvalidity)
 
     held = {
         item.summary.uid: item.summary.flags
@@ -181,6 +192,7 @@ def plan_mark(
         add,
         remove,
         [_mark(uid, held[uid], add, remove) for uid in wanted],
+        validity,
     )
 
 
@@ -188,11 +200,17 @@ def plan_mark(
 def execute_mark(session: Session, plan: MarkPlan) -> MarkResult:
     """Carry out an approved plan: add, then remove, each one write over
     the messages that need it. A plan that changes nothing sends nothing.
+
+    The folder's UIDVALIDITY is checked again first, so UIDs renumbered
+    since the plan was made are refused before either write.
     """
     require_capability(session, "mark")
 
     gaining = [message.uid for message in plan.messages if message.add]
     losing = [message.uid for message in plan.messages if message.remove]
+
+    if (gaining or losing) and plan.uidvalidity is not None:
+        check_uidvalidity(session, plan.folder, plan.uidvalidity)
 
     if gaining:
         session.transport.add_flags(plan.folder, gaining, list(plan.add))

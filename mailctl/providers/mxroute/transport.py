@@ -254,6 +254,10 @@ class MxrouteTransport(Transport):
         return self._imap().raw_search(folder, expression)
 
     # ------------------------------------------------------------------------
+    def uidvalidity(self, folder: str) -> int | None:
+        return self._imap().uidvalidity(folder)
+
+    # ------------------------------------------------------------------------
     def fetch_headers(
         self, uids: list[int], folder: str
     ) -> list[FetchedMessage]:

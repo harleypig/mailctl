@@ -11,8 +11,8 @@ usage: mailctl mark [-h] [--verbose] [--debug] [--provider PROVIDER]
                     [--sieve-tls {starttls,ssl,none}]
                     [--backup-dir BACKUP_DIR] [--disable-extension NAME]
                     [--dry-run] [--yes] [--json] [--folder FOLDER]
-                    [--read | --unread] [--flag | --unflag] [--keyword K]
-                    [--no-keyword K]
+                    [--uidvalidity N] [--read | --unread] [--flag | --unflag]
+                    [--keyword K] [--no-keyword K]
                     UID [UID ...]
 mailctl mark: error: argument --unread: not allowed with argument --read
 

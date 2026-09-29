@@ -452,6 +452,10 @@ class MailActionPlan:
     Message-ID. ``unidentified`` is the matches with no Message-ID: there
     is nothing to find them by, so they are copied whether or not the
     destination has them.
+
+    ``uidvalidity`` is what the source's UIDs were valid under when they
+    were selected, or None where the host reports none; executing the plan
+    checks it again before anything is written.
     """
 
     source: str
@@ -462,6 +466,7 @@ class MailActionPlan:
     keep: bool = False
     held: tuple[int, ...] = ()
     unidentified: tuple[int, ...] = ()
+    uidvalidity: int | None = None
 
     # ------------------------------------------------------------------------
     @property

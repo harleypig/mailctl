@@ -1,0 +1,13 @@
+$ mailctl view 4 --uidvalidity 1726999999
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: the UIDs for 'INBOX' were valid under UIDVALIDITY 1726999999, but the folder's is now 1727000000: the server has renumbered it, so they may name other messages. None was used, and nothing was changed. 'mailctl search' lists the folder's UIDs as they are now, with the UIDVALIDITY to pass as --uidvalidity.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (4,))
+('logout',)

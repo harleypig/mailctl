@@ -1,7 +1,7 @@
 $ mailctl search --raw UNSEEN
 exit: 0
 --- stdout
-5 message(s) in 'INBOX', newest first:
+5 message(s) in 'INBOX' (UIDVALIDITY 1727000000), newest first:
      UID  Received               Size  Mark  From                          Subject
        5  2026-02-03 04:05:06    131B  N     News <news@example.com>       Weekly
        4  2026-02-03 04:05:06    591B  N     Boss <boss@example.com>       Q3 report — draft

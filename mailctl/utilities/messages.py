@@ -8,7 +8,7 @@ saved.
 import email
 import email.utils
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 
@@ -27,6 +27,12 @@ from ..providers.base import (
 )
 from .mail import header_values
 from .rules import require_capability
+from .uids import (
+    check_uidvalidity,
+    current_uidvalidity,
+    read_pinned,
+    require_pinnable,
+)
 
 # ############################################################################
 # Finding and reading messages
@@ -89,12 +95,15 @@ class MessageListing:
     ``order`` where one was asked for.
 
     ``more`` is true when there may be further matches past the limit.
+    ``uidvalidity`` is what the listed UIDs are valid under, None where
+    the host reports none.
     """
 
     folder: str
     messages: list[MessageSummary]
     more: bool = False
     order: SortOrder | None = None
+    uidvalidity: int | None = None
 
 
 @dataclass(frozen=True)
@@ -120,6 +129,8 @@ class MessageContent:
     ``body_from_html`` flags. ``source`` is the exact RFC 822 bytes the
     server holds. All of it is untrusted, attacker-controlled text: a
     front-end must neutralize it for its own medium before display.
+    ``uidvalidity`` is what ``uid`` is valid under, None where the host
+    reports none.
     """
 
     uid: int
@@ -130,6 +141,7 @@ class MessageContent:
     attachments: list[Attachment]
     flags: tuple[str, ...]
     source: bytes
+    uidvalidity: int | None = None
 
     # ------------------------------------------------------------------------
     @property
@@ -210,7 +222,9 @@ def list_messages(
             transport, folder, criteria, raw, order, limit
         )
 
-    return MessageListing(folder, messages, more, order)
+    return MessageListing(
+        folder, messages, more, order, current_uidvalidity(session, folder)
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -373,22 +387,39 @@ def _received(summary: MessageSummary) -> datetime:
 
 
 # ----------------------------------------------------------------------------
-def read_message(session: Session, folder: str, uid: int) -> MessageContent:
+def read_message(
+    session: Session, folder: str, uid: int, uidvalidity: int | None = None
+) -> MessageContent:
     """Fetch one message whole and decode it, without marking it read.
 
     The folder is selected read-only and the body fetched with
     ``BODY.PEEK[]``, so \\Seen is left exactly as it was. Nothing is
     written to disk: attachments are described, never saved.
+
+    ``uidvalidity`` is what ``uid`` was valid under when it was listed;
+    where the folder's is now another, the message is refused rather than
+    shown, since the UID may name a different one.
     """
     if uid < 1:
         raise MailctlError(f"message UIDs start at 1, not {uid}")
 
+    require_pinnable(session, uidvalidity)
+
     transport = session.transport
     folder = session.dialect.normalize(folder, transport.list_folders())
 
-    source, flags = transport.message_source(folder, uid)
+    source, flags = read_pinned(
+        session,
+        folder,
+        uidvalidity,
+        lambda: transport.message_source(folder, uid),
+    )
+    content = parse_message(source, uid=uid, folder=folder, flags=flags)
 
-    return parse_message(source, uid=uid, folder=folder, flags=flags)
+    return replace(
+        content,
+        uidvalidity=check_uidvalidity(session, folder, uidvalidity),
+    )
 
 
 # ----------------------------------------------------------------------------

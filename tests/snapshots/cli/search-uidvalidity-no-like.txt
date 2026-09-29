@@ -1,0 +1,9 @@
+$ mailctl search --uidvalidity 1727000000
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --uidvalidity needs --like UID
+
+--- sieve calls
+--- imap calls

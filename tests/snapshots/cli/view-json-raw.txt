@@ -10,7 +10,8 @@ usage: mailctl view [-h] [--verbose] [--debug] [--provider PROVIDER]
                     [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
                     [--sieve-tls {starttls,ssl,none}]
                     [--backup-dir BACKUP_DIR] [--disable-extension NAME]
-                    [--folder FOLDER] [--headers-only | --raw | --json]
+                    [--folder FOLDER] [--uidvalidity N]
+                    [--headers-only | --raw | --json]
                     uid
 mailctl view: error: argument --raw: not allowed with argument --json
 

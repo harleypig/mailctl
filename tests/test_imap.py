@@ -1379,3 +1379,69 @@ def test_the_checked_capabilities_are_the_ones_the_source_checks():
 
     assert "MOVE" in found
     assert found == imap_capabilities.CHECKED_CAPABILITIES
+
+
+# ############################################################################
+# UIDVALIDITY -- what a folder's UIDs are valid under
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_uidvalidity_is_the_value_the_folders_selection_reported(
+    imap_session, fake_imap
+):
+    """Red if the session reads another folder's value, or a stale one:
+    each folder answers with its own."""
+    fake_imap.uidvalidity = {"INBOX": 11, "INBOX.Lists": 22}
+
+    assert imap_session.uidvalidity("INBOX") == 11
+    assert imap_session.uidvalidity("INBOX.Lists") == 22
+    assert imap_session.uidvalidity("INBOX") == 11
+
+
+# ----------------------------------------------------------------------------
+def test_uidvalidity_of_the_selected_folder_costs_no_round_trip(
+    imap_session, fake_imap
+):
+    """The SELECT or EXAMINE a read already made reports it, so asking
+    after a search sends nothing more. Red if it is fetched with a
+    command of its own."""
+    imap_session.raw_search("INBOX", "ALL")
+    before = list(fake_imap.calls)
+
+    assert imap_session.uidvalidity("INBOX") == 1727000000
+    assert fake_imap.calls == before
+
+
+# ----------------------------------------------------------------------------
+def test_uidvalidity_of_another_folder_examines_it_and_keeps_it_selected(
+    imap_session, fake_imap
+):
+    """One EXAMINE, read-only, which a fetch that follows then reuses."""
+    imap_session.uidvalidity("INBOX.Lists")
+    imap_session.fetch_summaries([1], "INBOX.Lists")
+
+    assert fake_imap.names().count("select_folder") == 1
+    assert ("select_folder", "INBOX.Lists", True) in fake_imap.calls
+
+
+# ----------------------------------------------------------------------------
+def test_uidvalidity_is_none_where_the_server_reported_none(
+    imap_session, fake_imap
+):
+    fake_imap.uidvalidity["INBOX"] = None
+
+    assert imap_session.uidvalidity("INBOX") is None
+
+
+# ----------------------------------------------------------------------------
+def test_uidvalidity_is_read_afresh_after_a_reconnect(imap_session, fake_imap):
+    """A new connection has nothing selected, so the value is the
+    server's now, not the one the last connection saw."""
+    assert imap_session.uidvalidity("INBOX") == 1727000000
+
+    fake_imap.uidvalidity["INBOX"] = 1727000001
+    imap_session.close()
+    imap_session.open()
+
+    assert imap_session.uidvalidity("INBOX") == 1727000001

@@ -10,7 +10,7 @@ Message uid 3 in 'INBOX':
 
 Criteria: List-Id contains 'dev.lists.example.com'
 
-1 message(s) in 'INBOX', newest first:
+1 message(s) in 'INBOX' (UIDVALIDITY 1727000000), newest first:
      UID  Received               Size  Mark  From                          Subject
        3  2026-02-03 04:05:06    163B  N     Someone <list@lists.example…  Digest
 Marks: N unread, F flagged, R replied, D deleted, @ attachment

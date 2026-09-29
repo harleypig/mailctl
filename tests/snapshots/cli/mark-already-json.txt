@@ -7,6 +7,7 @@ exit: 0
     "command": "mark",
     "changes": false,
     "folder": "INBOX",
+    "uidvalidity": 1727000000,
     "set": [
       "\\Seen"
     ],
