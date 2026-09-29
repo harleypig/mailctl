@@ -15,6 +15,7 @@ from ..criteria import Criteria
 from ..engine import Session
 from ..providers.base import MessageSummary, Transport, decode_header_value
 from .mail import header_values
+from .rules import require_capability
 
 # ############################################################################
 # Finding and reading messages
@@ -135,23 +136,26 @@ def list_messages(
     session: Session,
     folder: str = "INBOX",
     criteria: Criteria | None = None,
-    search: str | None = None,
+    raw: str | None = None,
     limit: int | None = DEFAULT_LIST_LIMIT,
 ) -> MessageListing:
     """List the newest messages in ``folder``, read-only.
 
     Select them with ``criteria`` -- the same model a rule uses, re-checked
-    against real headers -- or with a raw IMAP ``search`` expression, never
-    both; with neither, every message is listed. ``limit`` None lists all.
-    Nothing is marked read.
+    against real headers -- or with a ``raw`` query in the host's own
+    search language, never both; with neither, every message is listed.
+    A raw query is refused, before anything connects, by a provider that
+    does not declare ``raw_query``. ``limit`` None lists all. Nothing is
+    marked read.
     """
     if criteria is not None and not criteria:
         criteria = None
 
-    if criteria is not None and search:
-        raise MailctlError(
-            "give criteria or a raw IMAP search expression, not both"
-        )
+    if raw:
+        require_capability(session, "raw_query")
+
+    if criteria is not None and raw:
+        raise MailctlError("give criteria or a raw query, not both")
 
     if limit is not None and limit < 1:
         raise MailctlError(
@@ -161,7 +165,7 @@ def list_messages(
     transport = session.transport
     folder = session.dialect.normalize(folder, transport.list_folders())
 
-    messages, more = newest_matches(transport, folder, criteria, search, limit)
+    messages, more = newest_matches(transport, folder, criteria, raw, limit)
 
     return MessageListing(folder, messages, more)
 

@@ -389,9 +389,9 @@ make such a change visible.
 **This is the target, and most of it is not built yet.** The decisions are
 the operator's, 2026-09-28 ([#145][i145]); the implementing issues are
 [#147][i147] through [#155][i155]. Until they land the CLI still has
-`messages` (with `--search` for a raw query), `from-message`, and `add`
-running the existing-mail pass after it saves the rule. Where this section
-and the CLI disagree, the CLI is what runs and this is where it is going.
+`from-message`, and `add` still runs the existing-mail pass after it saves
+the rule. Where this section and the CLI disagree, the CLI is what runs
+and this is where it is going.
 
 **Read and write are separate at every layer.** A command, a utility, and a
 transport operation each either changes the server or does not, even where
@@ -501,7 +501,7 @@ fails before any login or password prompt (decided on [#137][i137]).
   points; ADR 0006 defers them.
 - **Differences are data, never a branch.** A provider declares
   `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, its `actions`,
-  `extensions`, its namespaced `specifics` with their schema, the
+  `extensions`, `raw_query`, its namespaced `specifics` with their schema, the
   connection `settings` it reads, and the operations it `declined`. The
   utilities read those and never ask which provider they have.
 - **Refused before any network work.** `utilities.rules.check_rule`
@@ -536,7 +536,8 @@ fails before any login or password prompt (decided on [#137][i137]).
   resolves the provider, then the parsers are built from its capabilities.
   Without `ordering`, the placement flags and `move-rule` are not offered;
   without `stop`, `--no-stop`; without `rule_sets`, `add`'s `--script` and
-  `--activate`; without `extensions`, `--disable-extension`. The
+  `--activate`; without `extensions`, `--disable-extension`; without
+  `raw_query`, `search`'s `--raw`. The
   connection flags (`--host`, `--imap-*`, `--sieve-*`) are offered only
   where `ProviderCapabilities.settings` names them, with the help it
   gives — they keep their names and their `MAILCTL_*` variables, being

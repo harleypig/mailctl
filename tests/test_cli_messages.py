@@ -1,4 +1,4 @@
-"""Terminal safety for 'messages' and 'view'.
+"""Terminal safety for 'search' and 'view'.
 
 Mail is written by whoever sent it. A header or body carrying ESC can
 recolour the terminal, rewrite its title (OSC 0), plant a hyperlink whose
@@ -200,7 +200,7 @@ def assert_terminal_safe(output: str) -> None:
         pytest.param(("view", "3"), id="view-bidi"),
         pytest.param(("view", "3", "--headers-only"), id="headers-bidi"),
         pytest.param(("view", "3", "--raw"), id="raw-bidi"),
-        pytest.param(("messages",), id="messages"),
+        pytest.param(("search",), id="search"),
     ],
 )
 def test_hostile_content_never_reaches_the_terminal_raw(run, argv):
@@ -220,7 +220,7 @@ def test_view_shows_the_escapes_and_keeps_the_text(run):
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "argv", [("view", "5"), ("messages",)], ids=["view", "messages"]
+    "argv", [("view", "5"), ("search",)], ids=["view", "search"]
 )
 def test_a_raw_utf8_header_is_shown_decoded_and_still_escaped(run, argv):
     """Decoding raw UTF-8 (#97) turns bytes into a real C1 control too."""
@@ -290,7 +290,7 @@ def test_raw_on_a_terminal_is_still_escaped(run):
     [
         pytest.param(("view", "2"), id="view"),
         pytest.param(("view", "2", "--headers-only"), id="headers-only"),
-        pytest.param(("messages",), id="messages"),
+        pytest.param(("search",), id="search"),
     ],
 )
 def test_only_raw_skips_escaping_into_a_pipe(run_piped, argv):

@@ -136,7 +136,7 @@ def folders() -> str:
 
 
 # ----------------------------------------------------------------------------
-def messages() -> str:
+def search() -> str:
     read_uid = STATE.read_text() if STATE.exists() else ""
     rows = []
 
@@ -235,8 +235,8 @@ def main() -> int:
     elif command == "folders":
         out = folders()
 
-    elif command == "messages":
-        out = messages()
+    elif command == "search":
+        out = search()
 
     elif command == "view":
         out = view()

@@ -146,6 +146,8 @@ class ProviderCapabilities:
     * ``rule_sets`` -- the host stores several named rule sets, one active.
     * ``actions`` -- the neutral action names (``ActionSpec``) it can emit.
     * ``extensions`` -- it reports rule-language extensions by name.
+    * ``raw_query`` -- a message search may be given as a query in the
+      host's own search language, passed to the host unchanged.
     * ``specifics`` -- the namespaced keys a request's ``specifics`` may
       carry, each with its schema. An unknown key is refused.
     * ``settings`` -- which of ``config.CONNECTION_SETTINGS`` it reads, each
@@ -160,6 +162,7 @@ class ProviderCapabilities:
     rule_sets: bool
     actions: frozenset[str]
     extensions: bool
+    raw_query: bool
     specifics: Mapping[str, Specific] = field(default_factory=dict)
     declined: frozenset[str] = frozenset()
     settings: Mapping[str, str] = field(default_factory=dict)

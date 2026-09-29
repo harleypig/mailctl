@@ -140,8 +140,9 @@ fixture required before anything writes to one is still outstanding
      without `stop` a default rule still plans; without `ordering` the
      placement flags and `move-rule` are not offered in help and are
      refused by name if given; without `extensions` `disabled_extensions`
-     is refused; a connection flag the provider does not read is hidden and
-     refused; and `add` and `test` under a fake carry its own wording, with
+     is refused; without `raw_query` `search --raw` is not offered in help
+     and is refused by name, by the CLI and by the utility alike; a
+     connection flag the provider does not read is hidden and refused; and `add` and `test` under a fake carry its own wording, with
      nothing about Sieve or MXroute. `mxroute`'s help hides nothing but the
      always-hidden flags.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and

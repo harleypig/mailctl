@@ -34,7 +34,7 @@ readonly TESTS=(
   rules
   folders
   backup
-  messages
+  search
   view-keeps-unread
   apply
   add
@@ -218,7 +218,7 @@ pick_folder() {
 }
 
 #-----------------------------------------------------------------------------
-# Rows of the last `messages` output as "UID MARK", newest first.
+# Rows of the last `search` output as "UID MARK", newest first.
 message_marks() {
   awk '
     /^ +UID +Received/ { col = index($0, "Mark"); next }
@@ -380,11 +380,11 @@ t_backup() {
 }
 
 #-----------------------------------------------------------------------------
-t_messages() {
+t_search() {
   local rows
 
-  run_mailctl messages --limit 5
-  expect_ok 'messages --limit 5' || return 1
+  run_mailctl search --limit 5
+  expect_ok 'search --limit 5' || return 1
 
   rows=$(message_marks | wc -l)
 
@@ -395,8 +395,8 @@ t_messages() {
 t_view_keeps_unread() {
   local uid
 
-  run_mailctl messages --limit 20
-  expect_ok 'messages --limit 20' || return 1
+  run_mailctl search --limit 20
+  expect_ok 'search --limit 20' || return 1
 
   uid=$(message_marks | awk '$2 ~ /N/ { print $1; exit }')
   need "$uid" "no unread message among the newest 20" || return 2
@@ -404,8 +404,8 @@ t_view_keeps_unread() {
   run_mailctl view "$uid"
   expect_ok "view $uid" || return 1
 
-  run_mailctl messages --limit 20
-  expect_ok 'messages --limit 20' || return 1
+  run_mailctl search --limit 20
+  expect_ok 'search --limit 20' || return 1
 
   message_marks \
     | awk -v uid="$uid" '$1 == uid && $2 ~ /N/ { f = 1 } END { exit !f }' \
@@ -420,8 +420,8 @@ t_apply() {
   expect_ok folders || return 1
   folder=$(pick_folder)
 
-  run_mailctl messages --limit 1
-  expect_ok 'messages --limit 1' || return 1
+  run_mailctl search --limit 1
+  expect_ok 'search --limit 1' || return 1
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
@@ -482,8 +482,8 @@ t_from_message() {
   expect_ok folders || return 1
   folder=$(pick_folder)
 
-  run_mailctl messages --limit 1
-  expect_ok 'messages --limit 1' || return 1
+  run_mailctl search --limit 1
+  expect_ok 'search --limit 1' || return 1
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 

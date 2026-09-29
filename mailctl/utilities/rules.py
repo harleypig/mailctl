@@ -108,6 +108,7 @@ def require_capability(provider: Provider | Session, name: str) -> None:
 # What a request asks for, in words, when it needs each capability.
 CAPABILITY_CONSTRUCTS = {
     "ordering": "place a rule at a position in evaluation order",
+    "raw_query": "search with a query in its own search language",
     "rule_sets": "name or activate one of several rule sets",
     "stop": "end evaluation after a rule",
 }

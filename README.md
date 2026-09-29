@@ -54,7 +54,7 @@ optional value, put `--env-file` after any positional argument, or write
 `--env-file=PATH`.
 
 `--folder`, on the commands that read mail (`add`, `apply`, `from-message`,
-`messages`, `view`), resolves the same way: `MAILCTL_SOURCE_FOLDER`, then
+`search`, `view`), resolves the same way: `MAILCTL_SOURCE_FOLDER`, then
 `source_folder` in the config file, then `INBOX`.
 
 `--provider` names the mail host mailctl talks to, and resolves the same
@@ -176,9 +176,9 @@ mailctl folders
 
 # Find a message: the newest 20 in a folder, UID first. Takes the same
 # criteria flags as add and apply, or a raw IMAP search.
-mailctl messages
-mailctl messages --folder Lists/News --from newsletter@example.com
-mailctl messages --search 'UNSEEN SINCE 1-Sep-2026' --limit 50
+mailctl search
+mailctl search --folder Lists/News --from newsletter@example.com
+mailctl search --raw 'UNSEEN SINCE 1-Sep-2026' --limit 50
 
 # Read one by UID. It stays unread, and no attachment is saved.
 mailctl view 4127
@@ -247,13 +247,13 @@ assumptions below get settled for your account.
   the derived criteria look equally plausible whichever message produced
   them, so the headers are the only thing that catches a mistyped digit
   before mail starts moving.
-* `messages` and `view` **never mark mail read**. The folder is opened
+* `search` and `view` **never mark mail read**. The folder is opened
   read-only, and the message is fetched in the form that leaves its read
   flag alone, so either guard alone would be enough.
 * **Mail content is treated as hostile on the way to your terminal.** A
   sender controls every header, the body, and the attachment names, and
   escape sequences in them can recolour your terminal, retitle it, or plant
-  a link whose text lies about where it goes. So `messages` and `view` —
+  a link whose text lies about where it goes. So `search` and `view` —
   `--raw` on a terminal included — print every control character as a
   visible `\xNN` escape instead of sending it to the terminal, and headers
   are kept to one line so a decoded line break cannot forge another
