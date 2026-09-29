@@ -1,0 +1,31 @@
+$ mailctl restore <TMP>/restore.sieve --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "restore",
+    "changes": true,
+    "diff": {
+      "label": "sieve",
+      "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -6,9 +6,3 @@\n \tsetflag \"\\\\Flagged\";\n \tstop;\n }\n-# rule:[bin-the-noise]\n-if header :contains \"subject\" \"newsletter\"\n-{\n-\tfileinto \"INBOX.Noise\";\n-\tstop;\n-}\n",
+      "reformats": false
+    },
+    "source": "<TMP>/restore.sieve",
+    "rules_before": 2,
+    "rules_after": 1,
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

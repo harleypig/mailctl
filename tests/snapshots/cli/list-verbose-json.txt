@@ -1,0 +1,22 @@
+$ mailctl list --verbose --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "scripts": [
+    {
+      "name": "managesieve",
+      "active": true
+    }
+  ]
+}
+
+--- stderr
+[sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
+[sieve] authenticated
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls

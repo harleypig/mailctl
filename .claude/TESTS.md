@@ -88,6 +88,8 @@ where every write path is proved first.
      server call into `tests/snapshots/cli/<name>.txt`. A behaviour change
      shows up as a snapshot diff; regenerate with
      `MAILCTL_UPDATE_SNAPSHOTS=1` and read the diff before committing.
+   - **`--json`** (`test_json_output.py`) — a `Secret` refused rather than
+     serialised, failures as one JSON line, and which commands offer it.
    - **The ManageSieve wrapper** (`test_managesieve_client.py`) — the real
      `SieveClient` against a scripted socket that replays a server's bytes:
      GETSCRIPT byte-exact whatever the script ends with ([#90][i90]), the

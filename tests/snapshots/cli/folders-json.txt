@@ -1,0 +1,29 @@
+$ mailctl folders --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "delimiter": ".",
+  "prefix": null,
+  "folders": [
+    {
+      "name": "INBOX",
+      "subscribed": true
+    },
+    {
+      "name": "INBOX.Lists",
+      "subscribed": true
+    },
+    {
+      "name": "INBOX.spam",
+      "subscribed": false
+    }
+  ]
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

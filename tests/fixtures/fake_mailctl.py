@@ -22,6 +22,8 @@ faults to inject, so a test can watch a check go red:
 - ``mark-reports-change`` -- ``mark --dry-run`` says it marked something
 - ``probe-not-json``  -- ``probe --json`` prints the human report instead
 - ``probe-no-mail``   -- ``probe --json`` has no mail section
+- ``json-noise``      -- ``folders --json`` prints a line ahead of the
+  document
 """
 
 import json
@@ -313,13 +315,40 @@ def add() -> str:
 
 
 # ----------------------------------------------------------------------------
+def document(command: str) -> str:
+    """A --json document shaped like the real one for ``command``."""
+    if command == "search":
+        body = {"folder": "INBOX", "more": True, "messages": []}
+
+    elif command == "folders":
+        body = {"delimiter": ".", "prefix": None, "folders": []}
+
+    else:
+        body = {"script": "managesieve", "rules": [], "findings": []}
+
+    out = json.dumps({"version": 1, **body}, indent=2) + "\n"
+
+    if command == "folders" and "json-noise" in BREAK:
+        out = "Hierarchy delimiter: '.'\n" + out
+
+    return out
+
+
+# ----------------------------------------------------------------------------
 def main() -> int:
     with open(os.environ["STUB_LOG"], "a", encoding="utf-8") as log:
         log.write(json.dumps(ARGV) + "\n")
 
     command = ARGV[0]
 
-    if command == "list":
+    if (
+        "--json" in ARGV
+        and command in ("search", "folders", "rules")
+        and "--build-filter" not in ARGV
+    ):
+        out = document(command)
+
+    elif command == "list":
         out = "* managesieve   (active)\n"
 
         if "two-active" in BREAK:

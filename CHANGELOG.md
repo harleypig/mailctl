@@ -51,6 +51,24 @@ FEATURES:
   is printed; with `--json`, `--verbose` output goes to stderr so stdout
   stays one document.
 
+* **`--json` on the commands whose output is data, and `search --uids-only`**
+  ([#151]). `search`, `view`, `folders`, `rules`, and `list` print their
+  result as one JSON document, and every write command that changes the server
+  — `add`, `apply`, `remove-rule`, `move-rule`, `disable-rule`, `enable-rule`,
+  `create-folder`, `subscribe`, `unsubscribe`, `restore`, `mark` — prints its
+  `--dry-run` plan as one. On a write command `--json` needs `--dry-run`, and
+  is refused without it before connecting: a document on stdout leaves no room
+  for a confirmation prompt. Each document carries `"version": 1` and is built
+  from the values themselves, not the table a person reads — whole subjects,
+  raw IMAP flags, dates in ISO 8601 — and the README lists the shape each
+  command prints. Only the document goes to stdout; anything said on the way,
+  `--verbose` progress included, goes to stderr, and a failure is one line of
+  JSON, the last on stderr, with the usual non-zero exit. `search --uids-only`
+  prints the matching UIDs, one per line, and nothing else. `search --json`
+  was refused without `--build-filter` and now prints the listing;
+  `--build-filter --json` still prints the filter document. `test` offers no
+  `--json`: it is a report for a person.
+
 * **`mailctl help [COMMAND]`** ([#153]). `mailctl help` prints what
   `mailctl --help` prints, and `mailctl help add` what `mailctl add --help`
   prints, with the same exit code. It follows the provider as a command's
@@ -978,4 +996,5 @@ NOTES:
 [#49]: https://github.com/harleypig/mailctl/issues/49
 [#148]: https://github.com/harleypig/mailctl/issues/148
 [#149]: https://github.com/harleypig/mailctl/issues/149
+[#151]: https://github.com/harleypig/mailctl/issues/151
 [#168]: https://github.com/harleypig/mailctl/issues/168

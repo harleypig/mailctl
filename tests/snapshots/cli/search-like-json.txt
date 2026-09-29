@@ -1,0 +1,41 @@
+$ mailctl search --like 3 --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "folder": "INBOX",
+  "more": false,
+  "messages": [
+    {
+      "uid": 3,
+      "received": "2026-02-03T04:05:06",
+      "size": 163,
+      "flags": [],
+      "has_attachments": false,
+      "from": "Someone <list@lists.example.com>",
+      "subject": "Digest",
+      "folder": "INBOX"
+    }
+  ]
+}
+
+--- stderr
+Message uid 3 in 'INBOX':
+  Date:    Tue, 3 Feb 2026 04:05:06 +0000
+  From:    Someone <list@lists.example.com>
+  To:      user@example.com
+  Subject: Digest
+  List-Id: Some list <dev.lists.example.com>
+
+Criteria: List-Id contains 'dev.lists.example.com'
+
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (3,))
+('select_folder', 'INBOX', True)
+('search', [['HEADER', 'List-Id', 'dev.lists.example.com']])
+('fetch', (3, 2, 1))
+('logout',)

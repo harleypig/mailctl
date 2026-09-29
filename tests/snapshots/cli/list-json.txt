@@ -1,0 +1,24 @@
+$ mailctl list --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "scripts": [
+    {
+      "name": "managesieve",
+      "active": true
+    },
+    {
+      "name": "spare",
+      "active": false
+    }
+  ]
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls

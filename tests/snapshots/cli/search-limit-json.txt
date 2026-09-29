@@ -1,29 +1,29 @@
-$ mailctl search --json --from noreply@github.com
+$ mailctl search --json --limit 2
 exit: 0
 --- stdout
 {
   "version": 1,
   "folder": "INBOX",
-  "more": false,
+  "more": true,
   "messages": [
     {
-      "uid": 2,
+      "uid": 5,
       "received": "2026-02-03T04:05:06",
-      "size": 121,
+      "size": 131,
       "flags": [],
       "has_attachments": false,
-      "from": "Someone <noreply@github.com>",
-      "subject": "Issue closed",
+      "from": "News <news@example.com>",
+      "subject": "Weekly",
       "folder": "INBOX"
     },
     {
-      "uid": 1,
+      "uid": 4,
       "received": "2026-02-03T04:05:06",
-      "size": 118,
+      "size": 591,
       "flags": [],
       "has_attachments": false,
-      "from": "Someone <noreply@github.com>",
-      "subject": "PR opened",
+      "from": "Boss <boss@example.com>",
+      "subject": "Q3 report \u2014 draft",
       "folder": "INBOX"
     }
   ]
@@ -35,6 +35,6 @@ exit: 0
 --- imap calls
 ('login', 'user@example.com')
 ('select_folder', 'INBOX', True)
-('search', [['FROM', 'noreply@github.com']])
-('fetch', (3, 2, 1))
+('search', 'ALL')
+('fetch', (5, 4))
 ('logout',)

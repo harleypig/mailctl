@@ -1,0 +1,22 @@
+$ mailctl unsubscribe Lists --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "unsubscribe",
+    "changes": true,
+    "requested": "Lists",
+    "folder": "INBOX.Lists",
+    "delimiter": ".",
+    "subscribe": false,
+    "subscribed_now": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

@@ -1,0 +1,9 @@
+$ mailctl search --uids-only --build-filter --from noreply@github.com
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --uids-only prints a listing's UIDs; it cannot be combined with --json or --build-filter
+
+--- sieve calls
+--- imap calls

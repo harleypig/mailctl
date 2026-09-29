@@ -1,0 +1,38 @@
+$ mailctl view 5 --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "message": {
+    "uid": 5,
+    "folder": "INBOX",
+    "size": 131,
+    "flags": [],
+    "headers": [
+      {
+        "name": "From",
+        "value": "News <news@example.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Weekly"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/html; charset=utf-8"
+      }
+    ],
+    "body": "This week\n\nOne & two.",
+    "body_from_html": true,
+    "attachments": []
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (5,))
+('logout',)

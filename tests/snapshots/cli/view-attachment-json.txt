@@ -1,0 +1,44 @@
+$ mailctl view 6 --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "message": {
+    "uid": 6,
+    "folder": "INBOX",
+    "size": 312,
+    "flags": [],
+    "headers": [
+      {
+        "name": "From",
+        "value": "m@example.com"
+      },
+      {
+        "name": "Subject",
+        "value": "Pay \u202etoday"
+      },
+      {
+        "name": "Content-Type",
+        "value": "multipart/mixed; boundary=\"b\""
+      }
+    ],
+    "body": "see attached",
+    "body_from_html": false,
+    "attachments": [
+      {
+        "name": "invoice_\u202efdp.exe",
+        "content_type": "application/octet-stream",
+        "size": 7
+      }
+    ]
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (6,))
+('logout',)

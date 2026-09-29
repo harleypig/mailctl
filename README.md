@@ -197,6 +197,11 @@ mailctl search --like 4127 --subject Invoice --match all
 mailctl search --like 4127 --build-filter
 mailctl search --like 4127 --build-filter --json > news.json
 
+# The same listings as data for a script: one JSON document on stdout
+# (see "Output for scripts" below), or just the UIDs, one per line.
+mailctl search --from newsletter@example.com --json
+mailctl search --from newsletter@example.com --uids-only
+
 # Read one by UID. It stays unread, and no attachment is saved.
 mailctl view 4127
 mailctl view 4127 --headers-only
@@ -313,6 +318,37 @@ criteria, and `--filter -` reads it from standard input — so one document
 can be saved as the rule and applied to the mail already there. It takes
 the place of the criteria flags, so giving both is refused, and so is
 `--filter` with `--like`; the actions still come from the command line.
+
+## Output for scripts
+
+`--json` prints a command's result as one JSON document on stdout, and
+nothing else there: whatever the command says on the way goes to stderr.
+It is offered where the output is data — `search`, `view`, `folders`,
+`rules`, `list` — and on every write command's plan, where it needs
+`--dry-run`. `test` is a report for a person and has none. `probe --json`
+prints its own versioned document (above), with the same stdout and error
+handling.
+
+| Command | Document |
+|---------|----------|
+| `list` | `{"version", "scripts": [{"name", "active"}]}` |
+| `folders` | `{"version", "delimiter", "prefix", "folders": [{"name", "subscribed"}]}` |
+| `search` | `{"version", "folder", "more", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
+| `view` | `{"version", "message": {"uid", "folder", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
+| `rules` | `{"version", "script", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
+| a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — what else a plan holds depends on the command |
+| any, failing | `{"version", "error": {"message"}}`, one line, the last on stderr |
+
+* `version` is `1`. A key may be added without changing it; one renamed,
+  removed, or given a new meaning changes it.
+* Values are whole: nothing is clipped, flags are IMAP's own (`\Seen`),
+  and text outside printable ASCII is escaped as `\uXXXX`.
+* `received` is ISO 8601 in local time, with no offset, because the
+  server's date reaches mailctl without one.
+* A plan's `changes` is `false` where the command would do nothing; its
+  `diff`, on a script change, is then `null`.
+* `search --build-filter --json` prints a filter document instead (below),
+  and `search --uids-only` prints the matching UIDs, one per line.
 
 ## Safety
 

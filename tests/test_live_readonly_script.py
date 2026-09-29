@@ -31,6 +31,7 @@ ALL_TESTS = [
     "search",
     "search-like",
     "build-filter",
+    "json",
     "view-keeps-unread",
     "mark",
     "apply",
@@ -206,6 +207,7 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("mark-reports-change", "mark"),
         ("probe-not-json", "probe"),
         ("probe-no-mail", "probe"),
+        ("json-noise", "json"),
     ],
 )
 def test_a_failing_check_is_not_ok_and_the_run_exits_nonzero(
@@ -278,6 +280,19 @@ def test_probe_names_what_is_wrong_with_the_document(tmp_path, fault, reason):
     proc, _ = run(tmp_path, "probe", breaks=[fault])
 
     assert proc.stdout.splitlines()[2].startswith(reason)
+
+
+# ----------------------------------------------------------------------------
+def test_json_parses_three_documents_in_three_calls(tmp_path):
+    """#151: one call each, no loop over the account."""
+    proc, calls = run(tmp_path, "json")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - json"]
+    assert calls == [
+        ["search", "--json", "--limit", "3"],
+        ["folders", "--json"],
+        ["rules", "--json"],
+    ]
 
 
 # ----------------------------------------------------------------------------

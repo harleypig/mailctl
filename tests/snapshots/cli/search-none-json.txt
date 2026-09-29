@@ -1,0 +1,19 @@
+$ mailctl search --json --from nobody@x.y
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "folder": "INBOX",
+  "more": false,
+  "messages": []
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'nobody@x.y']])
+('fetch', (3, 2, 1))
+('logout',)

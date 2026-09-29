@@ -1,0 +1,46 @@
+$ mailctl mark 1 2 --read --flag --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "mark",
+    "changes": true,
+    "folder": "INBOX",
+    "set": [
+      "\\Seen",
+      "\\Flagged"
+    ],
+    "clear": [],
+    "messages": [
+      {
+        "uid": 1,
+        "flags": [
+          "\\Seen"
+        ],
+        "set": [
+          "\\Flagged"
+        ],
+        "clear": []
+      },
+      {
+        "uid": 2,
+        "flags": [],
+        "set": [
+          "\\Seen",
+          "\\Flagged"
+        ],
+        "clear": []
+      }
+    ]
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (1, 2))
+('logout',)

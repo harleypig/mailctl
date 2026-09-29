@@ -38,6 +38,7 @@ readonly TESTS=(
   search
   search-like
   build-filter
+  json
   view-keeps-unread
   mark
   apply
@@ -131,6 +132,8 @@ Only read-only subcommands and --dry-run are ever sent; --yes never is.
 Options:
   --list      print the test names and exit
   -h, --help  print this help and exit
+
+Requires python3, to parse the --json documents.
 
 Environment:
   MAILCTL_BIN  the mailctl to run (default: mailctl on PATH, else the
@@ -237,6 +240,18 @@ expect_ok() {
 #-----------------------------------------------------------------------------
 expect_line() {
   grep -qE -- "$1" "$OUT" || fail "expected a line matching: $1"
+}
+
+#-----------------------------------------------------------------------------
+# The last call's stdout is one --json document, of the version this script
+# knows, carrying the key named.
+expect_document() {
+  python3 -c '
+import json, sys
+document = json.load(sys.stdin)
+sys.exit(0 if document.get("version") == 1 and sys.argv[1] in document else 1)
+' "$1" < "$RAW" 2> /dev/null \
+    || fail "stdout is not one version 1 JSON document with '$1'"
 }
 
 #-----------------------------------------------------------------------------
@@ -488,6 +503,21 @@ t_build_filter() {
 
   expect_line '^  "version": 1,$' || return 1
   expect_line '^    "terms": \[$'
+}
+
+#-----------------------------------------------------------------------------
+t_json() {
+  run_mailctl search --json --limit 3
+  expect_ok 'search --json --limit 3' || return 1
+  expect_document messages || return 1
+
+  run_mailctl folders --json
+  expect_ok 'folders --json' || return 1
+  expect_document folders || return 1
+
+  run_mailctl rules --json
+  expect_ok 'rules --json' || return 1
+  expect_document rules
 }
 
 #-----------------------------------------------------------------------------

@@ -1,0 +1,13 @@
+$ mailctl search --uids-only --from nobody@x.y
+exit: 0
+--- stdout
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'nobody@x.y']])
+('fetch', (3, 2, 1))
+('logout',)

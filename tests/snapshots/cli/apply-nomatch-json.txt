@@ -1,0 +1,60 @@
+$ mailctl apply --from nobody@x.y --fileinto Lists --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "apply",
+    "changes": false,
+    "criteria": {
+      "match": "any",
+      "compare": "contains",
+      "terms": [
+        {
+          "header": "From",
+          "value": "nobody@x.y"
+        }
+      ]
+    },
+    "actions": {
+      "fileinto": "Lists",
+      "discard": false,
+      "flags": [],
+      "keep": false,
+      "stop": null
+    },
+    "folder": {
+      "requested": "Lists",
+      "folder": "INBOX.Lists",
+      "delimiter": ".",
+      "delimiter_assumed": false,
+      "status": "exists",
+      "subscribe": true,
+      "case_variants": [],
+      "mailbox_disabled_by": null
+    },
+    "max_messages": 500,
+    "over_limit": false,
+    "mail": {
+      "source": "INBOX",
+      "destination": "INBOX.Lists",
+      "flags": [],
+      "discard": false,
+      "moves": true,
+      "count": 0,
+      "messages": []
+    }
+  }
+}
+
+--- stderr
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Criteria: From contains 'nobody@x.y'
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'nobody@x.y']])
+('fetch', (1, 2, 3))
+('logout',)

@@ -1,0 +1,26 @@
+$ mailctl enable-rule keep-boss --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "enable-rule",
+    "changes": false,
+    "diff": null,
+    "rule": "keep-boss",
+    "enable": true,
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

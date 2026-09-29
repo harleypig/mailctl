@@ -1,0 +1,81 @@
+$ mailctl apply --from noreply@github.com --fileinto Lists --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "apply",
+    "changes": true,
+    "criteria": {
+      "match": "any",
+      "compare": "contains",
+      "terms": [
+        {
+          "header": "From",
+          "value": "noreply@github.com"
+        }
+      ]
+    },
+    "actions": {
+      "fileinto": "Lists",
+      "discard": false,
+      "flags": [],
+      "keep": false,
+      "stop": null
+    },
+    "folder": {
+      "requested": "Lists",
+      "folder": "INBOX.Lists",
+      "delimiter": ".",
+      "delimiter_assumed": false,
+      "status": "exists",
+      "subscribe": true,
+      "case_variants": [],
+      "mailbox_disabled_by": null
+    },
+    "max_messages": 500,
+    "over_limit": false,
+    "mail": {
+      "source": "INBOX",
+      "destination": "INBOX.Lists",
+      "flags": [],
+      "discard": false,
+      "moves": true,
+      "count": 2,
+      "messages": [
+        {
+          "uid": 1,
+          "received": "2026-02-03T04:05:06",
+          "size": 0,
+          "flags": [],
+          "has_attachments": false,
+          "from": "Someone <noreply@github.com>",
+          "subject": "PR opened",
+          "folder": "INBOX"
+        },
+        {
+          "uid": 2,
+          "received": "2026-02-03T04:05:06",
+          "size": 0,
+          "flags": [],
+          "has_attachments": false,
+          "from": "Someone <noreply@github.com>",
+          "subject": "Issue closed",
+          "folder": "INBOX"
+        }
+      ]
+    }
+  }
+}
+
+--- stderr
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Criteria: From contains 'noreply@github.com'
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (1, 2, 3))
+('logout',)
