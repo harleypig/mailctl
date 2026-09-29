@@ -96,6 +96,16 @@ The operator, 2026-09-27, wanting it in every interface: *"I want the same
 functionality for all interfaces"* — see *Every command is in every
 interface* below.
 
+**Roundcube's filter and search UI is not a limit on what mailctl writes or
+offers.** The operator, 2026-09-29: *"one of the reasons I'm writing this
+app is because the search and filter functions are so restricted."* So a
+rule mailctl writes need not be one Roundcube's UI can edit. The merge still
+holds ([ADR 0002][adr2]): Roundcube writes the same script, so the rules it
+wrote are kept. Rules also stay a flat list of `# rule:[NAME]` blocks, on
+grounds of their own: the name is how every command finds a rule, and
+`mailctl/rules.py` reads the rules as one ordered list, so it cannot judge a
+nested rule.
+
 It cuts the other way too. Scope is not *everything about email*: composing
 and sending, an address book, account provisioning, and saving or opening
 attachments are not filters or settings on this account, and the sibling
