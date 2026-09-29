@@ -4,6 +4,21 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BUG FIXES:
+
+* **A warning the IMAP server marks as an alert is now shown** ([#205]).
+  An IMAP server can flag a message for the user's attention — a mailbox
+  nearly full, maintenance tonight — and the IMAP standard says a client
+  must show it. mailctl dropped every one. It now prints each on standard
+  error, as `mailctl: alert from the imap server: <text>`, whether or not
+  `--verbose` is given, and once per run however often the server repeats
+  it; under `--json` standard output still holds the document alone. The
+  text is the server's, so control characters in it are shown escaped,
+  as in mail. An alert the server sends before the connection is
+  encrypted is ignored, as the standard advises, since anyone on the
+  network could have written it. ManageSieve has no alerts to show: its
+  standard defines no such response code.
+
 ## 0.9.0
 
 BREAKING CHANGES:
@@ -1260,3 +1275,4 @@ NOTES:
 [#192]: https://github.com/harleypig/mailctl/issues/192
 [#196]: https://github.com/harleypig/mailctl/issues/196
 [#10]: https://github.com/harleypig/mailctl/issues/10
+[#205]: https://github.com/harleypig/mailctl/issues/205

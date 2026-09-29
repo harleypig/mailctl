@@ -16,7 +16,7 @@ Marks: `[built]` built, `[partial]` partly built, `[—]` not built;
 * MUST — **Certificate check**: verify the server's certificate against its hostname. [RFC 9051 §11.1][9051-11.1] `[built]`
 * MUST — **Modern TLS**: use TLS 1.2 or newer. [RFC 9051 §11.1][9051-11.1] `[built]`
 * MUST — **No password in the clear**: send no credential until a verified TLS session is up. [RFC 8314 §5.1][8314-5.1] `[built]`
-* MUST — **Server alerts**: show the server's ALERT text to the user, prominently. [RFC 2683 §3.4.11][2683-3.4.11] `[—]`
+* MUST — **Server alerts**: show the server's ALERT text to the user, prominently. [RFC 2683 §3.4.11][2683-3.4.11] `[built]`
 * SHOULD — **Security indicator**: show how well each account's connection is protected. [RFC 8314 §5][8314-5] `[partial]`
 * SHOULD — **Capability discovery**: learn the server's features from what it advertises. [RFC 2683 §3.3.1][2683-3.3.1] `[built]`
 * SHOULD — **Password sources**: take the password from a keyring, file, or command, not only a prompt. Common practice. `[built]`

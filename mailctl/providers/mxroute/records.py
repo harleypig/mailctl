@@ -9,6 +9,7 @@ ManageSieve records a rule edit needs -- a placement, a diff -- cross in
 the dialect (``sieve.py``).
 """
 
+from ...components.imap import alerts as imap_alerts
 from ...components.imap import messages as imap_records
 from ...components.imap import servers as imap_servers
 from ...components.imap import status as imap_status
@@ -24,6 +25,7 @@ __all__ = [
     "mail_server",
     "message_summary",
     "rules_server",
+    "server_alert",
     "session_plan",
     "sort_criteria",
 ]
@@ -36,6 +38,11 @@ SORT_CRITERIA = {
     model.SORT_SENT: "DATE",
     model.SORT_RECEIVED: "ARRIVAL",
 }
+
+
+# ----------------------------------------------------------------------------
+def server_alert(value: imap_alerts.ServerAlert) -> model.ServerAlert:
+    return model.ServerAlert(text=value.text)
 
 
 # ----------------------------------------------------------------------------

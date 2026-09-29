@@ -20,6 +20,7 @@ RUN apt-get update \
 
 COPY dovecot.conf /etc/dovecot/dovecot.conf
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY postlogin.sh /usr/local/bin/postlogin.sh
 
 EXPOSE 143 993 4190
 

@@ -20,6 +20,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 from ... import MailctlError
+from ...components.imap.alerts import ServerAlert
 from ...components.imap.client import (
     ImapAuthenticationError,
     ImapConnectionError,
@@ -37,7 +38,7 @@ STARTTLS_PORT = 143
 # ----------------------------------------------------------------------------
 def new_imap_session(
     config: Config,
-    progress: Callable[[str], None] | None = None,
+    progress: Callable[[str | ServerAlert], None] | None = None,
 ) -> ImapSession:
     """Build an unopened session from ``config``, naming a missing setting.
 
@@ -59,7 +60,7 @@ def new_imap_session(
 @contextmanager
 def imap_session(
     config: Config,
-    progress: Callable[[str], None] | None = None,
+    progress: Callable[[str | ServerAlert], None] | None = None,
 ) -> Iterator[ImapSession]:
     """Open an IMAP session for ``config`` and close it afterwards.
 

@@ -22,7 +22,7 @@ import email
 import socket
 import ssl
 from collections.abc import Callable, Sequence
-from typing import Protocol
+from typing import Any, Protocol
 
 from imapclient import IMAPClient
 from imapclient.exceptions import (
@@ -32,6 +32,7 @@ from imapclient.exceptions import (
 )
 
 from ... import MailctlError
+from .alerts import ServerAlert, alert_in_line, alert_in_text
 from .folders import case_variant_hint, same_folder
 from .messages import (
     FetchedMessage,
@@ -132,7 +133,7 @@ class ImapSession:
         username: str,
         password: Callable[[], Revealable],
         tls: str = "ssl",
-        progress: Callable[[str], None] | None = None,
+        progress: Callable[[str | ServerAlert], None] | None = None,
     ):
         """Record the settings; no connection is made until ``open()``.
 
@@ -143,7 +144,9 @@ class ImapSession:
         because a session was constructed.
 
         ``progress`` receives step-by-step messages, as a callback rather
-        than a print so this module carries no presentation of its own.
+        than a print so this module carries no presentation of its own. A
+        :class:`ServerAlert` the server sends goes to it too, whatever the
+        caller does with the rest: RFC 9051 says an alert is shown.
         """
         self.host = host
         self.port = port
@@ -173,7 +176,7 @@ class ImapSession:
         return False
 
     # ------------------------------------------------------------------------
-    def _log(self, message: str) -> None:
+    def _log(self, message: str | ServerAlert) -> None:
         """Hand a progress message to the caller's callback, if any."""
         if self.progress is not None:
             self.progress(message)
@@ -196,6 +199,8 @@ class ImapSession:
 
             if not use_ssl:
                 client.starttls()
+
+            self._watch_alerts(client, greeting=use_ssl)
 
             client.login(self.username, self.password().reveal())
 
@@ -224,6 +229,55 @@ class ImapSession:
             f"{len(self._folders)} folders, "
             f"{len(self._subscribed)} subscribed"
         )
+
+    # ------------------------------------------------------------------------
+    def _watch_alerts(self, client: IMAPClient, greeting: bool) -> None:
+        """Hand every ALERT the server sends from now on to ``progress``.
+
+        IMAPClient drops a status response's text once it has the status,
+        so imaplib's own response reader is wrapped on this connection:
+        every response's first line passes through it, untagged or tagged,
+        whichever command it answers. That reader is a private of imaplib,
+        which ``tests/test_imap_alerts.py`` runs for real, so a rename
+        fails a test rather than silently hiding alerts.
+
+        What imaplib read inside its constructor -- the greeting, and the
+        CAPABILITY it asks for -- is past the reader, so ``greeting`` says
+        whether to look at it: only on implicit TLS, since RFC 9051 has a
+        client ignore an alert sent before TLS (section 7.1), which on
+        STARTTLS all of it was. imaplib keeps that exchange's untagged
+        lines, which are read here, but not the CAPABILITY command's tagged
+        completion: an alert there is the one this cannot see.
+        """
+        # A private, reached as such: the checker's view of imaplib has no
+        # room for a reader replaced on one connection.
+        imap: Any = client._imap
+
+        if greeting:
+            self._alert(alert_in_line(client.welcome or b""))
+
+            for kind in ("OK", "NO", "BAD"):
+                for text in imap.untagged_responses.get(kind, ()):
+                    if isinstance(text, bytes):
+                        self._alert(alert_in_text(text))
+
+        read = imap._get_response
+
+        def read_watching_for_alerts():
+            line = read()
+
+            # None is a continuation request, which carries no status.
+            if line is not None:
+                self._alert(alert_in_line(line))
+
+            return line
+
+        imap._get_response = read_watching_for_alerts
+
+    # ------------------------------------------------------------------------
+    def _alert(self, alert: ServerAlert | None) -> None:
+        if alert is not None:
+            self._log(alert)
 
     # ------------------------------------------------------------------------
     def close(self) -> None:

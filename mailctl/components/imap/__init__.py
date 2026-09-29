@@ -3,11 +3,13 @@
 ``client`` is the protocol session, ``folders`` the offline folder-name
 handling against a reported delimiter, ``messages`` messages and the
 existing-mail plan as data, ``search`` what a search needs from its
-criteria, ``status`` every folder's counts from one ``LIST``, and
-``servers`` the server-software profiles chosen by probing.
+criteria, ``status`` every folder's counts from one ``LIST``, ``alerts``
+the ALERT a response line carries, and ``servers`` the server-software
+profiles chosen by probing.
 Everything a caller needs is re-exported here.
 """
 
+from .alerts import ServerAlert
 from .client import (
     ImapAuthenticationError,
     ImapConnectionError,
@@ -52,6 +54,7 @@ __all__ = [
     "PartialExecution",
     "Revealable",
     "SearchCriteria",
+    "ServerAlert",
     "case_variant_hint",
     "case_variants",
     "connection_lost",

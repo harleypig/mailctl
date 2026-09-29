@@ -3,13 +3,27 @@
 An execute step takes an optional ``on_event`` sink and calls it with one
 of these records as each step lands, so a front-end can show progress
 without the utilities writing anything themselves.
+
+``ServerAlert`` is the other thing a front-end is told as it happens: an
+alert the server sent, which arrives as a message on the session's
+``progress`` callback rather than here, since any command can meet one.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..providers.base import FolderCreation
+from ..providers.base import FolderCreation, ServerAlert
+
+__all__ = [
+    "EventSink",
+    "FolderCreated",
+    "FolderRenamed",
+    "ScriptBackedUp",
+    "ScriptUploaded",
+    "ServerAlert",
+    "SubscriptionChanged",
+]
 
 # ############################################################################
 # Events -- the steps of a change, reported as they happen

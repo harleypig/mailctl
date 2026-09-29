@@ -423,6 +423,7 @@ MODEL_TYPES = (
     "MailActionResult",
     "MessageSummary",
     "Placement",
+    "ServerAlert",
 )
 
 
