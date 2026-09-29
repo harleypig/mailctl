@@ -9,6 +9,7 @@ the failure is loud.
 """
 
 import argparse
+import re
 
 import pytest
 
@@ -28,7 +29,9 @@ from mailctl.config import Config, load_config
 from mailctl.criteria import Criteria, escape_sieve_string
 from mailctl.providers.mxroute import managesieve as mxroute_managesieve
 from mailctl.providers.mxroute.sieve import (
+    display_diff,
     merge_rule,
+    move_rule,
     parse_script,
     remove_rule,
     render_script,
@@ -1075,6 +1078,290 @@ def test_a_quoted_value_survives_the_round_trip(reparse):
     assert 'the \\"quoted\\" one' in merged
 
     reparse(merged)
+
+
+# ############################################################################
+# Free-standing comments (#7)
+# ############################################################################
+
+# A Roundcube-shaped script carrying the comments a person writes by hand:
+# one above the require line, a two-line note above a rule, one inside a
+# rule's body, and one after the last rule. Before #7 every one of them was
+# dropped by the first merge.
+COMMENTED_SCRIPT = """# my filters -- edit in Roundcube or mailctl
+require ["fileinto","imap4flags"];
+# this one is for the accountant
+# (she asked for it on 2026-01-05)
+# rule:[keep-boss]
+if header :contains "from" "boss@example.com"
+{
+\t# flag it so it shows on the phone
+\tfileinto "INBOX.Boss";
+\tsetflag "\\\\Flagged";
+\tstop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter"
+{
+\tfileinto "INBOX.Noise";
+\tstop;
+}
+# end of hand-made rules
+"""
+
+# COMMENTED_SCRIPT as mailctl renders it: each comment a rule owns sits
+# directly above that rule's name marker, the body comment hoisted with
+# them, and the header and trailer kept where they were.
+COMMENTED_RENDERED = """# my filters -- edit in Roundcube or mailctl
+require ["fileinto", "imap4flags"];
+
+# this one is for the accountant
+# (she asked for it on 2026-01-05)
+# flag it so it shows on the phone
+# rule:[keep-boss]
+if header :contains "from" "boss@example.com" {
+    fileinto "INBOX.Boss";
+    setflag "\\\\Flagged";
+    stop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter" {
+    fileinto "INBOX.Noise";
+    stop;
+}
+# end of hand-made rules
+"""
+
+
+# ----------------------------------------------------------------------------
+def test_a_comment_above_a_rule_survives_a_merge(reparse):
+    """The fixture from #7: a person's note must outlive ``mailctl add``."""
+    merged = merge_simple(COMMENTED_SCRIPT, "new-rule", "INBOX.New")
+
+    assert "# this one is for the accountant\n" in merged
+    assert "# (she asked for it on 2026-01-05)\n" in merged
+
+    reparse(merged)
+
+
+# ----------------------------------------------------------------------------
+def test_a_multi_line_comment_stays_in_order_above_its_rule():
+    merged = merge_simple(COMMENTED_SCRIPT, "new-rule", "INBOX.New")
+
+    assert (
+        "# this one is for the accountant\n"
+        "# (she asked for it on 2026-01-05)\n"
+        "# flag it so it shows on the phone\n"
+        "# rule:[keep-boss]\n"
+    ) in merged
+
+
+# ----------------------------------------------------------------------------
+def test_the_header_and_trailing_comments_survive_a_merge():
+    """No rule follows the trailer, so it is kept at the end of the script.
+
+    The new rule is appended, so it lands between the last hand-made rule
+    and the trailer -- the trailer is the script's, not a rule's.
+    """
+    merged = merge_simple(COMMENTED_SCRIPT, "new-rule", "INBOX.New")
+
+    assert merged.startswith("# my filters -- edit in Roundcube or mailctl\n")
+    assert merged.endswith("}\n# end of hand-made rules\n")
+    assert merged.count("# end of hand-made rules") == 1
+
+
+# ----------------------------------------------------------------------------
+def test_a_commented_script_renders_to_the_expected_form():
+    assert render_script(parse_script(COMMENTED_SCRIPT)) == COMMENTED_RENDERED
+
+
+# ----------------------------------------------------------------------------
+def test_a_commented_script_is_a_fixed_point_of_render(reparse):
+    """Nothing is duplicated or drifts on the next run's re-parse."""
+    assert (
+        render_script(parse_script(COMMENTED_RENDERED)) == COMMENTED_RENDERED
+    )
+
+    reparse(COMMENTED_RENDERED)
+
+
+# ----------------------------------------------------------------------------
+def test_a_rendered_commented_script_shows_no_reformatting():
+    """The ``add --dry-run`` diff no longer shows the comments removed."""
+    merged = merge_simple(COMMENTED_RENDERED, "new-rule", "INBOX.New")
+    diff = display_diff(COMMENTED_RENDERED, merged)
+
+    assert not diff.reformats
+    assert "\n-#" not in diff.text
+
+
+# ----------------------------------------------------------------------------
+def test_a_roundcube_script_without_comments_renders_as_before(
+    roundcube_script,
+):
+    """The comment handling adds nothing to a script that has none."""
+    assert render_script(parse_script(roundcube_script)) == (
+        'require ["fileinto", "imap4flags"];\n'
+        "\n"
+        "# rule:[keep-boss]\n"
+        'if header :contains "from" "boss@example.com" {\n'
+        '    fileinto "INBOX.Boss";\n'
+        '    setflag "\\\\Flagged";\n'
+        "    stop;\n"
+        "}\n"
+        "# rule:[bin-the-noise]\n"
+        'if header :contains "subject" "newsletter" {\n'
+        '    fileinto "INBOX.Noise";\n'
+        "    stop;\n"
+        "}\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_moved_rule_carries_its_comments_with_it():
+    moved = move_rule(COMMENTED_SCRIPT, "keep-boss", Placement(PLACE_LAST))
+
+    assert moved.index("# rule:[bin-the-noise]") < moved.index(
+        "# this one is for the accountant"
+    )
+    assert (
+        "# this one is for the accountant\n"
+        "# (she asked for it on 2026-01-05)\n"
+        "# flag it so it shows on the phone\n"
+        "# rule:[keep-boss]\n"
+    ) in moved
+    assert moved.endswith("}\n# end of hand-made rules\n")
+
+
+# ----------------------------------------------------------------------------
+def test_a_replaced_rule_keeps_its_comments():
+    """``--replace`` changes what the rule does, not what it is for."""
+    merged = merge_simple(
+        COMMENTED_SCRIPT, "keep-boss", "INBOX.Boss2", replace=True
+    )
+
+    assert (
+        "# this one is for the accountant\n"
+        "# (she asked for it on 2026-01-05)\n"
+        "# flag it so it shows on the phone\n"
+        "# rule:[keep-boss]\n"
+    ) in merged
+
+
+# ----------------------------------------------------------------------------
+def test_a_removed_rule_takes_its_comments_with_it(reparse):
+    """A comment above a rule is about that rule, so it goes with it.
+
+    Every other comment -- the header, the trailer, and the notes on the
+    rules that stay -- is left where it was.
+    """
+    removed = remove_rule(COMMENTED_SCRIPT, "keep-boss")
+
+    assert "accountant" not in removed
+    assert "on the phone" not in removed
+    assert removed.startswith("# my filters -- edit in Roundcube or mailctl\n")
+    assert removed.endswith("}\n# end of hand-made rules\n")
+
+    reparse(removed)
+
+
+# A Roundcube-shaped script with one rule switched off in the webmail UI.
+# Roundcube disables a rule by writing ``if false # <its test>`` and reads it
+# back as disabled only while that comment follows ``false`` on the same
+# line; moved anywhere else the rule stops showing as disabled and its test
+# is orphaned.
+DISABLED_SCRIPT = """require ["fileinto"];
+# rule:[paused]
+if false # anyof (header :contains "subject" "invoice")
+{
+\tfileinto "INBOX.Bills";
+\tstop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter"
+{
+\tfileinto "INBOX.Noise";
+\tstop;
+}
+"""
+
+DISABLED_RENDERED = """require ["fileinto"];
+
+# rule:[paused]
+if false # anyof (header :contains "subject" "invoice")
+{
+    fileinto "INBOX.Bills";
+    stop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter" {
+    fileinto "INBOX.Noise";
+    stop;
+}
+"""
+
+# What Roundcube's managesieve plugin matches, right after ``if``, to decide
+# a rule is disabled (rcube_sieve_script.php).
+ROUNDCUBE_DISABLED = re.compile(r"^\s*false\s+#\s*", re.IGNORECASE)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_a_disabled_rule_keeps_its_test_inline_through_a_merge(
+    newline, reparse
+):
+    merged = merge_simple(
+        DISABLED_SCRIPT.replace("\n", newline), "new-rule", "INBOX.New"
+    )
+
+    assert merged.startswith(DISABLED_RENDERED)
+    assert merged.count("invoice") == 1
+
+    reparse(merged)
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_rule_still_reads_as_disabled_to_roundcube():
+    rendered = render_script(parse_script(DISABLED_SCRIPT))
+    after_if = rendered.split("# rule:[paused]\nif", 1)[1]
+
+    assert ROUNDCUBE_DISABLED.match(after_if)
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_rule_is_a_fixed_point_of_render():
+    assert render_script(parse_script(DISABLED_RENDERED)) == DISABLED_RENDERED
+
+
+# ----------------------------------------------------------------------------
+def test_a_moved_disabled_rule_keeps_its_test_inline():
+    moved = move_rule(DISABLED_SCRIPT, "paused", Placement(PLACE_LAST))
+
+    assert (
+        "# rule:[paused]\n"
+        'if false # anyof (header :contains "subject" "invoice")\n'
+        "{\n"
+    ) in moved
+    assert moved.index("# rule:[bin-the-noise]") < moved.index(
+        "# rule:[paused]"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_replaced_disabled_rule_drops_the_stale_test():
+    """The comment describes the old test, so it does not outlive it."""
+    merged = merge_simple(
+        DISABLED_SCRIPT, "paused", "INBOX.Other", replace=True
+    )
+
+    assert "invoice" not in merged
+
+
+# ----------------------------------------------------------------------------
+def test_a_script_of_only_comments_keeps_them():
+    text = "# nothing here yet\n# but soon\n"
+
+    assert render_script(parse_script(text)) == text
 
 
 # ############################################################################

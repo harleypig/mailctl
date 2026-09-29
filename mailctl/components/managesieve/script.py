@@ -14,10 +14,12 @@ dialect; this module knows none of them.
 
 import difflib
 import io
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from typing import Any, TextIO, cast
 
-from sievelib import factory, parser
+from sievelib import commands, factory, parser
 
 from ... import MailctlError
 
@@ -207,6 +209,204 @@ def rewrite_hash_comments(
 
 
 # ----------------------------------------------------------------------------
+def _free_standing(
+    comments: Iterable[bytes | str], filters: factory.FiltersSet
+) -> list[str]:
+    """The comments that are neither a rule's name nor its description."""
+    kept = []
+
+    for comment in comments:
+        text = (
+            comment.decode("utf-8") if isinstance(comment, bytes) else comment
+        )
+
+        if not text.startswith(
+            (filters.filter_name_pretext, filters.filter_desc_pretext)
+        ):
+            kept.append(text)
+
+    return kept
+
+
+# ----------------------------------------------------------------------------
+class _CommentedFiltersSet(factory.FiltersSet):
+    """sievelib's filter set, keeping the hash comments a person wrote.
+
+    sievelib's parser hands every top-level command the hash comments seen
+    since the one before it, body comments included, and its renderer
+    writes back only the name and description markers -- so every other
+    comment was lost on the first merge (#7). Here each rule entry keeps
+    its own under ``comments`` and they are written directly above its
+    name marker, so a comment moves with its rule, is kept by
+    ``--replace`` (sievelib updates the entry in place), and goes with it
+    when the rule is removed. A comment inside a rule's body is kept the
+    same way and so moves above the rule: sievelib renders a body from its
+    parse tree, which has nowhere to hold one. The exception is Roundcube's
+    disabled rule, ``if false # <its test>``: that comment stays on the
+    ``if false`` line, where Roundcube looks for it (``_disabled_tests``).
+
+    The two comment runs no rule owns are the script's own: those before
+    ``require`` stay at the top, and those after the last rule stay at the
+    end.
+
+    ICEBOX: 2026-09-28 -- bracket comments /* ... */ are still dropped on
+    merge; keep, preserve, retain multi-line block comments in a Sieve
+    script. sievelib's parser discards them without recording where they
+    were, so keeping them means re-deriving its command boundaries from
+    the lexer. Revisit if a user's script is found to rely on them.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.leading_comments: list[str] = []
+        self.trailing_comments: list[str] = []
+
+    def keep_comments(
+        self, script_parser: parser.Parser, disabled_tests: list[str | None]
+    ) -> None:
+        """Record the parsed script's free-standing comments.
+
+        Call it straight after ``from_parser_result`` on the same parser:
+        it pairs the parser's commands with the entries that call just
+        made, in order, one entry per command other than ``require``.
+        ``disabled_tests`` is :func:`_disabled_tests` of the same text.
+        """
+        entries = iter(self.filters)
+        tests = iter(disabled_tests)
+
+        for command in script_parser.result:
+            comments = _free_standing(command.hash_comments, self)
+
+            if isinstance(command, commands.RequireCommand):
+                self.leading_comments += comments
+
+                continue
+
+            entry = cast(dict[str, Any], next(entries))
+            test = next(tests) if _is_disabled(command) else None
+
+            if test is not None:
+                comments.remove(test)
+                entry["disabled_test"] = (command, test)
+
+            entry["comments"] = comments
+
+        # Whatever the parser collected after the last command belongs to
+        # no command at all.
+        self.trailing_comments = _free_standing(
+            script_parser.hash_comments, self
+        )
+
+    def tosieve(self, target: TextIO = sys.stdout) -> None:
+        """sievelib's rendering, with each rule's comments above it."""
+        _write_comments(target, self.leading_comments)
+        self._plain([], self.requires).tosieve(target)
+
+        for entry in self.filters:
+            _write_comments(
+                target, cast(dict[str, Any], entry).get("comments", [])
+            )
+            target.write(_render_entry(self._plain([entry], []), entry))
+
+        _write_comments(target, self.trailing_comments)
+
+    def _plain(self, entries: list, requires: list[str]) -> factory.FiltersSet:
+        """A plain filter set over ``entries``, to render with sievelib."""
+        plain = factory.FiltersSet(
+            self.name, self.filter_name_pretext, self.filter_desc_pretext
+        )
+        plain.filters = entries
+        plain.requires = requires
+
+        return plain
+
+
+# ----------------------------------------------------------------------------
+def _is_disabled(command: commands.Command) -> bool:
+    """Whether ``command`` is ``if false``, sievelib's disabled rule."""
+    return isinstance(command, commands.IfCommand) and isinstance(
+        command["test"], commands.FalseCommand
+    )
+
+
+# ----------------------------------------------------------------------------
+def _disabled_tests(text: str) -> list[str | None]:
+    """The comment on each top-level ``if false`` line, in script order.
+
+    Roundcube disables a rule by writing ``if false # <its test>`` and
+    finds it again by that comment directly after ``false``, on the same
+    line. One entry per top-level ``if false``, None where no comment
+    follows on that line; a parsed script has exactly as many of these as
+    rules for which :func:`_is_disabled` holds.
+    """
+    raw = text.encode("utf-8")
+    lexer = parser.Lexer(parser.Parser.lrules)
+    tests: list[str | None] = []
+    depth = 0
+    previous: tuple[str, bytes] | None = None
+    false_end: int | None = None
+
+    for token_type, value in lexer.scan(raw):
+        if false_end is not None:
+            same_line = b"\n" not in raw[false_end : lexer.pos]
+            tests[-1] = (
+                value.decode("utf-8").strip()
+                if token_type == "hash_comment" and same_line
+                else None
+            )
+            false_end = None
+
+        if token_type == "left_cbracket":
+            depth += 1
+
+        elif token_type == "right_cbracket":
+            depth -= 1
+
+        elif (
+            depth == 0
+            and token_type == "identifier"
+            and value.lower() == b"false"
+            and previous is not None
+            and previous[0] == "identifier"
+            and previous[1].lower() == b"if"
+        ):
+            tests.append(None)
+            false_end = lexer.pos + len(value)
+
+        if token_type not in ("hash_comment", "bracket_comment"):
+            previous = (token_type, value)
+
+    return tests
+
+
+# ----------------------------------------------------------------------------
+def _render_entry(plain: factory.FiltersSet, entry: dict[str, Any]) -> str:
+    """One rule as sievelib renders it, Roundcube's disabled test inline.
+
+    sievelib writes ``if false {``; Roundcube needs the comment after
+    ``false`` on that line, so the brace moves to the next. The comment
+    belongs to the content it was read with -- after ``--replace`` it
+    describes a test the rule no longer has, and is dropped.
+    """
+    buffer = io.StringIO()
+    plain.tosieve(buffer)
+    text = buffer.getvalue()
+    content, test = entry.get("disabled_test", (None, None))
+
+    if test is None or content is not entry["content"]:
+        return text
+
+    return text.replace("\nif false {\n", f"\nif false {test}\n{{\n", 1)
+
+
+# ----------------------------------------------------------------------------
+def _write_comments(target: TextIO, comments: Iterable[str]) -> None:
+    """Write each comment on its own line."""
+    for comment in comments:
+        target.write(f"{comment}\n")
+
+
+# ----------------------------------------------------------------------------
 def parse_script(
     text: str, dialect: NameDialect = SIEVELIB_DIALECT
 ) -> factory.FiltersSet:
@@ -216,14 +416,15 @@ def parse_script(
     it just yields an empty set. A script that will not parse is a hard
     stop: merging into it would risk losing rules.
     """
-    filters = factory.FiltersSet(FILTERSET_NAME)
+    filters = _CommentedFiltersSet(FILTERSET_NAME)
 
     if not text or not text.strip():
         return filters
 
     script_parser = parser.Parser()
+    source = dialect.read(text)
 
-    if not script_parser.parse(dialect.read(text)):
+    if not script_parser.parse(source):
         raise MailctlError(
             "the existing Sieve script could not be parsed, so merging into "
             "it would risk losing rules: "
@@ -231,6 +432,7 @@ def parse_script(
         )
 
     filters.from_parser_result(script_parser)
+    filters.keep_comments(script_parser, _disabled_tests(source))
 
     return filters
 
