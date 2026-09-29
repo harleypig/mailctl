@@ -10,8 +10,12 @@ the test layout are pulled in via the imports at the bottom.
 
 - **The tool has two halves, and the second one is the point.** Sieve only
   ever affects **new incoming** mail. The retroactive IMAP pass over mail
-  already delivered is why this exists — a change that writes a Sieve rule and
-  stops there is half-done.
+  already delivered is why this exists. The halves are two commands, `add`
+  then `apply`: `add` saves the rule, `apply` acts on the mail already
+  there, and both take the same criteria so they stay in step (see
+  [CONVENTIONS.md](CONVENTIONS.md) › *The command surface*; until
+  [#149](https://github.com/harleypig/mailctl/issues/149) lands, `add` still
+  runs both).
 - **Credentials are a hard boundary.** The mailbox password must **never**
   reach stdout, stderr, a log, or a transcript. `config.Secret` renders
   `<redacted>` from both `__str__` and `__repr__`; only `reveal()` returns the
