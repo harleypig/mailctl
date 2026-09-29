@@ -17,6 +17,16 @@ BREAKING CHANGES:
   `search --help`, and refuses it by name, before connecting, if it is
   given anyway. `mailctl from-message --search` keeps its name for now.
 
+FEATURES:
+
+* **`mailctl help [COMMAND]`** ([#153]). `mailctl help` prints what
+  `mailctl --help` prints, and `mailctl help add` what `mailctl add --help`
+  prints, with the same exit code. It follows the provider as a command's
+  own `--help` does: `mailctl help add --provider NAME`, or a provider set
+  in the environment, the env file, or the config file, shows what that
+  provider offers. An unknown command is refused as `mailctl nosuch` is,
+  naming the valid ones. It never connects or asks for the password.
+
 ENHANCEMENTS:
 
 * **A command given bad input fails before logging in** ([#137]). The CLI
@@ -844,5 +854,6 @@ NOTES:
 [#135]: https://github.com/harleypig/mailctl/issues/135
 [#137]: https://github.com/harleypig/mailctl/issues/137
 [#154]: https://github.com/harleypig/mailctl/issues/154
+[#153]: https://github.com/harleypig/mailctl/issues/153
 [#147]: https://github.com/harleypig/mailctl/issues/147
 [#7]: https://github.com/harleypig/mailctl/issues/7

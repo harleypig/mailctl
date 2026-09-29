@@ -2389,6 +2389,32 @@ def build_parser(
     )
     migrate.set_defaults(handler=cmd_migrate_config)
 
+    # Carried out in main(), which holds the parser this run built.
+    helping = command(
+        "help",
+        parents=[common],
+        help="show help for mailctl or a command",
+        description="Print what 'mailctl --help' prints, or with COMMAND "
+        "what 'mailctl COMMAND --help' prints, for the provider --provider "
+        "names or the configuration selects. The server is not contacted.",
+    )
+    helping.add_argument(
+        "topic", nargs="?", metavar="COMMAND", help="the command to explain"
+    )
+    helping.add_argument(
+        "--provider",
+        help="show what this provider offers; default the configured one",
+    )
+    helping.add_argument(
+        "--env-file",
+        dest="env_file",
+        nargs="?",
+        const=".env",
+        metavar="PATH",
+        help="read MAILCTL_* settings, the provider among them, from a "
+        "dotenv-style file (default .env in the current directory)",
+    )
+
     subparsers.metavar = "{" + ",".join(listed) + "}"
 
     return parser
@@ -2525,6 +2551,14 @@ def main(argv: list[str] | None = None) -> int:
     """Parse arguments, dispatch, and turn failures into diagnostics."""
     parser = build_parser(provider_offer(argv))
     args = parser.parse_args(argv)
+
+    # The same parse as 'mailctl [COMMAND] --help', on the parser built for
+    # this run's provider, so the two cannot drift; argparse exits from it,
+    # 0 with the help or 2 naming the valid commands.
+    if args.command == "help":
+        topic = [] if args.topic is None else [args.topic]
+
+        parser.parse_args([*topic, "--help"])
 
     # --no-subscribe only shapes a folder this run creates. Accepting it
     # alone would be a flag that looks like it took effect and did not.
