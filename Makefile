@@ -1,4 +1,4 @@
-default: fmt lint test
+default: fmt lint typecheck test
 
 # There is no `build` target on purpose: mailctl is pure Python with only
 # setuptools metadata, so there is nothing to compile or bundle (the Build QA
@@ -22,6 +22,11 @@ fmt:
 # a broken target.
 lint:
 	pre-commit run --all-files
+
+# pyright over the package and the tests, in the mode and scope set by
+# [tool.pyright] in pyproject.toml; CI's Lint job runs the same.
+typecheck:
+	pyright
 
 test:
 	pytest
@@ -47,4 +52,4 @@ testcontainer:
 livecheck:
 	scripts/live-readonly.sh $(TESTARGS)
 
-.PHONY: default venv install fmt lint test testlive testcontainer livecheck
+.PHONY: default venv install fmt lint typecheck test testlive testcontainer livecheck
