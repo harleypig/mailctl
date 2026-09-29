@@ -552,6 +552,50 @@ def test_apply_moves_and_marks_existing_mail(account):
 
 
 # ----------------------------------------------------------------------------
+def test_apply_keep_copies_as_the_saved_rule_does(account):
+    """#188: ``fileinto`` with ``keep`` leaves the original and files a
+    copy, both flagged -- in the rule Sieve runs and in the pass alike.
+
+    ``apply`` runs first, so the message delivered afterwards is not in
+    its search. Red if the pass moves (the old message leaves INBOX),
+    expunges after copying, drops the flag from either copy, or if
+    Pigeonhole does something else with ``addflag; fileinto; keep``.
+    """
+    actions = (
+        "--from",
+        GITHUB,
+        "--fileinto",
+        "Lists/GitHub",
+        "--keep",
+        "--flag",
+        "\\Flagged",
+        "--create-folder",
+    )
+
+    account.append("INBOX", message(GITHUB, "old pr"))
+    account.append("INBOX", message("friend@example.org", "lunch?"))
+
+    applied = account.run("apply", *actions, "--yes")
+
+    assert applied.code == 0, applied.err
+
+    added = account.run("add", "--name", "github", *actions)
+
+    assert added.code == 0, added.err
+
+    account.deliver(message(GITHUB, "new pr"), GITHUB)
+
+    inbox = sorted(mail_in(account, "INBOX").values())
+    filed = sorted(mail_in(account, "Lists.GitHub").values())
+
+    assert [subject for subject, _ in inbox] == ["lunch?", "new pr", "old pr"]
+    assert [subject for subject, _ in filed] == ["new pr", "old pr"]
+
+    for subject, flags in [*inbox, *filed]:
+        assert (b"\\Flagged" in flags) is (subject != "lunch?"), subject
+
+
+# ----------------------------------------------------------------------------
 def test_apply_flags_in_place(account):
     """A flag-only action leaves the message where it is.
 

@@ -808,7 +808,22 @@ class Transport(ABC):
     @abstractmethod
     @classified(Operation(WRITE, MAIL))
     def apply_mail(self, plan: MailActionPlan) -> MailActionResult:
-        """Carry out a plan: flag, then move or delete, its messages."""
+        """Carry out a plan: flag, then move or delete, its messages.
+
+        A plan that copies is not handed here: its copy is
+        :meth:`copy_messages`, a write of its own.
+        """
+
+    @abstractmethod
+    @classified(Operation(WRITE, MAIL))
+    def copy_messages(
+        self, folder: str, uids: list[int], destination: str
+    ) -> int:
+        """Copy ``uids`` from ``folder`` into ``destination``, leaving them
+        in ``folder``; return how many were copied.
+
+        Not undone by running it again: a second call files second copies.
+        """
 
     @abstractmethod
     @classified(Operation(WRITE, MAIL))

@@ -1,4 +1,4 @@
-$ mailctl apply --from noreply@github.com --fileinto Lists --dry-run --json
+$ mailctl apply --from noreply@github.com --fileinto Lists --keep --dry-run --json
 exit: 0
 --- stdout
 {
@@ -20,7 +20,7 @@ exit: 0
       "fileinto": "Lists",
       "discard": false,
       "flags": [],
-      "keep": false,
+      "keep": true,
       "stop": null
     },
     "folder": {
@@ -40,8 +40,8 @@ exit: 0
       "destination": "INBOX.Lists",
       "flags": [],
       "discard": false,
-      "moves": true,
-      "copies": false,
+      "moves": false,
+      "copies": true,
       "count": 2,
       "messages": [
         {

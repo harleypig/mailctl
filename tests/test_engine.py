@@ -434,6 +434,7 @@ EXPECTED_KINDS = {
     "fetch_headers": (READ, MAIL),
     "fetch_summaries": (READ, MAIL),
     "apply_mail": (WRITE, MAIL),
+    "copy_messages": (WRITE, MAIL),
     "add_flags": (WRITE, MAIL),
     "remove_flags": (WRITE, MAIL),
     "message_headers": (READ, MAIL),

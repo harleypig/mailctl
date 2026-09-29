@@ -41,6 +41,7 @@ exit: 0
       "flags": [],
       "discard": false,
       "moves": true,
+      "copies": false,
       "count": 2,
       "messages": [
         {

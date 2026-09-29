@@ -936,7 +936,7 @@ def apply_to_existing(
 
     report_result(result, plan)
 
-    return result.moved or result.deleted or result.flagged
+    return result.moved or result.deleted or result.flagged or result.copied
 
 
 # ----------------------------------------------------------------------------
@@ -985,6 +985,12 @@ def describe_plan(plan, prefix: str = "") -> None:
     elif plan.moves:
         print(f"{prefix}move {plan.count} message(s) to {plan.destination!r}")
 
+    elif plan.copies:
+        print(
+            f"{prefix}copy {plan.count} message(s) to {plan.destination!r}, "
+            f"leaving them in {plan.source!r}"
+        )
+
 
 # ----------------------------------------------------------------------------
 def report_result(result, plan) -> None:
@@ -1003,6 +1009,12 @@ def report_result(result, plan) -> None:
             f"{plan.destination!r}"
         )
 
+    if result.copied:
+        print(
+            f"Copied {result.copied} message(s) from {plan.source!r} to "
+            f"{plan.destination!r}; the originals stay in {plan.source!r}"
+        )
+
 
 # ----------------------------------------------------------------------------
 def action_prompt(plan, move_threshold: int) -> str:
@@ -1017,6 +1029,12 @@ def action_prompt(plan, move_threshold: int) -> str:
         return (
             f"PERMANENTLY DELETE {plan.count} message(s) from "
             f"{plan.source!r}? This cannot be undone"
+        )
+
+    if plan.copies:
+        return (
+            f"Copy {plan.count} message(s) from {plan.source!r} to "
+            f"{plan.destination!r}, leaving them in {plan.source!r}?"
         )
 
     if not plan.moves:

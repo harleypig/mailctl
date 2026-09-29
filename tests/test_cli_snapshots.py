@@ -682,6 +682,18 @@ JSON_SCENARIOS = {
         ["apply", *GITHUB, "--keep", "--dry-run", "--json"],
         {},
     ),
+    "apply-keep-copy-json": (
+        [
+            "apply",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--keep",
+            "--dry-run",
+            "--json",
+        ],
+        {},
+    ),
     "apply-json-nodry": (
         ["apply", *GITHUB, "--fileinto", "Lists", "--yes", "--json"],
         {},
@@ -1297,6 +1309,30 @@ SCENARIOS = {
         {},
     ),
     "apply-keep-only": (["apply", *GITHUB, "--keep", "--yes"], {}),
+    "apply-keep-copy-yes": (
+        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
+        {},
+    ),
+    "apply-keep-copy-dry": (
+        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--dry-run"],
+        {},
+    ),
+    "apply-keep-copy-flag-yes": (
+        [
+            "apply",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--keep",
+            "--mark-read",
+            "--yes",
+        ],
+        {},
+    ),
+    "apply-discard-keep": (
+        ["apply", *GITHUB, "--discard", "--keep", "--yes"],
+        {},
+    ),
     "add-before-unknown": (
         ["add", *GITHUB, "--fileinto", "Lists", "--before", "phantom"],
         {},

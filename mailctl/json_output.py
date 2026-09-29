@@ -312,6 +312,7 @@ def mail_plan(record) -> dict:
         "flags": list(record.flags),
         "discard": record.discard,
         "moves": record.moves,
+        "copies": record.copies,
         "count": record.count,
         "messages": [_summary(item) for item in record.messages],
     }

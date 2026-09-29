@@ -263,6 +263,12 @@ class MxrouteTransport(Transport):
         )
 
     # ------------------------------------------------------------------------
+    def copy_messages(
+        self, folder: str, uids: list[int], destination: str
+    ) -> int:
+        return self._imap().copy_messages(folder, uids, destination)
+
+    # ------------------------------------------------------------------------
     def add_flags(
         self, folder: str, uids: list[int], flags: list[str]
     ) -> None:

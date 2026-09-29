@@ -251,11 +251,12 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
 - **Shaped after the MXroute record, and where it differs.** Maildir++, a
   `.` separator, an empty personal-namespace prefix (as read on
   2026-09-28), `PLAIN` only, STARTTLS on 4190 and 143, implicit TLS on 993,
-  and `enotify` turned off, which leaves exactly the 23 Sieve extensions
-  the MXroute probe listed. It differs in these ways: IMAP lacks `METADATA`
-  and `QUOTA` (41 capabilities, not 43); the script is named `mailctl` on a
-  fresh account rather than Roundcube's `managesieve` (tests seed
-  `managesieve` where it matters); no `INBOX.spam`, `Junk`, or other
+  and `enotify` turned off, which leaves 23 Sieve extensions. It differs
+  in these ways: Sieve lacks `editheader`, the one extension of the 24 the
+  MXroute probe listed on 2026-09-29 that it does not advertise; IMAP lacks
+  `METADATA` and `QUOTA` (41 capabilities, not 43); the script is named
+  `mailctl` on a fresh account rather than Roundcube's `managesieve` (tests
+  seed `managesieve` where it matters); no `INBOX.spam`, `Junk`, or other
   default folders exist; any user name logs in with the run's password;
   and `redirect` is **not** refused by the server, which MXroute's is
   (mailctl refuses it itself). IMAP runs on implicit TLS only: mailctl

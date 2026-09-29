@@ -1085,6 +1085,43 @@ def test_a_failure_in_the_copy_fallback_warns_of_duplicates(
 
 
 # ----------------------------------------------------------------------------
+def test_copying_leaves_the_originals_in_chunks(imap_session, fake_imap):
+    """COPY only, per chunk: red if anything flags ``\\Deleted`` or
+    expunges, which is a move."""
+    uids = list(range(1, MANY + 1))
+
+    assert imap_session.copy_messages("INBOX", uids, "INBOX.Lists") == MANY
+    assert chunk_sizes(fake_imap, "copy") == [250, 250, 100]
+    assert not {"move", "add_flags", "expunge", "uid_expunge"} & set(
+        fake_imap.names()
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_copy_failing_part_way_says_how_many_were_copied(
+    imap_session, fake_imap
+):
+    fail_on_call(fake_imap, "copy", 2)
+
+    with pytest.raises(MailctlError) as caught:
+        imap_session.copy_messages(
+            "INBOX", list(range(1, MANY + 1)), "INBOX.Lists"
+        )
+
+    message = str(caught.value)
+
+    assert "copy messages to 'INBOX.Lists'" in message
+    assert "250 of 600 were copied" in message
+    assert "a second time" in message
+
+
+# ----------------------------------------------------------------------------
+def test_copying_nothing_is_a_no_op(imap_session, fake_imap):
+    assert imap_session.copy_messages("INBOX", [], "INBOX.Lists") == 0
+    assert fake_imap.calls == [("login", "user@example.com")]
+
+
+# ----------------------------------------------------------------------------
 def test_a_partial_delete_says_re_running_is_safe(imap_session, fake_imap):
     fail_on_call(fake_imap, "uid_expunge", 2)
 
