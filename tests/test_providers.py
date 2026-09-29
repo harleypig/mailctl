@@ -26,7 +26,6 @@ import email
 import inspect
 import json
 import re
-from contextlib import contextmanager
 from dataclasses import replace
 from typing import cast
 
@@ -297,11 +296,17 @@ class FakeTransport(Transport):
 
     # ------------------------------------------------------------------------
     @classmethod
-    @contextmanager
-    def open(cls, config, *, rules, mail, progress=None):
-        cls.opened += 1
+    def open(cls, config, *, progress=None):
+        return cls()
 
-        yield cls(rules=rules, mail=mail)
+    def connect(self, half):
+        type(self).opened += 1
+
+    def disconnect(self, half):
+        pass
+
+    def dropped(self, error):
+        return False
 
     # -- the rule half -------------------------------------------------------
 

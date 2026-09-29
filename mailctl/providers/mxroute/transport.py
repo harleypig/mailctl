@@ -1,6 +1,7 @@
 """The ``mxroute`` transport: ManageSieve for rules, IMAP for mail.
 
-Communication only. Each operation is one exchange with the server, or a
+Communication only. Each half is its own connection, made when the
+session asks. Each operation is one exchange with the server, or a
 composite the host does natively, handed to a layer-1 session: a script is
 read and stored as the server holds it, CHECKSCRIPT reports the server's
 verdict, and a server's answer or refusal comes back as data or a
@@ -8,17 +9,20 @@ verdict, and a server's answer or refusal comes back as data or a
 the dialect's (``dialect.py``) and the utilities'.
 """
 
-from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 from email.message import Message
 from functools import partial
 
 from ... import MailctlError
+from ...components import imap as imap_component
+from ...components import managesieve as sieve_component
 from ...components.imap.client import ImapSession
 from ...components.managesieve.client import SieveSession
 from ...config import Config
 from ...criteria import Criteria
 from ..base import (
+    MAIL,
+    RULES,
     FetchedMessage,
     FolderListing,
     MailActionPlan,
@@ -34,11 +38,11 @@ __all__ = ["MxrouteTransport"]
 
 
 class MxrouteTransport(Transport):
-    """MXroute's two servers, as one open connection.
+    """MXroute's two servers, each half connected when asked.
 
-    Built open by :meth:`open`, or directly from two layer-1 sessions (or
-    stand-ins for them), either of which may be None when that half was
-    not asked for.
+    Made by :meth:`open` from a configuration, connected to nothing, or
+    directly from two layer-1 sessions (or stand-ins for them) already
+    open, either of which may be None for a half there is none of.
     """
 
     name = "mxroute"
@@ -48,9 +52,15 @@ class MxrouteTransport(Transport):
         self,
         sieve: SieveSession | None = None,
         imap: ImapSession | None = None,
+        *,
+        config: Config | None = None,
+        progress: Progress | None = None,
     ):
         self.sieve = sieve
         self.imap = imap
+        self.config = config
+        self.progress = progress
+        self._stacks: dict[str, ExitStack] = {}
 
     # ------------------------------------------------------------------------
     def _sieve(self) -> SieveSession:
@@ -68,40 +78,59 @@ class MxrouteTransport(Transport):
 
         return self.imap
 
+    # ########################################################################
+    # The connection
+    # ########################################################################
+
     # ------------------------------------------------------------------------
     @classmethod
-    @contextmanager
     def open(
-        cls,
-        config: Config,
-        *,
-        rules: bool,
-        mail: bool,
-        progress: Progress | None = None,
-    ) -> Iterator["MxrouteTransport"]:
-        """Open the requested sessions and close them on the way out.
+        cls, config: Config, *, progress: Progress | None = None
+    ) -> "MxrouteTransport":
+        return cls(config=config, progress=progress)
 
-        IMAP is opened first, so a login failure there is reported before
-        any ManageSieve traffic.
-        """
+    # ------------------------------------------------------------------------
+    def _channel(self, name: str):
+        """The progress callback for one server, tagged with its name."""
+        return partial(self.progress, name) if self.progress else None
 
-        def channel(name: str):
-            return partial(progress, name) if progress else None
+    # ------------------------------------------------------------------------
+    def connect(self, half: str) -> None:
+        if self.config is None:
+            return
 
-        with ExitStack() as stack:
-            transport = cls()
+        if half == MAIL and self.imap is None:
+            stack = ExitStack()
+            self.imap = stack.enter_context(
+                imap_session(self.config, progress=self._channel("imap"))
+            )
+            self._stacks[MAIL] = stack
 
-            if mail:
-                transport.imap = stack.enter_context(
-                    imap_session(config, progress=channel("imap"))
-                )
+        elif half == RULES and self.sieve is None:
+            stack = ExitStack()
+            self.sieve = stack.enter_context(
+                sieve_session(self.config, progress=self._channel("sieve"))
+            )
+            self._stacks[RULES] = stack
 
-            if rules:
-                transport.sieve = stack.enter_context(
-                    sieve_session(config, progress=channel("sieve"))
-                )
+    # ------------------------------------------------------------------------
+    def disconnect(self, half: str) -> None:
+        stack = self._stacks.pop(half, None)
 
-            yield transport
+        if half == MAIL:
+            self.imap = None
+
+        elif half == RULES:
+            self.sieve = None
+
+        if stack is not None:
+            stack.close()
+
+    # ------------------------------------------------------------------------
+    def dropped(self, error: BaseException) -> bool:
+        return imap_component.connection_lost(
+            error
+        ) or sieve_component.connection_lost(error)
 
     # ########################################################################
     # The rule half, over ManageSieve
@@ -110,7 +139,7 @@ class MxrouteTransport(Transport):
     # ------------------------------------------------------------------------
     @property
     def has_rules(self) -> bool:
-        return self.sieve is not None
+        return self.sieve is not None or self.config is not None
 
     # ------------------------------------------------------------------------
     def rules_capabilities(self) -> list[str]:
@@ -147,7 +176,7 @@ class MxrouteTransport(Transport):
     # ------------------------------------------------------------------------
     @property
     def has_mail(self) -> bool:
-        return self.imap is not None
+        return self.imap is not None or self.config is not None
 
     # ------------------------------------------------------------------------
     def mail_capabilities(self) -> list[str]:
@@ -166,7 +195,7 @@ class MxrouteTransport(Transport):
 
     # ------------------------------------------------------------------------
     def create_folder(self, folder: str) -> None:
-        self._imap().create_folder(folder, subscribe=False)
+        self._imap().create_folder(folder)
 
     # ------------------------------------------------------------------------
     def subscribe(self, folder: str) -> None:

@@ -12,6 +12,7 @@ from .client import (
     SieveAuthenticationError,
     SieveConnectionError,
     SieveSession,
+    connection_lost,
 )
 from .emit import (
     EMIT_TABLE,
@@ -65,6 +66,7 @@ __all__ = [
     "SieveConnectionError",
     "SieveSession",
     "backup_path",
+    "connection_lost",
     "display_diff",
     "emitted_extensions",
     "merge_rule",

@@ -31,7 +31,7 @@ from mailctl.cli import (
     render_event,
     report_folder_creation,
 )
-from mailctl.components.imap import FolderCreation
+from mailctl.providers.base import FolderCreation
 from mailctl.providers.mxroute.imap import new_imap_session
 
 NEW_FOLDER = "INBOX.Lists.GitHub"
@@ -69,6 +69,18 @@ def sieve_without_mailbox():
     return SimpleNamespace(capabilities=lambda: [])
 
 
+# ----------------------------------------------------------------------------
+def create(imap_session, imap_config, subscribe: bool = True):
+    """Create ``NEW_FOLDER`` the way a command does: planned, then made
+    over IMAP and subscribed to unless declined."""
+    live = mxroute(sieve_without_mailbox(), imap_session)
+    plan = utilities.folders.plan_folder(
+        live, imap_config, "Lists/GitHub", create=True, subscribe=subscribe
+    )
+
+    return utilities.folders.create_folder(live, plan)
+
+
 # ############################################################################
 # The two folder views
 # ############################################################################
@@ -85,7 +97,7 @@ def test_the_subscribed_set_is_read_and_is_not_the_folder_list(imap_session):
     assert "INBOX.spam" in imap_session.folders
     assert "INBOX.spam" not in imap_session.subscribed_folders
 
-    assert imap_session.exists("INBOX.spam") is True
+    assert "INBOX.spam" in imap_session.folders
     assert imap_session.is_subscribed("INBOX.spam") is False
 
 
@@ -135,9 +147,11 @@ def test_the_delimiter_still_comes_from_the_list_response(imap_session):
 
 
 # ----------------------------------------------------------------------------
-def test_creating_a_folder_subscribes_to_it(imap_session, fake_imap):
+def test_creating_a_folder_subscribes_to_it(
+    imap_session, imap_config, fake_imap
+):
     """The fix. A fileinto target is by definition one the user should see."""
-    result = imap_session.create_folder(NEW_FOLDER)
+    result = create(imap_session, imap_config)
 
     assert result == FolderCreation(folder=NEW_FOLDER, subscribed=True)
     assert ("subscribe_folder", NEW_FOLDER) in fake_imap.calls
@@ -146,35 +160,37 @@ def test_creating_a_folder_subscribes_to_it(imap_session, fake_imap):
 
 # ----------------------------------------------------------------------------
 def test_the_folder_is_created_before_it_is_subscribed(
-    imap_session, fake_imap
+    imap_session, imap_config, fake_imap
 ):
     """Order is not cosmetic: the folder has to exist to be subscribed."""
-    imap_session.create_folder(NEW_FOLDER)
+    create(imap_session, imap_config)
     names = fake_imap.names()
 
     assert names.index("create_folder") < names.index("subscribe_folder")
 
 
 # ----------------------------------------------------------------------------
-def test_creating_a_folder_can_decline_to_subscribe(imap_session, fake_imap):
+def test_creating_a_folder_can_decline_to_subscribe(
+    imap_session, imap_config, fake_imap
+):
     """A deliberately hidden folder is a real want, not a debug switch.
 
     Somewhere to file a high-volume list that should leave the inbox
     without cluttering the sidebar.
     """
-    result = imap_session.create_folder(NEW_FOLDER, subscribe=False)
+    result = create(imap_session, imap_config, subscribe=False)
 
     assert result == FolderCreation(folder=NEW_FOLDER, subscribed=False)
     assert result.subscribe_error == ""
     assert "subscribe_folder" not in fake_imap.names()
 
-    assert imap_session.exists(NEW_FOLDER) is True
+    assert NEW_FOLDER in imap_session.folders
     assert imap_session.is_subscribed(NEW_FOLDER) is False
 
 
 # ----------------------------------------------------------------------------
 def test_a_failed_subscription_is_not_a_failed_creation(
-    imap_session, fake_imap
+    imap_session, imap_config, fake_imap
 ):
     """The folder exists and mail filed there will arrive -- say that.
 
@@ -184,21 +200,21 @@ def test_a_failed_subscription_is_not_a_failed_creation(
     """
     fake_imap.failures["subscribe_folder"] = IMAPClientError("denied")
 
-    result = imap_session.create_folder(NEW_FOLDER)
+    result = create(imap_session, imap_config)
 
     assert result.subscribed is False
     assert NEW_FOLDER in result.subscribe_error
-    assert imap_session.exists(NEW_FOLDER) is True
+    assert NEW_FOLDER in imap_session.folders
 
 
 # ----------------------------------------------------------------------------
 def test_a_failed_subscription_does_not_undo_the_folder(
-    imap_session, fake_imap
+    imap_session, imap_config, fake_imap
 ):
     """Nothing walks the creation back; deletion is the irreversible one."""
     fake_imap.failures["subscribe_folder"] = IMAPClientError("denied")
 
-    imap_session.create_folder(NEW_FOLDER)
+    create(imap_session, imap_config)
     names = fake_imap.names()
 
     assert names.count("create_folder") == 1
@@ -208,7 +224,7 @@ def test_a_failed_subscription_does_not_undo_the_folder(
 
 # ----------------------------------------------------------------------------
 def test_a_subscribe_the_server_ignored_is_caught_by_rereading_lsub(
-    imap_session, fake_imap
+    imap_session, imap_config, fake_imap
 ):
     """The post-condition check, and the reason it is not ceremony.
 
@@ -218,20 +234,20 @@ def test_a_subscribe_the_server_ignored_is_caught_by_rereading_lsub(
     """
     fake_imap.subscribe_takes_effect = False
 
-    result = imap_session.create_folder(NEW_FOLDER)
+    result = create(imap_session, imap_config)
 
     assert result.subscribed is False
     assert "LSUB" in result.subscribe_error
-    assert imap_session.exists(NEW_FOLDER) is True
+    assert NEW_FOLDER in imap_session.folders
 
 
 # ----------------------------------------------------------------------------
-def test_a_create_failure_still_raises(imap_session, fake_imap):
+def test_a_create_failure_still_raises(imap_session, imap_config, fake_imap):
     """A folder that does not exist is a different failure entirely."""
     fake_imap.failures["create_folder"] = IMAPClientError("no room")
 
     with pytest.raises(MailctlError, match="could not create folder"):
-        imap_session.create_folder(NEW_FOLDER)
+        create(imap_session, imap_config)
 
     assert "subscribe_folder" not in fake_imap.names()
 
@@ -253,7 +269,7 @@ def test_subscribe_and_unsubscribe_move_the_folder_in_and_out_of_lsub(
     imap_session.unsubscribe("INBOX.spam")
 
     assert imap_session.is_subscribed("INBOX.spam") is False
-    assert imap_session.exists("INBOX.spam") is True
+    assert "INBOX.spam" in imap_session.folders
 
 
 # ----------------------------------------------------------------------------

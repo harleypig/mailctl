@@ -49,6 +49,14 @@ def matching(imap_session, criteria, folder="INBOX"):
 
 
 # ----------------------------------------------------------------------------
+def normalized(session: ImapSession, name: str) -> str:
+    """``name`` normalized against what this session read at open."""
+    return normalize_folder(
+        name, session.delimiter, session.folders, session.namespace_prefix
+    )
+
+
+# ----------------------------------------------------------------------------
 def plan_actions(
     imap_session, criteria, source, destination="", flags=(), discard=False
 ):
@@ -276,9 +284,11 @@ def test_case_variants_are_the_folders_that_differ_only_in_case():
 def test_exists_is_exact_except_for_inbox(imap_session):
     """#56: on Dovecot Maildir++ INBOX.Lists and INBOX.lists are two
     folders, so one existing says nothing about the other."""
-    assert imap_session.exists("INBOX.Lists") is True
-    assert imap_session.exists("INBOX.lists") is False
-    assert imap_session.exists("inbox") is True
+    listing = mxroute(imap=imap_session).transport.list_folders()
+
+    assert listing.exists("INBOX.Lists") is True
+    assert listing.exists("INBOX.lists") is False
+    assert listing.exists("inbox") is True
 
 
 # ----------------------------------------------------------------------------
@@ -379,7 +389,9 @@ def test_open_reads_an_empty_personal_prefix_and_places_new_folders_at_root(
 
     with plain_session() as session:
         assert session.namespace_prefix == ""
-        assert session.normalize("MailctlDryRunProbe") == "MailctlDryRunProbe"
+        assert (
+            normalized(session, "MailctlDryRunProbe") == "MailctlDryRunProbe"
+        )
 
     assert fake_imap.names().count("namespace") == 1
 
@@ -391,7 +403,7 @@ def test_open_reads_an_inbox_personal_prefix(fake_imap):
 
     with plain_session() as session:
         assert session.namespace_prefix == "INBOX."
-        assert session.normalize("Probe") == "INBOX.Probe"
+        assert normalized(session, "Probe") == "INBOX.Probe"
 
 
 # ----------------------------------------------------------------------------
@@ -401,7 +413,7 @@ def test_without_namespace_the_prefix_is_unknown_and_the_guess_stands(
     """Not advertised: NAMESPACE is never sent, and the fallback applies."""
     with plain_session() as session:
         assert session.namespace_prefix is None
-        assert session.normalize("Probe") == "INBOX.Probe"
+        assert normalized(session, "Probe") == "INBOX.Probe"
 
     assert "namespace" not in fake_imap.names()
 
@@ -413,7 +425,7 @@ def test_a_failing_namespace_falls_back_rather_than_failing_open(fake_imap):
 
     with plain_session() as session:
         assert session.namespace_prefix is None
-        assert session.normalize("Probe") == "INBOX.Probe"
+        assert normalized(session, "Probe") == "INBOX.Probe"
 
 
 # ----------------------------------------------------------------------------
@@ -583,6 +595,50 @@ def test_the_session_searches_by_the_key_alone_and_narrows_nothing(
     assert uids == [1, 2]
     assert [item.summary.uid for item in fetched] == [1, 2]
     assert fetched[1].headers["From"] == "b@example.com"
+
+
+# ----------------------------------------------------------------------------
+def selects(fake_imap) -> list[str]:
+    """Every folder the double was asked to select, in order."""
+    return [call[1] for call in fake_imap.calls if call[0] == "select_folder"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_fetch_selects_its_own_folder_rather_than_trusting_the_last(
+    imap_session, fake_imap
+):
+    """A fetch names its folder: after a search elsewhere it selects the
+    one it was given, and right after a search of the same folder it
+    sends nothing more."""
+    fake_imap.messages = {1: message("a@example.com")}
+
+    class KeyOnly:
+        def imap_search_key(self):
+            return [["ALL"]]
+
+    uids = imap_session.search_uids(KeyOnly(), "INBOX")
+    imap_session.fetch_headers(uids, "INBOX")
+
+    assert selects(fake_imap) == ["INBOX"]
+
+    imap_session.fetch_summaries(uids, "INBOX.Lists")
+    imap_session.fetch_headers(uids, "INBOX")
+
+    assert selects(fake_imap) == ["INBOX", "INBOX.Lists", "INBOX"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_new_connection_selects_before_it_fetches(imap_session, fake_imap):
+    """A reconnect starts with nothing selected, whatever the last
+    connection had."""
+    fake_imap.messages = {1: message("a@example.com")}
+    imap_session.fetch_headers([1], "INBOX")
+
+    imap_session.close()
+    imap_session.open()
+    imap_session.fetch_headers([1], "INBOX")
+
+    assert selects(fake_imap) == ["INBOX", "INBOX"]
 
 
 # ----------------------------------------------------------------------------

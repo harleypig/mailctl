@@ -31,7 +31,6 @@ through one import.
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping
-from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from email.message import Message
 from pathlib import Path
@@ -69,17 +68,23 @@ from .model import (
 )
 
 __all__ = [
+    "CONNECTION",
     "DIALECT_OPERATIONS",
     "DISCARD",
     "FILEINTO",
     "FLAG",
     "KEEP",
+    "MAIL",
     "OPERATIONS",
     "PLACE_AFTER",
     "PLACE_BEFORE",
     "PLACE_FIRST",
     "PLACE_LAST",
+    "READ",
+    "RULES",
+    "TRANSPORT_KINDS",
     "TRANSPORT_OPERATIONS",
+    "WRITE",
     "ActionSpec",
     "DeliveryCreate",
     "Dialect",
@@ -92,6 +97,7 @@ __all__ = [
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
+    "Operation",
     "Placement",
     "Progress",
     "Provider",
@@ -100,6 +106,7 @@ __all__ = [
     "Transport",
     "Wording",
     "action_names",
+    "classified",
     "declined",
     "decode_header_value",
     "refuse",
@@ -444,30 +451,96 @@ class Dialect(ABC):
 # The transport -- communication with the host's servers, and nothing else
 # ############################################################################
 
+# The two halves of a transport, each its own connection.
+RULES = "rules"
+MAIL = "mail"
+
+# What an operation does to the server. A read may be sent again after the
+# connection is re-made; a write may have landed before the connection
+# went, so it never is. A connection operation manages or describes the
+# connection itself and is no exchange with the server.
+READ = "read"
+WRITE = "write"
+CONNECTION = "connection"
+
+
+@dataclass(frozen=True)
+class Operation:
+    """What one transport operation is: its half, and read or write.
+
+    ``half`` is :data:`RULES` or :data:`MAIL`, or None for a connection
+    operation, which belongs to neither.
+    """
+
+    kind: str
+    half: str | None = None
+
+
+# ----------------------------------------------------------------------------
+def classified(operation: Operation) -> Callable[[Callable], Callable]:
+    """Declare what a transport operation is, on the interface itself.
+
+    Declared once, on :class:`Transport`, so every provider's operation of
+    the same name is the same kind; the session reads it from there.
+    """
+
+    def mark(function: Callable) -> Callable:
+        function.__operation__ = operation  # type: ignore[attr-defined]
+
+        return function
+
+    return mark
+
 
 class Transport(ABC):
-    """One open connection to a host, speaking only to its servers.
+    """One host's servers, spoken to and nothing else.
 
     Each operation is one exchange with a server, or a composite the host
     performs natively (a move and its COPY + EXPUNGE fallback). A transport
     neither builds nor validates what it is handed: it tries to store it
     and reports success, or raises ``MailctlError`` with the server's
-    answer. An instance is made by :meth:`open`.
+    answer.
+
+    Each half is its own connection, made by :meth:`connect` and dropped by
+    :meth:`disconnect`; an instance is made, connected to nothing, by
+    :meth:`open`. When to connect, and whether to try again after the
+    server has gone, is the session's (``mailctl.engine``): it reads what
+    each operation is -- which half, read or write -- from the
+    classification declared here, never from a provider.
     """
 
     name: ClassVar[str]
 
+    # ------------------------------------------------------------------------
+    # The connection
+    # ------------------------------------------------------------------------
+
     @classmethod
     @abstractmethod
+    @classified(Operation(CONNECTION))
     def open(
-        cls,
-        config: Config,
-        *,
-        rules: bool,
-        mail: bool,
-        progress: Progress | None = None,
-    ) -> AbstractContextManager["Transport"]:
-        """Connect the requested halves; close them on the way out."""
+        cls, config: Config, *, progress: Progress | None = None
+    ) -> "Transport":
+        """A transport for ``config``, connected to nothing yet."""
+
+    @abstractmethod
+    @classified(Operation(CONNECTION))
+    def connect(self, half: str) -> None:
+        """Connect ``half`` (:data:`RULES` or :data:`MAIL`) unless it is
+        connected already. A half with nothing to connect with is left as
+        it is, and its operations raise."""
+
+    @abstractmethod
+    @classified(Operation(CONNECTION))
+    def disconnect(self, half: str) -> None:
+        """Close ``half``, ignoring a connection already gone; it can be
+        connected again."""
+
+    @abstractmethod
+    @classified(Operation(CONNECTION))
+    def dropped(self, error: BaseException) -> bool:
+        """Whether ``error`` means the server closed or lost the
+        connection, rather than refusing what it was asked."""
 
     # ------------------------------------------------------------------------
     # The rule half
@@ -475,35 +548,43 @@ class Transport(ABC):
 
     @property
     @abstractmethod
+    @classified(Operation(CONNECTION))
     def has_rules(self) -> bool:
-        """Whether the rule half is connected."""
+        """Whether the rule half is connected or can be."""
 
     @abstractmethod
+    @classified(Operation(READ, RULES))
     def rules_capabilities(self) -> list[str]:
         """What the rule half advertises, as the host names it."""
 
     @abstractmethod
+    @classified(Operation(READ, RULES))
     def list_rule_sets(self) -> tuple[str | None, list[str]]:
         """``(active, others)``."""
 
     @abstractmethod
+    @classified(Operation(READ, RULES))
     def active_rule_set(self) -> str | None:
         """The name of the rule set that runs, or None."""
 
     @abstractmethod
+    @classified(Operation(READ, RULES))
     def read_rule_set(self, name: str) -> str:
         """A stored rule set, exactly as the host holds it."""
 
     @abstractmethod
+    @classified(Operation(READ, RULES))
     def check_rule_set(self, source: str) -> None:
         """Have the host validate a rule set without storing it; raise
         with the host's verdict when it refuses."""
 
     @abstractmethod
+    @classified(Operation(WRITE, RULES))
     def store_rule_set(self, name: str, source: str) -> None:
         """Store a rule set under ``name``."""
 
     @abstractmethod
+    @classified(Operation(WRITE, RULES))
     def activate_rule_set(self, name: str) -> None:
         """Make ``name`` the rule set that runs."""
 
@@ -513,27 +594,33 @@ class Transport(ABC):
 
     @property
     @abstractmethod
+    @classified(Operation(CONNECTION))
     def has_mail(self) -> bool:
-        """Whether the mail half is connected."""
+        """Whether the mail half is connected or can be."""
 
     @abstractmethod
+    @classified(Operation(READ, MAIL))
     def mail_capabilities(self) -> list[str]:
         """What the mail half advertises, as the host names it."""
 
     @abstractmethod
+    @classified(Operation(READ, MAIL))
     def list_folders(self) -> FolderListing:
         """The folders in the host's order, the delimiter, the subscribed
         ones, and where a new folder goes."""
 
     @abstractmethod
+    @classified(Operation(WRITE, MAIL))
     def create_folder(self, folder: str) -> None:
         """Create a folder, as named; subscribing to it is a second step."""
 
     @abstractmethod
+    @classified(Operation(WRITE, MAIL))
     def subscribe(self, folder: str) -> None:
         """Subscribe to a folder, confirming it took effect."""
 
     @abstractmethod
+    @classified(Operation(WRITE, MAIL))
     def unsubscribe(self, folder: str) -> None:
         """Unsubscribe from a folder."""
 
@@ -542,6 +629,7 @@ class Transport(ABC):
     # ------------------------------------------------------------------------
 
     @abstractmethod
+    @classified(Operation(READ, MAIL))
     def search(self, folder: str, criteria: Criteria) -> list[int]:
         """The UIDs the host's own search matches for ``criteria``.
 
@@ -550,32 +638,38 @@ class Transport(ABC):
         """
 
     @abstractmethod
+    @classified(Operation(READ, MAIL))
     def search_messages(self, folder: str, expression: str) -> list[int]:
         """The UIDs a host-native search expression matches."""
 
     @abstractmethod
+    @classified(Operation(READ, MAIL))
     def fetch_headers(
         self, uids: list[int], folder: str
     ) -> list[FetchedMessage]:
-        """The headers and date of ``uids``, in the folder the last search
-        read, in UID order; one per message the host still has."""
+        """The headers and date of ``uids`` in ``folder``, in UID order;
+        one per message the host still has."""
 
     @abstractmethod
+    @classified(Operation(READ, MAIL))
     def fetch_summaries(
         self, uids: list[int], folder: str
     ) -> list[FetchedMessage]:
-        """What a listing shows of ``uids``, in the folder the last search
-        read, in the order asked for; one per message the host still has."""
+        """What a listing shows of ``uids`` in ``folder``, in the order
+        asked for; one per message the host still has."""
 
     @abstractmethod
+    @classified(Operation(WRITE, MAIL))
     def apply_mail(self, plan: MailActionPlan) -> MailActionResult:
         """Carry out a plan: flag, then move or delete, its messages."""
 
     @abstractmethod
+    @classified(Operation(READ, MAIL))
     def message_headers(self, folder: str, uid: int) -> Message:
         """One message's headers, as an ``email.message.Message``."""
 
     @abstractmethod
+    @classified(Operation(READ, MAIL))
     def message_source(
         self, folder: str, uid: int
     ) -> tuple[bytes, tuple[str, ...]]:
@@ -614,3 +708,24 @@ class Provider:
 DIALECT_OPERATIONS = tuple(sorted(Dialect.__abstractmethods__))
 TRANSPORT_OPERATIONS = tuple(sorted(Transport.__abstractmethods__))
 OPERATIONS = DIALECT_OPERATIONS + TRANSPORT_OPERATIONS
+
+
+# ----------------------------------------------------------------------------
+def _operation(name: str) -> Operation | None:
+    """What the interface declares transport operation ``name`` to be."""
+    member = Transport.__dict__.get(name)
+    function = getattr(member, "fget", None) or getattr(
+        member, "__func__", member
+    )
+
+    return getattr(function, "__operation__", None)
+
+
+# Every transport operation and what it is, as declared above. An
+# operation missing here is one the session cannot guard, and the
+# classification test holds that none is.
+TRANSPORT_KINDS: Mapping[str, Operation] = {
+    name: kind
+    for name in TRANSPORT_OPERATIONS
+    if (kind := _operation(name)) is not None
+}
