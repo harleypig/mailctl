@@ -56,6 +56,18 @@ where every write path is proved first.
      Run twice, on imaplib's shapes and from a server's bytes through
      imaplib's **real** reader, since only the reader turns a literal name
      into the pair the parser must handle ([#157][i157]).
+   - **Server alerts** (`test_imap_alerts.py`) — an `ALERT` read out of
+     every kind of status response, tagged and untagged, and none out of a
+     line without one; the session handing each to `progress` during a
+     command, at a refused login, and in the greeting on implicit TLS, but
+     nothing sent before STARTTLS; and the transport handing over the
+     neutral model's `ServerAlert`, not the component's. Run again over
+     IMAPClient and imaplib themselves reading a scripted server's bytes,
+     since the session wraps a private of imaplib and only the real
+     library shows the wrapping still sees every line ([#205][i205]). The
+     CLI's half — on stderr with or without `--verbose`, the same text once,
+     control characters escaped, stdout left to `--json` — is the
+     `folders-alert*` snapshots.
    - `config` — the flag → env → file → default resolution order, and that a
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
@@ -241,7 +253,12 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   `test_uidvalidity.py` ([#204][i204]): a folder deleted and made again
   gets a new value from Dovecot (asserted, not assumed), `search --json`
   reports the server's, and a UID pinned to the old value is refused by
-  `mark` and `view`, leaving the message that now has it unread. And
+  `mark` and `view`, leaving the message that now has it unread, while a
+  pin to the current value marks it. An IMAP `ALERT` in `test_alerts.py`
+  ([#205][i205]): the image's post-login script (`image/postlogin.sh`)
+  sends one to a user whose name starts with `alert-`, and it reaches
+  stderr, under `--json` too, with stdout untouched; any other user is
+  sent nothing, so no other test meets one. And
   baselines: one saved from the server checks clean against it, saving
   writes nothing there, and drift made by editing the saved file exits 3 or
   4 as documented.
@@ -281,9 +298,11 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   `mailctl` on a fresh account rather than Roundcube's `managesieve` (tests
   seed `managesieve` where it matters); no `INBOX.spam`, `Junk`, or other
   default folders exist; any user name logs in with the run's password;
-  and `redirect` is **not** refused by the server, which MXroute's is
-  (mailctl refuses it itself). IMAP runs on implicit TLS only: mailctl
-  treats only port 143 as STARTTLS, and Docker's port is not 143.
+  a user named `alert-*` is sent an `ALERT` at login, where whether
+  MXroute ever sends one is unknown; and `redirect` is **not** refused by
+  the server, which MXroute's is (mailctl refuses it itself). IMAP runs on
+  implicit TLS only: mailctl treats only port 143 as STARTTLS, and
+  Docker's port is not 143.
 - **The certificate and the password.** The container makes a fresh
   self-signed certificate at start (`localhost` / `127.0.0.1`), and only
   the certificate is copied out, for `SSL_CERT_FILE`. The password is
@@ -413,4 +432,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i188]: https://github.com/harleypig/mailctl/issues/188
 [i192]: https://github.com/harleypig/mailctl/issues/192
 [i204]: https://github.com/harleypig/mailctl/issues/204
+[i205]: https://github.com/harleypig/mailctl/issues/205
 [i160]: https://github.com/harleypig/mailctl/issues/160
