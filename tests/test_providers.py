@@ -1520,3 +1520,26 @@ def test_an_unreadable_selection_falls_back_to_offering_everything(
     monkeypatch.setenv("MAILCTL_PROVIDER", "no-such-provider")
 
     assert "--first" in help_text(capsys, "add")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["help", "add", "--provider", "bare"],
+        ["help", "--provider", "bare", "add"],
+    ],
+)
+def test_help_shows_the_selected_providers_offer(bare, capsys, argv):
+    """#153: 'help add' resolves the provider as 'add --help' does."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(argv)
+
+    assert stopped.value.code == 0
+
+    text = capsys.readouterr().out
+
+    assert text == help_text(capsys, "add", "--provider", "bare")
+    assert text != help_text(capsys, "add")
+    assert "--first" not in text
+    assert BareTransport.opened == 0
