@@ -53,9 +53,9 @@ cannot read is reported by line number, never quoted. Because it takes an
 optional value, put `--env-file` after any positional argument, or write
 `--env-file=PATH`.
 
-`--folder`, on the commands that read mail (`apply`, `search`, `view`, and
-`add --like`), resolves the same way: `MAILCTL_SOURCE_FOLDER`, then
-`source_folder` in the config file, then `INBOX`.
+`--folder`, on the commands that read mail (`apply`, `search`, `view`,
+`mark`, and `add --like`), resolves the same way: `MAILCTL_SOURCE_FOLDER`,
+then `source_folder` in the config file, then `INBOX`.
 
 `--provider` names the mail host mailctl talks to, and resolves the same
 way: `MAILCTL_PROVIDER`, then `provider` in the config file, then `mxroute`.
@@ -197,6 +197,13 @@ mailctl view 4127 --headers-only
 mailctl view 4127 --raw
 mailctl view 4127 --raw > message.eml   # the exact bytes, to keep
 
+# Mark messages read or unread, flagged or not, or with a keyword. What
+# each has now and what would change is shown first, then you confirm.
+mailctl mark 4127 4128 --read --flag
+mailctl mark 4127 --unread --dry-run
+mailctl mark 4127 --folder Lists/News --keyword '$Todo'
+mailctl mark 4127 --unflag --no-keyword '$Todo' --yes
+
 # Show a folder in webmail, or hide one (it keeps its mail either way).
 mailctl subscribe Lists/News
 mailctl unsubscribe Lists/Noisy --dry-run
@@ -321,6 +328,18 @@ the place of the criteria flags, so giving both is refused, and so is
 * `search` and `view` **never mark mail read**. The folder is opened
   read-only, and the message is fetched in the form that leaves its read
   flag alone, so either guard alone would be enough.
+* `mark` is the command that does change a message's flags, and **only
+  the messages you name**. It reads their flags first — without marking
+  anything read — and shows, per message, what it has now and what would
+  change; `--dry-run` stops there. A UID the folder does not hold stops
+  the whole command, naming it, and nothing is marked, rather than marking
+  the rest and reporting success. A message that already looks as asked
+  is left alone, and when none would change it says so and exits 0.
+  `--read` and `--unread`, or `--flag` and `--unflag`, together are
+  refused, as is one keyword both set and cleared. A keyword is one word
+  of plain ASCII (`$Todo`, `Work-1`); a space, a bracket, or a leading `\`
+  is refused, since `\Seen` and `\Flagged` are set by name and no other
+  system flag is.
 * **Mail content is treated as hostile on the way to your terminal.** A
   sender controls every header, the body, and the attachment names, and
   escape sequences in them can recolour your terminal, retitle it, or plant

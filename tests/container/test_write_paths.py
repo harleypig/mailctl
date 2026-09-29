@@ -750,3 +750,68 @@ def test_listing_messages_does_not_mark_them_read(account):
         b"\\Seen" not in flags
         for _, flags in mail_in(account, "INBOX").values()
     )
+
+
+# ############################################################################
+# Marking messages
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def flags_of(account, uid: int) -> set[bytes]:
+    """A message's stored flags in INBOX, without the session-only
+    \\Recent, which the server sets on its own."""
+    return mail_in(account, "INBOX")[uid][1] - {b"\\Recent"}
+
+
+# ----------------------------------------------------------------------------
+def test_mark_sets_then_clears_read_flagged_and_a_keyword(account):
+    """STORE +FLAGS and -FLAGS, as the server keeps them (#150).
+
+    Red if ``--dry-run`` stores anything, if a flag is not set or not
+    cleared (the folder examined rather than selected, or one sign sent
+    for the other), if a flag lands on the message that was not named, or
+    if the server refuses the keyword mailctl accepted.
+    """
+    uid = account.append("INBOX", message(GITHUB, "to mark"))
+    other = account.append("INBOX", message("friend@example.org", "lunch?"))
+
+    wanted = ["--read", "--flag", "--keyword", "$Todo"]
+
+    dry = account.run("mark", str(uid), *wanted, "--dry-run")
+
+    assert dry.code == 0, dry.err
+    assert flags_of(account, uid) == set()
+
+    marked = account.run("mark", str(uid), *wanted, "--yes")
+
+    assert marked.code == 0, marked.err
+
+    assert flags_of(account, uid) == {b"\\Seen", b"\\Flagged", b"$Todo"}
+    assert flags_of(account, other) == set()
+
+    cleared = account.run(
+        "mark",
+        str(uid),
+        "--unread",
+        "--unflag",
+        "--no-keyword",
+        "$Todo",
+        "--yes",
+    )
+
+    assert cleared.code == 0, cleared.err
+    assert flags_of(account, uid) == set()
+
+
+# ----------------------------------------------------------------------------
+def test_mark_refuses_a_uid_the_folder_does_not_hold(account):
+    """Red if the UIDs that exist are marked while the missing one is
+    reported, which would be a partial change reported as a refusal."""
+    uid = account.append("INBOX", message(GITHUB, "to mark"))
+
+    result = account.run("mark", str(uid), str(uid + 100), "--flag", "--yes")
+
+    assert result.code == 1
+    assert f"no message with uid {uid + 100}" in result.err
+    assert flags_of(account, uid) == set()

@@ -2089,6 +2089,79 @@ def cmd_view(args) -> int:
     return 0
 
 
+# ----------------------------------------------------------------------------
+def cmd_mark(args) -> int:
+    """Set or clear read, flagged, and keywords on messages by UID."""
+    config = configure(args)
+
+    add, remove = utilities.flags.mark_flags(
+        read=args.read,
+        flagged=args.flagged,
+        add_keywords=args.keywords,
+        remove_keywords=args.no_keywords,
+    )
+
+    with connect(config, args, rules=False, mail=True) as sessions:
+        plan = utilities.flags.plan_mark(
+            sessions, config.source_folder, args.uids, add, remove
+        )
+
+        print_mark_plan(plan)
+
+        if plan.is_empty:
+            print("Nothing to change: every message already looks as asked.")
+
+            return 0
+
+        count = len(plan.changing)
+
+        if args.dry_run:
+            print(f"[dry-run] would mark {count} message(s); none was marked.")
+
+            return 0
+
+        if not confirm(
+            f"Mark {count} message(s) in {plan.folder!r}?", args.yes
+        ):
+            print("Aborted; no messages were marked.")
+
+            return 0
+
+        utilities.flags.execute_mark(sessions, plan)
+
+    print(f"Marked {count} message(s) in {plan.folder!r}.")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def print_mark_plan(plan) -> None:
+    """Print what marking asks for, and what it changes on each message."""
+    asked = describe_marks(plan.add, plan.remove)
+
+    print(f"Marking in {safe_line(plan.folder)!r}: {asked}")
+
+    for message in plan.messages:
+        change = describe_marks(message.add, message.remove) or "no change"
+        now = " ".join(message.flags) or "no flags"
+
+        print(f"  uid {message.uid:<8} {change}  (now: {safe_line(now)})")
+
+
+# ----------------------------------------------------------------------------
+def describe_marks(add, remove) -> str:
+    """``set A, B; clear C`` -- the flags a mark adds and removes."""
+    parts = []
+
+    if add:
+        parts.append(f"set {', '.join(add)}")
+
+    if remove:
+        parts.append(f"clear {', '.join(remove)}")
+
+    return "; ".join(parts)
+
+
 # ############################################################################
 # Argument parsing
 # ############################################################################
@@ -2699,6 +2772,73 @@ def build_parser(
         "exact bytes into a pipe or file ('--raw > msg.eml')",
     )
     view.set_defaults(handler=cmd_view)
+
+    mark = command(
+        "mark",
+        offer.mark,
+        parents=[common, connection, safety],
+        help="mark messages read or unread, flagged, or with keywords",
+        description="Set or clear the read flag, the flagged flag, and "
+        "named keywords on messages, by UID ('search' lists them). Several "
+        "may be given at once, such as --read --flag. What each message has "
+        "now and what would change is shown first, then --dry-run stops, or "
+        "you are asked to confirm (--yes skips the question). A UID the "
+        "folder does not hold refuses the whole command, naming it; nothing "
+        "is marked. 'view' never marks anything read; this is how to.",
+    )
+    mark.add_argument(
+        "uids", nargs="+", type=int, metavar="UID", help="the message UIDs"
+    )
+    mark.add_argument(
+        "--folder", help=f"folder holding them; {FOLDER_DEFAULT_HELP}"
+    )
+    seen = mark.add_mutually_exclusive_group()
+    seen.add_argument(
+        "--read",
+        dest="read",
+        action="store_const",
+        const=True,
+        help="mark them read (set \\Seen)",
+    )
+    seen.add_argument(
+        "--unread",
+        dest="read",
+        action="store_const",
+        const=False,
+        help="mark them unread (clear \\Seen)",
+    )
+    flagged = mark.add_mutually_exclusive_group()
+    flagged.add_argument(
+        "--flag",
+        dest="flagged",
+        action="store_const",
+        const=True,
+        help="flag them (set \\Flagged)",
+    )
+    flagged.add_argument(
+        "--unflag",
+        dest="flagged",
+        action="store_const",
+        const=False,
+        help="unflag them (clear \\Flagged)",
+    )
+    mark.add_argument(
+        "--keyword",
+        dest="keywords",
+        action="append",
+        default=[],
+        metavar="K",
+        help="set keyword K, one word such as $Important; repeatable",
+    )
+    mark.add_argument(
+        "--no-keyword",
+        dest="no_keywords",
+        action="append",
+        default=[],
+        metavar="K",
+        help="clear keyword K; repeatable",
+    )
+    mark.set_defaults(handler=cmd_mark)
 
     remove = command(
         "remove-rule",

@@ -92,6 +92,7 @@ FULL = ProviderCapabilities(
     actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
     extensions=True,
     raw_query=True,
+    mark=True,
     specifics={"fake.label": Specific(str, "a label to add")},
 )
 
@@ -318,6 +319,7 @@ class FakeTransport(Transport):
             7: f"From: {GITHUB}\r\nSubject: hello\r\n\r\n",
             8: "From: someone@example.com\r\nSubject: hi\r\n\r\n",
         }
+        self.flags: dict[int, tuple[str, ...]] = {}
 
     # ------------------------------------------------------------------------
     @classmethod
@@ -397,12 +399,24 @@ class FakeTransport(Transport):
 
     def _fetched(self, uid, folder):
         headers = email.message_from_string(self.messages[uid])
-        summary = MessageSummary(uid, "", headers["From"], "", folder)
+        summary = MessageSummary(
+            uid, "", headers["From"], "", folder, flags=self.flags.get(uid, ())
+        )
 
         return FetchedMessage(headers, summary)
 
     def apply_mail(self, plan):
         return MailActionResult(moved=plan.count)
+
+    def add_flags(self, folder, uids, flags):
+        for uid in uids:
+            self.flags[uid] = (*self.flags.get(uid, ()), *flags)
+
+    def remove_flags(self, folder, uids, flags):
+        for uid in uids:
+            self.flags[uid] = tuple(
+                flag for flag in self.flags.get(uid, ()) if flag not in flags
+            )
 
     def message_headers(self, folder, uid):
         return email.message_from_string(self.messages[uid])
@@ -456,6 +470,7 @@ UNORDERED = Provider(
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
+        mark=True,
         declined=frozenset(("move_rule", "position")),
     ),
     UnorderedDialect,
@@ -484,6 +499,7 @@ STOPLESS = Provider(
         actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
+        mark=True,
     ),
     StoplessDialect,
     StoplessTransport,
@@ -646,6 +662,10 @@ def drive(session: Session, config: Config) -> None:
         session, criteria, spec, source, folder.folder
     )
     utilities.mail.execute_mail(session, mail, folder=folder)
+
+    add, remove = utilities.flags.mark_flags(read=True, flagged=False)
+    marks = utilities.flags.plan_mark(session, "INBOX", [7, 8], add, remove)
+    utilities.flags.execute_mark(session, marks)
 
 
 # ############################################################################
@@ -858,6 +878,7 @@ def test_the_proof_would_see_a_utility_branch_on_the_provider(
 ):
     """Known positive: one extra call on either half is a difference."""
     imap_config.backup_dir = tmp_path / "backups"
+    fake_imap.messages = {7: github_message(7), 8: github_message(8)}
 
     for extra in ("transport", "dialect"):
         real = Recorder(
@@ -1383,6 +1404,14 @@ class BareTransport(FakeTransport):
     name = "bare"
     opened = 0
 
+    @declined
+    def add_flags(self, folder, uids, flags):
+        """No message flags to set."""
+
+    @declined
+    def remove_flags(self, folder, uids, flags):
+        """No message flags to clear."""
+
 
 # The fake with no connection settings, no ordering, no extensions.
 BARE = Provider(
@@ -1395,8 +1424,16 @@ BARE = Provider(
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
+        mark=False,
         declined=frozenset(
-            ("move_rule", "position", "disable_rule", "enable_rule")
+            (
+                "move_rule",
+                "position",
+                "disable_rule",
+                "enable_rule",
+                "add_flags",
+                "remove_flags",
+            )
         ),
     ),
     BareDialect,
@@ -1539,6 +1576,58 @@ def test_a_raw_query_is_refused_by_a_provider_without_raw_query(fakes):
 
 
 # ----------------------------------------------------------------------------
+def test_bare_declines_exactly_what_it_says():
+    """Held here, not in the registry-wide check, which runs before BARE
+    is defined; without ``mark`` both flag writes are declined."""
+    assert declined_operations(BARE) == BARE.capabilities.declined
+    assert {"add_flags", "remove_flags"} <= BARE.capabilities.declined
+
+
+# ----------------------------------------------------------------------------
+def test_mark_is_listed_only_where_declared(bare, capsys, monkeypatch):
+    listed = re.compile(r"[{,]mark[,}]")
+
+    assert listed.search(help_text(capsys).split("\n\n")[0])
+
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    assert not listed.search(help_text(capsys).split("\n\n")[0])
+
+
+# ----------------------------------------------------------------------------
+def test_mark_is_refused_by_a_provider_without_mark(fakes):
+    """The utility holds the line for any front-end, before connecting."""
+    session = fake_session(BARE)
+
+    with pytest.raises(MailctlError, match="'mark'"):
+        utilities.flags.plan_mark(session, "INBOX", [7], ("\\Seen",))
+
+    assert session.opened == ()
+
+
+# ----------------------------------------------------------------------------
+def test_the_fake_really_marked_and_unmarked_the_mail(fakes):
+    session = fake_session()
+    transport = fake_transport(session)
+
+    plan = utilities.flags.plan_mark(
+        session, "INBOX", [7, 8], ("\\Seen", "$Todo"), ()
+    )
+    utilities.flags.execute_mark(session, plan)
+
+    assert transport.flags == {
+        7: ("\\Seen", "$Todo"),
+        8: ("\\Seen", "$Todo"),
+    }
+
+    plan = utilities.flags.plan_mark(session, "INBOX", [7], (), ("$Todo",))
+    utilities.flags.execute_mark(session, plan)
+
+    assert transport.flags[7] == ("\\Seen",)
+    assert transport.flags[8] == ("\\Seen", "$Todo")
+
+
+# ----------------------------------------------------------------------------
 def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     """A host that reads no --sieve-port does not offer one, and its help
     says nothing about MXroute."""
@@ -1567,6 +1656,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         (["list", "--sieve-port", "4190"], "flag --sieve-port"),
         (["list", "--disable-extension", "mailbox"], "disabled_extensions"),
         (["search", "--raw", "ALL"], "'raw_query'"),
+        (["mark", "7", "--flag"], "'mark'"),
     ],
     ids=[
         "placement",
@@ -1576,6 +1666,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         "connection-flag",
         "disable-extension",
         "raw-query",
+        "mark",
     ],
 )
 def test_a_hidden_option_given_anyway_is_refused_by_name(

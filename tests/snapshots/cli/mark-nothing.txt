@@ -1,0 +1,9 @@
+$ mailctl mark 1
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: nothing to mark -- use --read, --unread, --flag, --unflag, --keyword, or --no-keyword
+
+--- sieve calls
+--- imap calls

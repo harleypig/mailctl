@@ -38,6 +38,7 @@ readonly TESTS=(
   search-like
   build-filter
   view-keeps-unread
+  mark
   apply
   apply-like
   add
@@ -58,6 +59,7 @@ readonly MUTATING=(
   create-folder
   disable-rule
   enable-rule
+  mark
   migrate-config
   move-rule
   remove-rule
@@ -68,7 +70,7 @@ readonly MUTATING=(
 
 # Lines mailctl prints only when it has actually changed something.
 CHANGED_RE='^(Backed up|Created IMAP|Uploaded|Moved [0-9]|Flagged [0-9]'
-CHANGED_RE+='|Deleted [0-9]|Subscribed|Unsubscribed|Restored)'
+CHANGED_RE+='|Deleted [0-9]|Marked [0-9]|Subscribed|Unsubscribed|Restored)'
 readonly CHANGED_RE
 
 ##############################################################################
@@ -456,6 +458,31 @@ t_view_keeps_unread() {
   message_marks \
     | awk -v uid="$uid" '$1 == uid && $2 ~ /N/ { f = 1 } END { exit !f }' \
     || fail "uid $uid is no longer marked unread (N) after view"
+}
+
+#-----------------------------------------------------------------------------
+t_mark() {
+  local uid before after
+
+  run_mailctl search --limit 1
+  expect_ok 'search --limit 1' || return 1
+  uid=$(message_marks | awk '{ print $1; exit }')
+  need "$uid" "the folder has no messages" || return 2
+  before=$(message_marks | awk '{ print $2; exit }')
+
+  run_mailctl mark --dry-run "$uid" --flag
+  expect_ok "mark --dry-run $uid --flag" || return 1
+  expect_nothing_changed || return 1
+  expect_line '^\[dry-run\] would mark|^Nothing to change' || return 1
+
+  # Wider than the first listing, so mail arriving meanwhile cannot push
+  # the message out of it.
+  run_mailctl search --limit 20
+  expect_ok 'search --limit 20' || return 1
+  after=$(message_marks | awk -v uid="$uid" '$1 == uid { print $2; exit }')
+
+  [[ $after == "$before" ]] \
+    || fail "uid $uid marks went from '$before' to '$after' under --dry-run"
 }
 
 #-----------------------------------------------------------------------------

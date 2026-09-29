@@ -1,0 +1,15 @@
+$ mailctl mark 2 --flag
+exit: 1
+--- stdout
+Marking in 'INBOX': set \Flagged
+  uid 2        set \Flagged  (now: no flags)
+
+--- stderr
+mailctl: Mark 1 message(s) in 'INBOX'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (2,))
+('logout',)

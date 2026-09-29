@@ -1,0 +1,18 @@
+$ mailctl mark 1 2 --read --flag --yes
+exit: 0
+--- stdout
+Marking in 'INBOX': set \Seen, \Flagged
+  uid 1        set \Flagged  (now: \Seen)
+  uid 2        set \Seen, \Flagged  (now: no flags)
+Marked 2 message(s) in 'INBOX'.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (1, 2))
+('select_folder', 'INBOX', False)
+('add_flags', (1, 2), (b'\\Seen', b'\\Flagged'))
+('logout',)

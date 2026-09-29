@@ -31,6 +31,7 @@ ALL_TESTS = [
     "search-like",
     "build-filter",
     "view-keeps-unread",
+    "mark",
     "apply",
     "apply-like",
     "add",
@@ -50,6 +51,7 @@ MUTATING = [
     "create-folder",
     "disable-rule",
     "enable-rule",
+    "mark",
     "migrate-config",
     "move-rule",
     "remove-rule",
@@ -199,6 +201,8 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("backup-writes-elsewhere", "backup"),
         ("like-drops-source", "search-like"),
         ("filter-on-stdout", "build-filter"),
+        ("mark-writes", "mark"),
+        ("mark-reports-change", "mark"),
     ],
 )
 def test_a_failing_check_is_not_ok_and_the_run_exits_nonzero(
@@ -285,6 +289,18 @@ def test_disable_rule_fails_when_a_switch_reports_a_change(tmp_path):
 
     assert proc.returncode == 1
     assert proc.stdout.splitlines()[1] == "not ok 1 - disable-rule"
+
+
+# ----------------------------------------------------------------------------
+def test_mark_reuses_the_uid_search_found_and_only_dry_runs(tmp_path):
+    proc, calls = run(tmp_path, "mark")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - mark"]
+    assert calls == [
+        ["search", "--limit", "1"],
+        ["mark", "--dry-run", "5", "--flag"],
+        ["search", "--limit", "20"],
+    ]
 
 
 # ############################################################################

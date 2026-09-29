@@ -1,0 +1,15 @@
+$ mailctl mark 1 --folder Lists --keyword $Todo --dry-run
+exit: 0
+--- stdout
+Marking in 'INBOX.Lists': set $Todo
+  uid 1        set $Todo  (now: \Seen)
+[dry-run] would mark 1 message(s); none was marked.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX.Lists', True)
+('fetch', (1,))
+('logout',)

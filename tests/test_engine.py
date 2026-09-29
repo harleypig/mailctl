@@ -430,6 +430,8 @@ EXPECTED_KINDS = {
     "fetch_headers": (READ, MAIL),
     "fetch_summaries": (READ, MAIL),
     "apply_mail": (WRITE, MAIL),
+    "add_flags": (WRITE, MAIL),
+    "remove_flags": (WRITE, MAIL),
     "message_headers": (READ, MAIL),
     "message_source": (READ, MAIL),
     "open": (CONNECTION, None),

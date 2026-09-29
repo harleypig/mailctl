@@ -238,6 +238,18 @@ class MxrouteTransport(Transport):
         )
 
     # ------------------------------------------------------------------------
+    def add_flags(
+        self, folder: str, uids: list[int], flags: list[str]
+    ) -> None:
+        self._imap().add_folder_flags(folder, uids, flags)
+
+    # ------------------------------------------------------------------------
+    def remove_flags(
+        self, folder: str, uids: list[int], flags: list[str]
+    ) -> None:
+        self._imap().remove_folder_flags(folder, uids, flags)
+
+    # ------------------------------------------------------------------------
     def message_headers(self, folder: str, uid: int) -> Message:
         return self._imap().fetch_message_headers(folder, uid)
 

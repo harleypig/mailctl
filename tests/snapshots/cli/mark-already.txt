@@ -1,0 +1,15 @@
+$ mailctl mark 1 --read
+exit: 0
+--- stdout
+Marking in 'INBOX': set \Seen
+  uid 1        no change  (now: \Seen)
+Nothing to change: every message already looks as asked.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (1,))
+('logout',)

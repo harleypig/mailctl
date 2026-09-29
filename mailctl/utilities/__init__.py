@@ -24,6 +24,7 @@ stores (ADR 0007). One module per subject:
 ``scripts``    rule sets as stored: read, chosen, and uploaded
 ``backup``     backing up the active script, and restoring one
 ``backup_files`` writing a backup's exact bytes to disk
+``flags``      marking messages read, flagged, or with keywords
 ``folders``    listing, subscribing, and planning a rule's target folder
 ``mail``       the existing-mail pass, and criteria from a message
 ``messages``   finding and reading messages
@@ -36,6 +37,7 @@ from . import (
     backup,
     backup_files,
     events,
+    flags,
     folders,
     mail,
     messages,
@@ -49,6 +51,7 @@ __all__ = [
     "backup",
     "backup_files",
     "events",
+    "flags",
     "folders",
     "mail",
     "messages",
