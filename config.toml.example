@@ -118,9 +118,9 @@ password_cmd = "pass show email/you@yourdomain.com"
 # `mailctl test` lists the names. Default: none.
 #disabled_extensions = ["mailbox"]
 
-# The folder mail is read from when you give no --folder: the one `add`,
-# `apply`, and `from-message` search for existing mail, and the one
-# `messages` and `view` open. MAILCTL_SOURCE_FOLDER and --folder override
-# it. Either separator works, as for default_folder.
+# The folder mail is read from when you give no --folder: the one
+# `apply`, `search`, `senders`, and `--like` read, and the one `view` and
+# `mark` open. MAILCTL_SOURCE_FOLDER and --folder override it. Either
+# separator works, as for default_folder.
 # Default: INBOX.
 #source_folder = "INBOX"

@@ -1903,7 +1903,7 @@ def cmd_test(args) -> int:
     print(
         f"Folder:    {config.source_folder}  "
         f"({origin_of(config, 'source_folder')})  "
-        f"-- read by apply, search, view, and add --like"
+        f"-- read by apply, search, view, mark, senders, and --like"
     )
 
     if failure is not None:
@@ -3754,13 +3754,15 @@ def criteria_source_parser(
 
 
 # ----------------------------------------------------------------------------
-def add_uidvalidity(parser, offer: engine.ProviderCapabilities, what: str):
+def add_uidvalidity(
+    parser, offer: engine.ProviderCapabilities, what: str, verb: str = "was"
+):
     """Attach --uidvalidity, offered where the provider declares it."""
     parser.add_argument(
         "--uidvalidity",
         type=int,
         metavar="N",
-        help=f"the UIDVALIDITY {what} was listed under, as 'search' shows "
+        help=f"the UIDVALIDITY {what} {verb} listed under, as 'search' shows "
         f"it; if the folder's is now another, its UIDs have been "
         f"renumbered and the command is refused, using none of them"
         if offer.uidvalidity
@@ -4241,6 +4243,12 @@ def build_parser(
             mail_safety,
         ],
         help="act on mail already delivered",
+        description="Act on the mail already in a folder as a rule would: "
+        "the messages that match the criteria are found and shown, then "
+        "--dry-run stops, or you are asked to confirm (--yes skips the "
+        "question). No rule is saved; 'mailctl add' with the same criteria "
+        "saves one for new mail. More matches than --max-messages refuse "
+        "the whole pass, and nothing is changed.",
     )
     apply_cmd.add_argument(
         "--folder", help=f"source folder; {FOLDER_DEFAULT_HELP}"
@@ -4252,6 +4260,12 @@ def build_parser(
         "search",
         parents=[common, connection, criteria],
         help="list the newest messages in a folder",
+        description="List the messages in a folder that match the "
+        "criteria, newest first, with the UID each is known by -- the UID "
+        "'view', 'mark', and --like take. With --like the criteria are "
+        "built from a message, and --build-filter prints the filter they "
+        "make instead of a listing. Nothing is marked read, and nothing is "
+        "changed.",
     )
     search.add_argument(
         "--folder", help=f"folder to list; {FOLDER_DEFAULT_HELP}"
@@ -4411,7 +4425,7 @@ def build_parser(
     mark.add_argument(
         "--folder", help=f"folder holding them; {FOLDER_DEFAULT_HELP}"
     )
-    add_uidvalidity(mark, offer, "the UIDs")
+    add_uidvalidity(mark, offer, "the UIDs", verb="were")
     seen = mark.add_mutually_exclusive_group()
     seen.add_argument(
         "--read",

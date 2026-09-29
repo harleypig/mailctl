@@ -51,6 +51,17 @@ BUG FIXES:
   each command already sends reports it. A provider that has no such
   value does not offer `--uidvalidity` and refuses it by name.
 
+* **References left stale by 0.9.0 are corrected** ([#212]). The
+  `source_folder` notes in `config.toml.example` and `.env.example` named
+  `from-message` and `messages`, which 0.9.0 replaced; they now name the
+  commands that read that folder. `mailctl test`'s Folder line now lists
+  `mark`, `senders`, and `--like` on every command that takes it, not only
+  `add`. `mark --uidvalidity`'s help reads "the UIDs were listed under".
+  `apply --help` and `search --help` now open with a paragraph saying
+  what the command does, as the other commands' do. `docs/VERIFYING.md`
+  no longer says nothing has run against a live MXroute server: reads and
+  dry runs have, and no write has.
+
 ## 0.9.0
 
 BREAKING CHANGES:
@@ -1309,4 +1320,5 @@ NOTES:
 [#10]: https://github.com/harleypig/mailctl/issues/10
 [#205]: https://github.com/harleypig/mailctl/issues/205
 [#208]: https://github.com/harleypig/mailctl/issues/208
+[#212]: https://github.com/harleypig/mailctl/issues/212
 [#204]: https://github.com/harleypig/mailctl/issues/204

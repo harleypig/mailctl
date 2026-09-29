@@ -1,9 +1,13 @@
 # Verifying mailctl against a real mailbox
 
-**Nothing below has ever been run against a live MXRoute server.** Every part
-of mailctl is tested offline, against fixtures. This is a **first-run
-procedure**, not a regression checklist: you are finding out whether it works,
-not confirming that it still does.
+**Reads and dry runs have been run against a live MXRoute account; no
+write ever has.** The probes, listings, and `--dry-run` plans have run
+against one real account, and a read-only check (`make livecheck`) repeats
+them without changing anything. Every write — saving a rule, moving,
+flagging, or discarding mail — has been tested only offline and against a
+throwaway local mail server, never against a real mailbox. So the steps that
+change something are a **first-run procedure**, not a regression checklist:
+you are finding out whether they work, not confirming that they still do.
 
 Work through the steps **in order**. They are arranged from *touches nothing*
 to *cannot be undone*, so you can stop at any point and have changed nothing
