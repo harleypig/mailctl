@@ -33,6 +33,13 @@ test:
 testlive:
 	MAILCTL_LIVE=1 pytest -v $(TESTARGS)
 
+# The container tier: every write path against a throwaway local Dovecot +
+# Pigeonhole in Docker (tests/container/). Never a real account, so it is
+# safe to run any time Docker is up. TESTARGS passes flags through, e.g.
+#   make testcontainer TESTARGS='-k restore'
+testcontainer:
+	MAILCTL_CONTAINER=1 pytest -v tests/container $(TESTARGS)
+
 # Read-only checks against the configured account, as TAP: only read-only
 # subcommands and --dry-run are sent. TESTARGS names the checks to run
 # (default all; `scripts/live-readonly.sh --list` names them), e.g.
@@ -40,4 +47,4 @@ testlive:
 livecheck:
 	scripts/live-readonly.sh $(TESTARGS)
 
-.PHONY: default venv install fmt lint test testlive livecheck
+.PHONY: default venv install fmt lint test testlive testcontainer livecheck

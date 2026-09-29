@@ -56,4 +56,5 @@ testpaths = ["tests"]
 addopts = "-ra"
 markers = [
   "live: hits a real MXroute account and mutates real state; also gated on MAILCTL_LIVE=1",
+  "container: runs against a throwaway local Dovecot in Docker; gated on MAILCTL_CONTAINER=1",
 ]

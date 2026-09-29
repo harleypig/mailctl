@@ -104,6 +104,17 @@ NOTES:
   subscribe a folder, or move mail. Only the steps that carry out a plan
   already shown may. No behaviour change.
 
+* **A test tier that runs every write against a local mail server; no
+  change to the tool** ([#49]). `make testcontainer` starts a throwaway
+  Dovecot with Sieve support in Docker, built from Debian's own packages,
+  and runs mailctl's changes against it: adding a rule beside one
+  Roundcube wrote, removing and moving rules, backing up and restoring a
+  script byte for byte, creating and subscribing folders, and moving,
+  flagging and deleting existing mail. It also delivers new mail through
+  the server so the uploaded rule is seen filing it. It never touches a
+  real account, runs only when `MAILCTL_CONTAINER=1` is set, and is not
+  part of the default `pytest` run or of CI.
+
 ## 0.8.4
 
 NOTES:
@@ -871,3 +882,4 @@ NOTES:
 [#155]: https://github.com/harleypig/mailctl/issues/155
 [#147]: https://github.com/harleypig/mailctl/issues/147
 [#7]: https://github.com/harleypig/mailctl/issues/7
+[#49]: https://github.com/harleypig/mailctl/issues/49

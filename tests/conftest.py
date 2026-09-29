@@ -34,7 +34,11 @@ from mailctl.providers.mxroute.imap import new_imap_session
 
 # Variables that steer the test run rather than configure the tool. They
 # share the tool's prefix, so the scrubbing below has to step round them.
-TEST_CONTROLS = {"MAILCTL_LIVE", "MAILCTL_UPDATE_SNAPSHOTS"}
+TEST_CONTROLS = {
+    "MAILCTL_CONTAINER",
+    "MAILCTL_LIVE",
+    "MAILCTL_UPDATE_SNAPSHOTS",
+}
 
 
 # ----------------------------------------------------------------------------

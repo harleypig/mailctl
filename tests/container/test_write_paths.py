@@ -1,0 +1,568 @@
+"""mailctl's write paths, run against a real Dovecot + Pigeonhole.
+
+Each test drives ``mailctl`` through ``cli.main`` against a fresh mailbox
+(``conftest.py``) and then reads the server back with the libraries' own
+clients, never with mailctl. The offline tier already pins what mailctl
+*sends*; what only a server can say is whether that is what a server
+*keeps* -- that the merged script is accepted and stored whole, that a
+backup is the stored bytes, that a moved message lands and is flagged,
+and that the rule uploaded really files new mail the way the retroactive
+pass filed the old.
+
+Every test names, in its docstring, the break that turns it red.
+"""
+
+import uuid
+
+import pytest
+
+pytestmark = pytest.mark.container
+
+# A script in the shape Roundcube's managesieve plugin writes, under the
+# name Roundcube gives it on MXroute. It is the thing a merge must not
+# destroy (ADR 0002), so it is seeded as another client would have left
+# it, before mailctl first runs.
+ROUNDCUBE = """require ["fileinto","imap4flags"];
+# rule:[keep-boss]
+if header :contains "from" "boss@example.com"
+{
+\tfileinto "INBOX.Boss";
+\tsetflag "\\\\Flagged";
+\tstop;
+}
+"""
+
+ROUNDCUBE_NAME = "managesieve"
+
+# Three independent rules, so a move changes order and nothing else.
+THREE_RULES = """require ["fileinto"];
+# rule:[alpha]
+if header :contains "subject" "alpha"
+{
+\tfileinto "INBOX";
+\tstop;
+}
+# rule:[beta]
+if header :contains "subject" "beta"
+{
+\tfileinto "INBOX";
+\tstop;
+}
+# rule:[gamma]
+if header :contains "subject" "gamma"
+{
+\tfileinto "INBOX";
+\tstop;
+}
+"""
+
+GITHUB = "noreply@github.com"
+
+
+# ----------------------------------------------------------------------------
+def message(sender: str, subject: str) -> bytes:
+    """A minimal RFC 5322 message."""
+    return (
+        f"From: Someone <{sender}>\r\n"
+        f"To: user@example.test\r\n"
+        f"Subject: {subject}\r\n"
+        f"Date: Tue, 3 Feb 2026 04:05:06 +0000\r\n"
+        f"Message-ID: <{uuid.uuid4().hex}@example.test>\r\n"
+        f"\r\n"
+        f"Body of {subject}.\r\n"
+    ).encode()
+
+
+# ----------------------------------------------------------------------------
+def squeeze(text: str) -> str:
+    """``text`` with every run of whitespace made one space."""
+    return " ".join(text.split())
+
+
+# ----------------------------------------------------------------------------
+def rule_names(text: str) -> list[str]:
+    """The ``# rule:[NAME]`` markers in ``text``, in order."""
+    return [
+        line.removeprefix("# rule:[").removesuffix("]")
+        for line in text.splitlines()
+        if line.startswith("# rule:[")
+    ]
+
+
+# ----------------------------------------------------------------------------
+def folder_state(account) -> tuple[set[str], set[str]]:
+    """Every folder, and every subscribed one, as the server lists them."""
+    with account.imap() as client:
+        listed = {name for _, _, name in client.list_folders()}
+        subscribed = {name for _, _, name in client.list_sub_folders()}
+
+    return listed, subscribed
+
+
+# ----------------------------------------------------------------------------
+def mail_in(account, folder: str) -> dict[int, tuple[str, set[bytes]]]:
+    """UID -> (subject, flags) for every message in ``folder``.
+
+    Selected read-only and fetched with BODY.PEEK, so looking does not set
+    the \\Seen flag a test may be asserting about.
+    """
+    with account.imap() as client:
+        client.select_folder(folder, readonly=True)
+        uids = client.search("ALL")
+
+        if not uids:
+            return {}
+
+        fetched = client.fetch(
+            uids, ["FLAGS", "BODY.PEEK[HEADER.FIELDS (SUBJECT)]"]
+        )
+
+    result = {}
+
+    for uid, data in fetched.items():
+        header = data[b"BODY[HEADER.FIELDS (SUBJECT)]"].decode()
+        subject = header.split(":", 1)[1].strip()
+        result[uid] = (subject, set(data[b"FLAGS"]))
+
+    return result
+
+
+# ############################################################################
+# Rules: add, remove, move
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_add_merges_into_a_roundcube_script_and_keeps_its_rule(account):
+    """The ADR 0002 guarantee, on a real server.
+
+    Red if the upload overwrites rather than merges (the keep-boss rule
+    goes missing, or any of its tests or actions changes), if the new rule
+    is not stored, if mailctl writes a second script instead of the active
+    one, or if no backup of the script it replaced is written first.
+    """
+    account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
+
+    result = account.run(
+        "add",
+        "--from",
+        GITHUB,
+        "--name",
+        "github",
+        "--fileinto",
+        "Lists/GitHub",
+        "--create-folder",
+        "--yes",
+    )
+
+    assert result.code == 0, result.err
+
+    stored = account.script(ROUNDCUBE_NAME)
+
+    assert account.active_script() == ROUNDCUBE_NAME
+    assert rule_names(stored) == ["keep-boss", "github"]
+
+    # The hand-made rule's body survives, not merely its name. ADR 0002
+    # promises the tests and actions unchanged and says whitespace is
+    # normalized, so the comparison ignores layout and nothing else.
+    boss_body = ROUNDCUBE.split("# rule:[keep-boss]\n", 1)[1]
+
+    assert squeeze(boss_body) in squeeze(stored)
+
+    backups = list(account.backup_dir.iterdir())
+
+    assert len(backups) == 1
+    assert backups[0].read_text() == ROUNDCUBE
+
+
+# ----------------------------------------------------------------------------
+def test_listing_commands_show_the_added_rule(account):
+    """What ``add`` stored is what ``list``, ``rules`` and ``show`` report.
+
+    Red if any of the three read paths disagrees with the write path --
+    a script listed under the wrong name, a rule the reader cannot parse
+    back out, or ``show`` printing something other than the stored text.
+    """
+    account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
+
+    added = account.run(
+        "add",
+        "--subject",
+        "invoice",
+        "--name",
+        "invoices",
+        "--keep",
+        "--no-apply",
+        "--yes",
+    )
+
+    assert added.code == 0, added.err
+
+    listed = account.run("list")
+    rules = account.run("rules")
+    shown = account.run("show")
+
+    assert listed.code == rules.code == shown.code == 0
+    assert ROUNDCUBE_NAME in listed.out
+    assert "keep-boss" in rules.out
+    assert "invoices" in rules.out
+    assert "# rule:[invoices]" in shown.out
+    assert "# rule:[keep-boss]" in shown.out
+
+
+# ----------------------------------------------------------------------------
+def test_the_uploaded_rule_files_new_mail(account):
+    """The going-forward half: Sieve itself runs what ``add`` uploaded.
+
+    Delivered through dovecot-lda, so Pigeonhole executes the stored
+    script. Red if the script is stored but does not do what mailctl said
+    it would -- a wrong folder name (the delimiter guessed rather than
+    discovered), a flag action the server ignores, or a rule the server
+    accepts at PUTSCRIPT and then fails to run.
+    """
+    account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
+
+    added = account.run(
+        "add",
+        "--from",
+        GITHUB,
+        "--name",
+        "github",
+        "--fileinto",
+        "Lists/GitHub",
+        "--flag",
+        "\\Flagged",
+        "--create-folder",
+        "--yes",
+    )
+
+    assert added.code == 0, added.err
+
+    account.deliver(message(GITHUB, "new pull request"), GITHUB)
+    account.deliver(message("friend@example.org", "lunch?"), "friend@x.org")
+
+    filed = mail_in(account, "Lists.GitHub")
+    inbox = mail_in(account, "INBOX")
+
+    assert [subject for subject, _ in filed.values()] == ["new pull request"]
+    assert all(b"\\Flagged" in flags for _, flags in filed.values())
+    assert [subject for subject, _ in inbox.values()] == ["lunch?"]
+
+
+# ----------------------------------------------------------------------------
+def test_remove_rule_takes_out_one_rule_and_leaves_the_rest(account):
+    """Red if the wrong rule goes, if the other rule is rewritten on the
+    way through, or if the server keeps the old script."""
+    account.seed_script(ROUNDCUBE_NAME, THREE_RULES)
+
+    result = account.run("remove-rule", "beta", "--yes")
+
+    assert result.code == 0, result.err
+
+    stored = account.script(ROUNDCUBE_NAME)
+
+    assert rule_names(stored) == ["alpha", "gamma"]
+    assert "beta" not in stored
+
+
+# ----------------------------------------------------------------------------
+def test_move_rule_reorders_without_changing_the_rule(account):
+    """Red if the rule does not land first, if its body changes on the
+    move, or if another rule is dropped or duplicated."""
+    account.seed_script(ROUNDCUBE_NAME, THREE_RULES)
+
+    result = account.run("move-rule", "gamma", "--first", "--yes")
+
+    assert result.code == 0, result.err
+
+    stored = account.script(ROUNDCUBE_NAME)
+
+    assert rule_names(stored) == ["gamma", "alpha", "beta"]
+    assert 'if header :contains "subject" "gamma"' in stored
+
+
+# ----------------------------------------------------------------------------
+def test_a_fresh_account_gets_a_new_active_script(account):
+    """With nothing stored, ``add`` creates and activates ``mailctl``.
+
+    Red if SETACTIVE is not sent (the script is stored and never runs), or
+    if the new script is not named ``mailctl``.
+    """
+    assert account.active_script() is None
+
+    result = account.run(
+        "add",
+        "--subject",
+        "hello",
+        "--keep",
+        "--no-apply",
+        "--yes",
+    )
+
+    assert result.code == 0, result.err
+    assert account.active_script() == "mailctl"
+
+
+# ############################################################################
+# Backup and restore
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_backup_then_restore_is_byte_exact(account, tmp_path):
+    """The round trip #9's live fixture will depend on, proved here first.
+
+    The seeded script ends without a newline and carries a CR, the two
+    shapes GETSCRIPT truncation and newline translation lose (#90). Red if
+    ``backup`` writes anything but the stored bytes, or if ``restore``
+    uploads anything but the file's bytes.
+    """
+    original = THREE_RULES.replace("\n", "\r\n", 1).rstrip("\n")
+
+    account.seed_script(ROUNDCUBE_NAME, original)
+
+    stored = account.script_bytes(ROUNDCUBE_NAME)
+    target = tmp_path / "saved.sieve"
+
+    backed_up = account.run("backup", "--output", str(target))
+
+    assert backed_up.code == 0, backed_up.err
+    assert target.read_bytes() == stored
+
+    changed = account.run("remove-rule", "alpha", "--yes")
+
+    assert changed.code == 0, changed.err
+    assert account.script_bytes(ROUNDCUBE_NAME) != stored
+
+    restored = account.run("restore", str(target), "--yes")
+
+    assert restored.code == 0, restored.err
+    assert account.script_bytes(ROUNDCUBE_NAME) == stored
+
+
+# ############################################################################
+# Folders
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_create_folder_subscribes_unless_told_not_to(account):
+    """``add --create-folder`` makes the folder and subscribes it; with
+    ``--no-subscribe`` it makes it hidden; ``subscribe`` and
+    ``unsubscribe`` then toggle it.
+
+    ``add`` rather than ``apply``: the existing-mail pass creates the
+    folder only when there is mail to move into it, and ``add`` creates it
+    before the upload whatever the mailbox holds. Red if CREATE is not
+    sent, if SUBSCRIBE is sent when it should not be (or not when it
+    should), or if a toggle does not reach the server's LSUB -- the list
+    webmail draws its folder tree from (#38).
+    """
+    shown = account.run(
+        "add",
+        "--subject",
+        "shown",
+        "--fileinto",
+        "Lists/Shown",
+        "--create-folder",
+        "--no-apply",
+        "--yes",
+    )
+    hidden = account.run(
+        "add",
+        "--subject",
+        "hidden",
+        "--fileinto",
+        "Lists/Hidden",
+        "--create-folder",
+        "--no-subscribe",
+        "--no-apply",
+        "--yes",
+    )
+
+    assert shown.code == 0, shown.err
+    assert hidden.code == 0, hidden.err
+
+    listed, subscribed = folder_state(account)
+
+    assert {"Lists.Shown", "Lists.Hidden"} <= listed
+    assert "Lists.Shown" in subscribed
+    assert "Lists.Hidden" not in subscribed
+
+    assert account.run("subscribe", "Lists/Hidden").code == 0
+    assert "Lists.Hidden" in folder_state(account)[1]
+
+    assert account.run("unsubscribe", "Lists/Shown").code == 0
+    assert "Lists.Shown" not in folder_state(account)[1]
+
+
+# ############################################################################
+# The retroactive pass
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_apply_moves_and_marks_existing_mail(account):
+    """Red if a matching message is left behind, a non-matching one is
+    moved, or the moved copies arrive without \\Seen."""
+    for subject in ("pr 1", "pr 2", "pr 3"):
+        account.append("INBOX", message(GITHUB, subject))
+
+    account.append("INBOX", message("friend@example.org", "lunch?"))
+
+    result = account.run(
+        "apply",
+        "--from",
+        GITHUB,
+        "--fileinto",
+        "Lists/GitHub",
+        "--create-folder",
+        "--mark-read",
+        "--yes",
+    )
+
+    assert result.code == 0, result.err
+
+    moved = mail_in(account, "Lists.GitHub")
+    left = mail_in(account, "INBOX")
+
+    assert sorted(subject for subject, _ in moved.values()) == [
+        "pr 1",
+        "pr 2",
+        "pr 3",
+    ]
+    assert all(b"\\Seen" in flags for _, flags in moved.values())
+    assert [subject for subject, _ in left.values()] == ["lunch?"]
+
+
+# ----------------------------------------------------------------------------
+def test_apply_flags_in_place(account):
+    """A flag-only action leaves the message where it is.
+
+    Red if the flag is not set, if it lands on a message that did not
+    match, or if flagging moves anything.
+    """
+    account.append("INBOX", message(GITHUB, "urgent"))
+    account.append("INBOX", message("friend@example.org", "lunch?"))
+
+    result = account.run(
+        "apply",
+        "--from",
+        GITHUB,
+        "--flag",
+        "\\Flagged",
+        "--yes",
+    )
+
+    assert result.code == 0, result.err
+
+    inbox = dict(mail_in(account, "INBOX").values())
+
+    assert set(inbox) == {"urgent", "lunch?"}
+    assert b"\\Flagged" in inbox["urgent"]
+    assert b"\\Flagged" not in inbox["lunch?"]
+
+
+# ----------------------------------------------------------------------------
+def test_apply_discard_removes_only_the_matches(account):
+    """Red if a matching message survives, or anything else goes."""
+    account.append("INBOX", message("spam@example.net", "win a prize"))
+    account.append("INBOX", message("friend@example.org", "lunch?"))
+
+    result = account.run(
+        "apply",
+        "--from",
+        "spam@example.net",
+        "--discard",
+        "--yes",
+    )
+
+    assert result.code == 0, result.err
+
+    subjects = [subject for subject, _ in mail_in(account, "INBOX").values()]
+
+    assert subjects == ["lunch?"]
+
+
+# ----------------------------------------------------------------------------
+def test_max_messages_refuses_the_whole_pass(account):
+    """Over the ceiling, nothing moves -- not a partial batch.
+
+    Red if the ceiling is not enforced (all three move), or enforced by
+    stopping part-way (some move), or if the refusal exits 0.
+    """
+    for subject in ("pr 1", "pr 2", "pr 3"):
+        account.append("INBOX", message(GITHUB, subject))
+
+    result = account.run(
+        "apply",
+        "--from",
+        GITHUB,
+        "--fileinto",
+        "Lists/GitHub",
+        "--create-folder",
+        "--max-messages",
+        "2",
+        "--yes",
+    )
+
+    assert result.code != 0
+    assert "max-messages" in result.err or "max-messages" in result.out
+    assert len(mail_in(account, "INBOX")) == 3
+
+
+# ############################################################################
+# Reading mail changes nothing
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_view_does_not_mark_a_message_read(account):
+    """``view`` promises not to set \\Seen.
+
+    mailctl guards this twice: it fetches with BODY.PEEK, and it selects
+    the folder read-only (EXAMINE), under which Dovecot sets no flag at
+    all. Red when both give way -- a plain BODY[] fetch on a folder
+    selected read-write -- which is when a real server marks the message
+    read and a double, recording only what was asked, would not. Losing
+    either guard alone stays green here; the offline tier pins each one.
+    """
+    uid = account.append("INBOX", message(GITHUB, "unread still"))
+
+    result = account.run("view", str(uid))
+
+    assert result.code == 0, result.err
+    assert "unread still" in result.out
+
+    (flags,) = [flags for _, flags in mail_in(account, "INBOX").values()]
+
+    assert b"\\Seen" not in flags
+
+
+# ----------------------------------------------------------------------------
+def test_listing_messages_does_not_mark_them_read(account):
+    """The listing utility is read-only too.
+
+    Called as the utility rather than a CLI command, because the command's
+    name is changing (``messages`` to ``search``) and this is about the
+    read, not the name. Red under the same double break as the ``view``
+    test above.
+    """
+    import argparse
+
+    from mailctl import engine, utilities
+    from mailctl.config import load_config
+
+    account.append("INBOX", message(GITHUB, "one"))
+    account.append("INBOX", message(GITHUB, "two"))
+
+    config = load_config(argparse.Namespace())
+
+    with engine.connect(config, rules=False, mail=True) as session:
+        listing = utilities.messages.list_messages(session, "INBOX", limit=10)
+
+    assert sorted(item.subject for item in listing.messages) == ["one", "two"]
+    assert all(
+        b"\\Seen" not in flags
+        for _, flags in mail_in(account, "INBOX").values()
+    )

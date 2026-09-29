@@ -6,14 +6,16 @@ carries the layout convention (`tests/` at the repo root, mirroring the
 package). This file records what belongs here.
 
 **The offline tier is written and green** (`make test`); the only skips are
-the live-gated ones. `pytest -q` reports the current count; none is kept
+the live- and container-gated ones. `pytest -q` reports the current count; none is kept
 here, because a count nobody re-derives is only ever stale.
 The live tier is scaffolded (`tests/live/`) and skipped by default; it stays
 open until it has run against a real account, and the backup-and-restore
 fixture required before anything writes to one is still outstanding
-([#9](https://github.com/harleypig/mailctl/issues/9)).
+([#9](https://github.com/harleypig/mailctl/issues/9)). The container tier
+(`tests/container/`) is written and green against a local server; it is
+where every write path is proved first.
 
-## Two tiers
+## Three tiers
 
 1. **Unit tests** (`tests/test_*.py`) — **offline**, no network, no
    credentials. The default gate, and the tier that should hold almost
@@ -24,8 +26,9 @@ fixture required before anything writes to one is still outstanding
      closes the gap.
    - `sieve` (`test_sieve.py`, through the MXroute dialect) — parse an
      existing script, merge a rule into it, render it back, and confirm
-     rules the tool did not write survive verbatim. The
-     overwrite-would-have-destroyed-it case is the one that matters
+     rules the tool did not write survive — their bodies and names, with
+     the layout normalized. The overwrite-would-have-destroyed-it case is
+     the one that matters
      ([ADR 0002](../adr/0002-non-destructive-script-merge.md)); it deserves a
      test with a hand-written Roundcube-shaped script as its fixture.
    - `sieve` — a refused action (`redirect`, `notify`, `vacation`) raises with
@@ -148,11 +151,70 @@ fixture required before anything writes to one is still outstanding
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
+3. **Container tests** (`MAILCTL_CONTAINER=1`, `tests/container/`) — every
+   **write** path against a **throwaway local Dovecot + Pigeonhole** in
+   Docker, never a real account. See *The container tier* below.
 
 The live tier and the read-only live check below are together this repo's
-**end-to-end** pass (`qa.md` dimension 8) — there is no separate e2e suite. A
-CLI that talks to two servers has no meaningful integration layer between
-"offline logic" and "does it actually work against MXroute".
+**end-to-end** pass (`qa.md` dimension 8) against MXroute itself. The
+container tier sits between the offline tier and them: a real server, so
+it shows what a double cannot (what the server *keeps*, and what a stored
+rule *does*), but not MXroute, so it says nothing about MXroute's own
+configuration.
+
+## The container tier
+
+`make testcontainer` builds a small image from `tests/container/image/` and
+starts one container for the run; each test then gets its own empty mailbox
+on it, so no test sees another's scripts, folders, or mail. It needs a
+running Docker daemon and skips cleanly without one, or without
+`MAILCTL_CONTAINER=1` exactly — its own gate, never `MAILCTL_LIVE`, so a
+container run cannot be mistaken for an MXroute one ([#49][i49]).
+
+- **What it proves.** `add` merging beside a Roundcube-written rule (ADR
+  0002), `remove-rule`, `move-rule`, a fresh account's new active script,
+  `backup` then `restore` byte for byte, `--create-folder` with and without
+  `--no-subscribe` and the `subscribe` / `unsubscribe` toggles, `apply`
+  moving, flagging and discarding existing mail, `--max-messages` refusing
+  the whole pass, and `view` and the message listing leaving mail unread.
+  New mail is also handed to `dovecot-lda`, which runs the uploaded script,
+  so the going-forward half is seen filing it too.
+- **The oracle is not mailctl.** Each test reads the server back with
+  sievelib's and IMAPClient's own clients, and a byte-exact claim with the
+  script file on the container's disk, so a write that mailctl both gets
+  wrong and reads back wrong still fails. Every test's docstring names the
+  break that turns it red, and each was seen red under that break.
+- **The safe place to prove #9's fixture.** The mail store is disposable,
+  so this tier needs no backup-and-restore guard of its own; the backup and
+  restore round trip is proved here, byte for byte, before the live tier's
+  guard is built on it ([#9](https://github.com/harleypig/mailctl/issues/9)).
+- **The server.** Debian trixie's own `dovecot-*` packages — **Dovecot
+  2.4.1 with Pigeonhole** — rather than the `dovecot/docker` image, whose
+  packaging is CC BY-NC-SA 4.0. Debian was the first choice on #49 and it
+  ships 2.4, the side of MXroute's 2.3 → 2.4 migration worth testing;
+  Ubuntu 24.04 and 25.04 ship 2.3.21, and Alpine ships 2.4.5.
+- **Shaped after the MXroute record, and where it differs.** Maildir++, a
+  `.` separator, an empty personal-namespace prefix (as read on
+  2026-09-28), `PLAIN` only, STARTTLS on 4190 and 143, implicit TLS on 993,
+  and `enotify` turned off, which leaves exactly the 23 Sieve extensions
+  the MXroute probe listed. It differs in these ways: IMAP lacks `METADATA`
+  and `QUOTA` (41 capabilities, not 43); the script is named `mailctl` on a
+  fresh account rather than Roundcube's `managesieve` (tests seed
+  `managesieve` where it matters); no `INBOX.spam`, `Junk`, or other
+  default folders exist; any user name logs in with the run's password;
+  and `redirect` is **not** refused by the server, which MXroute's is
+  (mailctl refuses it itself). IMAP runs on implicit TLS only: mailctl
+  treats only port 143 as STARTTLS, and Docker's port is not 143.
+- **The certificate and the password.** The container makes a fresh
+  self-signed certificate at start (`localhost` / `127.0.0.1`), and only
+  the certificate is copied out, for `SSL_CERT_FILE`. The password is
+  random per run, in a `0600` file mailctl reads through
+  `MAILCTL_PASSWORD_FILE`, handed to the container on `docker exec` stdin,
+  and never printed or put on a command line.
+- **Not in CI, for now.** Building the image fetches Debian packages, so a
+  CI run would depend on a mirror as well as on the code; that is not
+  reliable enough to gate a merge on without first watching it run.
+  Revisit once it has a history of passing locally.
 
 ## The read-only live check
 
@@ -222,6 +284,7 @@ lands in `Lists/GitHub`" is.
 pytest                 # unit (offline, credential-free)
 make test              # the same, via the Makefile
 make testlive          # live (MAILCTL_LIVE=1; needs MAILCTL_* in the env)
+make testcontainer     # write paths against a local Dovecot (needs Docker)
 make livecheck         # read-only live check (normal mailctl config)
 scripts/live-readonly.sh --list        # the read-only check's test names
 scripts/live-readonly.sh list rules    # run only the named checks
@@ -237,3 +300,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i99]: https://github.com/harleypig/mailctl/issues/99
 [i135]: https://github.com/harleypig/mailctl/issues/135
 [i154]: https://github.com/harleypig/mailctl/issues/154
+[i49]: https://github.com/harleypig/mailctl/issues/49
