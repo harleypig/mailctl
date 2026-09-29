@@ -8,7 +8,7 @@ User:      user@example.com  (environment)
 Password:  set  (MAILCTL_PASSWORD, environment)
 IMAP:      mail.example.com:993  (host: same as host, port: default)
 Sieve:     mail.example.com:4190 (tls=starttls)  (default)
-Folder:    Lists  (config file <TMP>/config/mailctl/config.toml)  -- read by apply, search, view, and add --like
+Folder:    Lists  (config file <TMP>/config/mailctl/config.toml)  -- read by apply, search, view, mark, senders, and --like
 
 ManageSieve: connected
   Sieve extensions (* = mailctl's own rules can need it):
