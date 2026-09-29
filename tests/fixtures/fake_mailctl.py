@@ -40,6 +40,9 @@ faults to inject, so a test can watch a check go red:
   total
 - ``senders-overcap`` -- ``senders`` is refused, the search finding more
   than ``--max-messages``
+- ``optimize-uploads`` -- ``optimize-rules --dry-run`` uploads anyway
+- ``optimize-no-diff`` -- an ``optimize-rules --json`` plan proposes a
+  change but carries no diff
 """
 
 import json
@@ -474,6 +477,46 @@ def baseline(command: str) -> int:
 
 
 # ----------------------------------------------------------------------------
+def optimize() -> str:
+    """'optimize-rules --dry-run --json': a merge of two Trash rules."""
+    plan = {
+        "command": "optimize-rules",
+        "changes": True,
+        "diff": {
+            "label": "sieve",
+            "text": "--- managesieve (current)\n+++ managesieve (proposed)\n",
+            "reformats": False,
+        },
+        "considered": ["redundant", "reorder", "merge"],
+        "removals": [],
+        "reorders": [],
+        "merges": [
+            {
+                "into": "Herrschners Spam",
+                "absorbed": ["Rumble"],
+                "header": "To",
+                "match_type": "contains",
+                "keys": ["herrschners@example.com", "rumble@example.com"],
+            }
+        ],
+        "uncertain": [],
+        "script": "managesieve",
+        "active": "managesieve",
+        "activate": True,
+    }
+
+    if "optimize-no-diff" in BREAK:
+        plan["diff"] = None
+
+    out = json.dumps({"version": 1, "plan": plan}, indent=2) + "\n"
+
+    if "optimize-uploads" in BREAK:
+        out += "Uploaded and activated script 'managesieve'\n"
+
+    return out
+
+
+# ----------------------------------------------------------------------------
 def main() -> int:
     with open(os.environ["STUB_LOG"], "a", encoding="utf-8") as log:
         log.write(json.dumps(ARGV) + "\n")
@@ -578,6 +621,9 @@ def main() -> int:
             f"[dry-run] would create IMAP folder 'INBOX.{ARGV[-1]}' and "
             f"subscribe to it\n"
         )
+
+    elif command == "optimize-rules":
+        out = optimize()
 
     elif command == "rename-folder":
         out = (

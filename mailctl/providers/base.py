@@ -30,7 +30,7 @@ through one import.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from email.message import Message
 from pathlib import Path
@@ -39,7 +39,7 @@ from typing import ClassVar
 from .. import MailctlError
 from ..config import Config
 from ..criteria import Criteria
-from ..rules import Rule
+from ..rules import Rule, Slot
 from .model import (
     DISCARD,
     FILEINTO,
@@ -436,6 +436,18 @@ class Dialect(ABC):
         """Switch a named rule that is off back on.
 
         Returns ``source`` unchanged when the rule is already on.
+        """
+
+    @classmethod
+    @abstractmethod
+    def rearrange_rules(cls, source: str, layout: Sequence[Slot]) -> str:
+        """Lay a stored rule set out as ``layout`` says, and change nothing
+        else: each slot's rule in the new order, the rules it absorbs
+        merged into its key list, and a rule no slot names removed.
+
+        The rules are those :meth:`read_rules` reads, by index. A merge
+        the dialect cannot make exactly -- the rules do not test one
+        header the same way with the same actions -- is refused.
         """
 
     @classmethod

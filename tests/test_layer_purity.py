@@ -1264,6 +1264,8 @@ KNOWN_READERS = (
     "mail.plan_mail",
     "messages.list_messages",
     "messages.read_message",
+    "optimize.plan_optimize",
+    "optimize.propose",
     "reports.probe_rules",
     "reports.probe_servers",
     "rules.plan_rule",
@@ -1530,6 +1532,14 @@ def test_the_analysis_sees_a_rename_s_three_writes():
         "unsubscribe",
         "store_rule_set",
     } <= UTILITY_REACH["folder_rename.execute_folder_rename"]
+
+
+# ----------------------------------------------------------------------------
+def test_the_analysis_sees_an_optimized_script_stored():
+    """The proposals are read-only; applying them stores through
+    ``upload_script``."""
+    assert "store_rule_set" in UTILITY_REACH["optimize.execute_optimize"]
+    assert not UTILITY_REACH["optimize.plan_optimize"] & WRITE_OPERATIONS
 
 
 # ----------------------------------------------------------------------------

@@ -755,6 +755,68 @@ RENAME = {
 
 RENAME_ARGS = ["rename-folder", "Lists", "Archive"]
 
+# For 'optimize-rules' (#21): a catch-all starving a specific rule, a rule
+# repeating the catch-all, three Trash rules to merge around a disabled
+# one, and a glob that can only be suspected of shadowing.
+OPTIMIZE_SCRIPT = """require ["fileinto"];
+# rule:[Github catchall]
+if allof (header :contains "from" "github.com")
+{
+\tfileinto "INBOX.Github";
+\tstop;
+}
+# rule:[Github billing]
+if allof (header :contains "from" "billing@github.com")
+{
+\tfileinto "INBOX.Github.Billing";
+\tstop;
+}
+# rule:[Github again]
+if allof (header :contains "from" "noreply@github.com")
+{
+\tfileinto "INBOX.Github";
+\tstop;
+}
+# rule:[Herrschners Spam]
+if allof (header :contains "to" "herrschners@example.com")
+{
+\tfileinto "Trash";
+\tstop;
+}
+# rule:[Rumble]
+if allof (header :contains "to" "rumble@example.com")
+{
+\tfileinto "Trash";
+\tstop;
+}
+# rule:[Old list]
+if false # allof (header :contains "to" "old@example.com")
+{
+\tfileinto "Trash";
+\tstop;
+}
+# rule:[Dump list]
+if allof (header :contains "to" "aur-general@lists.example.org")
+{
+\tfileinto "Trash";
+\tstop;
+}
+# rule:[Any shop]
+if allof (header :matches "from" "*shop*")
+{
+\tfileinto "INBOX.Shops";
+\tstop;
+}
+# rule:[Bike shop]
+if allof (header :contains "from" "bikeshop.example")
+{
+\tfileinto "INBOX.Bikes";
+\tstop;
+}
+"""
+
+OPTIMIZE = {"script": OPTIMIZE_SCRIPT}
+
 SCENARIOS = {
     **HOSTILE,
     **JSON_SCENARIOS,
@@ -1804,6 +1866,32 @@ SCENARIOS = {
         [*RENAME_ARGS, "--yes"],
         {**RENAME, "imap_failures": {"subscribe_folder": "NO quota"}},
     ),
+    # #21: proposals shown, applied, refused, and each kind skipped.
+    "optimize-dry": (["optimize-rules", "--dry-run"], OPTIMIZE),
+    "optimize-dry-json": (["optimize-rules", "--dry-run", "--json"], OPTIMIZE),
+    "optimize-yes": (["optimize-rules", "--yes"], OPTIMIZE),
+    "optimize-notty": (["optimize-rules"], OPTIMIZE),
+    "optimize-rejected": (
+        ["optimize-rules", "--yes"],
+        {**OPTIMIZE, "reject": True},
+    ),
+    "optimize-skip": (
+        [
+            "optimize-rules",
+            "--skip",
+            "merge",
+            "--skip",
+            "redundant",
+            "--dry-run",
+        ],
+        OPTIMIZE,
+    ),
+    "optimize-skip-unknown": (
+        ["optimize-rules", "--skip", "tidy", "--dry-run"],
+        OPTIMIZE,
+    ),
+    "optimize-nothing": (["optimize-rules", "--yes"], {}),
+    "optimize-empty": (["optimize-rules", "--dry-run"], {"script": ""}),
 }
 
 # ############################################################################

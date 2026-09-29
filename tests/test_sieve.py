@@ -2010,3 +2010,92 @@ def test_a_rewrite_that_does_not_come_out_as_asked_is_refused(monkeypatch):
 def test_a_script_the_lexer_cannot_scan_is_refused():
     with pytest.raises(MailctlError, match="cannot scan"):
         script_module.retarget_fileinto('fileinto "Old";\n@\n', {"Old": "N"})
+
+
+# ############################################################################
+# Rules rearranged: reordered, merged, removed (#21)
+# ############################################################################
+
+# Two rules the same filter apart from their keys, one sievelib-named
+# (``# Filter:``) so the component's own dialect reads the names.
+REARRANGE_SCRIPT = (
+    'require ["fileinto"];\n'
+    "# Filter: a\n"
+    'if header :contains "To" "a@x.test" {\n'
+    '    fileinto "Trash";\n'
+    "    stop;\n"
+    "}\n"
+    "# Filter: b\n"
+    'if anyof (header :contains "to" ["b@x.test", "a@x.test"]) {\n'
+    '    fileinto "Trash";\n'
+    "    stop;\n"
+    "}\n"
+    "# Filter: c\n"
+    'if header :contains "subject" "c" {\n'
+    '    fileinto "Other";\n'
+    "}\n"
+)
+
+
+# ----------------------------------------------------------------------------
+def test_rearranging_reorders_merges_and_drops(reparse):
+    """The survivor keeps its own shape and spelling; a repeated key is
+    kept once; a rule no slot names is dropped."""
+    after = script_module.rearrange_rules(REARRANGE_SCRIPT, [(0, [1])])
+
+    reparse(after)
+
+    assert rule_names(parse_script(after)) == ["a"]
+    assert 'header :contains "To" ["a@x.test", "b@x.test"]' in after
+
+    moved = script_module.rearrange_rules(REARRANGE_SCRIPT, [(2, []), (0, [])])
+
+    assert rule_names(parse_script(moved)) == ["c", "a"]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "layout",
+    [[(0, []), (0, [])], [(0, [0])], [(3, [])], [(0, [1]), (1, [])]],
+    ids=["twice", "itself", "missing", "absorbed-and-kept"],
+)
+def test_a_layout_naming_a_rule_twice_or_not_there_is_refused(layout):
+    with pytest.raises(MailctlError, match="at most once"):
+        script_module.rearrange_rules(REARRANGE_SCRIPT, layout)
+
+
+# ----------------------------------------------------------------------------
+TRASH_BODY = ' {\n    fileinto "Trash";\n    stop;\n}\n'
+
+
+@pytest.mark.parametrize(
+    "second",
+    [
+        'if header :contains "to" "b" {\n    fileinto "Junk";\n    stop;\n}\n',
+        'if header :is "to" "b"' + TRASH_BODY,
+        'if header :contains "cc" "b"' + TRASH_BODY,
+        'if header :comparator "i;octet" :contains "to" "b"' + TRASH_BODY,
+        'if header :contains ["to", "cc"] "b"' + TRASH_BODY,
+        'if allof (header :contains "to" "b", header :contains "cc" "b")'
+        + TRASH_BODY,
+        "if false" + TRASH_BODY,
+    ],
+    ids=[
+        "action",
+        "match",
+        "header",
+        "comparator",
+        "headers",
+        "tests",
+        "disabled",
+    ],
+)
+def test_a_merge_that_would_change_what_is_filed_is_refused(second):
+    """The component's own guard, whatever the caller decided."""
+    source = (
+        'require ["fileinto"];\n# Filter: a\n'
+        'if header :contains "to" "a"' + TRASH_BODY + "# Filter: b\n" + second
+    )
+
+    with pytest.raises(MailctlError, match="cannot be merged"):
+        script_module.rearrange_rules(source, [(0, [1])])

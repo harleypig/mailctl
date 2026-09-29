@@ -300,6 +300,13 @@ mailctl remove-rule from-newsletter-example-com
 mailctl move-rule from-newsletter-example-com --first --dry-run
 mailctl move-rule from-newsletter-example-com --after keep-boss
 
+# Propose a better arrangement of the whole rule set: remove a rule that
+# only repeats an earlier one, move a specific rule ahead of the broader
+# one starving it, and merge rules doing the same thing into one rule with
+# a key list. Only what the rules decide is changed; guesses are reported.
+mailctl optimize-rules --dry-run
+mailctl optimize-rules --skip merge
+
 # Switch a rule off without deleting it, and back on. Written the way
 # Roundcube writes it, so webmail shows it as disabled too.
 mailctl disable-rule from-newsletter-example-com --dry-run
@@ -408,6 +415,11 @@ and error handling.
   `diff`, on a script change, is then `null`. A `rename-folder` plan always
   changes something; its `diff` is `null` when no rule files into the
   folder, and the script is then left alone.
+* An `optimize-rules` plan lists `removals` (`{"rule", "covered_by"}`),
+  `reorders` (`{"rule", "before"}`), `merges` (`{"into", "absorbed",
+  "header", "match_type", "keys"}`), and `uncertain` (`{"kind", "rules",
+  "reason"}`), what was left alone for want of certainty; `considered`
+  names the kinds of change looked for.
 * A `search` listing's `sort` is `null` for newest first, else
   `{"key", "reverse"}` as `--sort` and `--reverse` gave them, and
   `messages` are in that order. `more` is `true` when there may be
@@ -458,7 +470,8 @@ and save again.
   `remove-rule`, `disable-rule`, and `enable-rule`; the list of matching
   messages for `apply`; the file that would have been written for
   `backup`; the folders that would move, and the Sieve diff, for
-  `rename-folder`.
+  `rename-folder`; each proposed change, and the Sieve diff, for
+  `optimize-rules`.
 * `add` **never touches mail already delivered**; `apply` is the only
   command that does. After saving a rule, `add` says so and points at
   `apply`.

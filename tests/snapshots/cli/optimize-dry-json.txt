@@ -1,0 +1,79 @@
+$ mailctl optimize-rules --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "optimize-rules",
+    "changes": true,
+    "diff": {
+      "label": "sieve",
+      "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -1,38 +1,23 @@\n require [\"fileinto\"];\n \n+# rule:[Github billing]\n+if allof (header :contains \"from\" \"billing@github.com\") {\n+    fileinto \"INBOX.Github.Billing\";\n+    stop;\n+}\n # rule:[Github catchall]\n if allof (header :contains \"from\" \"github.com\") {\n     fileinto \"INBOX.Github\";\n     stop;\n }\n-# rule:[Github billing]\n-if allof (header :contains \"from\" \"billing@github.com\") {\n-    fileinto \"INBOX.Github.Billing\";\n-    stop;\n-}\n-# rule:[Github again]\n-if allof (header :contains \"from\" \"noreply@github.com\") {\n-    fileinto \"INBOX.Github\";\n-    stop;\n-}\n # rule:[Herrschners Spam]\n-if allof (header :contains \"to\" \"herrschners@example.com\") {\n-    fileinto \"Trash\";\n-    stop;\n-}\n-# rule:[Rumble]\n-if allof (header :contains \"to\" \"rumble@example.com\") {\n+if allof (header :contains \"to\" [\"herrschners@example.com\", \"rumble@example.com\", \"aur-general@lists.example.org\"]) {\n     fileinto \"Trash\";\n     stop;\n }\n # rule:[Old list]\n if false # allof (header :contains \"to\" \"old@example.com\")\n {\n-    fileinto \"Trash\";\n-    stop;\n-}\n-# rule:[Dump list]\n-if allof (header :contains \"to\" \"aur-general@lists.example.org\") {\n     fileinto \"Trash\";\n     stop;\n }\n",
+      "reformats": true
+    },
+    "considered": [
+      "redundant",
+      "reorder",
+      "merge"
+    ],
+    "removals": [
+      {
+        "rule": "Github again",
+        "covered_by": "Github catchall"
+      }
+    ],
+    "reorders": [
+      {
+        "rule": "Github billing",
+        "before": "Github catchall"
+      }
+    ],
+    "merges": [
+      {
+        "into": "Herrschners Spam",
+        "absorbed": [
+          "Rumble",
+          "Dump list"
+        ],
+        "header": "To",
+        "match_type": "contains",
+        "keys": [
+          "herrschners@example.com",
+          "rumble@example.com",
+          "aur-general@lists.example.org"
+        ]
+      }
+    ],
+    "uncertain": [
+      {
+        "kind": "reorder",
+        "rules": [
+          "Github billing",
+          "Any shop"
+        ],
+        "reason": "'Github billing' carries stop and may catch mail meant for 'Any shop' first; whether it does cannot be decided from the rules alone"
+      },
+      {
+        "kind": "reorder",
+        "rules": [
+          "Any shop",
+          "Bike shop"
+        ],
+        "reason": "'Any shop' carries stop and may catch mail meant for 'Bike shop' first; whether it does cannot be decided from the rules alone"
+      }
+    ],
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

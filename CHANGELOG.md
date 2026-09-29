@@ -126,6 +126,25 @@ FEATURES:
   cannot be renamed, and a `NEW` that exists — or differs from an existing
   folder only in case — is refused.
 
+* **`mailctl optimize-rules` proposes a better arrangement of the rule
+  set, and applies it when asked** ([#21]). Three kinds of change, each
+  made only where the rules' own conditions decide it — one header, one
+  comparator, one key set containing the other: a rule that can never run
+  because an earlier rule with `stop` catches all of its mail and does the
+  same thing is removed; a specific rule starved by a broader one ahead of
+  it is moved to just before that rule, so its mail gets its own actions;
+  and consecutive rules testing the same header the same way, with the
+  same actions and `stop`, become one rule with a key list, keeping the
+  first rule's name. A rule it cannot fully read, or a doubt it cannot
+  settle — a glob, rules that test the same mail and do different things,
+  a live rule between two that would merge — is reported and left alone.
+  Disabled rules are never moved, merged, or removed. The script stays a
+  flat list of `# rule:[NAME]` blocks. The proposals and the diff are
+  shown first, then `--dry-run` stops (`--json` prints them as a document)
+  or you are asked to confirm; the upload is backed up first. `--skip
+  redundant|reorder|merge` leaves a kind out. It needs a provider that
+  orders its rules, and is not offered otherwise.
+
 * **`mailctl probe` prints what a provider record needs** ([#101]). It
   reads both servers and changes nothing: the date and time in UTC, where
   each half connects, each server's identity (IMAP `ID`, ManageSieve
@@ -1162,3 +1181,4 @@ NOTES:
 [#160]: https://github.com/harleypig/mailctl/issues/160
 [#51]: https://github.com/harleypig/mailctl/issues/51
 [#109]: https://github.com/harleypig/mailctl/issues/109
+[#21]: https://github.com/harleypig/mailctl/issues/21

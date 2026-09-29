@@ -49,6 +49,7 @@ ALL_TESTS = [
     "subscribe",
     "create-folder",
     "rename-folder",
+    "optimize-rules",
     "unchanged",
 ]
 
@@ -62,6 +63,7 @@ MUTATING = [
     "mark",
     "migrate-config",
     "move-rule",
+    "optimize-rules",
     "remove-rule",
     "rename-folder",
     "restore",
@@ -222,6 +224,8 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("baseline-serious", "check-baseline"),
         ("senders-unsorted", "senders"),
         ("senders-unread-over", "senders"),
+        ("optimize-uploads", "optimize-rules"),
+        ("optimize-no-diff", "optimize-rules"),
     ],
 )
 def test_a_failing_check_is_not_ok_and_the_run_exits_nonzero(
@@ -590,3 +594,30 @@ def test_rename_folder_fails_when_the_dry_run_reports_a_rename(tmp_path):
     assert proc.returncode != 0
     assert "not ok 1 - rename-folder" in proc.stdout
     assert "reported a change under --dry-run" in proc.stdout
+
+
+# ----------------------------------------------------------------------------
+def test_optimize_rules_plans_once_and_never_applies(tmp_path):
+    """#21: one dry run of the whole rule set, as a JSON plan; never
+    --yes, never without --dry-run."""
+    proc, calls = run(tmp_path, "optimize-rules")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - optimize-rules"]
+    assert calls == [["optimize-rules", "--dry-run", "--json"]]
+
+
+# ----------------------------------------------------------------------------
+def test_optimize_rules_fails_when_the_dry_run_uploads(tmp_path):
+    proc, _ = run(tmp_path, "optimize-rules", breaks=["optimize-uploads"])
+
+    assert proc.returncode != 0
+    assert "reported a change under --dry-run" in proc.stdout
+
+
+# ----------------------------------------------------------------------------
+def test_optimize_rules_names_a_plan_without_its_diff(tmp_path):
+    proc, _ = run(tmp_path, "optimize-rules", breaks=["optimize-no-diff"])
+
+    assert proc.stdout.splitlines()[2] == (
+        "# optimize-rules --json: changes but no diff"
+    )
