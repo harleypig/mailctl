@@ -15,12 +15,18 @@ import no layer-1 module at all, and the engine and the utilities reach a
 provider only through the interface and the registry, never naming one --
 which is what lets a second provider be added with no engine change.
 
+At the top, an interface calls only the utilities (ADR 0007): it opens a
+session and hands it to them, and never imports a provider or a component
+or reads a session's transport, connection, or dialect. The utilities, in
+turn, use only the transport the session guards.
+
 The check resolves relative imports to absolute names first, because
 ``from ...config import Config`` and ``from mailctl.config import Config``
 are the same dependency spelled two ways.
 """
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -782,3 +788,384 @@ def test_the_half_guards_allow_what_each_half_may_use(guard, source):
 
     else:
         assert dialect_violations(source, package, MXROUTE_TRANSPORT) == []
+
+
+# ############################################################################
+# Interfaces call only utilities (ADR 0007)
+# ############################################################################
+
+# Interfaces are derived, not listed: every module outside the layers
+# below them is one. The CLI is today's only front-end, and a tui.py, a
+# web package, or any other front-end is held to this line the day it
+# lands, whatever library it parses its input with. A new core module is
+# the one that must be named here -- until it is, it is held to the
+# interface's line, which is the stricter one.
+CORE_MODULES = {"__init__.py", "config.py", "criteria.py", "rules.py"}
+CORE_PACKAGES = {"components", "providers", "utilities"}
+SESSION_MODULE = "engine.py"
+
+INTERFACE_FILES = {
+    path.relative_to(PACKAGE).with_suffix("").as_posix(): path
+    for path in sorted(PACKAGE.rglob("*.py"))
+    if path.relative_to(PACKAGE).parts[0]
+    not in CORE_PACKAGES | CORE_MODULES | {SESSION_MODULE}
+}
+
+# What an interface may take from the session: opening one, and asking
+# what the configured provider offers before it does. The session goes
+# straight to the utilities; its transport, raw connection, and dialect
+# are theirs alone, so no front-end reaches a write around the policy.
+INTERFACE_ENGINE_NAMES = {
+    "Session",
+    "ProviderCapabilities",
+    "capabilities_for",
+    "connect",
+}
+SESSION_INTERNALS = {"transport", "connection", "dialect"}
+BELOW_THE_SESSION = ("mailctl.providers", "mailctl.components")
+
+
+# ----------------------------------------------------------------------------
+def engine_names(source: str, package: str) -> set[str]:
+    """Every name ``source`` takes from ``mailctl.engine``, however spelt.
+
+    ``from .engine import x`` names it outright; ``from . import engine``
+    or ``import mailctl.engine as e`` binds the module, and each attribute
+    read off that binding is a name taken.
+    """
+    tree = ast.parse(source)
+    taken: set[str] = set()
+    bindings: set[str] = set()
+    dotted_import = False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            (module, names), *_ = imports(ast.unparse(node), package)
+
+            if module == "mailctl.engine":
+                taken |= names
+
+            elif module == "mailctl":
+                bindings |= {
+                    alias.asname or alias.name
+                    for alias in node.names
+                    if alias.name == "engine"
+                }
+
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "mailctl.engine":
+                    if alias.asname:
+                        bindings.add(alias.asname)
+
+                    else:
+                        dotted_import = True
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute):
+            continue
+
+        value = node.value
+        bound = isinstance(value, ast.Name) and value.id in bindings
+        spelt_out = (
+            dotted_import
+            and isinstance(value, ast.Attribute)
+            and value.attr == "engine"
+            and isinstance(value.value, ast.Name)
+            and value.value.id == "mailctl"
+        )
+
+        if bound or spelt_out:
+            taken.add(node.attr)
+
+    return taken
+
+
+# ----------------------------------------------------------------------------
+def below_the_session(source: str, package: str) -> list[str]:
+    """Every import of a provider or a component module, however spelt."""
+    found = []
+
+    for module, names in imports(source, package):
+        for candidate in [module, *(f"{module}.{name}" for name in names)]:
+            if any(
+                candidate == layer or candidate.startswith(f"{layer}.")
+                for layer in BELOW_THE_SESSION
+            ):
+                found.append(candidate)
+                break
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def session_internals(source: str) -> list[str]:
+    """Every read of a session's transport, raw connection, or dialect.
+
+    An AST cannot tell a session from anything else with such an
+    attribute, so the names themselves are off limits in an interface.
+    """
+    return sorted(
+        f"line {node.lineno}: .{node.attr}"
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Attribute) and node.attr in SESSION_INTERNALS
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_walk_finds_the_interfaces_and_only_them():
+    """Vacuous if it found nothing; wrong if it took in a core module."""
+    assert "cli" in INTERFACE_FILES
+    assert not any(
+        name.split("/")[0] in CORE_PACKAGES or name == "engine"
+        for name in INTERFACE_FILES
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_every_named_core_module_exists():
+    """A stale name here would let nothing through, silently."""
+    for name in CORE_MODULES | {SESSION_MODULE}:
+        assert (PACKAGE / name).is_file(), name
+
+    for name in CORE_PACKAGES:
+        assert (PACKAGE / name / "__init__.py").is_file(), name
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("interface", sorted(INTERFACE_FILES))
+def test_an_interface_takes_only_the_session_lifecycle_from_the_engine(
+    interface,
+):
+    path = INTERFACE_FILES[interface]
+    extra = engine_names(path.read_text(encoding="utf-8"), package_of(path))
+
+    assert extra <= INTERFACE_ENGINE_NAMES, (
+        f"{interface}.py uses mailctl.engine."
+        f"{sorted(extra - INTERFACE_ENGINE_NAMES)}; an interface opens a "
+        f"session and hands it to the utilities (ADR 0007)"
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("interface", sorted(INTERFACE_FILES))
+def test_an_interface_imports_no_provider_and_no_component(interface):
+    path = INTERFACE_FILES[interface]
+    found = below_the_session(
+        path.read_text(encoding="utf-8"), package_of(path)
+    )
+
+    assert found == [], (
+        f"{interface}.py imports {found}; an interface reaches a provider "
+        f"only through the utilities, and the neutral types through them "
+        f"or the session (ADR 0007)"
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("interface", sorted(INTERFACE_FILES))
+def test_an_interface_never_reaches_into_a_session(interface):
+    path = INTERFACE_FILES[interface]
+    found = session_internals(path.read_text(encoding="utf-8"))
+
+    assert found == [], (
+        f"{interface}.py reads {found}; a session's transport, connection, "
+        f"and dialect are the utilities' -- an interface passes the session "
+        f"to them, so no write bypasses the policy (ADR 0007)"
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("source", "name"),
+    [
+        (
+            "from . import engine\nengine.check_settings(p, c)\n",
+            "check_settings",
+        ),
+        ("from .engine import Session, _Guarded\n", "_Guarded"),
+        ("from . import engine as e\ne.provider_for(c)\n", "provider_for"),
+        ("import mailctl.engine\nmailctl.engine.Session.call\n", "Session"),
+        (
+            "import mailctl.engine\nmailctl.engine.check_settings\n",
+            "check_settings",
+        ),
+        ("from mailctl import engine\nengine.MAIL\n", "MAIL"),
+    ],
+)
+def test_the_engine_names_guard_sees_every_spelling(source, name):
+    assert name in engine_names(source, "mailctl"), source
+
+
+# ----------------------------------------------------------------------------
+def test_the_engine_names_guard_allows_the_lifecycle():
+    source = (
+        "from . import engine\n"
+        "with engine.connect(c) as s:\n    pass\n"
+        "def f(o: engine.ProviderCapabilities):\n"
+        "    return engine.capabilities_for(c)\n"
+    )
+
+    assert engine_names(source, "mailctl") <= INTERFACE_ENGINE_NAMES
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from .providers.base import Provider\n",
+        "from .providers.model import ActionSpec\n",
+        "from . import providers\n",
+        "from .providers import registry\n",
+        "import mailctl.providers.mxroute\n",
+        "from .components.imap import ImapSession\n",
+        "from . import components\n",
+    ],
+)
+def test_the_interface_import_guard_would_catch_a_lower_layer(source):
+    assert below_the_session(source, "mailctl"), source
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from . import engine, utilities\n",
+        "from .utilities.rules import ActionSpec\n",
+        "from .config import Config\n",
+        "from .criteria import Criteria\n",
+    ],
+)
+def test_the_interface_import_guard_allows_the_utilities(source):
+    assert below_the_session(source, "mailctl") == [], source
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "s.transport.store_rule_set(n, t)\n",
+        "sessions.connection.apply_mail(plan)\n",
+        "session.dialect.merge_rule(a, b)\n",
+        "x = getattr(s, 'q').transport\n",
+    ],
+)
+def test_the_session_guard_would_catch_a_reach_inside(source):
+    assert session_internals(source), source
+
+
+# ----------------------------------------------------------------------------
+def test_the_session_guard_allows_asking_what_a_session_has():
+    source = "if not sessions.has_mail:\n    utilities.mail.plan(sessions)\n"
+
+    assert session_internals(source) == []
+
+
+# ############################################################################
+# Utilities reach a provider only through the session (ADR 0007)
+# ############################################################################
+
+# A utility's transport is the session's guarded one: it connects on first
+# use, serialises calls, and re-sends a dropped read and never a write.
+# The raw connection skips all of that, and a transport taken off a
+# provider rather than a session is one nobody opened. So a utility reads
+# ``.transport`` only off a parameter annotated as a ``Session``, and
+# never reads ``.connection`` at all.
+
+
+# ----------------------------------------------------------------------------
+def transport_outside_a_session(source: str) -> list[str]:
+    """Every ``.connection``, and every ``.transport`` not on a Session.
+
+    A ``Session`` is a parameter whose annotation names one, as every
+    utility taking a session declares it.
+    """
+    found = []
+
+    for function in ast.walk(ast.parse(source)):
+        if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+
+        arguments = function.args
+        sessions = {
+            arg.arg
+            for arg in [
+                *arguments.posonlyargs,
+                *arguments.args,
+                *arguments.kwonlyargs,
+            ]
+            if arg.annotation is not None
+            and re.search(r"\bSession\b", ast.unparse(arg.annotation))
+        }
+
+        for node in ast.walk(function):
+            if not isinstance(node, ast.Attribute):
+                continue
+
+            if node.attr == "connection" or (
+                node.attr == "transport"
+                and not (
+                    isinstance(node.value, ast.Name)
+                    and node.value.id in sessions
+                )
+            ):
+                found.append(f"line {node.lineno}: .{node.attr}")
+
+    tree = ast.parse(source)
+    in_functions = {
+        id(node)
+        for function in ast.walk(tree)
+        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+        for node in ast.walk(function)
+    }
+    found.extend(
+        f"line {node.lineno}: .{node.attr}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr in {"transport", "connection"}
+        and id(node) not in in_functions
+    )
+
+    return sorted(set(found))
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("utility", sorted(UTILITY_FILES))
+def test_a_utility_reaches_the_transport_only_through_a_session(utility):
+    path = UTILITY_FILES[utility]
+    found = transport_outside_a_session(path.read_text(encoding="utf-8"))
+
+    assert found == [], (
+        f"{utility}.py reads {found}; a utility uses the transport the "
+        f"session guards, never the raw connection or a provider's own "
+        f"(ADR 0007)"
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def f(session: Session):\n    session.connection.apply_mail(p)\n",
+        "def f(config):\n    provider_for(config).transport.open(config)\n",
+        "def f(session: Session):\n    session.provider.transport\n",
+        "def f(provider: Provider):\n    provider.transport.open(c)\n",
+        "def f(s):\n    s.transport.store_rule_set(n, t)\n",
+        "TRANSPORT = registry.PROVIDERS['x'].transport\n",
+    ],
+)
+def test_the_utility_guard_would_catch_a_transport_off_the_session(source):
+    assert transport_outside_a_session(source), source
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def f(session: Session):\n    session.transport.list_folders()\n",
+        "def f(live: 'Session | None'):\n    t = live.transport\n",
+        "def f(config):\n    provider_for(config).dialect.refuse(a)\n",
+    ],
+)
+def test_the_utility_guard_allows_the_session_transport(source):
+    assert transport_outside_a_session(source) == [], source
