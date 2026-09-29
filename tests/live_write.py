@@ -59,6 +59,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeVar, cast
 
 import pytest
 from imapclient import IMAPClient
@@ -66,6 +67,8 @@ from sievelib.managesieve import Client as SievelibClient
 
 from mailctl.components.managesieve.client import SieveClient as ByteClient
 from mailctl.config import Config, Secret
+
+_Client = TypeVar("_Client", bound=SievelibClient)
 
 __all__ = [
     "SCRATCH_MARKER",
@@ -165,7 +168,7 @@ class Mailbox:
 
 # ----------------------------------------------------------------------------
 @contextmanager
-def _sieve(mailbox: Mailbox, client_class: type) -> Iterator[SievelibClient]:
+def _sieve(mailbox: Mailbox, client_class: type[_Client]) -> Iterator[_Client]:
     """A logged-in ManageSieve client of ``client_class``, logged out after."""
     client = client_class(mailbox.sieve_host, mailbox.sieve_port)
 
@@ -487,9 +490,12 @@ class ScratchFolder:
         ``when`` is its internal date, the one IMAP's SINCE and BEFORE
         compare, or None for now.
         """
+        # IMAPClient is unannotated; with unpack=True, append() returns
+        # the server's one response line.
         with _imap(self.mailbox) as client:
-            response = client.append(
-                self.name, message, flags=flags, msg_time=when
+            response = cast(
+                bytes,
+                client.append(self.name, message, flags=flags, msg_time=when),
             )
 
         # UIDPLUS: "[APPENDUID <validity> <uid>] Append completed."

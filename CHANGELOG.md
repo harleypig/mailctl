@@ -383,7 +383,18 @@ BUG FIXES:
   starting with `'` is quoted rather than written bare. Rules on any other
   header are written exactly as before.
 
+* **`mailctl move-rule` refuses an empty `--before` or `--after` name**
+  ([#10]). `--before ""` counted as a position given, so the command
+  connected and went on to plan a move that left the rule where it was.
+  It now stops before connecting and says the flag needs a rule name.
+
 NOTES:
+
+* **Type checking now gates every pull request; no change to the tool**
+  ([#10]). `pyright`, in its standard mode, checks the package and the
+  tests in CI's Lint job, and locally with `make typecheck`. Its version
+  is pinned in the dev dependencies, so a new pyright release cannot turn
+  CI red on its own.
 
 * **The engine is split into the session and the utilities; no behaviour
   change** ([#133]). `mailctl.engine` now holds only the session: choosing
@@ -1236,3 +1247,4 @@ NOTES:
 [#39]: https://github.com/harleypig/mailctl/issues/39
 [#188]: https://github.com/harleypig/mailctl/issues/188
 [#192]: https://github.com/harleypig/mailctl/issues/192
+[#10]: https://github.com/harleypig/mailctl/issues/10

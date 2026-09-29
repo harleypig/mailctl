@@ -11,6 +11,7 @@ import json
 import stat
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -40,6 +41,22 @@ TERMS = DriftTerms(
 )
 
 
+# The two halves of an unchanged Dovecot, as record() describes them.
+RULES_HALF = ServerDescription(
+    (("implementation", "Dovecot Pigeonhole"),),
+    (
+        Capability("SASL", "PLAIN"),
+        Capability("SIEVE", "fileinto imap4flags regex"),
+    ),
+    after_login=False,
+)
+MAIL_HALF = ServerDescription(
+    (("name", "Dovecot"),),
+    (Capability("IMAP4REV1"), Capability("MOVE"), Capability("QUOTA")),
+    after_login=True,
+)
+
+
 # ----------------------------------------------------------------------------
 def record(**changes) -> ProbeRecord:
     """A probe of an unchanged Dovecot, with ``changes`` applied."""
@@ -50,21 +67,10 @@ def record(**changes) -> ProbeRecord:
             Fact("IMAP", "mail.example.com:993"),
             Fact("Sieve", "mail.example.com:4190 (tls=starttls)"),
         ),
-        rules=ServerDescription(
-            (("implementation", "Dovecot Pigeonhole"),),
-            (
-                Capability("SASL", "PLAIN"),
-                Capability("SIEVE", "fileinto imap4flags regex"),
-            ),
-            after_login=False,
-        ),
+        rules=RULES_HALF,
         extensions=("fileinto", "imap4flags", "regex"),
         active_rule_set="managesieve",
-        mail=ServerDescription(
-            (("name", "Dovecot"),),
-            (Capability("IMAP4REV1"), Capability("MOVE"), Capability("QUOTA")),
-            after_login=True,
-        ),
+        mail=MAIL_HALF,
         delimiter=".",
         namespaces=(Namespace("personal", "INBOX.", "."),),
     )
@@ -76,6 +82,16 @@ def record(**changes) -> ProbeRecord:
 def probe(value: ProbeRecord) -> dict:
     """A record as its document: what a baseline stores of it."""
     return utilities.reports.probe_document(value)
+
+
+# ----------------------------------------------------------------------------
+def saved(path: Path) -> baseline.Baseline:
+    """The baseline a test has just written to ``path``."""
+    read = baseline.read_baseline(path)
+
+    assert read is not None
+
+    return read
 
 
 # ----------------------------------------------------------------------------
@@ -172,7 +188,7 @@ def test_another_active_rule_set_is_serious_where_the_account_was_saved():
 def test_an_identity_change_is_informational():
     """The clearest migration signal, but nothing mailctl acts on."""
     rules = replace(
-        record().rules, identity=(("implementation", "Pigeonhole 2.4"),)
+        RULES_HALF, identity=(("implementation", "Pigeonhole 2.4"),)
     )
 
     drift = baseline.compare_probes(
@@ -188,10 +204,10 @@ def test_an_identity_change_is_informational():
 def test_a_mail_capability_mailctl_relies_on_is_serious_either_way():
     """Red if MOVE coming or going is informational, or if a capability
     mailctl never checks (QUOTA) is serious."""
-    lost = replace(record().mail, capabilities=(Capability("IMAP4REV1"),))
+    lost = replace(MAIL_HALF, capabilities=(Capability("IMAP4REV1"),))
     gained = replace(
-        record().mail,
-        capabilities=(*record().mail.capabilities, Capability("UIDPLUS")),
+        MAIL_HALF,
+        capabilities=(*MAIL_HALF.capabilities, Capability("UIDPLUS")),
     )
 
     assert kinds(
@@ -211,7 +227,7 @@ def test_a_rule_half_capability_is_informational_and_carriers_are_skipped():
     OWNER (the account, not the server) is compared, or if a SASL change
     is missed."""
     rules = ServerDescription(
-        record().rules.identity,
+        RULES_HALF.identity,
         (
             Capability("OWNER", "someone@example.com"),
             Capability("SASL", "PLAIN LOGIN"),
@@ -234,7 +250,7 @@ def test_lists_read_at_different_stages_are_not_compared():
     """Red if a list from before login is diffed against one from after,
     which differ with the server unchanged."""
     mail = ServerDescription(
-        record().mail.identity, (Capability("IMAP4REV1"),), after_login=False
+        MAIL_HALF.identity, (Capability("IMAP4REV1"),), after_login=False
     )
 
     drift = baseline.compare_probes(record(), record(mail=mail), None, TERMS)
@@ -383,7 +399,7 @@ def test_a_saved_baseline_reads_back_as_the_probe_it_was(
 ):
     """Red if anything is lost or altered between saving and reading."""
     plan = save(sessions, imap_config, where)
-    read = baseline.read_baseline(plan.path)
+    read = saved(plan.path)
 
     assert probe(read.record_for("user@example.com")) == probe(plan.record)
     assert read.record_for("someone@else.example").active_rule_set is None
@@ -406,7 +422,7 @@ def test_an_account_capability_is_kept_with_the_account(
     assert "OWNER" not in {
         item["name"] for item in document["server"]["rules"]["capabilities"]
     }
-    read = baseline.read_baseline(plan.path)
+    read = saved(plan.path)
 
     assert probe(read.record_for("user@example.com")) == probe(plan.record)
 
@@ -433,7 +449,7 @@ def test_saving_again_diffs_and_keeps_the_other_accounts(
 
     baseline.execute_save_baseline(plan)
 
-    assert set(baseline.read_baseline(plan.path).accounts) == {
+    assert set(saved(plan.path).accounts) == {
         "other@example.com",
         "user@example.com",
     }

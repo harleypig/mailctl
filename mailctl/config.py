@@ -25,6 +25,7 @@ import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from . import MailctlError
 
@@ -889,7 +890,7 @@ def run_password_command(command: str) -> Secret:
 
 
 # ----------------------------------------------------------------------------
-def _pick(*candidates, default=None):
+def _pick(*candidates: str | None, default: str) -> str:
     """Return the first candidate that is neither None nor empty."""
     for candidate in candidates:
         if candidate not in (None, ""):
@@ -977,7 +978,14 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
 
     sources: dict[str, Source] = {}
 
-    def resolve(field_name, *, flag=None, var=None, key=None, default=None):
+    def resolve(
+        field_name: str,
+        *,
+        flag: str | None = None,
+        var: str | None = None,
+        key: str | None = None,
+        default: tuple[Any, Source] | None = None,
+    ) -> Any:
         """Take the first source that supplies a value, and record it."""
         candidates = []
 
@@ -1012,7 +1020,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
 
         return default[0] if default else None
 
-    def setting(name, default=""):
+    def setting(name: str, default: str | int | None = ""):
         """The common shape: a flag, a variable, and a key of one name."""
         return resolve(
             name,

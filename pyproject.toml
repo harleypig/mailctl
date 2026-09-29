@@ -18,7 +18,9 @@ dependencies = [
 dev = [
   "ruff>=0.16",
   "pytest>=8.0",
-  "pyright[nodejs]>=1.1.400",
+  # Exact, unlike the rest: each pyright release adds checks, so a newer
+  # one can fail CI with no change to the code. Bump it deliberately.
+  "pyright[nodejs]==1.1.414",
 ]
 
 [project.scripts]

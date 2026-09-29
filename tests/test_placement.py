@@ -16,7 +16,7 @@ covers the two things that are not visible in the rendered script:
 
 import pytest
 
-from mailctl import MailctlError, utilities
+from mailctl import MailctlError, cli, utilities
 from mailctl.cli import build_parser, error_text, placement_from_args
 from mailctl.components.managesieve import (
     PLACE_AFTER,
@@ -250,6 +250,28 @@ def test_two_placement_flags_at_once_are_refused_by_the_parser():
     """
     with pytest.raises(SystemExit):
         build_parser().parse_args(["add", "--to", "x", "--first", "--last"])
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("flag", ["--before", "--after"])
+def test_move_rule_with_an_empty_anchor_is_refused_before_connecting(
+    monkeypatch, flag
+):
+    """An empty name satisfies argparse's required group but gives no
+    placement, so ``move-rule`` would plan a move that goes nowhere.
+
+    Red if the refusal is removed: the command reaches ``connect``, which
+    fails here with a different message.
+    """
+
+    def no_connect(*_args, **_kwargs):
+        raise AssertionError("connected before refusing")
+
+    monkeypatch.setattr(cli, "connect", no_connect)
+    args = build_parser().parse_args(["move-rule", "Lists", flag, ""])
+
+    with pytest.raises(MailctlError, match="need a rule name"):
+        cli.cmd_move_rule(args)
 
 
 # ############################################################################

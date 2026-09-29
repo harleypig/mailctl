@@ -134,7 +134,7 @@ def _reparse(text: str) -> parser.Parser:
     """
     script_parser = parser.Parser()
 
-    assert script_parser.parse(text), (
+    assert script_parser.parse(text.encode("utf-8")), (
         f"emitted script does not reparse: "
         f"{getattr(script_parser, 'error', 'unknown parse error')}\n{text}"
     )
@@ -183,7 +183,7 @@ class FakeImaplib:
             if counts is None:
                 continue
 
-            values = dict(
+            values: dict[str, int] = dict(
                 zip(("MESSAGES", "UNSEEN", "SIZE"), counts, strict=True)
             )
             body = " ".join(f"{item} {values[item]}" for item in items)
@@ -396,6 +396,9 @@ class FakeIMAPClient:
     # ------------------------------------------------------------------------
     def _mailbox(self) -> dict[int, bytes]:
         """The mail in the selected folder."""
+        if self.selected is None:
+            return self.messages
+
         return self.folder_messages.get(self.selected, self.messages)
 
     # ------------------------------------------------------------------------

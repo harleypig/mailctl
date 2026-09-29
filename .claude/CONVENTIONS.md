@@ -971,8 +971,8 @@ stops being readable.
   deliberate, tested change rather than something a fresh install does
   unreviewed. Adding a third runtime dependency to a tool whose whole job is
   two protocol conversations deserves an argument first.
-- Dev tooling (`ruff`, `pytest`) is an **optional dependency group**, so a
-  user installing the CLI never pulls the linter in.
+- Dev tooling (`ruff`, `pytest`, `pyright`) is an **optional dependency
+  group**, so a user installing the CLI never pulls the linter in.
 
 ## QA
 
@@ -986,6 +986,14 @@ concrete toolchain and the **status of every dimension** for this repo.
   Do **not** wire black/isort/flake8 alongside ruff (`python.md`).
 - **Code smell / complexity:** ruff's `B` (bugbear), `C4`, `SIM`, `UP`, and
   `RUF` rule sets, inside the same `ruff check`.
+- **Type-check:** `pyright` in `standard` mode over `mailctl` and `tests`,
+  configured under `[tool.pyright]` in `pyproject.toml`; `make typecheck`
+  runs it. It resolves imports from `.venv`, so it runs where the package
+  is installed. That is why it is in CI's Lint job and **not** in
+  pre-commit: a pre-commit hook's own environment lacks `sievelib`,
+  `IMAPClient`, and `pytest`, and supplying them would mean a second copy
+  of the dependency list. Its version is pinned exactly in the dev extra,
+  because each pyright release adds checks.
 - **Security:** `gitleaks` + `detect-private-key` in pre-commit (secrets).
   Note that the *most* important security property of this repo — the password
   never being emitted — is a code-structure guarantee (`Secret`), not
@@ -999,7 +1007,7 @@ Full dimension status:
 |-----------|--------|
 | 1. Format | **Active** — `ruff format` |
 | 2. Lint | **Active** — `ruff check` |
-| 3. Type-check | **Planned** — the package is fully annotated but nothing gates it; wire `pyright` (`pyright.md`) ([#10][i10]) |
+| 3. Type-check | **Active** — `pyright` (standard mode) over the package and the tests, in CI's Lint job and `make typecheck` ([#10][i10]) |
 | 4. Code smell / complexity | **Active** — ruff `B`/`C4`/`SIM`/`UP`/`RUF` |
 | 5. Security | **Active (secrets only)** — `gitleaks`, `detect-private-key`. SAST is **Off**: the attack surface is two outbound TLS client sessions and no untrusted input parsing beyond the user's own Sieve script |
 | 6. Tests | **Active** — the offline tier is green (`make test` / `pytest`); see [TESTS.md](TESTS.md) |
@@ -1011,7 +1019,7 @@ Full dimension status:
 | 12. Build | **N/A** — pure Python, no build step (`setuptools` metadata only) |
 | 13. Documentation | **Active** — this file, `README.md`, and `adr/`; markdownlint gates the prose |
 | 14. Code review | **Informal** — solo repo; `master` is PR-only, 0 required reviewers |
-| 15. CI | **Active** — `.github/workflows/test.yml` runs `ruff check`, `ruff format --check`, and `pytest` on every PR and on pushes to `master`. The live tier is deliberately excluded — it needs real credentials |
+| 15. CI | **Active** — `.github/workflows/test.yml` runs `ruff check`, `ruff format --check`, `pyright`, and `pytest` on every PR and on pushes to `master`. The live tier is deliberately excluded — it needs real credentials |
 
 ## How work is dispatched
 

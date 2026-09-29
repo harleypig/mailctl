@@ -1322,7 +1322,10 @@ def test_an_owner_only_env_file_may_hold_a_password(tmp_path, mode):
         tmp_path / ".env", f"MAILCTL_PASSWORD={MARKER}\n", mode
     )
 
-    assert read_env_file(path).password.reveal() == MARKER
+    password = read_env_file(path).password
+
+    assert password is not None
+    assert password.reveal() == MARKER
 
 
 # ----------------------------------------------------------------------------
@@ -1577,6 +1580,8 @@ def test_the_password_origin_names_its_rung_and_not_its_value(
 
     config = load_config(argparse.Namespace(**flags))
     origin = config.password_origin()
+
+    assert origin is not None
 
     expected_kind = {
         "flag": FLAG,

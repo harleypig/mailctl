@@ -1114,6 +1114,9 @@ def test_the_unknown_server_report_is_in_the_fakes_own_terms(
     ]
 
     report = utilities.server_report.build_server_report(session, imap_config)
+
+    assert report is not None
+
     body = utilities.server_report.render_server_report(report)
 
     assert report.provider == "fake"

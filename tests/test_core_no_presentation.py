@@ -329,7 +329,9 @@ def built_strings(tree: ast.AST) -> list[tuple[int, str]]:
                 (
                     node.lineno,
                     "".join(
-                        part.value if isinstance(part, ast.Constant) else "{}"
+                        str(part.value)
+                        if isinstance(part, ast.Constant)
+                        else "{}"
                         for part in node.values
                     ),
                 )

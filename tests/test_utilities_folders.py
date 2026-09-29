@@ -169,8 +169,8 @@ def test_a_folder_that_cannot_be_created_is_planned_then_refused(
 
 
 # ----------------------------------------------------------------------------
-def imap_created_folder_plan(imap_session, imap_config):
-    live = mxroute(FakeSieveSession(caps=NO_MAILBOX), imap_session)
+def imap_created_folder_plan(imap_session, imap_config, sieve=None):
+    live = mxroute(sieve or FakeSieveSession(caps=NO_MAILBOX), imap_session)
     folder = utilities.folders.plan_folder(
         live, imap_config, "New", create=True
     )
@@ -206,8 +206,9 @@ def test_a_rejected_script_leaves_no_folder_behind(
     imap_session, imap_config, fake_imap, tmp_path
 ):
     imap_config.backup_dir = tmp_path
-    live, plan = imap_created_folder_plan(imap_session, imap_config)
-    live.transport.sieve.reject = True
+    rejecting = FakeSieveSession(caps=NO_MAILBOX)
+    rejecting.reject = True
+    live, plan = imap_created_folder_plan(imap_session, imap_config, rejecting)
 
     with pytest.raises(MailctlError, match="rejected"):
         utilities.rules.execute_script_change(live, imap_config, plan)
@@ -464,6 +465,7 @@ def test_a_new_folder_is_planned_then_created_and_subscribed(
 
     result = utilities.folders.execute_folder_creation(sessions, plan)
 
+    assert result is not None
     assert result.folder == "INBOX.Lists.GitHub"
     assert result.subscribed
     assert ("create_folder", "INBOX.Lists.GitHub") in fake_imap.calls
@@ -478,6 +480,7 @@ def test_a_new_folder_can_be_created_unsubscribed(sessions, fake_imap):
 
     result = utilities.folders.execute_folder_creation(sessions, plan)
 
+    assert result is not None
     assert not result.subscribed
     assert not result.subscribe_error
     assert "subscribe_folder" not in fake_imap.names()
@@ -567,6 +570,7 @@ def test_a_failed_subscription_keeps_the_created_folder(sessions, fake_imap):
 
     result = utilities.folders.execute_folder_creation(sessions, plan)
 
+    assert result is not None
     assert result.folder == "INBOX.New"
     assert not result.subscribed
     assert "still does not list it" in result.subscribe_error

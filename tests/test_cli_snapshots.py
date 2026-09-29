@@ -2029,7 +2029,8 @@ class Stdout(io.TextIOWrapper):
     """
 
     def __init__(self, tty: bool):
-        super().__init__(io.BytesIO(), encoding="utf-8", newline="")
+        self._bytes = io.BytesIO()
+        super().__init__(self._bytes, encoding="utf-8", newline="")
         self._tty = tty
 
     def isatty(self) -> bool:
@@ -2038,7 +2039,7 @@ class Stdout(io.TextIOWrapper):
     def text(self) -> str:
         self.flush()
 
-        return self.buffer.getvalue().decode("utf-8")
+        return self._bytes.getvalue().decode("utf-8")
 
 
 # ----------------------------------------------------------------------------

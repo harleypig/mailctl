@@ -23,6 +23,7 @@ from mailctl.providers.mxroute.imap import new_imap_session
 from mailctl.utilities.server_report import (
     MAIL,
     RULES,
+    ServerReport,
     build_server_report,
     render_server_report,
     unrecognised_halves,
@@ -100,6 +101,16 @@ def session(account, fake_sieve, fake_imap, config):
     return mxroute(sieve=fake_sieve, imap=imap)
 
 
+# ----------------------------------------------------------------------------
+def unrecognised_report(session, config: Config) -> ServerReport:
+    """The report for servers the test has made unrecognised."""
+    report = build_server_report(session, config, now=NOW)
+
+    assert report is not None
+
+    return report
+
+
 # ############################################################################
 # Recognising a server
 # ############################################################################
@@ -128,7 +139,7 @@ def test_only_the_unrecognised_half_is_named(session, account, fake_imap):
 
     assert unrecognised_servers(session) == [RULES]
 
-    report = build_server_report(session, config_for(), now=NOW)
+    report = unrecognised_report(session, config_for())
 
     assert report.unrecognised == ("ManageSieve",)
     assert [server.software for server in report.servers] == [
@@ -177,7 +188,7 @@ def config_for() -> Config:
 
 # ----------------------------------------------------------------------------
 def test_the_report_carries_identity_capabilities_and_shape(session, account):
-    report = build_server_report(session, config_for(), now=NOW)
+    report = unrecognised_report(session, config_for())
     rules, mail = report.servers
 
     assert report.version == __version__
@@ -208,7 +219,7 @@ def test_the_report_carries_identity_capabilities_and_shape(session, account):
 def test_every_identifying_value_is_replaced(session, account):
     """The account's own details, wherever a server repeated them, come
     back as placeholders -- whatever case the server wrote them in."""
-    report = build_server_report(session, config_for(), now=NOW)
+    report = unrecognised_report(session, config_for())
     rules, mail = report.servers
     capabilities = {item.name: item.value for item in rules.capabilities}
 
@@ -235,7 +246,7 @@ def test_no_sentinel_reaches_the_report_or_its_body(
 
     monkeypatch.setattr(Secret, "reveal", refuse)
 
-    report = build_server_report(session, config, now=NOW)
+    report = unrecognised_report(session, config)
     body = render_server_report(report)
 
     for text in (body, repr(report), report.title):
@@ -253,9 +264,7 @@ def test_the_sentinel_check_can_fail(session, account, fake_sieve):
     script's text is not one the report knows to replace, so it shows."""
     fake_sieve.extra[0] = ("IMPLEMENTATION", SCRIPT_TEXT)
 
-    body = render_server_report(
-        build_server_report(session, config_for(), now=NOW)
-    )
+    body = render_server_report(unrecognised_report(session, config_for()))
 
     assert SCRIPT_TEXT in body
 
@@ -266,7 +275,7 @@ def test_inbox_and_short_names_are_left_alone(session, account, fake_imap):
     capability names it happens to appear in."""
     fake_imap.listing.append(((), b".", b"ID"))
 
-    report = build_server_report(session, config_for(), now=NOW)
+    report = unrecognised_report(session, config_for())
     mail = report.servers[1]
 
     assert report.namespaces[0].prefix == "INBOX."
@@ -284,9 +293,7 @@ def test_inbox_and_short_names_are_left_alone(session, account, fake_imap):
 
 # ----------------------------------------------------------------------------
 def test_the_body_lays_out_each_server(session, account):
-    body = render_server_report(
-        build_server_report(session, config_for(), now=NOW)
-    )
+    body = render_server_report(unrecognised_report(session, config_for()))
 
     assert body.startswith("## Unrecognised server\n")
     assert body.endswith("\n")
@@ -308,9 +315,7 @@ def test_a_server_value_cannot_start_a_line_or_close_its_span(
     """What a server sent sits in one code span on its own line."""
     fake_sieve.extra.append(("X-FORGE", "a\n## Injected `b`"))
 
-    body = render_server_report(
-        build_server_report(session, config_for(), now=NOW)
-    )
+    body = render_server_report(unrecognised_report(session, config_for()))
 
     assert "\n## Injected" not in body
     assert "  - `X-FORGE a ## Injected 'b'`" in body

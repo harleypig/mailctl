@@ -745,8 +745,11 @@ def _half(
         severity = SERIOUS if key in relied else INFO
 
         if new is None:
+            gone = was[key]
             found.append(
-                Drift(severity, CAPABILITY_REMOVED, half, old.name, old.value)
+                Drift(
+                    severity, CAPABILITY_REMOVED, half, gone.name, gone.value
+                )
             )
 
         elif old is None:

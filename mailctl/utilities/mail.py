@@ -328,7 +328,7 @@ class PickedMessage:
 
     uid: int
     folder: str
-    headers: object
+    headers: Message
 
 
 @dataclass(frozen=True)

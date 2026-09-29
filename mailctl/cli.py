@@ -1995,17 +1995,16 @@ def cmd_probe(args) -> int:
     document = args.json or args.report
     progress = progress_from_args(args, sys.stderr if document else None)
 
-    with engine.connect(config, mail=True, progress=progress) as sessions:
-        if args.report:
+    if args.report:
+        with engine.connect(config, mail=True, progress=progress) as sessions:
             report = utilities.server_report.build_server_report(
                 sessions, config
             )
 
-        else:
-            record = utilities.reports.probe_servers(sessions, config)
-
-    if args.report:
         return print_server_report(report, words)
+
+    with engine.connect(config, mail=True, progress=progress) as sessions:
+        record = utilities.reports.probe_servers(sessions, config)
 
     if args.json:
         args.stdout.write(utilities.reports.dump_probe(record))
@@ -2760,11 +2759,18 @@ def cmd_move_rule(args) -> int:
     config = configure(args)
     utilities.rules.check_move(config)
 
+    # argparse requires one position flag, but an empty --before or
+    # --after name reads as none given.
+    placement = placement_from_args(args)
+
+    if placement is None:
+        raise MailctlError("--before and --after need a rule name")
+
     with connect(config, args) as sessions:
         plan = utilities.rules.plan_move(
             sessions,
             args.rule_name,
-            placement_from_args(args),
+            placement,
             args.script,
             args.activate,
         )
@@ -4675,7 +4681,7 @@ def provider_offer(
 # ----------------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, dispatch, and turn failures into diagnostics."""
-    parser = build_parser(*(provider_offer(argv) or ()))
+    parser = build_parser(*(provider_offer(argv) or (None, None)))
     args = parser.parse_args(argv)
 
     # The same parse as 'mailctl [COMMAND] --help', on the parser built for

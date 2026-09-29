@@ -200,7 +200,7 @@ def test_a_non_ascii_default_name_round_trips_through_the_script(value):
 
 
 # ----------------------------------------------------------------------------
-def folder_for(sessions, config, name="Lists"):
+def folder_for(sessions, config, name: str | None = "Lists"):
     return utilities.folders.plan_folder(sessions, config, name)
 
 

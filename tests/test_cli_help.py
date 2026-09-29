@@ -8,7 +8,7 @@ from mailctl import cli, engine
 
 
 # ----------------------------------------------------------------------------
-def run(capsys, *argv: str) -> tuple[int, str, str]:
+def run(capsys, *argv: str) -> tuple[int | str | None, str, str]:
     """Exit code, stdout, and stderr of ``mailctl ARGV``."""
     with pytest.raises(SystemExit) as stopped:
         cli.main(list(argv))
