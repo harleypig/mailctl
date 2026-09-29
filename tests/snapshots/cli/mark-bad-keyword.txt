@@ -1,0 +1,9 @@
+$ mailctl mark 1 --keyword two words
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: 'two words' cannot be a keyword: a keyword is one word of printable ASCII, without spaces or any of ( ) { % * " ] \
+
+--- sieve calls
+--- imap calls

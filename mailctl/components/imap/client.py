@@ -696,6 +696,50 @@ class ImapSession:
             raise MailctlError(f"could not set flags -- {exc}") from exc
 
     # ------------------------------------------------------------------------
+    def add_folder_flags(
+        self, folder: str, uids: list[int], flags: list[str]
+    ) -> None:
+        """STORE +FLAGS on ``uids`` in ``folder``, selected read-write."""
+        client = self._require_client()
+        self._store_flags(folder, uids, flags, client.add_flags, "set")
+
+    # ------------------------------------------------------------------------
+    def remove_folder_flags(
+        self, folder: str, uids: list[int], flags: list[str]
+    ) -> None:
+        """STORE -FLAGS on ``uids`` in ``folder``, selected read-write."""
+        client = self._require_client()
+        self._store_flags(folder, uids, flags, client.remove_flags, "clear")
+
+    # ------------------------------------------------------------------------
+    def _store_flags(
+        self,
+        folder: str,
+        uids: list[int],
+        flags: list[str],
+        store: Callable,
+        verb: str,
+    ) -> None:
+        """Send one STORE per chunk of ``uids``; ``store`` is the
+        IMAPClient method whose sign it carries."""
+        if not uids or not flags:
+            return
+
+        self._select(folder, readonly=False)
+        self._log(f"{verb} {flags} on {len(uids)} message(s) in {folder!r}")
+
+        encoded = [flag.encode() for flag in flags]
+
+        try:
+            for chunk in chunked(uids):
+                store(chunk, encoded)
+
+        except IMAPClientError as exc:
+            raise MailctlError(
+                f"could not {verb} flags in {folder!r} -- {exc}"
+            ) from exc
+
+    # ------------------------------------------------------------------------
     def move(self, uids: list[int], destination: str) -> int:
         """Move messages out of the selected folder into ``destination``.
 

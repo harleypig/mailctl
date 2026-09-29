@@ -151,6 +151,9 @@ layer may call.
     first.
   - `backup.py` — backing up the active script, and restoring one.
   - `backup_files.py` — writing a backup's exact bytes to disk.
+  - `flags.py` — marking messages read, flagged, or with keywords: a
+    read-only plan of what changes per message, then separate add and
+    remove writes.
   - `folders.py` — listing and subscribing folders, and planning a rule's
     target folder (created on execute only).
   - `mail.py` — the existing-mail pass, with `recheck` narrowing the host's
@@ -441,9 +444,10 @@ keeps the two in step.
   language. Each provider declares it, and it is offered only where
   declared, like every other capability-gated option (*Providers*).
 
-**`view` stays read-only; `mark` is its write twin.** `mark UID` takes
-`--read`, `--unread`, `--flag`, and `--unflag`, over separate add-flag and
-remove-flag transport operations ([#150][i150]).
+**`view` stays read-only; `mark` is its write twin.** `mark UID...` takes
+`--read`, `--unread`, `--flag`, `--unflag`, `--keyword K`, and
+`--no-keyword K`, several at once, over separate add-flag and remove-flag
+transport operations ([#150][i150]).
 
 **`--json` is offered where the output is data a script consumes**
 ([#151][i151]). A report for a person, such as `test`, offers none, and its
@@ -513,10 +517,11 @@ fails before any login or password prompt (decided on [#137][i137]).
   transport class — listed in `providers/registry.py`. There are no entry
   points; ADR 0006 defers them.
 - **Differences are data, never a branch.** A provider declares
-  `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, its `actions`,
-  `extensions`, `raw_query`, its namespaced `specifics` with their schema, the
-  connection `settings` it reads, and the operations it `declined`. The
-  utilities read those and never ask which provider they have.
+  `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, `disable`, its
+  `actions`, `extensions`, `raw_query`, `mark`, its namespaced `specifics`
+  with their schema, the connection `settings` it reads, and the
+  operations it `declined`. The utilities read those and never ask which
+  provider they have.
 - **Refused before any network work.** `utilities.rules.check_rule`
   refuses a rule the provider cannot express, through one error naming the
   provider, the construct, and why.
@@ -549,8 +554,9 @@ fails before any login or password prompt (decided on [#137][i137]).
   resolves the provider, then the parsers are built from its capabilities.
   Without `ordering`, the placement flags and `move-rule` are not offered;
   without `stop`, `--no-stop`; without `rule_sets`, `add`'s `--script` and
-  `--activate`; without `extensions`, `--disable-extension`; without
-  `raw_query`, `search`'s `--raw`. The
+  `--activate`; without `disable`, `disable-rule` and `enable-rule`;
+  without `extensions`, `--disable-extension`; without `raw_query`,
+  `search`'s `--raw`; without `mark`, `mark`. The
   connection flags (`--host`, `--imap-*`, `--sieve-*`) are offered only
   where `ProviderCapabilities.settings` names them, with the help it
   gives — they keep their names and their `MAILCTL_*` variables, being

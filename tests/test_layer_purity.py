@@ -1252,6 +1252,7 @@ WRITE_STEPS = frozenset(
 KNOWN_READERS = (
     "backup.plan_backup",
     "backup.plan_restore",
+    "flags.plan_mark",
     "folders.list_folders",
     "folders.plan_folder",
     "folders.plan_folder_creation",
@@ -1476,6 +1477,7 @@ def test_the_write_operations_come_from_the_classification():
     without an edit, and a read is never mistaken for one."""
     assert "store_rule_set" in WRITE_OPERATIONS
     assert "apply_mail" in WRITE_OPERATIONS
+    assert {"add_flags", "remove_flags"} <= WRITE_OPERATIONS
     assert "read_rule_set" not in WRITE_OPERATIONS
     assert "check_rule_set" not in WRITE_OPERATIONS
 
@@ -1507,6 +1509,10 @@ def test_the_analysis_sees_the_writes_that_exist():
     assert "apply_mail" in UTILITY_REACH["mail.execute_mail"]
     assert "store_rule_set" in UTILITY_REACH["backup.execute_restore"]
     assert "create_folder" in UTILITY_REACH["rules.execute_script_change"]
+    assert UTILITY_REACH["flags.execute_mark"] == {
+        "add_flags",
+        "remove_flags",
+    }
 
 
 # ----------------------------------------------------------------------------

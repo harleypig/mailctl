@@ -91,6 +91,22 @@ FEATURES:
   `[disabled]` and shows the test it would have, and a disabled rule is
   never reported as blocking, or blocked by, another.
 
+* **`mailctl mark UID...` sets and clears read, flagged, and keywords**
+  ([#150]). `--read` / `--unread`, `--flag` / `--unflag`, and
+  `--keyword K` / `--no-keyword K` (each repeatable) may be combined, as in
+  `mailctl mark 4127 4128 --read --flag`; `--folder` names the folder as
+  for `view`. The messages' flags are read first, without marking anything
+  read, and what each has and what would change is shown; then `--dry-run`
+  stops, or you are asked to confirm (`--yes` skips the question). A
+  message already as asked is left alone, and if none would change mailctl
+  says so and exits 0. A UID the folder does not hold stops the command,
+  naming it, before anything is marked. `--read` with `--unread`, `--flag`
+  with `--unflag`, one keyword both set and cleared, and a keyword that is
+  not one plain word (or starts with `\`) are refused before connecting.
+  Setting and clearing are separate writes to the server, and `view` stays
+  read-only. A provider that cannot set flags does not offer `mark`, and
+  refuses it by name, before connecting, if it is given anyway.
+
 ENHANCEMENTS:
 
 * **A command given bad input fails before logging in** ([#137]). The CLI
@@ -942,6 +958,7 @@ NOTES:
 [#135]: https://github.com/harleypig/mailctl/issues/135
 [#137]: https://github.com/harleypig/mailctl/issues/137
 [#154]: https://github.com/harleypig/mailctl/issues/154
+[#150]: https://github.com/harleypig/mailctl/issues/150
 [#153]: https://github.com/harleypig/mailctl/issues/153
 [#155]: https://github.com/harleypig/mailctl/issues/155
 [#147]: https://github.com/harleypig/mailctl/issues/147

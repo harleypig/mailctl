@@ -1,0 +1,9 @@
+$ mailctl mark 1 --keyword \Deleted
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: \Deleted is a system flag, not a keyword; of the system flags only \Seen (read) and \Flagged are set and cleared, by name
+
+--- sieve calls
+--- imap calls

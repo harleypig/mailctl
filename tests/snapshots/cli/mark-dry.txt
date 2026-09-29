@@ -1,0 +1,16 @@
+$ mailctl mark 1 2 --read --flag --dry-run
+exit: 0
+--- stdout
+Marking in 'INBOX': set \Seen, \Flagged
+  uid 1        set \Flagged  (now: \Seen)
+  uid 2        set \Seen, \Flagged  (now: no flags)
+[dry-run] would mark 2 message(s); none was marked.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (1, 2))
+('logout',)

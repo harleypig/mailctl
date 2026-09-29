@@ -34,6 +34,8 @@ MXROUTE = Provider(
         extensions=True,
         # The query is IMAP SEARCH syntax (RFC 3501 section 6.4.4).
         raw_query=True,
+        # IMAP STORE +FLAGS / -FLAGS (RFC 3501 section 6.4.6).
+        mark=True,
         settings={
             "host": "MXRoute server hostname",
             "imap_host": "",

@@ -18,6 +18,8 @@ faults to inject, so a test can watch a check go red:
 - ``filter-on-stdout`` -- ``--build-filter --json`` shows the message on
   stdout, ahead of the document
 - ``switch-uploads``  -- ``disable-rule --dry-run`` uploads anyway
+- ``mark-writes``     -- ``mark --dry-run`` flags its message anyway
+- ``mark-reports-change`` -- ``mark --dry-run`` says it marked something
 """
 
 import json
@@ -28,6 +30,7 @@ from pathlib import Path
 ARGV = sys.argv[1:]
 BREAK = set(filter(None, os.environ.get("STUB_BREAK", "").split(",")))
 STATE = Path(os.environ["STUB_LOG"]).with_suffix(".state")
+FLAGGED = Path(os.environ["STUB_LOG"]).with_suffix(".flagged")
 
 SCRIPT = """\
 # ---- managesieve ----
@@ -174,6 +177,7 @@ def search() -> str:
         return FILTER
 
     read_uid = STATE.read_text() if STATE.exists() else ""
+    flagged_uid = FLAGGED.read_text() if FLAGGED.exists() else ""
     rows = []
 
     for uid in (5, 4, 3, 2, 1):
@@ -182,6 +186,7 @@ def search() -> str:
 
         unread = uid != 1 and "no-unread" not in BREAK
         mark = "N" if unread and str(uid) != read_uid else ""
+        mark += "F" if str(uid) == flagged_uid else ""
         rows.append(
             f"{uid:>8}  {'2026-02-03 04:05:06':<19}  {'131B':>6}  "
             f"{mark:<4}  {'News <news@example.com>':<28}  Weekly"
@@ -219,6 +224,23 @@ def view() -> str:
         f"Message uid {uid} in 'INBOX' (131B; no flags):\n"
         "  From:    News <news@example.com>\n"
         "  Subject: Weekly\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+def mark() -> str:
+    uid = next(arg for arg in ARGV[1:] if arg.isdigit())
+
+    if "mark-writes" in BREAK:
+        FLAGGED.write_text(uid)
+
+    if "mark-reports-change" in BREAK:
+        return "Marked 1 message(s) in 'INBOX'.\n"
+
+    return (
+        "Marking in 'INBOX': set \\Flagged\n"
+        f"  uid {uid:<8} set \\Flagged  (now: no flags)\n"
+        "[dry-run] would mark 1 message(s); none was marked.\n"
     )
 
 
@@ -287,6 +309,9 @@ def main() -> int:
 
     elif command == "backup":
         out = backup()
+
+    elif command == "mark":
+        out = mark()
 
     elif command == "apply":
         out = "Searching 'INBOX' for existing matches...\n"

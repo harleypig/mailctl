@@ -4,7 +4,7 @@ exit: SystemExit(2)
 
 --- stderr
 usage: mailctl [-h] [--version] [--verbose] [--debug]
-               {list,show,rules,backup,restore,folders,subscribe,unsubscribe,create-folder,test,add,apply,search,view,remove-rule,move-rule,disable-rule,enable-rule,migrate-config,help}
+               {list,show,rules,backup,restore,folders,subscribe,unsubscribe,create-folder,test,add,apply,search,view,mark,remove-rule,move-rule,disable-rule,enable-rule,migrate-config,help}
                ...
 mailctl: error: --no-subscribe only applies with --create-folder; to hide a folder that already exists, use 'mailctl unsubscribe FOLDER'
 

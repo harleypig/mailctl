@@ -351,6 +351,11 @@ class FakeIMAPClient:
         self.calls.append(("add_flags", tuple(uids), tuple(flags)))
 
     # ------------------------------------------------------------------------
+    def remove_flags(self, uids, flags) -> None:
+        self._maybe_fail("remove_flags")
+        self.calls.append(("remove_flags", tuple(uids), tuple(flags)))
+
+    # ------------------------------------------------------------------------
     def move(self, uids, destination) -> None:
         self._maybe_fail("move")
         self.calls.append(("move", tuple(uids), destination))

@@ -1099,3 +1099,73 @@ def test_a_failure_in_the_first_chunk_is_the_plain_error(
         imap_session.execute(big_plan())
 
     assert not isinstance(caught.value, PartialExecution)
+
+
+# ############################################################################
+# Setting and clearing flags by UID (#150)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("method", "call"),
+    [
+        ("add_folder_flags", "add_flags"),
+        ("remove_folder_flags", "remove_flags"),
+    ],
+)
+def test_a_flag_store_selects_its_folder_writable_and_sends_one_sign(
+    imap_session, fake_imap, method, call
+):
+    """Red if the folder is opened read-only (the server refuses STORE),
+    or if a method sends the other sign's STORE."""
+    getattr(imap_session, method)("INBOX.Lists", [3, 4], ["\\Seen", "$Todo"])
+
+    assert fake_imap.calls[-2:] == [
+        ("select_folder", "INBOX.Lists", False),
+        (call, (3, 4), (b"\\Seen", b"$Todo")),
+    ]
+    other = "remove_flags" if call == "add_flags" else "add_flags"
+
+    assert other not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("method", ["add_folder_flags", "remove_folder_flags"])
+def test_a_flag_store_with_nothing_to_do_sends_nothing(
+    imap_session, fake_imap, method
+):
+    before = list(fake_imap.calls)
+
+    getattr(imap_session, method)("INBOX", [], ["\\Seen"])
+    getattr(imap_session, method)("INBOX", [1], [])
+
+    assert fake_imap.calls == before
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("method", "call", "verb"),
+    [
+        ("add_folder_flags", "add_flags", "set"),
+        ("remove_folder_flags", "remove_flags", "clear"),
+    ],
+)
+def test_a_refused_flag_store_names_the_folder(
+    imap_session, fake_imap, method, call, verb
+):
+    fake_imap.failures[call] = IMAPClientError("STORE failed")
+
+    with pytest.raises(
+        MailctlError, match=f"could not {verb} flags in 'INBOX'"
+    ):
+        getattr(imap_session, method)("INBOX", [1], ["\\Flagged"])
+
+
+# ----------------------------------------------------------------------------
+def test_a_large_flag_store_goes_out_in_chunks(imap_session, fake_imap):
+    imap_session.remove_folder_flags(
+        "INBOX", list(range(1, MANY + 1)), ["\\Seen"]
+    )
+
+    assert chunk_sizes(fake_imap, "remove_flags") == [250, 250, 100]

@@ -1,0 +1,9 @@
+$ mailctl mark 1 --keyword $Todo --no-keyword $todo
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: cannot both set and clear $Todo; ask for one
+
+--- sieve calls
+--- imap calls

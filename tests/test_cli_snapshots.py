@@ -271,6 +271,14 @@ NEWSLETTER = (
 
 MAIL = {"mail": {4: REPORT, 5: NEWSLETTER}, "flags": {1: (b"\\Seen",)}}
 
+# For 'mark': 1 read, 2 neither, 3 read, flagged, and keyword $Todo.
+MARKED = {
+    "flags": {
+        1: (b"\\Seen",),
+        3: (b"\\Seen", b"\\Flagged", b"$Todo"),
+    }
+}
+
 # A bidi override reversing the tail of a Subject and an attachment name.
 SPOOFED = (
     b"From: m@example.com\r\n"
@@ -403,6 +411,35 @@ SCENARIOS = {
     "view-raw-pipe": (["view", "5", "--raw"], MAIL),
     "view-bidi": (["view", "6"], {"mail": {6: SPOOFED}}),
     "view-missing": (["view", "99"], MAIL),
+    "mark-dry": (["mark", "1", "2", "--read", "--flag", "--dry-run"], MARKED),
+    "mark-yes": (["mark", "1", "2", "--read", "--flag", "--yes"], MARKED),
+    "mark-clear-yes": (
+        [
+            "mark",
+            "3",
+            "--unread",
+            "--unflag",
+            "--no-keyword",
+            "$Todo",
+            "--yes",
+        ],
+        MARKED,
+    ),
+    "mark-folder-dry": (
+        ["mark", "1", "--folder", "Lists", "--keyword", "$Todo", "--dry-run"],
+        MARKED,
+    ),
+    "mark-already": (["mark", "1", "--read"], MARKED),
+    "mark-notty": (["mark", "2", "--flag"], MARKED),
+    "mark-missing": (["mark", "1", "98", "99", "--flag"], MARKED),
+    "mark-read-unread": (["mark", "1", "--read", "--unread"], MARKED),
+    "mark-nothing": (["mark", "1"], MARKED),
+    "mark-bad-keyword": (["mark", "1", "--keyword", "two words"], MARKED),
+    "mark-system-keyword": (["mark", "1", "--keyword", "\\Deleted"], MARKED),
+    "mark-keyword-both": (
+        ["mark", "1", "--keyword", "$Todo", "--no-keyword", "$todo"],
+        MARKED,
+    ),
     "list": (["list"], {}),
     "list-verbose": (["list", "--verbose"], {}),
     # One script, and a listing sievelib read an empty name out of (#119).

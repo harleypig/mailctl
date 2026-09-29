@@ -150,6 +150,8 @@ class ProviderCapabilities:
     * ``extensions`` -- it reports rule-language extensions by name.
     * ``raw_query`` -- a message search may be given as a query in the
       host's own search language, passed to the host unchanged.
+    * ``mark`` -- a message's flags (read, flagged, and named keywords) can
+      be set and cleared by UID, each as its own write.
     * ``specifics`` -- the namespaced keys a request's ``specifics`` may
       carry, each with its schema. An unknown key is refused.
     * ``settings`` -- which of ``config.CONNECTION_SETTINGS`` it reads, each
@@ -166,6 +168,7 @@ class ProviderCapabilities:
     actions: frozenset[str]
     extensions: bool
     raw_query: bool
+    mark: bool
     specifics: Mapping[str, Specific] = field(default_factory=dict)
     declined: frozenset[str] = frozenset()
     settings: Mapping[str, str] = field(default_factory=dict)
@@ -684,6 +687,25 @@ class Transport(ABC):
     @classified(Operation(WRITE, MAIL))
     def apply_mail(self, plan: MailActionPlan) -> MailActionResult:
         """Carry out a plan: flag, then move or delete, its messages."""
+
+    @abstractmethod
+    @classified(Operation(WRITE, MAIL))
+    def add_flags(
+        self, folder: str, uids: list[int], flags: list[str]
+    ) -> None:
+        """Add ``flags`` to ``uids`` in ``folder``, as the host names them.
+
+        A flag a message has already is left as it is. Removing one is
+        :meth:`remove_flags`, a write of its own.
+        """
+
+    @abstractmethod
+    @classified(Operation(WRITE, MAIL))
+    def remove_flags(
+        self, folder: str, uids: list[int], flags: list[str]
+    ) -> None:
+        """Remove ``flags`` from ``uids`` in ``folder``; a flag a message
+        does not have is no error."""
 
     @abstractmethod
     @classified(Operation(READ, MAIL))
