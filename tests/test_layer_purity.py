@@ -1253,6 +1253,7 @@ KNOWN_READERS = (
     "backup.plan_backup",
     "backup.plan_restore",
     "flags.plan_mark",
+    "folders.list_folder_counts",
     "folders.list_folders",
     "folders.plan_folder",
     "folders.plan_folder_creation",

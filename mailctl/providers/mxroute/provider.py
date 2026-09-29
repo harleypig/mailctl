@@ -36,6 +36,8 @@ MXROUTE = Provider(
         raw_query=True,
         # IMAP STORE +FLAGS / -FLAGS (RFC 3501 section 6.4.6).
         mark=True,
+        # IMAP LIST-STATUS (RFC 5819), where the server advertises it.
+        folder_counts=True,
         settings={
             "host": "MXRoute server hostname",
             "imap_host": "",

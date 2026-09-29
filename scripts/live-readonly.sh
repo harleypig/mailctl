@@ -34,6 +34,7 @@ readonly TESTS=(
   show
   rules
   folders
+  folder-counts
   backup
   search
   search-unread
@@ -109,6 +110,49 @@ for half, keys in (
         need(key in section, f"no {half} {key}")
 PYTHON
 readonly PROBE_CHECK
+
+# What `folders --counts --json` must hold: it parses, it is version 1, it
+# lists folders, and each has integer message and unread counts, unread no
+# more than the total, and a size that is an integer or null. Prints the
+# first problem found and exits non-zero.
+read -r -d '' COUNTS_CHECK << 'PYTHON'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        doc = json.load(handle)
+
+except ValueError as exc:
+    sys.exit(f"not JSON: {exc}")
+
+
+def need(ok, what):
+    if not ok:
+        sys.exit(what)
+
+
+def whole(value):
+    return type(value) is int and value >= 0
+
+
+need(isinstance(doc, dict), "not a JSON object")
+need(doc.get("version") == 1, "version is not 1")
+need(isinstance(doc.get("folders"), list) and doc["folders"], "no folders")
+
+for folder in doc["folders"]:
+    name = folder.get("name")
+
+    for key in ("messages", "unseen"):
+        need(whole(folder.get(key)), f"{name!r} has no integer {key}")
+
+    need(folder["unseen"] <= folder["messages"], f"{name!r} unread > total")
+    need(
+        folder.get("size") is None or whole(folder["size"]),
+        f"{name!r} has a size that is not an integer",
+    )
+PYTHON
+readonly COUNTS_CHECK
 
 # Lines mailctl prints only when it has actually changed something.
 CHANGED_RE='^(Backed up|Created IMAP|Uploaded|Moved [0-9]|Flagged [0-9]'
@@ -431,6 +475,26 @@ t_folders() {
     || fail "header says $count folder(s), $listed listed" || return 1
 
   folder_names | grep -qx 'INBOX' || fail "INBOX is not listed"
+}
+
+#-----------------------------------------------------------------------------
+# One call. A server without LIST-STATUS is refused by mailctl rather than
+# counted a folder at a time, and that is a skip here, not a failure.
+t_folder_counts() {
+  local problem
+
+  run_mailctl folders --counts --json
+
+  if ((RC != 0)) && grep -q 'does not advertise LIST-STATUS' "$ERR"; then
+    SKIP_REASON="the server does not advertise LIST-STATUS"
+
+    return 2
+  fi
+
+  expect_ok 'folders --counts --json' || return 1
+
+  problem=$(python3 -c "$COUNTS_CHECK" "$RAW" 2>&1) \
+    || fail "folders --counts --json: ${problem:-not a counts document}"
 }
 
 #-----------------------------------------------------------------------------

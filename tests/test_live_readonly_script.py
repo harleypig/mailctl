@@ -27,6 +27,7 @@ ALL_TESTS = [
     "show",
     "rules",
     "folders",
+    "folder-counts",
     "backup",
     "search",
     "search-unread",
@@ -210,6 +211,7 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("probe-not-json", "probe"),
         ("probe-no-mail", "probe"),
         ("json-noise", "json"),
+        ("counts-missing", "folder-counts"),
     ],
 )
 def test_a_failing_check_is_not_ok_and_the_run_exits_nonzero(
@@ -282,6 +284,37 @@ def test_probe_names_what_is_wrong_with_the_document(tmp_path, fault, reason):
     proc, _ = run(tmp_path, "probe", breaks=[fault])
 
     assert proc.stdout.splitlines()[2].startswith(reason)
+
+
+# ----------------------------------------------------------------------------
+def test_folder_counts_makes_one_call_and_passes_on_whole_counts(tmp_path):
+    """#157: one LIST-STATUS, never a count per folder."""
+    proc, calls = run(tmp_path, "folder-counts")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - folder-counts"]
+    assert calls == [["folders", "--counts", "--json"]]
+
+
+# ----------------------------------------------------------------------------
+def test_folder_counts_names_the_folder_without_a_count(tmp_path):
+    proc, _ = run(tmp_path, "folder-counts", breaks=["counts-missing"])
+
+    assert proc.stdout.splitlines()[2] == (
+        "# folders --counts --json: 'INBOX.Lists' has no integer unseen"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_server_without_list_status_skips_folder_counts(tmp_path):
+    proc, calls = run(tmp_path, "folder-counts", breaks=["no-list-status"])
+
+    assert proc.returncode == 0
+    assert proc.stdout.splitlines() == [
+        "1..1",
+        "ok 1 - folder-counts # SKIP the server does not advertise "
+        "LIST-STATUS",
+    ]
+    assert calls == [["folders", "--counts", "--json"]]
 
 
 # ----------------------------------------------------------------------------

@@ -52,6 +52,7 @@ from .model import (
     PLACE_LAST,
     ActionSpec,
     Capability,
+    CountSupport,
     DeliveryCreate,
     DisplayDiff,
     ExtensionState,
@@ -59,6 +60,7 @@ from .model import (
     FetchedMessage,
     FolderCreation,
     FolderListing,
+    FolderStatus,
     MailActionPlan,
     MailActionResult,
     MessageSummary,
@@ -93,6 +95,7 @@ __all__ = [
     "WRITE",
     "ActionSpec",
     "Capability",
+    "CountSupport",
     "DeliveryCreate",
     "Dialect",
     "DisplayDiff",
@@ -101,6 +104,7 @@ __all__ = [
     "FetchedMessage",
     "FolderCreation",
     "FolderListing",
+    "FolderStatus",
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
@@ -162,6 +166,9 @@ class ProviderCapabilities:
       host's own search language, passed to the host unchanged.
     * ``mark`` -- a message's flags (read, flagged, and named keywords) can
       be set and cleared by UID, each as its own write.
+    * ``folder_counts`` -- every folder's total and unread messages can be
+      read in one request, where the server offers it (the dialect's
+      :meth:`Dialect.count_support` says whether this one does).
     * ``specifics`` -- the namespaced keys a request's ``specifics`` may
       carry, each with its schema. An unknown key is refused.
     * ``settings`` -- which of ``config.CONNECTION_SETTINGS`` it reads, each
@@ -179,6 +186,7 @@ class ProviderCapabilities:
     extensions: bool
     raw_query: bool
     mark: bool
+    folder_counts: bool
     specifics: Mapping[str, Specific] = field(default_factory=dict)
     declined: frozenset[str] = frozenset()
     settings: Mapping[str, str] = field(default_factory=dict)
@@ -491,6 +499,12 @@ class Dialect(ABC):
     def mail_facts(cls, capabilities: list[str]) -> list[Fact]:
         """What the mail half's advertised capabilities mean for mailctl."""
 
+    @classmethod
+    @abstractmethod
+    def count_support(cls, capabilities: list[str]) -> CountSupport:
+        """Whether the mail half's advertised capabilities let every
+        folder be counted in one request, and with sizes."""
+
 
 # ############################################################################
 # The transport -- communication with the host's servers, and nothing else
@@ -680,6 +694,13 @@ class Transport(ABC):
     def describe_mail_server(self) -> ServerDescription:
         """What the mail half's server says about itself: its identity and
         every capability it advertised."""
+
+    @abstractmethod
+    @classified(Operation(READ, MAIL))
+    def folder_status(self, sizes: bool) -> list[FolderStatus]:
+        """Every folder's counts, in one request; ``size`` too when
+        ``sizes`` is set. A folder the host gives no counts for is left
+        out. The utility has asked :meth:`Dialect.count_support` first."""
 
     @abstractmethod
     @classified(Operation(READ, MAIL))

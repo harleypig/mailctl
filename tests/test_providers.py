@@ -57,12 +57,14 @@ from mailctl.providers.base import (
     OPERATIONS,
     TRANSPORT_OPERATIONS,
     Capability,
+    CountSupport,
     DeliveryCreate,
     Dialect,
     DisplayDiff,
     Fact,
     FetchedMessage,
     FolderListing,
+    FolderStatus,
     MailActionResult,
     MessageSummary,
     Namespace,
@@ -98,6 +100,7 @@ FULL = ProviderCapabilities(
     extensions=True,
     raw_query=True,
     mark=True,
+    folder_counts=True,
     specifics={"fake.label": Specific(str, "a label to add")},
 )
 
@@ -306,6 +309,10 @@ class FakeDialect(Dialect):
     def mail_facts(cls, capabilities):
         return [Fact("Labels", "yes\nevery folder is a label")]
 
+    @classmethod
+    def count_support(cls, capabilities):
+        return CountSupport(sizes=True)
+
 
 class FakeTransport(Transport):
     """The fake host's servers: the rule sets and the mailbox are dicts.
@@ -330,6 +337,8 @@ class FakeTransport(Transport):
             8: "From: someone@example.com\r\nSubject: hi\r\n\r\n",
         }
         self.flags: dict[int, tuple[str, ...]] = {}
+        # Each folder's (messages, unseen, size).
+        self.counts = {"INBOX": (2, 1, 512), "INBOX.Lists": (0, 0, 0)}
 
     # ------------------------------------------------------------------------
     @classmethod
@@ -405,6 +414,12 @@ class FakeTransport(Transport):
 
     def mail_namespaces(self):
         return [Namespace("personal", "", ".")]
+
+    def folder_status(self, sizes):
+        return [
+            FolderStatus(name, messages, unseen, size if sizes else None)
+            for name, (messages, unseen, size) in self.counts.items()
+        ]
 
     def search(self, folder, criteria):
         # A host search coarser than the rule: every message is a
@@ -494,6 +509,7 @@ UNORDERED = Provider(
         extensions=False,
         raw_query=False,
         mark=True,
+        folder_counts=True,
         declined=frozenset(("move_rule", "position")),
     ),
     UnorderedDialect,
@@ -523,6 +539,7 @@ STOPLESS = Provider(
         extensions=False,
         raw_query=False,
         mark=True,
+        folder_counts=True,
     ),
     StoplessDialect,
     StoplessTransport,
@@ -692,6 +709,8 @@ def drive(session: Session, config: Config) -> None:
     add, remove = utilities.flags.mark_flags(read=True, flagged=False)
     marks = utilities.flags.plan_mark(session, "INBOX", [7, 8], add, remove)
     utilities.flags.execute_mark(session, marks)
+
+    utilities.folders.list_folder_counts(session)
 
     utilities.reports.probe_servers(session, config)
 
@@ -880,6 +899,7 @@ def test_the_utilities_make_the_same_calls_whichever_provider_they_have(
     """The heart of it: identical calls, identical shapes, on each half."""
     imap_config.backup_dir = tmp_path / "backups"
     fake_imap.messages = {7: github_message(7), 8: github_message(8)}
+    fake_imap.caps |= {"LIST-STATUS", "STATUS=SIZE"}
 
     real = Recorder(
         mxroute(sieve=rule_session(roundcube_script), imap=imap_session)
@@ -907,6 +927,7 @@ def test_the_proof_would_see_a_utility_branch_on_the_provider(
     """Known positive: one extra call on either half is a difference."""
     imap_config.backup_dir = tmp_path / "backups"
     fake_imap.messages = {7: github_message(7), 8: github_message(8)}
+    fake_imap.caps |= {"LIST-STATUS", "STATUS=SIZE"}
 
     for extra in ("transport", "dialect"):
         real = Recorder(
@@ -1188,6 +1209,8 @@ def test_mxroute_translates_every_record_it_returns(
             "INBOX", "INBOX.Lists", [], False, [fetched[0].summary]
         )
     )
+    statuses = transport.folder_status(sizes=True)
+    support = MxrouteDialect.count_support(["LIST-STATUS"])
 
     assert type(diff) is model.DisplayDiff
     assert type(raw) is model.DisplayDiff
@@ -1198,6 +1221,8 @@ def test_mxroute_translates_every_record_it_returns(
     assert {type(item.summary) for item in fetched} == {model.MessageSummary}
     assert type(result) is model.MailActionResult
     assert result.moved == 1
+    assert {type(item) for item in statuses} == {model.FolderStatus}
+    assert type(support) is model.CountSupport
 
 
 # ############################################################################
@@ -1219,6 +1244,22 @@ def test_mxroute_capabilities_are_what_sieve_over_managesieve_offers():
     assert caps.actions == {FILEINTO, DISCARD, FLAG_ACTION, KEEP}
     assert caps.declined == frozenset()
     assert dict(caps.specifics) == {}
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("advertised", "expected"),
+    [
+        (["IMAP4REV1", "MOVE"], model.CountSupport("LIST-STATUS", False)),
+        (["LIST-STATUS"], model.CountSupport(None, False)),
+        (["list-status", "status=size"], model.CountSupport(None, True)),
+        (["STATUS=SIZE"], model.CountSupport("LIST-STATUS", True)),
+    ],
+)
+def test_mxroute_counts_folders_only_where_list_status_is_advertised(
+    advertised, expected
+):
+    assert MxrouteDialect.count_support(advertised) == expected
 
 
 # ----------------------------------------------------------------------------
@@ -1470,6 +1511,11 @@ class BareDialect(UnorderedDialect):
     def enable_rule(cls, source, name):
         """No rule can be switched on."""
 
+    @classmethod
+    @declined
+    def count_support(cls, capabilities):
+        """No folder counts to read."""
+
 
 class BareTransport(FakeTransport):
     name = "bare"
@@ -1482,6 +1528,10 @@ class BareTransport(FakeTransport):
     @declined
     def remove_flags(self, folder, uids, flags):
         """No message flags to clear."""
+
+    @declined
+    def folder_status(self, sizes):
+        """No folder counts to read."""
 
 
 # The fake with no connection settings, no ordering, no extensions.
@@ -1496,6 +1546,7 @@ BARE = Provider(
         extensions=False,
         raw_query=False,
         mark=False,
+        folder_counts=False,
         declined=frozenset(
             (
                 "move_rule",
@@ -1504,6 +1555,8 @@ BARE = Provider(
                 "enable_rule",
                 "add_flags",
                 "remove_flags",
+                "count_support",
+                "folder_status",
             )
         ),
     ),
@@ -1699,6 +1752,37 @@ def test_the_fake_really_marked_and_unmarked_the_mail(fakes):
 
 
 # ----------------------------------------------------------------------------
+def test_counts_are_offered_only_where_declared(bare, capsys, monkeypatch):
+    assert "--counts" in help_text(capsys, "folders")
+
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    assert "--counts" not in help_text(capsys, "folders")
+
+
+# ----------------------------------------------------------------------------
+def test_counts_are_refused_by_a_provider_without_folder_counts(fakes):
+    """The utility holds the line for any front-end, before connecting."""
+    session = fake_session(BARE)
+
+    with pytest.raises(MailctlError, match="'folder_counts'"):
+        utilities.folders.list_folder_counts(session)
+
+    assert session.opened == ()
+    assert {"count_support", "folder_status"} <= BARE.capabilities.declined
+
+
+# ----------------------------------------------------------------------------
+def test_the_fake_counts_its_folders_in_its_own_terms(fakes):
+    counts = utilities.folders.list_folder_counts(fake_session())
+
+    assert counts.sizes
+    assert [
+        (s.folder, s.messages, s.unseen, s.size) for s in counts.statuses
+    ] == [("INBOX", 2, 1, 512), ("INBOX.Lists", 0, 0, 0)]
+
+
+# ----------------------------------------------------------------------------
 def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     """A host that reads no --sieve-port does not offer one, and its help
     says nothing about MXroute."""
@@ -1728,6 +1812,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         (["list", "--disable-extension", "mailbox"], "disabled_extensions"),
         (["search", "--raw", "ALL"], "'raw_query'"),
         (["mark", "7", "--flag"], "'mark'"),
+        (["folders", "--counts"], "'folder_counts'"),
     ],
     ids=[
         "placement",
@@ -1738,6 +1823,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         "disable-extension",
         "raw-query",
         "mark",
+        "folder-counts",
     ],
 )
 def test_a_hidden_option_given_anyway_is_refused_by_name(

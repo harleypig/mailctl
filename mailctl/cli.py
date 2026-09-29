@@ -1346,10 +1346,22 @@ def cmd_folders(args) -> int:
     config = configure(args)
 
     with connect(config, args, rules=False, mail=True) as sessions:
-        listing = utilities.folders.list_folders(sessions)
+        counts = None
+
+        if args.counts:
+            counts = utilities.folders.list_folder_counts(sessions)
+            listing = counts.listing
+
+        else:
+            listing = utilities.folders.list_folders(sessions)
 
         if args.json:
-            return emit_json(args, json_output.folder_listing(listing))
+            return emit_json(
+                args,
+                json_output.folder_listing(
+                    listing, counts.statuses if counts else None
+                ),
+            )
 
         print(f"Hierarchy delimiter: {listing.delimiter!r}")
         print(
@@ -1357,6 +1369,11 @@ def cmd_folders(args) -> int:
             f"{len(listing.folders) - len(listing.unsubscribed)} subscribed "
             f"(webmail shows only subscribed folders):"
         )
+
+        if counts is not None:
+            show_folder_counts(counts)
+
+            return 0
 
         width = max((len(name) for name in listing.folders), default=0)
 
@@ -1368,6 +1385,58 @@ def cmd_folders(args) -> int:
                 print(f"  {folder:<{width}}  (not subscribed)")
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def show_folder_counts(counts: utilities.folders.FolderCounts) -> None:
+    """The folder list as a table of counts; "-" where the host gave none.
+
+    The size column appears only when the host reports sizes.
+    """
+    listing = counts.listing
+    columns = [("Messages", "messages"), ("Unread", "unseen")]
+
+    if counts.sizes:
+        columns.append(("Size", "size"))
+
+    rows = [
+        [count_cell(getattr(status, field), field) for _, field in columns]
+        for status in counts.statuses
+    ]
+    widths = [
+        max([len(title), *(len(row[index]) for row in rows)])
+        for index, (title, _) in enumerate(columns)
+    ]
+    name_width = max([len("Folder"), *map(len, listing.folders)])
+
+    def line(name: str, cells: list[str]) -> str:
+        figures = "  ".join(
+            f"{cell:>{width}}"
+            for cell, width in zip(cells, widths, strict=True)
+        )
+
+        return f"  {name:<{name_width}}  {figures}"
+
+    print(line("Folder", [title for title, _ in columns]))
+
+    for folder, row in zip(listing.folders, rows, strict=True):
+        if listing.is_subscribed(folder):
+            print(line(folder, row))
+
+        else:
+            print(f"{line(folder, row)}  (not subscribed)")
+
+
+# ----------------------------------------------------------------------------
+def count_cell(value: int | None, field: str) -> str:
+    """One count as its table cell."""
+    if value is None:
+        return "-"
+
+    if field == "size":
+        return human_size(value)
+
+    return str(value)
 
 
 # ----------------------------------------------------------------------------
@@ -2928,6 +2997,14 @@ def build_parser(
 
     folders = command(
         "folders", parents=[common, connection], help="list IMAP folders"
+    )
+    folders.add_argument(
+        "--counts",
+        action="store_true",
+        help="show each folder's total and unread messages, and its size "
+        "where the server reports it, from one request"
+        if offer.folder_counts
+        else argparse.SUPPRESS,
     )
     folders.add_argument("--json", action="store_true", help=JSON_HELP)
     folders.set_defaults(handler=cmd_folders)

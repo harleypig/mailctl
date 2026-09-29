@@ -44,6 +44,7 @@ from .messages import (
 )
 from .search import SEARCH_CHARSET, SearchCriteria, encode_search_key
 from .servers import ServerProfile, select_server
+from .status import FolderStatus, list_status_arguments, parse_status
 
 __all__ = [
     "ImapAuthenticationError",
@@ -444,6 +445,48 @@ class ImapSession:
             kinds.append(tuple(pairs))
 
         return tuple(kinds)
+
+    # ------------------------------------------------------------------------
+    def list_status(self, sizes: bool = False) -> list[FolderStatus]:
+        """Every selectable folder's counts, in one ``LIST`` (RFC 5819).
+
+        The caller has checked that ``LIST-STATUS`` is advertised, and
+        ``STATUS=SIZE`` too when ``sizes`` is set; this sends what it is
+        asked to. A folder the server gives no ``STATUS`` line for -- one
+        that cannot hold mail -- is absent from the result.
+        """
+        client = self._require_client()
+        arguments = list_status_arguments(sizes)
+
+        self._log(f"LIST {' '.join(arguments)}")
+
+        # IMAPClient has no LIST-STATUS, so the command goes through its
+        # imaplib connection (the private ``_imap``, which imapclient<5
+        # bounds). Both kinds of untagged line are taken off it, so none is
+        # left for a later command to read as its own.
+        imap = client._imap
+
+        try:
+            typ, data = imap._simple_command("LIST", *arguments)
+
+        except IMAPClientError as exc:
+            raise MailctlError(f"LIST-STATUS failed -- {exc}") from exc
+
+        finally:
+            imap.untagged_responses.pop("LIST", None)
+            status = imap.untagged_responses.pop("STATUS", [])
+
+        if typ != "OK":
+            reason = data[0] if data else b""
+            text = (
+                reason.decode("utf-8", "replace")
+                if isinstance(reason, bytes)
+                else str(reason)
+            )
+
+            raise MailctlError(f"LIST-STATUS failed -- {typ} {text}")
+
+        return parse_status(status)
 
     # ------------------------------------------------------------------------
     def server(self) -> ServerProfile:

@@ -10,11 +10,13 @@ the dialect (``sieve.py``).
 """
 
 from ...components.imap import messages as imap_records
+from ...components.imap import status as imap_status
 from ...components.managesieve.capabilities import Capabilities
 from .. import model
 
 __all__ = [
     "fetched_message",
+    "folder_status",
     "mail_namespaces",
     "mail_result",
     "mail_server",
@@ -61,6 +63,13 @@ def fetched_message(
     value: imap_records.FetchedMessage,
 ) -> model.FetchedMessage:
     return model.FetchedMessage(value.headers, message_summary(value.summary))
+
+
+# ----------------------------------------------------------------------------
+def folder_status(value: imap_status.FolderStatus) -> model.FolderStatus:
+    return model.FolderStatus(
+        value.folder, value.messages, value.unseen, value.size
+    )
 
 
 # ----------------------------------------------------------------------------

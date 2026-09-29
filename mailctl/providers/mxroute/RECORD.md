@@ -379,6 +379,10 @@ Say so plainly rather than filling the gap:
 - **Whether MXroute's Roundcube writes a disabled rule the way upstream
   does** (*Roundcube's disabled rule*). Settle it by switching one rule
   off in the webmail and reading the script with `mailctl show`.
+- **Whether `LIST-STATUS` answers as advertised here.** Both it and
+  `STATUS=SIZE` are in the 2026-09-28 list, and `folders --counts` has run
+  against the container tier's Dovecot 2.4 but not yet against this
+  server. The read-only live check's `folder-counts` test settles it.
 - **Whether this server's IMAP `CAPABILITY` list changes at login.** Only
   the after-login list is recorded, so the 2026-08-14 count cannot be
   placed against it.
@@ -424,10 +428,12 @@ the parser extended before mailctl can round-trip a script that uses it.
 ### IMAP
 
 mailctl uses `MOVE` when it is advertised, `UIDPLUS` for `UID EXPUNGE` in
-the move fallback, and `ID` to choose a server profile. It reads
-`FILTER=SIEVE` only to report on it. Of the 43 capabilities seen on
-2026-09-28 (*Observed*), these could serve mailctl. Each line says what it
-might do, not what will be built:
+the move fallback, and `ID` to choose a server profile. `folders --counts`
+([#157][i157]) uses `LIST-STATUS` to count every folder in one `LIST`, and
+asks for each folder's size too when `STATUS=SIZE` is advertised; without
+`LIST-STATUS` it is refused. It reads `FILTER=SIEVE` only to report on
+it. Of the 43 capabilities seen on 2026-09-28 (*Observed*), these could
+serve mailctl. Each line says what it might do, not what will be built:
 
 - **`SPECIAL-USE`**: find Trash, Junk, Sent, and Archive by their role
   rather than their name. It bears on rules that file to Trash, and on
@@ -506,6 +512,7 @@ with `mailctl show`.
 [i116]: https://github.com/harleypig/mailctl/issues/116
 [i120]: https://github.com/harleypig/mailctl/issues/120
 [i152]: https://github.com/harleypig/mailctl/issues/152
+[i157]: https://github.com/harleypig/mailctl/issues/157
 [i158]: https://github.com/harleypig/mailctl/issues/158
 [rc-script]: https://github.com/roundcube/roundcubemail/blob/cbf2500dd8db31ada3fccf71e247c8d8c852c3d7/plugins/managesieve/lib/Roundcube/rcube_sieve_script.php
 [blog-redirect]: https://blog.mxroute.com/why-we-disabled-redirect-sieve-filters-on-mxroute

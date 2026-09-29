@@ -119,6 +119,7 @@ def require_capability(provider: Provider | Session, name: str) -> None:
 # What a request asks for, in words, when it needs each capability.
 CAPABILITY_CONSTRUCTS = {
     "disable": "switch a rule off or on without removing it",
+    "folder_counts": "count the messages in every folder in one request",
     "mark": "set or clear a message's flags",
     "ordering": "place a rule at a position in evaluation order",
     "raw_query": "search with a query in its own search language",

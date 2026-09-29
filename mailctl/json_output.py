@@ -104,15 +104,25 @@ def scripts(active: str | None, others: list[str]) -> dict:
 
 
 # ----------------------------------------------------------------------------
-def folder_listing(listing) -> dict:
-    """``folders``: every folder, and whether webmail shows it."""
+def folder_listing(listing, statuses=None) -> dict:
+    """``folders``: every folder, and whether webmail shows it.
+
+    With ``--counts``, ``statuses`` holds one record per folder, in the
+    listing's order, and each folder gains ``messages``, ``unseen``, and
+    ``size`` (bytes); a count the host did not report is null.
+    """
+    folders = [
+        {"name": name, "subscribed": listing.is_subscribed(name)}
+        for name in listing.folders
+    ]
+
+    for entry, status in zip(folders, statuses or (), strict=False):
+        entry.update(
+            messages=status.messages, unseen=status.unseen, size=status.size
+        )
+
     return _document(
-        delimiter=listing.delimiter,
-        prefix=listing.prefix,
-        folders=[
-            {"name": name, "subscribed": listing.is_subscribed(name)}
-            for name in listing.folders
-        ],
+        delimiter=listing.delimiter, prefix=listing.prefix, folders=folders
     )
 
 

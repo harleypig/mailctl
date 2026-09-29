@@ -247,6 +247,10 @@ layer may call.
   - `imap/search.py` — `SearchCriteria`, what the session needs from a
     criteria object, and `encode_search_key`, which gets a non-ASCII value
     to the server intact (I1, [#89][i89]).
+  - `imap/status.py` — every folder's counts from one `LIST ... RETURN
+    (STATUS ...)` (`LIST-STATUS`, RFC 5819): the command's arguments and a
+    parser for the `STATUS` lines imaplib collects, which the session
+    sends raw because IMAPClient has no such command; offline.
   - `imap/servers/` — one module per server software, chosen by the IMAP
     `ID` response, with a plain-protocol fallback; `profile.py` holds a
     server's quirks as data, and `dovecot.py` carries none yet.
@@ -531,8 +535,8 @@ fails before any login or password prompt (decided on [#137][i137]).
   points; ADR 0006 defers them.
 - **Differences are data, never a branch.** A provider declares
   `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, `disable`, its
-  `actions`, `extensions`, `raw_query`, `mark`, its namespaced `specifics`
-  with their schema, the connection `settings` it reads, and the
+  `actions`, `extensions`, `raw_query`, `mark`, `folder_counts`, its
+  namespaced `specifics` with their schema, the connection `settings` it reads, and the
   operations it `declined`. The utilities read those and never ask which
   provider they have.
 - **Refused before any network work.** `utilities.rules.check_rule`
@@ -569,8 +573,8 @@ fails before any login or password prompt (decided on [#137][i137]).
   without `stop`, `--no-stop`; without `rule_sets`, `add`'s `--script` and
   `--activate`; without `disable`, `disable-rule` and `enable-rule`;
   without `extensions`, `--disable-extension`; without `raw_query`,
-  `search`'s `--raw`; without `mark`, `mark`. The
-  connection flags (`--host`, `--imap-*`, `--sieve-*`) are offered only
+  `search`'s `--raw`; without `mark`, `mark`; without `folder_counts`,
+  `folders`'s `--counts`. The connection flags (`--host`, `--imap-*`, `--sieve-*`) are offered only
   where `ProviderCapabilities.settings` names them, with the help it
   gives — they keep their names and their `MAILCTL_*` variables, being
   `mxroute`'s connection options. An unoffered option is **hidden, not
