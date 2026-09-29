@@ -46,8 +46,27 @@ fixture required before anything writes to one is still outstanding
      decoded text ([#89][i89]).
    - `config` — the flag → env → file → default resolution order, and that a
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
-   - `engine` — every plan and execute step driven with plain inputs and
-     session fakes, as any front-end would call it (`test_engine.py`).
+   - **The utilities** (`test_utilities_<module>.py` for `rules`,
+     `scripts`, `backup`, `folders`, `mail`, `messages`, and `reports`
+     under `mailctl/utilities/`; a backup's bytes on disk are
+     `test_backup.py`, and the migration utility `test_migration.py`) —
+     every plan and execute step driven with plain inputs over a session,
+     as any front-end would call it. The safety
+     policy is pinned here, since it lives here: an upload backs up first
+     and still leaves the backup when the server rejects the script, a
+     rule is merged rather than written over, and a mail plan over the
+     `--max-messages` ceiling is refused whole. `test_utilities_mail.py`
+     also holds the re-check narrowing the host's search to what the rule
+     matches. The fakes they share are `tests/utilities_support.py`.
+   - **The session** (`test_engine.py`) — only what is about the
+     connection: a half opens the first time a utility uses it and never if
+     the command did not ask for it; a read the server cut off is sent once
+     more on a fresh connection, and a second failure or a refusal is
+     raised; a write cut off mid-flight is raised and **never sent again**,
+     on both halves; calls on one connection wait their turn under the
+     session's lock; two sessions share nothing; and every transport
+     operation is classified, with each operation's kind pinned so a change
+     of kind is a deliberate diff.
    - **Sieve extensions** (`test_extensions.py`) — the emit table checked
      against sievelib's `require` line over every rule shape, and
      `disabled_extensions` refusing, falling back, and doing nothing where
@@ -58,7 +77,7 @@ fixture required before anything writes to one is still outstanding
      the old-directory warning and when it stays silent, and old
      `MXROUTE_*` names reported by name — checked against a sentinel value
      that must never appear in any output. The `mxfilter` script's reuse is
-     in `test_engine.py`.
+     in `test_utilities_rules.py`.
    - **CLI snapshots** (`test_cli_snapshots.py`) — each subcommand run end to
      end through `cli.main`, recording exit code, stdout, stderr, and every
      server call into `tests/snapshots/cli/<name>.txt`. A behaviour change
@@ -71,34 +90,52 @@ fixture required before anything writes to one is still outstanding
      printed even with sievelib's debug flag forced on. Its server-module
      selection and capability parsing are `test_managesieve_servers.py`.
    - The **presentation guard** (`test_core_no_presentation.py`) — no core
-     module prints, prompts, or exits, and the engine imports no front-end.
-     `components/` and `providers/` are walked, not listed.
-   - The **layer-purity guard** (`test_layer_purity.py`) — a module under
-     `components/` imports only the stdlib, the library its own component
-     wraps (`imapclient` for `imap`, `sievelib` for `managesieve`), other
-     components, and `MailctlError` ([ADR 0006][adr6]). The other way
-     round, `engine.py` and `cli.py` import no component, and the engine
-     reaches a provider only through `providers.base` and
-     `providers.registry`, with no provider's name in its code.
-     `providers/base.py` and `providers/model.py` import no component
-     either, and every model type is the neutral model's own class, not
-     one borrowed from layer 1 ([#99][i99]).
-   - **Providers** (`test_providers.py`) — every registered provider
-     implements or explicitly declines every operation of `Provider`, and
-     declines exactly what its capabilities say. The `provider` setting
-     climbs the ladder with provenance; an unknown name is refused before
-     anything connects. A fake second provider, registered for the test,
-     is driven through the engine's representative operations and receives
-     the same calls, in the same shape, as `mxroute`. A capability it
-     declines is refused before it is opened. `mxroute` hands back the
-     neutral records, never its components'. Fakes without a capability
-     pin what that removes ([#99][i99]): without `stop` a default rule
-     still plans; without `ordering` the placement flags and `move-rule`
-     are not offered in help and are refused by name if given; without
-     `extensions` `disabled_extensions` is refused; a connection flag the
-     provider does not read is hidden and refused; and `add` and `test`
-     under a fake carry its own wording, with nothing about Sieve or
-     MXroute. `mxroute`'s help hides nothing but the always-hidden flags.
+     module prints, prompts, or exits, and neither the session nor any
+     utility imports a front-end or reads the terminal or the environment.
+     `components/`, `providers/`, and `utilities/` are walked, not listed.
+   - The **layer-purity guard** (`test_layer_purity.py`) — the four layers
+     of [ADR 0007][adr7] over the components of [ADR 0006][adr6], held line
+     by line:
+     - a module under `components/` imports only the stdlib, the library
+       its own component wraps (`imapclient` for `imap`, `sievelib` for
+       `managesieve`), other components, and `MailctlError`;
+     - `engine.py`, every module under `utilities/` (walked, not listed),
+       and `cli.py` import no component, and the session and the utilities
+       reach a provider only through `providers.base` and
+       `providers.registry`, with no provider's name in their code;
+     - `providers/base.py` and `providers/model.py` import no component
+       either, and every model type is the neutral model's own class, not
+       one borrowed from layer 1 ([#99][i99]);
+     - each provider's two halves are derived from its dialect and
+       transport classes by following their imports: no module is on both
+       sides, a dialect imports nothing that opens a connection, and a
+       transport imports no building helper and no utility;
+     - the **interface guard**: a front-end imports only the utilities, the
+       session's opening calls, and the neutral model — never a provider, a
+       component, or the session's transport, connection, or dialect.
+
+     The component, session-and-utilities, neutral-model, and half guards
+     each carry a case built to break them, so each is seen to fail as well
+     as pass.
+   - **Providers** (`test_providers.py`) — each half of every registered
+     provider implements or explicitly declines every operation of its
+     interface (`Dialect`, `Transport`), and the two decline exactly what
+     the capabilities say. The `provider` setting climbs the ladder with
+     provenance; an unknown name is refused before anything connects. A
+     fake second provider, registered for the test, is driven through the
+     utilities' representative operations; its dialect and transport
+     receive the same calls, in the same shape, as `mxroute`'s, and a
+     coarse host search is narrowed by the utilities rather than the
+     transport. A capability it declines is refused before it is opened.
+     `mxroute` hands back the neutral records, never its components'.
+     Fakes without a capability pin what that removes ([#99][i99]):
+     without `stop` a default rule still plans; without `ordering` the
+     placement flags and `move-rule` are not offered in help and are
+     refused by name if given; without `extensions` `disabled_extensions`
+     is refused; a connection flag the provider does not read is hidden and
+     refused; and `add` and `test` under a fake carry its own wording, with
+     nothing about Sieve or MXroute. `mxroute`'s help hides nothing but the
+     always-hidden flags.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
@@ -187,4 +224,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
+[adr7]: ../adr/0007-interfaces-utilities-session-provider-layering.md
 [i99]: https://github.com/harleypig/mailctl/issues/99
