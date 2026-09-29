@@ -26,7 +26,7 @@ from mailctl.components.managesieve import (
 )
 from mailctl.components.managesieve import script as script_module
 from mailctl.config import Config, load_config
-from mailctl.criteria import Criteria, escape_sieve_string
+from mailctl.criteria import Criteria, canonical_header, escape_sieve_string
 from mailctl.providers.mxroute import MxrouteDialect
 from mailctl.providers.mxroute import managesieve as mxroute_managesieve
 from mailctl.providers.mxroute.sieve import (
@@ -39,6 +39,7 @@ from mailctl.providers.mxroute.sieve import (
     remove_rule,
     render_script,
 )
+from mailctl.rules import read_rules
 from mailctl.utilities.backup_files import write_backup
 
 # ############################################################################
@@ -1787,3 +1788,122 @@ def test_the_hint_does_not_guess_for_a_config_built_by_hand():
 
     assert "is the RFC 5804 / Dovecot default" not in hint
     assert "port 1 and TLS mode none" in hint
+
+
+# ############################################################################
+# A header's name is only ever a header name (#175)
+# ############################################################################
+
+# Names sievelib's own builder reads as a test before it reads them as a
+# header: a "not" prefix negated the rule, and the rest became that test or
+# raised. "true" matched every message. "Notes" and "anyof" were already
+# right; they stay here as the controls.
+TEST_WORDS = [
+    "notes",
+    "Notes",
+    "not",
+    "notify",
+    "exists",
+    "body",
+    "size",
+    "allof",
+    "anyof",
+    "true",
+    "false",
+    "address",
+    "envelope",
+    "currentdate",
+]
+
+
+# ----------------------------------------------------------------------------
+def header_rule(header: str, existing: str = "", **kwargs) -> str:
+    criteria = simple_criteria(header, "x")
+
+    return merge_rule(
+        existing,
+        "r",
+        criteria.sieve_conditions(),
+        [("fileinto", "INBOX.Notes")],
+        criteria.sieve_matchtype(),
+        **kwargs,
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("header", TEST_WORDS)
+def test_a_header_named_like_a_test_is_a_header_test(header, reparse):
+    merged = header_rule(header)
+    name = canonical_header(header)
+
+    assert f'if anyof (header :contains "{name}" "x") {{' in merged
+    assert "not " not in merged
+    assert render_script(parse_script(merged)) == merged
+
+    reparse(merged)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("header", TEST_WORDS)
+def test_a_header_named_like_a_test_reads_back_as_that_header(header):
+    (rule,) = read_rules(parse_script(header_rule(header)))
+
+    assert [
+        (test.header, test.match_type, test.keys) for test in rule.tests
+    ] == [(canonical_header(header), "contains", ("x",))]
+    assert rule.modelled
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("header", ["notes", "exists", "true"])
+def test_replacing_a_disabled_rule_keeps_the_header(header):
+    """The replace path builds the test the same way, and the disabled
+    form's one-line comment carries it."""
+    disabled = disable_rule(header_rule("subject"), "r")
+    merged = header_rule(header, disabled, replace=True)
+
+    assert f'if false # anyof (header :contains "{header}" "x")' in merged
+    assert f'anyof (header :contains "{header}" "x") {{' in enable_rule(
+        merged, "r"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_quote_in_a_header_name_is_escaped_and_read_back(reparse):
+    """RFC 5322 allows a quote in a field name; unescaped, it ended the
+    string early and the script no longer parsed."""
+    merged = header_rule('X-A"b')
+
+    assert 'header :contains "X-A\\"b" "x"' in merged
+
+    reparse(merged)
+
+    (rule,) = read_rules(parse_script(merged))
+
+    assert rule.tests[0].header == 'X-A"b'
+
+
+# ----------------------------------------------------------------------------
+def test_a_value_that_starts_with_an_apostrophe_is_still_quoted(reparse):
+    """sievelib left a string starting with ' or " unquoted, taking it as
+    already quoted; the result did not parse."""
+    criteria = simple_criteria("subject", "'tis")
+
+    merged = merge_rule(
+        "",
+        "r",
+        criteria.sieve_conditions(),
+        [("fileinto", "'Archive")],
+        criteria.sieve_matchtype(),
+    )
+
+    assert 'header :contains "Subject" "\'tis"' in merged
+    assert 'fileinto "\'Archive";' in merged
+
+    reparse(merged)
+
+
+# ----------------------------------------------------------------------------
+def test_a_condition_that_is_neither_header_nor_body_is_refused():
+    with pytest.raises(ValueError, match="not a header or body condition"):
+        merge_rule("", "r", [("size", ":over", "1", "2")], [("keep",)])

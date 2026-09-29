@@ -984,3 +984,47 @@ def test_a_body_rule_files_a_delivered_message_by_its_body(account):
 
     assert filed == ["nightly 1"]
     assert inbox == ["nightly 2"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_header_named_notes_files_only_mail_that_carries_it(account):
+    """``--header notes=...`` is a test on the ``Notes`` header (#175).
+
+    sievelib's builder read a name starting with ``not`` as a negation and
+    wrote ``not header :contains "notes" ...`` -- a rule the server accepts
+    and that files exactly the mail it should leave. Red if the rule is
+    inverted (the message without the header is filed and the one with it
+    stays), or if the name is read as any other test.
+    """
+    account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
+
+    added = account.run(
+        "add",
+        "--header",
+        "notes=follow up",
+        "--name",
+        "notes",
+        "--fileinto",
+        "Notes",
+        "--create-folder",
+    )
+
+    assert added.code == 0, added.err
+
+    stored = account.script(ROUNDCUBE_NAME)
+
+    assert 'header :contains "notes" "follow up"' in squeeze(stored)
+    assert "not header" not in stored
+
+    tagged = message("friend@example.org", "with notes").replace(
+        b"\r\n\r\n", b"\r\nNotes: please follow up\r\n\r\n", 1
+    )
+
+    account.deliver(tagged, "friend@example.org")
+    account.deliver(message("friend@example.org", "without"), "friend@x.org")
+
+    filed = [subject for subject, _ in mail_in(account, "Notes").values()]
+    inbox = [subject for subject, _ in mail_in(account, "INBOX").values()]
+
+    assert filed == ["with notes"]
+    assert inbox == ["without"]
