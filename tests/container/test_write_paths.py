@@ -596,6 +596,60 @@ def test_apply_keep_copies_as_the_saved_rule_does(account):
 
 
 # ----------------------------------------------------------------------------
+def test_apply_keep_run_again_copies_nothing_twice(account):
+    """#192: running the same ``apply --keep`` again leaves one copy of
+    each message in the folder, and so does running it over mail the
+    saved rule already filed a copy of.
+
+    Red if the second run copies what the folder holds -- the old
+    messages then appear twice -- or if the plan's check misses a copy
+    Pigeonhole filed, so the delivered message appears twice.
+    """
+    actions = (
+        "--from",
+        GITHUB,
+        "--fileinto",
+        "Lists/GitHub",
+        "--keep",
+        "--create-folder",
+    )
+
+    account.append("INBOX", message(GITHUB, "old pr"))
+    account.append("INBOX", message(GITHUB, "old issue"))
+    account.append("INBOX", message("friend@example.org", "lunch?"))
+
+    first = account.run("apply", *actions, "--yes")
+
+    assert first.code == 0, first.err
+
+    added = account.run("add", "--name", "github", *actions)
+
+    assert added.code == 0, added.err
+
+    account.deliver(message(GITHUB, "new pr"), GITHUB)
+
+    planned = account.run("apply", *actions, "--dry-run")
+
+    assert planned.code == 0, planned.err
+    assert "3 message(s) already in 'Lists.GitHub'" in planned.out
+
+    again = account.run("apply", *actions, "--yes")
+
+    assert again.code == 0, again.err
+    assert "Nothing to do" in again.out
+
+    inbox = sorted(
+        subject for subject, _ in mail_in(account, "INBOX").values()
+    )
+    filed = sorted(
+        subject for subject, _ in mail_in(account, "Lists.GitHub").values()
+    )
+
+    assert inbox == ["lunch?", "new pr", "old issue", "old pr"]
+    assert filed == ["new pr", "old issue", "old pr"]
+
+
+# ----------------------------------------------------------------------------
 def test_apply_flags_in_place(account):
     """A flag-only action leaves the message where it is.
 

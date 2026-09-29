@@ -148,7 +148,12 @@ class FakeSieveClient:
 
 
 # ----------------------------------------------------------------------------
-def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
+def message(
+    sender: str,
+    subject: str,
+    list_id: str | None = None,
+    message_id: str | None = None,
+) -> bytes:
     lines = [
         f"From: Someone <{sender}>",
         "To: user@example.com",
@@ -158,6 +163,9 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 
     if list_id:
         lines.append(f"List-Id: Some list <{list_id}>")
+
+    if message_id:
+        lines.append(f"Message-ID: <{message_id}>")
 
     return ("\r\n".join(lines) + "\r\n\r\n").encode()
 
@@ -172,12 +180,13 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # argv is replaced with the path of; mode 0600 unless file_mode), env
 # (the text of a .env written, mode 0600, into the directory the command
 # runs in), mail / flags
-# (extra messages and their IMAP flags, by UID), and stray (how many empty
-# names the script listing carries), sieve_extra (raw CAPABILITY lines
-# sent ahead of SIEVE), imap_caps (what IMAP advertises), password
-# (MAILCTL_PASSWORD's value), folders (further folders, as (name,
-# subscribed) pairs), and imap_failures (an IMAPClient method, and the
-# error text it raises).
+# (extra messages and their IMAP flags, by UID), folder_mail (the mail one
+# folder holds instead, by folder name, then UID), and stray (how many empty
+# names the script listing carries), sieve_extra (raw CAPABILITY lines sent
+# ahead of SIEVE), imap_caps (what IMAP advertises), password
+# (MAILCTL_PASSWORD's value), folders (further folders, as (name, subscribed)
+# pairs), and imap_failures (an IMAPClient method, and the error text it
+# raises).
 
 # Host from the env file over the exported MAILCTL_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
@@ -188,6 +197,22 @@ MAILCTL_SIEVE_PORT='4191'
 MAILCTL_PASSWORD_CMD="printf %s not-a-real-password"
 OTHER_TOOL=ignored
 """
+
+# An inbox whose first match 'Lists' already holds a copy of, as a second
+# run of 'apply --fileinto Lists --keep' finds it; the third match has no
+# Message-ID, so it cannot be looked for there.
+KEEP_RERUN = {
+    "mail": {
+        1: message("noreply@github.com", "PR opened", message_id="1@gh"),
+        2: message("noreply@github.com", "Issue closed", message_id="2@gh"),
+        4: message("noreply@github.com", "No id"),
+    },
+    "folder_mail": {
+        "INBOX.Lists": {
+            7: message("noreply@github.com", "PR opened", message_id="1@gh"),
+        },
+    },
+}
 
 # A narrow rule ahead of a broad one that covers it. Moving the broad one
 # first is the move that starves the narrow one.
@@ -1333,6 +1358,38 @@ SCENARIOS = {
         ["apply", *GITHUB, "--discard", "--keep", "--yes"],
         {},
     ),
+    "apply-keep-rerun-dry": (
+        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--dry-run"],
+        KEEP_RERUN,
+    ),
+    "apply-keep-rerun-yes": (
+        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
+        KEEP_RERUN,
+    ),
+    "apply-keep-rerun-json": (
+        [
+            "apply",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--keep",
+            "--dry-run",
+            "--json",
+        ],
+        KEEP_RERUN,
+    ),
+    "apply-keep-rerun-all-held": (
+        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
+        {
+            "mail": {uid: KEEP_RERUN["mail"][uid] for uid in (1, 2)},
+            "folder_mail": {
+                "INBOX.Lists": {
+                    7: KEEP_RERUN["mail"][1],
+                    8: KEEP_RERUN["mail"][2],
+                },
+            },
+        },
+    ),
     "add-before-unknown": (
         ["add", *GITHUB, "--fileinto", "Lists", "--before", "phantom"],
         {},
@@ -2039,6 +2096,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         **options.get("mail", {}),
     }
     imap.flags = options.get("flags", {})
+    imap.folder_messages = options.get("folder_mail", {})
 
     if "imap_caps" in options:
         imap.caps = set(options["imap_caps"])

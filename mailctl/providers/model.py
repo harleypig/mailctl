@@ -445,6 +445,12 @@ class MailActionPlan:
     ``discard`` means the messages are deleted. ``keep`` leaves them where
     they are, so a plan with a destination files a copy there rather than
     moving them -- what ``fileinto`` then ``keep`` does in a rule.
+
+    A copying plan skips the matches the destination already holds, so
+    running it again files nothing twice. ``held`` is their UIDs, found by
+    Message-ID. ``unidentified`` is the matches with no Message-ID: there
+    is nothing to find them by, so they are copied whether or not the
+    destination has them.
     """
 
     source: str
@@ -453,6 +459,8 @@ class MailActionPlan:
     discard: bool
     messages: list[MessageSummary] = field(default_factory=list)
     keep: bool = False
+    held: tuple[int, ...] = ()
+    unidentified: tuple[int, ...] = ()
 
     # ------------------------------------------------------------------------
     @property
@@ -477,6 +485,27 @@ class MailActionPlan:
     def copies(self) -> bool:
         """Whether executing this plan files a copy, leaving the original."""
         return self._files and self.keep
+
+    # ------------------------------------------------------------------------
+    @property
+    def copy_uids(self) -> list[int]:
+        """The UIDs a copying plan files: the matches not already held."""
+        held = set(self.held)
+
+        return [uid for uid in self.uids if uid not in held]
+
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        """Whether executing this plan would do anything.
+
+        A copying plan with no flags does nothing once the destination
+        holds every match.
+        """
+        if self.copies and not self.flags:
+            return bool(self.copy_uids)
+
+        return bool(self.messages)
 
     # ------------------------------------------------------------------------
     @property

@@ -314,6 +314,8 @@ def mail_plan(record) -> dict:
         "moves": record.moves,
         "copies": record.copies,
         "count": record.count,
+        "held": list(record.held),
+        "unidentified": list(record.unidentified),
         "messages": [_summary(item) for item in record.messages],
     }
 

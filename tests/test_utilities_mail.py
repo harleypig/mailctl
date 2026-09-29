@@ -208,6 +208,213 @@ def test_discard_without_keep_still_deletes(sessions, mailbox):
 
 
 # ----------------------------------------------------------------------------
+def identified(sender: str, subject: str, message_id: str) -> bytes:
+    return raw_message(sender, subject).replace(
+        b"\r\n\r\n", f"\r\nMessage-ID: <{message_id}>\r\n\r\n".encode()
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def rerun(fake_imap):
+    """The inbox a second ``apply --fileinto Lists --keep`` finds: the
+    Lists folder already holds a copy of the first match."""
+    fake_imap.messages = {
+        1: identified("noreply@github.com", "PR opened", "1@gh"),
+        2: identified("noreply@github.com", "Issue closed", "2@gh"),
+        3: raw_message("friend@example.com", "Lunch"),
+    }
+    fake_imap.folder_messages = {
+        "INBOX.Lists": {
+            9: identified("noreply@github.com", "PR opened", "1@gh"),
+        },
+    }
+
+    return fake_imap
+
+
+# ----------------------------------------------------------------------------
+def plan_copy(sessions, spec=None, rule=None):
+    return utilities.mail.plan_mail(
+        sessions,
+        rule or criteria(),
+        spec or ActionSpec(fileinto="Lists", keep=True),
+        "INBOX",
+        "INBOX.Lists",
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_second_copying_run_copies_only_what_the_folder_lacks(
+    sessions, rerun
+):
+    """Re-running ``apply --keep`` duplicated every copy (#192). Red if
+    the plan ignores what the destination holds: the copy then sends both
+    UIDs again."""
+    plan = plan_copy(sessions)
+
+    assert plan.held == (1,)
+    assert plan.copy_uids == [2]
+
+    result = utilities.mail.execute_mail(sessions, plan, max_messages=2)
+
+    assert result.copied == 1
+    assert [call for call in rerun.calls if call[0] == "copy"] == [
+        ("copy", (2,), "INBOX.Lists")
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_the_destination_is_only_read_while_planning(sessions, rerun):
+    """The check is part of the read-only plan. Red if it selects the
+    destination read-write or writes anything."""
+    plan_copy(sessions)
+
+    assert ("select_folder", "INBOX.Lists", True) in rerun.calls
+    assert ("select_folder", "INBOX.Lists", False) not in rerun.calls
+    assert not {"copy", "move", "add_flags", "expunge"} & set(rerun.names())
+
+
+# ----------------------------------------------------------------------------
+def test_a_message_with_no_message_id_is_copied_and_said_so(sessions, rerun):
+    """Nothing identifies it, so it cannot be looked for; it is copied,
+    and the plan names it."""
+    rerun.messages[4] = raw_message("noreply@github.com", "No id")
+
+    plan = plan_copy(sessions)
+
+    assert plan.unidentified == (4,)
+    assert plan.copy_uids == [2, 4]
+
+
+# ----------------------------------------------------------------------------
+def test_the_destination_is_not_searched_when_nothing_can_be_looked_for(
+    sessions, mailbox
+):
+    plan = plan_copy(sessions)
+
+    assert plan.unidentified == (1, 2)
+    assert ("select_folder", "INBOX.Lists", True) not in mailbox.calls
+
+
+# ----------------------------------------------------------------------------
+def test_a_destination_still_to_be_created_holds_nothing(sessions, rerun):
+    rerun.folder_messages = {"INBOX.New": {}}
+
+    plan = utilities.mail.plan_mail(
+        sessions,
+        criteria(),
+        ActionSpec(fileinto="New", keep=True),
+        "INBOX",
+        "INBOX.New",
+    )
+
+    assert plan.held == ()
+    assert plan.copy_uids == [1, 2]
+    assert not any(
+        call[:2] == ("select_folder", "INBOX.New") for call in rerun.calls
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_destination_search_drops_the_date_and_state_filters(
+    sessions, rerun
+):
+    """A copy is read or flagged on its own, so ``--unread`` would miss a
+    copy somebody has read. Red if the filters reach the second search."""
+    rule = criteria()
+    rule.unread = True
+
+    plan_copy(sessions, rule=rule)
+
+    searches = [call[1] for call in rerun.calls if call[0] == "search"]
+
+    assert searches == [
+        [["FROM", "noreply@github.com"], "UNSEEN"],
+        [["FROM", "noreply@github.com"]],
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_rule_of_state_filters_alone_looks_for_every_message_id(
+    sessions, rerun
+):
+    """With no header or body test there is nothing to narrow the
+    destination by, so every message there with a Message-ID is read."""
+    plan = plan_copy(sessions, rule=Criteria(unread=True))
+
+    searches = [call[1] for call in rerun.calls if call[0] == "search"]
+
+    assert searches[-1] == [["HEADER", "Message-ID", ""]]
+    assert plan.held == (1,)
+
+
+# ----------------------------------------------------------------------------
+def test_a_move_does_not_look_in_the_destination(sessions, rerun):
+    """A move takes the message out of the source, so a second run never
+    finds it again; nothing needs checking."""
+    plan = plan_copy(sessions, spec=ActionSpec(fileinto="Lists"))
+
+    assert plan.moves
+    assert plan.held == ()
+    assert ("select_folder", "INBOX.Lists", True) not in rerun.calls
+
+
+# ----------------------------------------------------------------------------
+def test_a_copy_the_folder_already_holds_whole_changes_nothing(
+    sessions, rerun
+):
+    rerun.folder_messages["INBOX.Lists"][10] = identified(
+        "noreply@github.com", "Issue closed", "2@gh"
+    )
+
+    plan = plan_copy(sessions)
+
+    assert not plan.changes
+
+    result = utilities.mail.execute_mail(sessions, plan, max_messages=2)
+
+    assert result.copied == 0
+    assert "copy" not in rerun.names()
+
+
+# ----------------------------------------------------------------------------
+def test_flags_still_reach_originals_the_folder_already_holds(sessions, rerun):
+    """``addflag`` reaches the kept original whether or not it is copied
+    again, so a held match is still flagged."""
+    plan = plan_copy(
+        sessions, spec=ActionSpec(fileinto="Lists", keep=True, flags=("x",))
+    )
+
+    assert plan.changes
+
+    result = utilities.mail.execute_mail(sessions, plan, max_messages=2)
+
+    assert (result.flagged, result.copied) == (2, 1)
+    assert ("add_flags", (1, 2), (b"x",)) in rerun.calls
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("<a@b>", "<a@b>"),
+        (" <a@b>\r\n", "<a@b>"),
+        ("<long-id\r\n @example.com>", "<long-id@example.com>"),
+        (None, None),
+        ("  ", None),
+    ],
+)
+def test_a_message_id_is_read_without_its_folding(header, expected):
+    message = email.message.Message()
+
+    if header is not None:
+        message["Message-ID"] = header
+
+    assert utilities.mail.message_id(message) == expected
+
+
+# ----------------------------------------------------------------------------
 def test_a_plan_over_the_cap_is_refused_whole(sessions, mailbox):
     plan = utilities.mail.plan_mail(
         sessions, criteria(), ActionSpec(), "INBOX", "INBOX.Lists"

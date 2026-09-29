@@ -1,4 +1,4 @@
-$ mailctl apply --from noreply@github.com --fileinto Lists --keep --dry-run
+$ mailctl apply --from noreply@github.com --fileinto Lists --keep --yes
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
@@ -8,8 +8,8 @@ Searching 'INBOX' for existing matches...
 2 message(s) match:
   uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
   uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
-2 message(s) with no Message-ID cannot be looked for in 'INBOX.Lists', so they will be copied.
-[dry-run] would copy 2 message(s) to 'INBOX.Lists', leaving them in 'INBOX'
+2 message(s) already in 'INBOX.Lists' (same Message-ID) will not be copied again.
+Nothing to do: 'INBOX.Lists' already holds every match.
 
 --- stderr
 
@@ -19,4 +19,7 @@ Searching 'INBOX' for existing matches...
 ('select_folder', 'INBOX', True)
 ('search', [['FROM', 'noreply@github.com']])
 ('fetch', (1, 2, 3))
+('select_folder', 'INBOX.Lists', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (7, 8))
 ('logout',)

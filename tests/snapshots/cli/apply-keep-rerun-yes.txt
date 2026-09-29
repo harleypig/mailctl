@@ -5,10 +5,12 @@ Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 Criteria: From contains 'noreply@github.com'
 
 Searching 'INBOX' for existing matches...
-2 message(s) match:
+3 message(s) match:
   uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
   uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
-2 message(s) with no Message-ID cannot be looked for in 'INBOX.Lists', so they will be copied.
+  uid 4        2026-02-03 04:05:06  Someone <noreply@github.com>   No id
+1 message(s) already in 'INBOX.Lists' (same Message-ID) will not be copied again.
+1 message(s) with no Message-ID cannot be looked for in 'INBOX.Lists', so they will be copied.
 Copied 2 message(s) from 'INBOX' to 'INBOX.Lists'; the originals stay in 'INBOX'
 
 --- stderr
@@ -18,6 +20,10 @@ Copied 2 message(s) from 'INBOX' to 'INBOX.Lists'; the originals stay in 'INBOX'
 ('login', 'user@example.com')
 ('select_folder', 'INBOX', True)
 ('search', [['FROM', 'noreply@github.com']])
-('fetch', (1, 2, 3))
-('copy', (1, 2), 'INBOX.Lists')
+('fetch', (1, 2, 3, 4))
+('select_folder', 'INBOX.Lists', True)
+('search', [['FROM', 'noreply@github.com']])
+('fetch', (7,))
+('select_folder', 'INBOX', True)
+('copy', (2, 4), 'INBOX.Lists')
 ('logout',)
