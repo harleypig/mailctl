@@ -1,0 +1,9 @@
+$ mailctl check-baseline --json
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 1, "error": {"message": "the baseline <TMP>/config/mailctl/baselines/mail.example.com.json cannot be read: KeyError: 'accounts'. It was left as it is; move it aside and run 'mailctl save-baseline' to take a new one."}}
+
+--- sieve calls
+--- imap calls

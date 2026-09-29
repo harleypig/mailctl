@@ -1,0 +1,48 @@
+$ mailctl save-baseline --yes
+exit: 0
+--- stdout
+The baseline for mail.example.com (<TMP>/config/mailctl/baselines/mail.example.com.json) was taken <STAMP>.
+
+The servers say what they said then; saving only moves its date.
+
+--- baseline diff ---
+--- mail.example.com.json (saved)
++++ mail.example.com.json (now)
+@@ -3,7 +3,7 @@
+   "host": "mail.example.com",
+   "server": {
+     "version": 1,
+-    "taken": "<STAMP>",
++    "taken": "<STAMP>",
+     "provider": "mxroute",
+     "endpoints": [
+       {
+@@ -96,6 +96,12 @@
+       "active_rule_set": "managesieve",
+       "rules_capabilities": [],
+       "mail_capabilities": []
++    },
++    "user@example.com": {
++      "taken": "<STAMP>",
++      "active_rule_set": "managesieve",
++      "rules_capabilities": [],
++      "mail_capabilities": []
+     }
+   }
+ }
+--- end diff ---
+Saved the baseline for mail.example.com, taken <STAMP>, to <TMP>/config/mailctl/baselines/mail.example.com.json.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

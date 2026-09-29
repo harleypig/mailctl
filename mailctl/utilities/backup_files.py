@@ -1,7 +1,8 @@
 """Backup files on disk: the exact bytes, written for their owner alone.
 
 Writing a local file is not server communication and belongs to no host,
-so it is here rather than in a provider. Where a backup goes is the
+so it is here rather than in a provider. A saved baseline is written the
+same way (``write_private``). Where a backup goes is the
 dialect's (``Dialect.backup_path`` / ``backup_target``); reading the bytes
 from the server is the transport's.
 """
@@ -11,7 +12,7 @@ from pathlib import Path
 
 from .. import MailctlError
 
-__all__ = ["write_backup"]
+__all__ = ["write_backup", "write_private"]
 
 
 # ----------------------------------------------------------------------------
@@ -27,6 +28,15 @@ def write_backup(text: str, target: Path) -> Path:
     newline translation a text-mode write would otherwise apply, so a
     script the server sent with CRLF line endings comes back byte for byte.
     A backup that is not byte-identical is not a backup.
+    """
+    return write_private(text, target, "backup")
+
+
+# ----------------------------------------------------------------------------
+def write_private(text: str, target: Path, what: str) -> Path:
+    """Write ``text`` to ``target`` exactly, mode ``0600``, in ``0700``.
+
+    ``what`` names the file in the error a failed write raises.
     """
     target = Path(target)
 
@@ -48,7 +58,7 @@ def write_backup(text: str, target: Path) -> Path:
 
     except OSError as exc:
         raise MailctlError(
-            f"could not write backup to {target}: {exc}"
+            f"could not write {what} to {target}: {exc}"
         ) from exc
 
     return target

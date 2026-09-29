@@ -9,6 +9,9 @@ Getting the delimiter wrong does not fail -- it files mail into a folder
 nobody opens, which looks exactly like the filter not running.
 """
 
+import ast
+from pathlib import Path
+
 import pytest
 from imapclient.exceptions import IMAPClientError, LoginError
 from utilities_support import mxroute
@@ -26,6 +29,7 @@ from mailctl.components.imap import (
     normalize_folder,
     split_path,
 )
+from mailctl.components.imap import capabilities as imap_capabilities
 from mailctl.config import Secret
 from mailctl.criteria import Criteria
 from mailctl.providers.base import ActionSpec
@@ -1289,3 +1293,43 @@ def test_a_neutral_order_is_sent_as_rfc_5256_criteria(key, reverse, expected):
     order = utilities.messages.SortOrder(key, reverse)
 
     assert records.sort_criteria(order) == expected
+
+
+# ############################################################################
+# The capabilities the component behaves differently without (#19)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def checked_in_source() -> set[str]:
+    """Every name the component passes to ``has_capability``, from its AST.
+
+    Walked, not listed, so a check added anywhere in the package is found
+    the day it lands.
+    """
+    package = Path(imap_capabilities.__file__).parent
+    found = set()
+
+    for path in package.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "has_capability"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+            ):
+                found.add(node.args[0].value)
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def test_the_checked_capabilities_are_the_ones_the_source_checks():
+    """Red if a ``has_capability`` check is added or dropped without the
+    list a drift check reads being changed with it. MOVE is the known
+    positive: the walk must see the move fallback's own check."""
+    found = checked_in_source()
+
+    assert "MOVE" in found
+    assert found == imap_capabilities.CHECKED_CAPABILITIES

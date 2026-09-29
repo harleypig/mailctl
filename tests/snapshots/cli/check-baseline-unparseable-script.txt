@@ -1,0 +1,36 @@
+$ mailctl check-baseline
+exit: 4
+--- stdout
+Baseline for mail.example.com, taken <STAMP>: <TMP>/config/mailctl/baselines/mail.example.com.json
+
+5 serious, 7 informational change(s):
+  ! the active script is now 'managesieve', not 'old' -- mailctl edits the active script, so it may no longer be the one your rules are in
+  ! the folder delimiter is now '.', not '/' -- every folder a rule files into is suspect
+  ! Sieve extensions: 'fileinto' is gone -- the active script requires it, so its rules may now fail
+  ! IMAP personal namespace is now prefix 'INBOX.' delimiter '.', not prefix '' delimiter '/' -- a new folder is placed under it
+  ! IMAP capability 'MOVE' is new -- mailctl uses it where it is offered
+  - IMAP capability 'QUOTA' is gone
+  - ManageSieve capability 'SASL' is now 'PLAIN', not 'PLAIN LOGIN'
+  - ManageSieve capability 'X-HOSTILE' is now '\x1b[31mred\x07', not 'calm'
+  - Sieve extensions: 'regex' is new -- possibly something mailctl could use
+  - IMAP identity 'version' is now (none), not '2.3.21' -- the clearest sign of a migration
+  - ManageSieve identity 'implementation' is now 'Dovecot Pigeonhole', not 'Dovecot Pigeonhole 2.3' -- the clearest sign of a migration
+  - IMAP endpoint is now 'mail.example.com:993', not 'old.example.com:993' -- the baseline may describe another server
+
+The active script could not be parsed, so every extension that is gone is counted as one it requires.
+
+Nothing was refused: the baseline records, it does not decide. 'mailctl save-baseline' replaces it, after showing what changed.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

@@ -58,8 +58,8 @@ where every write path is proved first.
    - `config` — the flag → env → file → default resolution order, and that a
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
-     `scripts`, `backup`, `flags`, `folders`, `mail`, `messages`, and
-     `reports` under `mailctl/utilities/`; a backup's bytes on disk are
+     `scripts`, `backup`, `baseline`, `flags`, `folders`, `mail`,
+     `messages`, and `reports` under `mailctl/utilities/`; a backup's bytes on disk are
      `test_backup.py`, and the migration utility `test_migration.py`) —
      every plan and execute step driven with plain inputs over a session,
      as any front-end would call it. The safety
@@ -198,6 +198,9 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   `folders --counts --json` checked against each folder's own `STATUS`,
   leaving every message unread ([#157][i157]). `search --sort` runs
   against Dovecot's own `SORT` in `test_search_sort.py` ([#159][i159]).
+  And baselines: one saved from the server checks clean against it, saving
+  writes nothing there, and drift made by editing the saved file exits 3 or
+  4 as documented.
   New mail is also handed to `dovecot-lda`, which runs the uploaded script,
   so the going-forward half is seen filing it too — by header, and by
   body through an `add --body` rule.

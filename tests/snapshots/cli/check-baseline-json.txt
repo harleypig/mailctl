@@ -1,0 +1,29 @@
+$ mailctl check-baseline --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "host": "mail.example.com",
+  "baseline": "<TMP>/config/mailctl/baselines/mail.example.com.json",
+  "baseline_taken": "<STAMP>",
+  "taken": "<STAMP>",
+  "account_recorded": true,
+  "requires_known": true,
+  "serious": 0,
+  "informational": 0,
+  "drift": []
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

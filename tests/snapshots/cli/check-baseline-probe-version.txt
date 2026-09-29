@@ -1,0 +1,9 @@
+$ mailctl check-baseline
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: the baseline <TMP>/config/mailctl/baselines/mail.example.com.json cannot be read: probe document version 9; this mailctl reads version 1. It was left as it is; move it aside and run 'mailctl save-baseline' to take a new one.
+
+--- sieve calls
+--- imap calls

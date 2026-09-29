@@ -34,6 +34,7 @@ __all__ = [
     "LegacySetting",
     "Secret",
     "Source",
+    "baseline_dir",
     "config_dir",
     "config_path",
     "default_backup_dir",
@@ -584,6 +585,13 @@ def default_backup_dir() -> Path:
     ``MAILCTL_BACKUP_DIR`` / ``backup_dir`` override it either way.
     """
     return config_dir() / "backups"
+
+
+# ----------------------------------------------------------------------------
+def baseline_dir() -> Path:
+    """Return where saved baselines live: beside the backups, for the
+    reason ``default_backup_dir`` gives. One file per host."""
+    return config_dir() / "baselines"
 
 
 # ----------------------------------------------------------------------------

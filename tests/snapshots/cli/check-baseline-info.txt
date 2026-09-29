@@ -1,0 +1,23 @@
+$ mailctl check-baseline
+exit: 3
+--- stdout
+Baseline for mail.example.com, taken <STAMP>: <TMP>/config/mailctl/baselines/mail.example.com.json
+
+0 serious, 1 informational change(s):
+  - Sieve extensions: 'regex' is new -- possibly something mailctl could use
+
+Nothing was refused: the baseline records, it does not decide. 'mailctl save-baseline' replaces it, after showing what changed.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

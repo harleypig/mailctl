@@ -174,9 +174,9 @@ def dests(parser: argparse.ArgumentParser) -> set[str]:
     return {item.dest for item in parser._actions}
 
 
-# Writes whose --dry-run is not a plan against the server: backup writes a
-# local file, migrate-config moves local files.
-LOCAL_WRITES = {"backup", "migrate-config"}
+# Writes whose --dry-run is not a plan against the server: backup and
+# save-baseline write a local file, migrate-config moves local files.
+LOCAL_WRITES = {"backup", "migrate-config", "save-baseline"}
 
 
 # ----------------------------------------------------------------------------

@@ -1,0 +1,47 @@
+$ mailctl show-baseline
+exit: 0
+--- stdout
+Baseline for mail.example.com: <TMP>/config/mailctl/baselines/mail.example.com.json
+Accounts:  other@example.com
+  (user@example.com has no part in it; the server's part only)
+
+Probe of mxroute, taken <STAMP>
+IMAP:      mail.example.com:993
+Sieve:     mail.example.com:4190 (tls=starttls)
+
+ManageSieve (capabilities read before login):
+  identity:
+    implementation: Dovecot Pigeonhole
+  capabilities: 6
+    IMPLEMENTATION Dovecot Pigeonhole
+    NOTIFY mailto
+    SASL PLAIN
+    SIEVE fileinto imap4flags mailbox regex
+    VERSION 1.0
+    X-HOSTILE \x1b[31mred\x07
+  Sieve extensions: 4
+    fileinto
+    imap4flags
+    mailbox
+    regex
+  active script: (not recorded for this account)
+
+IMAP (capabilities read after login):
+  identity:
+    name: Dovecot
+  capabilities: 5
+    ID
+    IMAP4REV1
+    MOVE
+    NAMESPACE
+    UIDPLUS
+  delimiter: '.'
+  namespaces:
+    personal  prefix 'INBOX.'  delimiter '.'
+
+--json prints the file as it is stored.
+
+--- stderr
+
+--- sieve calls
+--- imap calls

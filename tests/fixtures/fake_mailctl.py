@@ -31,6 +31,10 @@ faults to inject, so a test can watch a check go red:
   advertising LIST-STATUS
 - ``sort-unordered``  -- ``search --sort size --reverse`` lists a smaller
   message ahead of a larger one
+- ``no-baseline``     -- no baseline has been saved (``show-baseline``
+  and ``check-baseline`` exit 1)
+- ``baseline-info``   -- ``check-baseline`` finds informational drift (3)
+- ``baseline-serious`` -- ``check-baseline`` finds serious drift (4)
 """
 
 import json
@@ -386,11 +390,61 @@ def document(command: str) -> str:
 
 
 # ----------------------------------------------------------------------------
+def baseline(command: str) -> int:
+    """'show-baseline' and 'check-baseline', exit status included."""
+    where = "/home/u/.config/mailctl/baselines/mail.example.com.json"
+
+    if "no-baseline" in BREAK:
+        message = (
+            f"no baseline has been saved for mail.example.com (looked for "
+            f"{where}); 'mailctl save-baseline' records one"
+        )
+
+        # Under --json a failure is one JSON line on stderr (#151).
+        if "--json" in ARGV:
+            error = {"version": 1, "error": {"message": message}}
+            print(json.dumps(error), file=sys.stderr)
+
+        else:
+            print(f"mailctl: {message}", file=sys.stderr)
+
+        return 1
+
+    if command == "show-baseline":
+        sys.stdout.write(json.dumps({"version": 1}, indent=2) + "\n")
+
+        return 0
+
+    print(
+        f"Baseline for mail.example.com, taken 2026-09-01T08:00:00Z: {where}"
+    )
+
+    if "baseline-serious" in BREAK:
+        print("\n1 serious, 0 informational change(s):")
+        print("  ! the folder delimiter is now '/', not '.'")
+
+        return 4
+
+    if "baseline-info" in BREAK:
+        print("\n0 serious, 1 informational change(s):")
+        print("  - Sieve extensions: 'regex' is new")
+
+        return 3
+
+    print("\nNo drift: the servers say what they said then.")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
 def main() -> int:
     with open(os.environ["STUB_LOG"], "a", encoding="utf-8") as log:
         log.write(json.dumps(ARGV) + "\n")
 
     command = ARGV[0]
+
+    if command in ("show-baseline", "check-baseline"):
+        return baseline(command)
 
     if (
         command == "folders"

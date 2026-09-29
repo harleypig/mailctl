@@ -1,0 +1,17 @@
+$ mailctl save-baseline --dry-run
+exit: 0
+--- stdout
+[dry-run] would save the baseline for mail.example.com, taken <STAMP>, to <TMP>/config/mailctl/baselines/mail.example.com.json; nothing was written.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

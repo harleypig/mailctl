@@ -1,0 +1,137 @@
+$ mailctl save-baseline --yes
+exit: 0
+--- stdout
+The baseline for mail.example.com (<TMP>/config/mailctl/baselines/mail.example.com.json) was taken <STAMP>.
+
+Since then:
+  ! the active script is now 'managesieve', not 'old' -- mailctl edits the active script, so it may no longer be the one your rules are in
+  ! the folder delimiter is now '.', not '/' -- every folder a rule files into is suspect
+  ! Sieve extensions: 'fileinto' is gone -- the active script requires it, so its rules may now fail
+  ! IMAP personal namespace is now prefix 'INBOX.' delimiter '.', not prefix '' delimiter '/' -- a new folder is placed under it
+  ! IMAP capability 'MOVE' is new -- mailctl uses it where it is offered
+  - IMAP capability 'QUOTA' is gone
+  - ManageSieve capability 'SASL' is now 'PLAIN', not 'PLAIN LOGIN'
+  - ManageSieve capability 'X-HOSTILE' is now '\x1b[31mred\x07', not 'calm'
+  - Sieve extensions: 'regex' is new -- possibly something mailctl could use
+  - IMAP identity 'version' is now (none), not '2.3.21' -- the clearest sign of a migration
+  - ManageSieve identity 'implementation' is now 'Dovecot Pigeonhole', not 'Dovecot Pigeonhole 2.3' -- the clearest sign of a migration
+  - IMAP endpoint is now 'mail.example.com:993', not 'old.example.com:993' -- the baseline may describe another server
+
+--- baseline diff ---
+--- mail.example.com.json (saved)
++++ mail.example.com.json (now)
+@@ -3,12 +3,12 @@
+   "host": "mail.example.com",
+   "server": {
+     "version": 1,
+-    "taken": "<STAMP>",
++    "taken": "<STAMP>",
+     "provider": "mxroute",
+     "endpoints": [
+       {
+         "label": "IMAP",
+-        "value": "old.example.com:993"
++        "value": "mail.example.com:993"
+       },
+       {
+         "label": "Sieve",
+@@ -17,7 +17,7 @@
+     ],
+     "rules": {
+       "identity": {
+-        "implementation": "Dovecot Pigeonhole 2.3"
++        "implementation": "Dovecot Pigeonhole"
+       },
+       "capabilities_after_login": false,
+       "capabilities": [
+@@ -31,7 +31,7 @@
+         },
+         {
+           "name": "SASL",
+-          "value": "PLAIN LOGIN"
++          "value": "PLAIN"
+         },
+         {
+           "name": "SIEVE",
+@@ -43,19 +43,18 @@
+         },
+         {
+           "name": "X-HOSTILE",
+-          "value": "calm"
++          "value": "\u001b[31mred\u0007"
+         }
+       ],
+       "extensions": [
+-        "fileinto",
+         "imap4flags",
+-        "mailbox"
++        "mailbox",
++        "regex"
+       ]
+     },
+     "mail": {
+       "identity": {
+-        "name": "Dovecot",
+-        "version": "2.3.21"
++        "name": "Dovecot"
+       },
+       "capabilities_after_login": true,
+       "capabilities": [
+@@ -68,32 +67,32 @@
+           "value": null
+         },
+         {
++          "name": "MOVE",
++          "value": null
++        },
++        {
+           "name": "NAMESPACE",
+           "value": null
+         },
+         {
+           "name": "UIDPLUS",
+           "value": null
+-        },
+-        {
+-          "name": "QUOTA",
+-          "value": null
+         }
+       ],
+-      "delimiter": "/",
++      "delimiter": ".",
+       "namespaces": [
+         {
+           "kind": "personal",
+-          "prefix": "",
+-          "delimiter": "/"
++          "prefix": "INBOX.",
++          "delimiter": "."
+         }
+       ]
+     }
+   },
+   "accounts": {
+     "user@example.com": {
+-      "taken": "<STAMP>",
+-      "active_rule_set": "old",
++      "taken": "<STAMP>",
++      "active_rule_set": "managesieve",
+       "rules_capabilities": [],
+       "mail_capabilities": []
+     }
+--- end diff ---
+Saved the baseline for mail.example.com, taken <STAMP>, to <TMP>/config/mailctl/baselines/mail.example.com.json.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

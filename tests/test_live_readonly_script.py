@@ -23,6 +23,7 @@ FAKE = Path(__file__).resolve().parent / "fixtures" / "fake_mailctl.py"
 ALL_TESTS = [
     "test",
     "probe",
+    "check-baseline",
     "list",
     "show",
     "rules",
@@ -61,6 +62,7 @@ MUTATING = [
     "move-rule",
     "remove-rule",
     "restore",
+    "save-baseline",
     "subscribe",
     "unsubscribe",
 ]
@@ -214,6 +216,7 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("probe-no-mail", "probe"),
         ("json-noise", "json"),
         ("counts-missing", "folder-counts"),
+        ("baseline-serious", "check-baseline"),
     ],
 )
 def test_a_failing_check_is_not_ok_and_the_run_exits_nonzero(
@@ -330,6 +333,37 @@ def test_json_parses_three_documents_in_three_calls(tmp_path):
         ["folders", "--json"],
         ["rules", "--json"],
     ]
+
+
+# ----------------------------------------------------------------------------
+def test_check_baseline_reads_first_then_checks_and_never_saves(tmp_path):
+    proc, calls = run(tmp_path, "check-baseline")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - check-baseline"]
+    assert calls == [["show-baseline", "--json"], ["check-baseline"]]
+
+
+# ----------------------------------------------------------------------------
+def test_check_baseline_skips_where_none_was_saved(tmp_path):
+    """Red if a missing baseline fails the run, or is 'fixed' by saving."""
+    proc, calls = run(tmp_path, "check-baseline", breaks=["no-baseline"])
+
+    assert proc.returncode == 0
+    assert proc.stdout.splitlines() == [
+        "1..1",
+        "ok 1 - check-baseline # SKIP no baseline saved ('mailctl "
+        "save-baseline' records one)",
+    ]
+    assert calls == [["show-baseline", "--json"]]
+
+
+# ----------------------------------------------------------------------------
+def test_informational_drift_passes_with_its_lines_shown(tmp_path):
+    proc, _ = run(tmp_path, "check-baseline", breaks=["baseline-info"])
+
+    assert proc.returncode == 0
+    assert proc.stdout.splitlines()[1] == "ok 1 - check-baseline"
+    assert "#     - Sieve extensions: 'regex' is new" in proc.stdout
 
 
 # ----------------------------------------------------------------------------

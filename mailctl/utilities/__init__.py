@@ -23,6 +23,7 @@ stores (ADR 0007). One module per subject:
 ``rules``      checking, reading, planning, and uploading rules
 ``scripts``    rule sets as stored: read, chosen, and uploaded
 ``backup``     backing up the active script, and restoring one
+``baseline``   a saved probe per host, and drift from it
 ``backup_files`` writing a backup's exact bytes to disk
 ``flags``      marking messages read, flagged, or with keywords
 ``folders``    listing, subscribing, and planning a rule's target folder
@@ -36,6 +37,7 @@ stores (ADR 0007). One module per subject:
 from . import (
     backup,
     backup_files,
+    baseline,
     events,
     flags,
     folders,
@@ -50,6 +52,7 @@ from . import (
 __all__ = [
     "backup",
     "backup_files",
+    "baseline",
     "events",
     "flags",
     "folders",

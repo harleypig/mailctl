@@ -1,0 +1,21 @@
+$ mailctl check-baseline
+exit: 0
+--- stdout
+Baseline for mail.example.com, taken <STAMP>: <TMP>/config/mailctl/baselines/mail.example.com.json
+  (user@example.com has no part in it, so the active script was not compared)
+
+No drift: the servers say what they said then.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

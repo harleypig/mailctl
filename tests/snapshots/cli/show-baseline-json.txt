@@ -1,0 +1,109 @@
+$ mailctl show-baseline --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "host": "mail.example.com",
+  "server": {
+    "version": 1,
+    "taken": "<STAMP>",
+    "provider": "mxroute",
+    "endpoints": [
+      {
+        "label": "IMAP",
+        "value": "mail.example.com:993"
+      },
+      {
+        "label": "Sieve",
+        "value": "mail.example.com:4190 (tls=starttls)"
+      }
+    ],
+    "rules": {
+      "identity": {
+        "implementation": "Dovecot Pigeonhole"
+      },
+      "capabilities_after_login": false,
+      "capabilities": [
+        {
+          "name": "IMPLEMENTATION",
+          "value": "Dovecot Pigeonhole"
+        },
+        {
+          "name": "NOTIFY",
+          "value": "mailto"
+        },
+        {
+          "name": "SASL",
+          "value": "PLAIN"
+        },
+        {
+          "name": "SIEVE",
+          "value": "fileinto imap4flags mailbox regex"
+        },
+        {
+          "name": "VERSION",
+          "value": "1.0"
+        },
+        {
+          "name": "X-HOSTILE",
+          "value": "\u001b[31mred\u0007"
+        }
+      ],
+      "extensions": [
+        "fileinto",
+        "imap4flags",
+        "mailbox",
+        "regex"
+      ]
+    },
+    "mail": {
+      "identity": {
+        "name": "Dovecot"
+      },
+      "capabilities_after_login": true,
+      "capabilities": [
+        {
+          "name": "ID",
+          "value": null
+        },
+        {
+          "name": "IMAP4REV1",
+          "value": null
+        },
+        {
+          "name": "MOVE",
+          "value": null
+        },
+        {
+          "name": "NAMESPACE",
+          "value": null
+        },
+        {
+          "name": "UIDPLUS",
+          "value": null
+        }
+      ],
+      "delimiter": ".",
+      "namespaces": [
+        {
+          "kind": "personal",
+          "prefix": "INBOX.",
+          "delimiter": "."
+        }
+      ]
+    }
+  },
+  "accounts": {
+    "user@example.com": {
+      "taken": "<STAMP>",
+      "active_rule_set": "managesieve",
+      "rules_capabilities": [],
+      "mail_capabilities": []
+    }
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls

@@ -30,6 +30,7 @@ PAUSE=${LIVECHECK_PAUSE:-2}
 readonly TESTS=(
   test
   probe
+  check-baseline
   list
   show
   rules
@@ -69,6 +70,7 @@ readonly MUTATING=(
   move-rule
   remove-rule
   restore
+  save-baseline
   subscribe
   unsubscribe
 )
@@ -421,6 +423,43 @@ t_probe() {
 
   problem=$(python3 -c "$PROBE_CHECK" "$RAW" 2>&1) \
     || fail "probe --json: ${problem:-not a probe document}"
+}
+
+#-----------------------------------------------------------------------------
+# Only where a baseline has been saved; this never saves one. Serious drift
+# fails, since that is what the check exists to catch; informational drift
+# passes with its lines as diagnostics.
+t_check_baseline() {
+  run_mailctl show-baseline --json
+
+  if ((RC == 1)) && grep -q 'no baseline has been saved' "$ERR"; then
+    SKIP_REASON="no baseline saved ('mailctl save-baseline' records one)"
+
+    return 2
+  fi
+
+  expect_ok 'show-baseline --json' || return 1
+
+  run_mailctl check-baseline
+
+  case $RC in
+    0)
+      expect_line '^No drift: '
+      ;;
+
+    3)
+      diag 'informational drift since the baseline:'
+      diag_output
+      ;;
+
+    4)
+      fail 'serious drift since the baseline'
+      ;;
+
+    *)
+      fail "mailctl check-baseline exited $RC"
+      ;;
+  esac
 }
 
 #-----------------------------------------------------------------------------
