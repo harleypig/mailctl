@@ -339,6 +339,18 @@ the protocol's behaviour and not a Dovecot quirk ([ADR 0006][adr6]
 *Amendment*), and the `imap` component subscribes explicitly for every
 server.
 
+### Folder rename, 2026-08-14
+
+Recorded on [#5][i5]. A rename done by hand on the same account moved the
+folder and its 360 messages, and left the new name out of `LSUB`, so
+webmail stopped showing it. That is the protocol's behaviour too: `RENAME`
+does not carry a subscription (RFC 3501 section 6.3.5). Whether the old
+name stayed in `LSUB` was not recorded. `rename-folder` does not depend on
+either answer: it subscribes each new name that was subscribed before,
+drops any old name still listed, and reads `LSUB` back afterwards. The
+container tier's Dovecot 2.4 did the same on 2026-09-29, keeping the old
+names subscribed; that is a local server, not an MXroute one.
+
 ### The 2026-09-27 library evaluation
 
 The evaluation behind [ADR 0006][adr6] was about `sievelib` and
@@ -512,6 +524,7 @@ with `mailctl show`.
 [i18]: https://github.com/harleypig/mailctl/issues/18
 [i19]: https://github.com/harleypig/mailctl/issues/19
 [i30]: https://github.com/harleypig/mailctl/issues/30
+[i5]: https://github.com/harleypig/mailctl/issues/5
 [i38]: https://github.com/harleypig/mailctl/issues/38
 [i101]: https://github.com/harleypig/mailctl/issues/101
 [i102]: https://github.com/harleypig/mailctl/issues/102

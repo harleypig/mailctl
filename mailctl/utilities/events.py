@@ -39,4 +39,23 @@ class FolderCreated:
     result: FolderCreation
 
 
+@dataclass(frozen=True)
+class FolderRenamed:
+    """A folder was renamed over IMAP, with ``children`` folders under it;
+    their subscriptions are fixed next."""
+
+    old: str
+    new: str
+    children: int
+
+
+@dataclass(frozen=True)
+class SubscriptionChanged:
+    """A folder was subscribed to, or dropped from the subscription list,
+    as part of a larger change."""
+
+    folder: str
+    subscribed: bool
+
+
 EventSink = Callable[[object], None]

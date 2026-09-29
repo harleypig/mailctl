@@ -330,6 +330,34 @@ def mark_plan(record) -> dict:
     )
 
 
+# ----------------------------------------------------------------------------
+def folder_rename_plan(record) -> dict:
+    """``rename-folder``: every folder that moves, whether each is
+    subscribed now, the messages the folder holds, and each rule's filing
+    action that would be repointed. A rename always changes something;
+    ``diff`` is null where no rule does, and the script is left alone."""
+    return plan(
+        "rename-folder",
+        changes=True,
+        diff=change(record.rules_change, record.diff)["diff"],
+        requested={"old": record.requested_old, "new": record.requested_new},
+        old=record.old,
+        new=record.new,
+        delimiter=record.delimiter,
+        messages=record.messages,
+        folders=[
+            {"old": move.old, "new": move.new, "subscribed": move.subscribed}
+            for move in record.moves
+        ],
+        missing_parents=list(record.missing_parents),
+        rules=[
+            {"rule": item.rule, "old": item.old, "new": item.new}
+            for item in record.retargets
+        ],
+        **activation(record),
+    )
+
+
 # ############################################################################
 # Shared records
 # ############################################################################

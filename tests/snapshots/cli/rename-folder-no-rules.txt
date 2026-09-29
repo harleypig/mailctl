@@ -1,0 +1,33 @@
+$ mailctl rename-folder spam Junk --yes
+exit: 0
+--- stdout
+Folder 'spam' resolves to 'INBOX.spam' (delimiter '.')
+Folder 'Junk' resolves to 'INBOX.Junk' (delimiter '.')
+Rename IMAP folder 'INBOX.spam' to 'INBOX.Junk' (12 messages)
+  Left unsubscribed, as before: 'INBOX.Junk'
+
+No rule in 'managesieve' files into 'INBOX.spam' or a folder under it; the script is left alone.
+Renamed IMAP folder 'INBOX.spam' to 'INBOX.Junk'
+
+Checked after the rename:
+  ok    'INBOX.spam' is gone
+  ok    'INBOX.Junk' exists
+  ok    'INBOX.spam' is off the subscription list
+  ok    'INBOX.Junk' holds 12 messages; 'INBOX.spam' held 12
+  ok    no rule in 'managesieve' files into 'INBOX.spam' or a folder under it
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('folder_status', 'INBOX.spam', ('MESSAGES',))
+('rename_folder', 'INBOX.spam', 'INBOX.Junk')
+('folder_status', 'INBOX.Junk', ('MESSAGES',))
+('logout',)

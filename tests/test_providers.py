@@ -65,6 +65,7 @@ from mailctl.providers.base import (
     Fact,
     FetchedMessage,
     FolderListing,
+    FolderReference,
     FolderStatus,
     MailActionResult,
     MessageSummary,
@@ -279,6 +280,29 @@ class FakeDialect(Dialect):
         return cls.diff(before, after, name)
 
     @classmethod
+    def folder_references(cls, source):
+        return [
+            FolderReference(entry["name"], action.removeprefix("file:"))
+            for entry in json.loads(source or "[]")
+            for action in entry["actions"]
+            if action.startswith("file:")
+        ]
+
+    @classmethod
+    def retarget_folders(cls, source, renames):
+        entries = json.loads(source or "[]")
+
+        for entry in entries:
+            entry["actions"] = [
+                f"file:{renames.get(action[5:], action[5:])}"
+                if action.startswith("file:")
+                else action
+                for action in entry["actions"]
+            ]
+
+        return json.dumps(entries)
+
+    @classmethod
     def report_extensions(cls, advertised, config):
         return []
 
@@ -488,6 +512,17 @@ class FakeTransport(Transport):
             return len(self.messages[uid]) if order.key == "size" else uid
 
         return sorted(sorted(self.messages), key=key, reverse=order.reverse)
+
+    def rename_folder(self, old, new):
+        self.folders = [
+            new + name[len(old) :]
+            if name == old or name.startswith(f"{old}.")
+            else name
+            for name in self.folders
+        ]
+
+    def message_count(self, folder):
+        return len(self.messages)
 
 
 FAKE = Provider("fake", FULL, FakeDialect, FakeTransport)
@@ -2023,3 +2058,41 @@ def test_mxroute_sorts_on_the_server_where_it_advertises_sort(
 ):
     """Read at runtime from the capability list, never assumed."""
     assert MxrouteDialect.sorts_messages(advertised) is sorts
+
+
+# ############################################################################
+# A folder rename, on a host with nothing in common with MXroute (#5)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_folder_rename_runs_through_a_second_provider(fakes, tmp_path):
+    """The rename is utilities over the interface: the fake's own folder
+    move, subscription list, and JSON rules all follow it."""
+    session = fake_session()
+    transport = fake_transport(session)
+    transport.scripts["main"] = json.dumps(
+        [
+            {"name": "lists", "from": "x", "actions": ["file:INBOX.Lists"]},
+            _stored("keep-boss", "boss"),
+        ]
+    )
+    config = Config(backup_dir=tmp_path)
+
+    plan = utilities.folder_rename.plan_folder_rename(
+        session, "Lists", "Archive"
+    )
+    result = utilities.folder_rename.execute_folder_rename(
+        session, config, plan
+    )
+
+    assert transport.folders == ["INBOX", "INBOX.Archive"]
+    assert "INBOX.Archive" in transport.subscribed
+    assert "INBOX.Lists" not in transport.subscribed
+    assert [
+        reference.folder
+        for reference in FakeDialect.folder_references(
+            transport.scripts["main"]
+        )
+    ] == ["INBOX.Archive", "x"]
+    assert result.ok, result.checks

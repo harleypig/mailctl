@@ -48,6 +48,7 @@ ALL_TESTS = [
     "disable-rule",
     "subscribe",
     "create-folder",
+    "rename-folder",
     "unchanged",
 ]
 
@@ -62,6 +63,7 @@ MUTATING = [
     "migrate-config",
     "move-rule",
     "remove-rule",
+    "rename-folder",
     "restore",
     "save-baseline",
     "subscribe",
@@ -565,3 +567,26 @@ def test_search_sort_names_sizes_out_of_order(tmp_path):
     assert proc.stdout.splitlines()[2] == (
         "# search --sort: sizes are not largest first: [100, 5000, 800]"
     )
+
+
+# ----------------------------------------------------------------------------
+def test_rename_folder_plans_one_rename_of_a_real_folder(tmp_path):
+    """One dry run, of the folder 'folders' listed that is neither INBOX
+    nor unsubscribed, to a name nothing has."""
+    proc, calls = run(tmp_path, "rename-folder")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - rename-folder"]
+
+    (rename,) = [call for call in calls if call[0] == "rename-folder"]
+
+    assert rename[:3] == ["rename-folder", "--dry-run", "INBOX.Lists"]
+    assert rename[3].startswith("MailctlReadonlyProbe-")
+
+
+# ----------------------------------------------------------------------------
+def test_rename_folder_fails_when_the_dry_run_reports_a_rename(tmp_path):
+    proc, _ = run(tmp_path, "rename-folder", breaks=["rename-renames"])
+
+    assert proc.returncode != 0
+    assert "not ok 1 - rename-folder" in proc.stdout
+    assert "reported a change under --dry-run" in proc.stdout

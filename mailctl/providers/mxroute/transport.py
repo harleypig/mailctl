@@ -295,3 +295,11 @@ class MxrouteTransport(Transport):
         return self._imap().sort_uids(
             folder, records.sort_criteria(order), criteria, expression
         )
+
+    # ------------------------------------------------------------------------
+    def rename_folder(self, old: str, new: str) -> None:
+        self._imap().rename_folder(old, new)
+
+    # ------------------------------------------------------------------------
+    def message_count(self, folder: str) -> int:
+        return self._imap().message_count(folder)

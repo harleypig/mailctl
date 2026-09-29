@@ -65,6 +65,7 @@ from .model import (
     FetchedMessage,
     FolderCreation,
     FolderListing,
+    FolderReference,
     FolderStatus,
     MailActionPlan,
     MailActionResult,
@@ -115,6 +116,7 @@ __all__ = [
     "FetchedMessage",
     "FolderCreation",
     "FolderListing",
+    "FolderReference",
     "FolderStatus",
     "MailActionPlan",
     "MailActionResult",
@@ -459,6 +461,23 @@ class Dialect(ABC):
         cls, advertised: list[str], config: Config
     ) -> list[ExtensionState]:
         """Every extension mailctl knows or the host lists, and its state."""
+
+    @classmethod
+    @abstractmethod
+    def folder_references(cls, source: str) -> list[FolderReference]:
+        """Every folder a rule in a stored rule set files into, in order."""
+
+    @classmethod
+    @abstractmethod
+    def retarget_folders(cls, source: str, renames: Mapping[str, str]) -> str:
+        """Point every filing action whose folder is a key of ``renames``
+        at its value, and change nothing else in ``source``.
+
+        Names match exactly, as :meth:`folder_references` reports them.
+        Rules that file nowhere renamed come back byte for byte, so the
+        host's own formatting and any comments survive; a target the
+        dialect cannot rewrite safely is refused rather than skipped.
+        """
 
     # ------------------------------------------------------------------------
     # Backups -- where the host's exact bytes are kept on disk
@@ -826,6 +845,20 @@ class Transport(ABC):
         Asked only where the dialect's :meth:`Dialect.sorts_messages` says
         the server can; the utilities still re-check what comes back.
         """
+
+    @abstractmethod
+    @classified(Operation(WRITE, MAIL))
+    def rename_folder(self, old: str, new: str) -> None:
+        """Rename a folder, and every folder under it, as the host does.
+
+        Subscriptions are not carried: IMAP's RENAME leaves them as they
+        were (RFC 3501 section 6.3.5), so that is a step of its own.
+        """
+
+    @abstractmethod
+    @classified(Operation(READ, MAIL))
+    def message_count(self, folder: str) -> int:
+        """How many messages ``folder`` holds, without selecting it."""
 
 
 # ############################################################################

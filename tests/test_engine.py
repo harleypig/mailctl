@@ -439,6 +439,8 @@ EXPECTED_KINDS = {
     "message_headers": (READ, MAIL),
     "message_source": (READ, MAIL),
     "sort_messages": (READ, MAIL),
+    "rename_folder": (WRITE, MAIL),
+    "message_count": (READ, MAIL),
     "open": (CONNECTION, None),
     "connect": (CONNECTION, None),
     "disconnect": (CONNECTION, None),

@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from imapclient.exceptions import IMAPClientError
 
 from mailctl import cli
 from mailctl.components.managesieve import client as sieve_client
@@ -173,8 +174,10 @@ def message(sender: str, subject: str, list_id: str | None = None) -> bytes:
 # runs in), mail / flags
 # (extra messages and their IMAP flags, by UID), and stray (how many empty
 # names the script listing carries), sieve_extra (raw CAPABILITY lines
-# sent ahead of SIEVE), imap_caps (what IMAP advertises), and password
-# (MAILCTL_PASSWORD's value).
+# sent ahead of SIEVE), imap_caps (what IMAP advertises), password
+# (MAILCTL_PASSWORD's value), folders (further folders, as (name,
+# subscribed) pairs), and imap_failures (an IMAPClient method, and the
+# error text it raises).
 
 # Host from the env file over the exported MAILCTL_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
@@ -720,6 +723,37 @@ JSON_SCENARIOS = {
         {"file": ONE_RULE},
     ),
 }
+
+# For 'rename-folder' (#5): a rule filing into INBOX.Lists, a disabled one
+# filing into the folder under it, and a rule and a hand comment that must
+# come through the rename byte for byte.
+RENAME_SCRIPT = """require ["fileinto"];
+# rule:[lists]
+if header :contains "list-id" "lists.example.com"
+{
+\tfileinto "INBOX.Lists";
+\tstop;
+}
+# my own note
+# rule:[keep-boss]
+if header :contains "from" "boss@example.com"
+{
+\tfileinto "INBOX.Boss";
+}
+# rule:[github]
+if false # header :contains "from" "noreply@github.com"
+{
+\tfileinto "INBOX.Lists.GitHub";
+}
+"""
+
+RENAME = {
+    "script": RENAME_SCRIPT,
+    "folders": [("INBOX.Lists.GitHub", True)],
+    "counts": {"INBOX.Lists": (360, 0, 0)},
+}
+
+RENAME_ARGS = ["rename-folder", "Lists", "Archive"]
 
 SCENARIOS = {
     **HOSTILE,
@@ -1747,6 +1781,29 @@ SCENARIOS = {
         ],
         {},
     ),
+    # #5: a folder renamed, its subfolder with it, its subscriptions
+    # carried, and the rules filing into either repointed.
+    "rename-folder-dry": ([*RENAME_ARGS, "--dry-run"], RENAME),
+    "rename-folder-dry-json": ([*RENAME_ARGS, "--dry-run", "--json"], RENAME),
+    "rename-folder-yes": ([*RENAME_ARGS, "--yes"], RENAME),
+    "rename-folder-notty": (RENAME_ARGS, RENAME),
+    "rename-folder-no-rules": (["rename-folder", "spam", "Junk", "--yes"], {}),
+    "rename-folder-inbox": (["rename-folder", "INBOX", "Archive"], {}),
+    "rename-folder-missing": (["rename-folder", "lists", "Archive"], {}),
+    "rename-folder-exists": (["rename-folder", "Lists", "spam"], {}),
+    "rename-folder-case-clash": (["rename-folder", "Lists", "Spam"], {}),
+    "rename-folder-rejected": (
+        [*RENAME_ARGS, "--yes"],
+        {**RENAME, "reject": True},
+    ),
+    "rename-folder-rename-fails": (
+        [*RENAME_ARGS, "--yes"],
+        {**RENAME, "imap_failures": {"rename_folder": "NO [INUSE]"}},
+    ),
+    "rename-folder-subscribe-fails": (
+        [*RENAME_ARGS, "--yes"],
+        {**RENAME, "imap_failures": {"subscribe_folder": "NO quota"}},
+    ),
 }
 
 # ############################################################################
@@ -1836,6 +1893,15 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
 
     if "counts" in options:
         imap.counts = options["counts"]
+
+    for folder, subscribed in options.get("folders", ()):
+        imap.listing.append(((), b".", folder.encode()))
+
+        if subscribed:
+            imap.subscriptions.append(((), b".", folder.encode()))
+
+    for method, text in options.get("imap_failures", {}).items():
+        imap.failures[method] = IMAPClientError(text)
 
     monkeypatch.setattr(sieve_client, "SieveClient", lambda *a, **k: sieve)
     if "file" in options:

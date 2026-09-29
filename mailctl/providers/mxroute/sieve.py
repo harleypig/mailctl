@@ -14,7 +14,7 @@ transport's (``managesieve.py``).
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import overload
 
 from sievelib import factory
@@ -35,7 +35,13 @@ from ...components.managesieve.script import (
 from ...config import DEFAULT, Config, Source
 from ...criteria import Criteria, escape_sieve_string
 from ...rules import Rule, rule_from_criteria
-from ..base import ActionSpec, DisplayDiff, ExtensionState, Placement
+from ..base import (
+    ActionSpec,
+    DisplayDiff,
+    ExtensionState,
+    FolderReference,
+    Placement,
+)
 
 __all__ = [
     "DIFF_LABEL",
@@ -51,6 +57,7 @@ __all__ = [
     "disable_rule",
     "display_diff",
     "enable_rule",
+    "folder_references",
     "merge_rule",
     "move_rule",
     "parse_script",
@@ -59,6 +66,7 @@ __all__ = [
     "render_script",
     "report_extensions",
     "required_extensions",
+    "retarget_folders",
     "sieve_actions",
 ]
 
@@ -468,6 +476,22 @@ def move_rule(existing: str, name: str, placement: Placement) -> str:
     return _script.move_rule(
         existing, name, component_placement(placement), ROUNDCUBE_DIALECT
     )
+
+
+# ----------------------------------------------------------------------------
+def folder_references(existing: str) -> list[FolderReference]:
+    """Every ``fileinto`` in a script, by Roundcube's rule names."""
+    return [
+        FolderReference(rule, folder)
+        for rule, folder in _script.fileinto_targets(parse_script(existing))
+    ]
+
+
+# ----------------------------------------------------------------------------
+def retarget_folders(existing: str, renames: Mapping[str, str]) -> str:
+    """``managesieve.retarget_fileinto``: a byte-level edit, so the names
+    need no translating."""
+    return _script.retarget_fileinto(existing, renames)
 
 
 # ----------------------------------------------------------------------------

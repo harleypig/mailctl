@@ -28,6 +28,7 @@ stores (ADR 0007). One module per subject:
 ``backup_files`` writing a backup's exact bytes to disk
 ``flags``      marking messages read, flagged, or with keywords
 ``folders``    listing, subscribing, and planning a rule's target folder
+``folder_rename`` renaming a folder and repointing the rules filing into it
 ``mail``       the existing-mail pass, and criteria from a message
 ``messages``   finding and reading messages
 ``migration``  what the rename from ``mxfilter`` left behind
@@ -41,6 +42,7 @@ from . import (
     baseline,
     events,
     flags,
+    folder_rename,
     folders,
     mail,
     messages,
@@ -57,6 +59,7 @@ __all__ = [
     "baseline",
     "events",
     "flags",
+    "folder_rename",
     "folders",
     "mail",
     "messages",

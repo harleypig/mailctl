@@ -1,0 +1,11 @@
+$ mailctl rename-folder Lists spam
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: not renaming 'INBOX.Lists': 'INBOX.spam' already exists. Rename or remove it first; merging two folders is not a rename.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

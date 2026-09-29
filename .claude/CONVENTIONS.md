@@ -162,6 +162,9 @@ layer may call.
     remove writes.
   - `folders.py` — listing and subscribing folders, and planning a rule's
     target folder (created on execute only).
+  - `folder_rename.py` — a folder renamed with the folders under it, their
+    subscriptions carried, and the rules filing into them repointed in
+    place; then the account read back.
   - `mail.py` — the existing-mail pass, with `recheck` narrowing the host's
     search to what the rule really matches and the `--max-messages`
     ceiling; and criteria derived from a message.

@@ -8,7 +8,7 @@ Nothing here opens a connection -- the ManageSieve and IMAP sessions are
 the transport's (``transport.py``).
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from ...components.imap.capabilities import CHECKED_CAPABILITIES
@@ -36,6 +36,7 @@ from ..base import (
     ExtensionState,
     Fact,
     FolderListing,
+    FolderReference,
     Placement,
     Wording,
 )
@@ -241,6 +242,16 @@ class MxrouteDialect(Dialect):
         cls, advertised: list[str], config: Config
     ) -> list[ExtensionState]:
         return mxroute_sieve.report_extensions(advertised, config)
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def folder_references(cls, source: str) -> list[FolderReference]:
+        return mxroute_sieve.folder_references(source)
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def retarget_folders(cls, source: str, renames: Mapping[str, str]) -> str:
+        return mxroute_sieve.retarget_folders(source, renames)
 
     # ########################################################################
     # Backups

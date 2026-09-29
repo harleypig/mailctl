@@ -1,0 +1,52 @@
+$ mailctl rename-folder Lists Archive --yes
+exit: 1
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+Folder 'Archive' resolves to 'INBOX.Archive' (delimiter '.')
+Rename IMAP folder 'INBOX.Lists' to 'INBOX.Archive' (360 messages)
+  The 1 folder under it moves with it:
+    'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
+  Subscribed after the rename, as before: 'INBOX.Archive', 'INBOX.Archive.GitHub'
+
+Rules in 'managesieve' that file into it:
+  lists: 'INBOX.Lists' -> 'INBOX.Archive'
+  github: 'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -2,7 +2,7 @@
+ # rule:[lists]
+ if header :contains "list-id" "lists.example.com"
+ {
+-	fileinto "INBOX.Lists";
++	fileinto "INBOX.Archive";
+ 	stop;
+ }
+ # my own note
+@@ -14,5 +14,5 @@
+ # rule:[github]
+ if false # header :contains "from" "noreply@github.com"
+ {
+-	fileinto "INBOX.Lists.GitHub";
++	fileinto "INBOX.Archive.GitHub";
+ }
+
+--- end diff ---
+Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+
+--- stderr
+mailctl: the server rejected the generated script (CHECKSCRIPT returned failure); nothing was uploaded
+  Nothing was renamed, and the script on the server is as it was. The script was backed up to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('checkscript',)
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('folder_status', 'INBOX.Lists', ('MESSAGES',))
+('logout',)

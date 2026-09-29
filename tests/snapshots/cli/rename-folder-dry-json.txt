@@ -1,0 +1,64 @@
+$ mailctl rename-folder Lists Archive --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "rename-folder",
+    "changes": true,
+    "diff": {
+      "label": "sieve",
+      "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -2,7 +2,7 @@\n # rule:[lists]\n if header :contains \"list-id\" \"lists.example.com\"\n {\n-\tfileinto \"INBOX.Lists\";\n+\tfileinto \"INBOX.Archive\";\n \tstop;\n }\n # my own note\n@@ -14,5 +14,5 @@\n # rule:[github]\n if false # header :contains \"from\" \"noreply@github.com\"\n {\n-\tfileinto \"INBOX.Lists.GitHub\";\n+\tfileinto \"INBOX.Archive.GitHub\";\n }\n",
+      "reformats": false
+    },
+    "requested": {
+      "old": "Lists",
+      "new": "Archive"
+    },
+    "old": "INBOX.Lists",
+    "new": "INBOX.Archive",
+    "delimiter": ".",
+    "messages": 360,
+    "folders": [
+      {
+        "old": "INBOX.Lists",
+        "new": "INBOX.Archive",
+        "subscribed": true
+      },
+      {
+        "old": "INBOX.Lists.GitHub",
+        "new": "INBOX.Archive.GitHub",
+        "subscribed": true
+      }
+    ],
+    "missing_parents": [],
+    "rules": [
+      {
+        "rule": "lists",
+        "old": "INBOX.Lists",
+        "new": "INBOX.Archive"
+      },
+      {
+        "rule": "github",
+        "old": "INBOX.Lists.GitHub",
+        "new": "INBOX.Archive.GitHub"
+      }
+    ],
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('folder_status', 'INBOX.Lists', ('MESSAGES',))
+('logout',)

@@ -574,6 +574,44 @@ class ImapSession:
         self._read_folders()
 
     # ------------------------------------------------------------------------
+    def rename_folder(self, old: str, new: str) -> None:
+        """Rename a folder; the server moves the folders under it too.
+
+        Subscriptions are left as they were (RFC 3501 section 6.3.5), and
+        the cached lists are re-read so a caller sees what RENAME did.
+        """
+        client = self._require_client()
+        self._log(f"renaming folder {old!r} to {new!r}")
+
+        try:
+            client.rename_folder(old, new)
+
+        except IMAPClientError as exc:
+            raise MailctlError(
+                f"could not rename folder {old!r} to {new!r} -- {exc}"
+            ) from exc
+
+        # The selected folder may have been the one renamed; select afresh
+        # rather than trust a name that no longer exists.
+        self._selected = None
+        self._read_folders()
+
+    # ------------------------------------------------------------------------
+    def message_count(self, folder: str) -> int:
+        """How many messages ``folder`` holds (STATUS MESSAGES)."""
+        client = self._require_client()
+
+        try:
+            status = client.folder_status(folder, ["MESSAGES"])
+
+        except IMAPClientError as exc:
+            raise MailctlError(
+                f"could not read the message count of {folder!r} -- {exc}"
+            ) from exc
+
+        return int(status[b"MESSAGES"])
+
+    # ------------------------------------------------------------------------
     def search_uids(self, criteria: SearchCriteria, folder: str) -> list[int]:
         """Return the UIDs the server matches for ``criteria`` in ``folder``.
 

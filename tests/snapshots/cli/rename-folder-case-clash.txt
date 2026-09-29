@@ -1,0 +1,11 @@
+$ mailctl rename-folder Lists Spam
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: not renaming 'INBOX.Lists' to 'INBOX.Spam': 'INBOX.spam' exists, but folder names are case-sensitive. The new name would put a second folder beside it.
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)
