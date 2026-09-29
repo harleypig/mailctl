@@ -1,9 +1,10 @@
 # Check-only pre-commit hooks (the non-modifying gate). Auto-fixers live in
 # .pre-commit-config-fix.yaml — run that once as a prep step, then this to
 # confirm clean (the fix-then-check discipline in the global rules/pre-commit.md).
-# There is no CI workflow yet, so this config IS the authoritative gate:
-# `ruff check` and `ruff format --check` run here rather than only verifying a
-# config the way the sibling provider's golangci-lint hook does.
+# CI (.github/workflows/test.yml) runs `ruff check` and `ruff format --check`
+# again, with pyright and pytest; they run here too, rather than only
+# verifying a config the way the sibling provider's golangci-lint hook does,
+# so a lint or format failure is caught before the push.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

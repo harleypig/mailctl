@@ -238,8 +238,7 @@ layer may call.
   - `managesieve/capabilities.py` — the CAPABILITY response as data.
   - `managesieve/script.py` — the offline script handling (parse / merge /
     move / remove / rearrange / render / diff), rule names through a
-    `NameDialect`, and
-    `UNIMPLEMENTED_ACTIONS`.
+    `NameDialect`, and `UNIMPLEMENTED_ACTIONS`.
   - `managesieve/emit.py` — `EMIT_TABLE`, every command, test, and tag
     mailctl can put in a rule and the Sieve extension each needs; offline.
   - `managesieve/backup.py` — where a backup of a script goes; writing it
@@ -252,8 +251,10 @@ layer may call.
     connection parameters: `LIST` / `LSUB` and the delimiter, create and
     subscribe (subscription confirmed by re-reading `LSUB`), the search and
     the header fetch its caller re-checks against, flags, the move with its
-    COPY + EXPUNGE fallback (ADR 0006's I3), and `BODY.PEEK` reads under
-    `EXAMINE`. The re-check itself is the mail utility's.
+    COPY + EXPUNGE fallback (ADR 0006's I3), the copy that leaves the
+    originals where they are (`copy_messages`, for a rule that keeps its
+    mail), and `BODY.PEEK` reads under `EXAMINE`. The re-check itself is
+    the mail utility's.
   - `imap/capabilities.py` — the capabilities the session behaves
     differently without, derived from its `has_capability` checks and held
     to them by `tests/test_imap.py`; offline.
@@ -359,9 +360,12 @@ uploaded, folder created) leave the utilities through an `on_event`
 callback; the CLI decides whether and how to show either. Do not add a
 second output path beside them.
 
-**A core message names no front-end's flag.** It states the condition and
-carries a `MailctlError` code, which the front-end renders with its own
-controls (`cli.ERROR_TEXT`, [#51][i51]).
+**A core message names no front-end's flag or command.** It states the
+condition and carries a `MailctlError` code, which the front-end renders
+with its own controls (`cli.ERROR_TEXT`, [#51][i51]). Where it points at
+another operation, an error or a record names the operation in a field
+(`operation`), never `mailctl <command>`; the CLI renders the command line
+(`cli.command_for`, [#183][i183]).
 
 **Safety policy lives in the utilities, not the front-end or the
 provider**: the backup before every upload (`scripts.upload_script`, the
@@ -591,15 +595,16 @@ fails before any login or password prompt (decided on [#137][i137]).
 - **Offered only what it declares** ([#26][i26] constraint 4). The CLI parses
   twice: a first pass reads only `--provider` and `--env-file` and resolves
   the provider, then the parsers are built from its capabilities. Without
-  `ordering`, the placement flags and `move-rule` are not offered; without
-  `stop`, `--no-stop`; without `rule_sets`, `add`'s `--script` and
-  `--activate`; without `disable`, `disable-rule` and `enable-rule`; without
-  `extensions`, `--disable-extension`; without `raw_query`, `search`'s
-  `--raw`; without `mark`, `mark`; without `folder_counts`, `folders`'s
-  `--counts`. The connection flags (`--host`, `--imap-*`, `--sieve-*`) are
-  offered only where `ProviderCapabilities.settings` names them, with the help
-  it gives — they keep their names and their `MAILCTL_*` variables, being
-  `mxroute`'s connection options. An unoffered option is **hidden, not
+  `ordering`, the placement flags, `move-rule`, and `optimize-rules` are not
+  offered; without `stop`, `--no-stop`; without `rule_sets`, `add`'s
+  `--script` and `--activate`; without `disable`, `disable-rule` and
+  `enable-rule`; without `extensions`, `--disable-extension`; without
+  `raw_query`, `search`'s `--raw`; without `mark`, `mark`; without
+  `folder_counts`, `folders`'s `--counts`. The connection flags (`--host`,
+  `--imap-*`, `--sieve-*`) are offered only where
+  `ProviderCapabilities.settings` names them, with the help it gives —
+  they keep their names and their `MAILCTL_*` variables, being `mxroute`'s
+  connection options. An unoffered option is **hidden, not
   removed**: given anyway it still parses and meets the refusal below the
   front-end naming the provider, which stays the backstop for every front-end.
   A first pass that cannot resolve a provider falls back to the default
@@ -1215,6 +1220,7 @@ will read it.
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i10]: https://github.com/harleypig/mailctl/issues/10
 [i39]: https://github.com/harleypig/mailctl/issues/39
+[i183]: https://github.com/harleypig/mailctl/issues/183
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147
