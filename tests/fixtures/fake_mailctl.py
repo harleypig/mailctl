@@ -442,7 +442,10 @@ def baseline(command: str) -> int:
 
         # Under --json a failure is one JSON line on stderr (#151).
         if "--json" in ARGV:
-            error = {"version": 1, "error": {"message": message}}
+            error = {
+                "version": 1,
+                "error": {"message": message, "code": "no_baseline"},
+            }
             print(json.dumps(error), file=sys.stderr)
 
         else:

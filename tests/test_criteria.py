@@ -15,6 +15,7 @@ from datetime import date
 import pytest
 
 from mailctl import MailctlError
+from mailctl.cli import error_text
 from mailctl.criteria import (
     COMPARE_OPS,
     FILTER_VERSION,
@@ -910,10 +911,15 @@ def test_a_saved_rule_refuses_every_date_and_state_filter(given):
     with pytest.raises(MailctlError, match="cannot test") as caught:
         criteria.sieve_conditions()
 
-    message = str(caught.value)
+    # The core names the operations; the CLI renders the commands (#183).
+    assert "mailctl search" not in str(caught.value)
+    assert caught.value.code == "state_in_rule"
+    assert caught.value.fields["operations"] == ("search", "apply")
 
-    assert "mailctl search" in message
-    assert "mailctl apply" in message
+    message = error_text(caught.value)
+
+    assert "'mailctl search' to list it" in message
+    assert "'mailctl apply' to act on it" in message
 
     with pytest.raises(MailctlError, match="cannot test"):
         criteria.check_deliverable()

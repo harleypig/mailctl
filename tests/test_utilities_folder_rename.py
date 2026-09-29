@@ -12,6 +12,7 @@ from imapclient.exceptions import IMAPClientError
 from utilities_support import FakeSieveSession, mxroute
 
 from mailctl import MailctlError, utilities
+from mailctl.cli import error_text
 from mailctl.utilities.folder_rename import (
     FolderRenamePlan,
     execute_folder_rename,
@@ -350,12 +351,15 @@ def test_an_upload_failing_after_the_rename_says_how_to_undo(
     with pytest.raises(MailctlError) as caught:
         execute_folder_rename(live, imap_config, plan(live))
 
-    message = str(caught.value)
+    assert "rename 'INBOX.Archive' back to 'INBOX.Lists'" in str(caught.value)
+    assert caught.value.code == "rename_interrupted"
+
+    message = error_text(caught.value)
 
     assert "'INBOX.Lists' was renamed to 'INBOX.Archive'" in message
     assert "is still the old one" in message
     assert "2 rules still file into the old name" in message
-    assert "mailctl rename-folder INBOX.Archive INBOX.Lists" in message
+    assert "'mailctl rename-folder INBOX.Archive INBOX.Lists'" in message
     assert sieve.names().count("put_script") == 1
 
 

@@ -23,7 +23,12 @@ silently drops mail.
 import pytest
 
 from mailctl import MailctlError, utilities
-from mailctl.cli import actions_from_args, build_parser, reject_forbidden
+from mailctl.cli import (
+    actions_from_args,
+    build_parser,
+    error_text,
+    reject_forbidden,
+)
 from mailctl.components.managesieve import UNIMPLEMENTED_ACTIONS
 from mailctl.config import Config
 from mailctl.providers.mxroute import MXROUTE
@@ -99,12 +104,15 @@ def test_an_unimplemented_action_is_refused_without_claiming_it_is_disabled(
     with pytest.raises(MailctlError) as caught:
         reject_forbidden(Config(), parse_add(flag, value))
 
-    message = str(caught.value)
+    assert "mailctl test" not in str(caught.value)
+    assert caught.value.code == "unimplemented_action"
+
+    message = error_text(caught.value)
 
     assert f"does not generate the Sieve '{label}' action" in message
     assert "conservative choice of ours" in message
     assert "not a documented" in message
-    assert "mailctl test" in message
+    assert message.endswith("at all, run 'mailctl test'.")
 
 
 # ----------------------------------------------------------------------------

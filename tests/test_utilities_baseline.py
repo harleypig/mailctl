@@ -533,9 +533,14 @@ def test_the_host_is_folded_to_lower_case(where):
 def test_a_check_with_no_baseline_says_how_to_make_one(
     sessions, imap_config, where, fake_sieve
 ):
-    with pytest.raises(MailctlError, match="'mailctl save-baseline'"):
+    with pytest.raises(MailctlError, match="no baseline") as caught:
         baseline.check_baseline(sessions, imap_config, where)
 
+    assert "mailctl save-baseline" not in str(caught.value)
+    assert caught.value.code == "no_baseline"
+    assert error_text(caught.value).endswith(
+        "'mailctl save-baseline' records one"
+    )
     assert fake_sieve.calls == []
 
 

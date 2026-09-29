@@ -783,9 +783,12 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"cannot open folder {folder!r} -- {exc}. "
-                f"{case_variant_hint(folder, self._folders)}Run 'mailctl "
-                f"folders' to see the exact names this server uses."
+                (
+                    f"cannot open folder {folder!r} -- {exc}. "
+                    f"{case_variant_hint(folder, self._folders)}"
+                ).rstrip(),
+                code="folder_unopenable",
+                fields={"operation": "folders"},
             ) from exc
 
         self._selected = folder

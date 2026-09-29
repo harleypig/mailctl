@@ -26,6 +26,7 @@ in a docstring -- which it does, in ``config.Secret`` -- is not a finding,
 and a call written as ``builtins.print`` still is.
 """
 
+import argparse
 import ast
 import re
 from pathlib import Path
@@ -370,7 +371,7 @@ def test_a_core_message_names_no_flag(name):
 # ----------------------------------------------------------------------------
 def test_every_allowed_flag_string_is_still_there():
     """A stale allowance would let the next string with that text in."""
-    for name, text in FLAG_ALLOWED:
+    for name, text in {**FLAG_ALLOWED, **COMMAND_ALLOWED}:
         built = [found for _, found in built_strings(module_tree(name))]
 
         assert text in built, text
@@ -394,6 +395,141 @@ def test_the_flag_guard_would_actually_catch_a_violation():
         "over the cap; pass --max-messages {}",
         "nothing to do -- use --fileinto",
     ]
+
+
+# ############################################################################
+# A core message names no front-end's command (#183)
+# ############################################################################
+
+# "mailctl list" is a shell command a TUI user cannot type, so the core
+# names the operation in a field and the CLI renders the command
+# (cli.command_for). The commands are the parser's own, hidden ones
+# included, so a command added to the CLI is guarded the day it lands, and
+# "mailctl does not generate ..." -- the tool's name in prose -- is not a
+# finding. "mailctl {}" is: an interpolated command is still a command.
+COMMANDS = sorted(
+    next(
+        action
+        for action in cli.build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ).choices
+)
+
+COMMAND = re.compile(
+    r"\bmailctl (?:\{\}|"
+    + "|".join(re.escape(name) for name in COMMANDS)
+    + r")(?![\w-])"
+)
+
+SERVER_REPORT_OPENING = (
+    "mailctl {}, provider {}, does not recognise the {} server, so it "
+    "works with the plain protocol there."
+)
+
+# (module, string) -> why it may name what looks like a command.
+COMMAND_ALLOWED = {
+    ("utilities/server_report", SERVER_REPORT_OPENING): "the value is the "
+    "version, for an issue report: mailctl as a program, not a command",
+}
+
+
+# ----------------------------------------------------------------------------
+def command_strings(name: str, tree: ast.AST) -> list[str]:
+    """Every string ``name`` builds that names a command, less the
+    allowed."""
+    return [
+        f"line {line}: {text!r}"
+        for line, text in built_strings(tree)
+        if COMMAND.search(text) and (name, text) not in COMMAND_ALLOWED
+    ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", CORE_MODULES)
+def test_a_core_message_names_no_command(name):
+    found = command_strings(name, module_tree(name))
+
+    assert found == [], (
+        f"mailctl/{name}.py names a CLI command in {found}; state the "
+        f"condition, give the MailctlError a code and an operation field, "
+        f"and let cli.ERROR_TEXT name the command"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_command_guard_would_actually_catch_a_violation():
+    """Each shape a command can take in a message is seen; a docstring,
+    the tool's name in prose, and a longer word are not."""
+    tree = ast.parse(
+        "def f(name, op):\n"
+        '    """Run mailctl list first."""\n'
+        "    a = \"nothing active. 'mailctl list' shows what there is.\"\n"
+        '    b = f"Enable it first (mailctl enable-rule {name})"\n'
+        "    c = f\"run 'mailctl {op}'\"\n"
+        '    d = "mailctl does not generate that action"\n'
+        '    e = "mailctl listing is not a command"\n'
+        '    g = "mailctl enable-rules is not one either"\n'
+    )
+
+    assert "list" in COMMANDS
+    assert "enable-rule" in COMMANDS
+    assert [
+        text for _, text in built_strings(tree) if COMMAND.search(text)
+    ] == [
+        "Enable it first (mailctl enable-rule {})",
+        "run 'mailctl {}'",
+        "nothing active. 'mailctl list' shows what there is.",
+    ]
+
+
+# ----------------------------------------------------------------------------
+def named_operations(tree: ast.AST) -> set[str]:
+    """Every literal operation a module names: an ``operation`` or
+    ``operations`` key in a dict, or an ``operation=`` keyword."""
+    values = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            values += [
+                value
+                for key, value in zip(node.keys, node.values, strict=True)
+                if isinstance(key, ast.Constant)
+                and key.value in {"operation", "operations"}
+            ]
+
+        elif isinstance(node, ast.Call):
+            values += [
+                keyword.value
+                for keyword in node.keywords
+                if keyword.arg == "operation"
+            ]
+
+    named = set()
+
+    for value in values:
+        items = value.elts if isinstance(value, ast.Tuple) else [value]
+        named |= {
+            item.value
+            for item in items
+            if isinstance(item, ast.Constant) and isinstance(item.value, str)
+        }
+
+    return named
+
+
+# ----------------------------------------------------------------------------
+def test_every_named_operation_is_a_command():
+    """An operation the CLI has no command for renders as a command line
+    that does not run."""
+    named = set().union(
+        *(named_operations(module_tree(n)) for n in CORE_MODULES)
+    )
+
+    assert {"list", "folders", "save-baseline", "subscribe"} <= named
+    assert named - set(COMMANDS) == set()
+    assert named_operations(
+        ast.parse('f(fields={"operation": "lst"}, operation="x")\n')
+    ) == {"lst", "x"}
 
 
 # ############################################################################

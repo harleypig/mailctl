@@ -17,6 +17,7 @@ from imapclient.exceptions import IMAPClientError, LoginError
 from utilities_support import mxroute
 
 from mailctl import MailctlError, utilities
+from mailctl.cli import error_text
 from mailctl.components.imap import (
     BULK_CHUNK,
     ImapAuthenticationError,
@@ -729,8 +730,16 @@ def test_selecting_a_missing_folder_points_at_the_folders_command(
     criteria = Criteria()
     criteria.add("from", "a@example.com")
 
-    with pytest.raises(MailctlError, match=r"Run 'mailctl folders'"):
+    with pytest.raises(MailctlError, match="cannot open folder") as caught:
         matching(imap_session, criteria, "INBOX.Nope")
+
+    # The session names the operation; the CLI names the command (#183).
+    assert "mailctl" not in str(caught.value)
+    assert caught.value.code == "folder_unopenable"
+    assert error_text(caught.value).endswith(
+        "no such mailbox. Run 'mailctl folders' to see the exact names this "
+        "server uses."
+    )
 
 
 # ############################################################################

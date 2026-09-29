@@ -1488,7 +1488,11 @@ def test_a_multi_line_replacement_of_a_disabled_rule_is_refused():
             replace=True,
         )
 
-    assert "enable-rule" in str(error.value)
+    assert "enable-rule" not in str(error.value)
+    assert error.value.fields["operation"] == "enable-rule"
+    assert error_text(error.value).endswith(
+        "Enable it first (mailctl enable-rule paused), then replace it"
+    )
 
 
 # ----------------------------------------------------------------------------

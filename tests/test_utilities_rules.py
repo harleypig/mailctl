@@ -15,6 +15,7 @@ import pytest
 from utilities_support import FakeSieveSession, criteria, mxroute
 
 from mailctl import MailctlError, utilities
+from mailctl.cli import error_text
 from mailctl.components.managesieve import rule_names
 from mailctl.config import Config
 from mailctl.criteria import Criteria
@@ -138,7 +139,8 @@ def test_a_rule_testing_date_or_state_is_refused_before_connecting(given):
     with pytest.raises(MailctlError, match="cannot test") as caught:
         utilities.rules.check_rule(Config(), request)
 
-    assert "'mailctl apply'" in str(caught.value)
+    assert "'mailctl apply'" not in str(caught.value)
+    assert "'mailctl apply'" in error_text(caught.value)
 
 
 # ----------------------------------------------------------------------------

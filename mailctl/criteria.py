@@ -394,13 +394,17 @@ class Criteria:
         given = self.state_filters()
 
         if given:
-            raise MailctlError(
+            before = (
                 f"a saved rule cannot test a message's date or read or "
                 f"flagged state (given: {', '.join(given)}): a rule runs "
                 f"as mail is delivered, when every message is new, unread, "
-                f"and unflagged. They select mail already delivered: use "
-                f"them with 'mailctl search' to list it, or 'mailctl "
-                f"apply' to act on it."
+                f"and unflagged. They select mail already delivered"
+            )
+
+            raise MailctlError(
+                f"{before}, for a search to list or an apply to act on.",
+                code="state_in_rule",
+                fields={"before": before, "operations": ("search", "apply")},
             )
 
     # ------------------------------------------------------------------------
