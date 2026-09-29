@@ -22,7 +22,7 @@ can rely on, what it must still probe, and what it is leaving unused.
 | Tier | Last refreshed |
 |---|---|
 | Documented | 2026-09-27 (every public URL re-fetched; the panel page is behind a login) |
-| Observed | 2026-09-28 (one account, `heracles.mxrouting.net`) |
+| Observed | 2026-09-29 (one account, `heracles.mxrouting.net`) |
 
 ## Documented
 
@@ -302,6 +302,34 @@ Dovecot post names as running 2.4 (*Announced changes*). That post is six
 months older than this probe, and the server reports no version, so which
 Dovecot it runs is still unknown.
 
+### Sieve extensions and ManageSieve capabilities, 2026-09-29
+
+Read with `mailctl probe --json` ([#101][i101]) on
+**`heracles.mxrouting.net`**, one account. The ManageSieve capability list
+is the one the server sends **before login**; sievelib does not read it
+again after AUTHENTICATE, so `OWNER` and `MAXREDIRECTS`, which a server
+sends only after login, are not in it.
+
+| Observed | Value |
+|---|---|
+| ManageSieve capabilities, before login | `IMPLEMENTATION`, `SASL`, `SIEVE`, `VERSION` |
+| ManageSieve `IMPLEMENTATION` | **`Dovecot Pigeonhole`**, no version |
+| Sieve extensions | **24**, listed below |
+| Active script | `managesieve` |
+| IMAP | `name: Dovecot`, 43 capabilities after login, delimiter `.`, personal `NAMESPACE` prefix empty, as on 2026-09-28 |
+
+```text
+body, comparator-i;ascii-numeric, copy, date, duplicate, editheader,
+encoded-character, envelope, environment, extracttext, fileinto,
+foreverypart, ihave, imap4flags, include, index, mailbox, mime, regex,
+reject, relational, subaddress, vacation, variables
+```
+
+**`editheader` is new against the 23 of 2026-08-14**; the other 23 are
+unchanged. The earlier list is from a server whose name was not recorded,
+so this is a difference between two readings, not established drift on
+one server.
+
 ### Folder subscription, 2026-08-14
 
 Recorded on [#38][i38]. A read-only comparison on the same account found
@@ -445,14 +473,15 @@ might do, not what will be built:
 | 2026-09-27 | *Documented*: in-house webmail sources (migration post, branding guide, 2023 post); recorded as a known condition | Web search of docs, blog and community; no webmail documentation exists beyond these |
 | 2026-09-28 | *Observed*: IMAP `CAPABILITY` (43, after login), `ID`, `NAMESPACE`; also a `mailctl test` read and the read-only CLI commands | One read-only IMAP session through `ImapSession` in a throwaway script (#101, #120); server `heracles.mxrouting.net` |
 | 2026-09-28 | *Documented*: Roundcube's disabled-rule form | Upstream `rcube_sieve_script.php` read at `cbf2500dd8db` (#158); not probed on MXroute |
+| 2026-09-29 | *Observed*: Sieve extensions (24, `editheader` new), ManageSieve capabilities before login, active script; IMAP unchanged | `mailctl probe --json`, read-only, server `heracles.mxrouting.net` (#101) |
 
-**Due next:** a probe, by 2026-12-28 on the quarterly cadence. The in-house
+**Due next:** a probe, by 2026-12-29 on the quarterly cadence. The in-house
 webmail does not bring it forward; see *Known condition* above. The
 2026-09-28 probe recorded the server name and the full IMAP `CAPABILITY`
 list that the 2026-08-14 entry left out; its command was a throwaway
-script, which [#101][i101] replaces. The next probe should also say whether
-each list was read before or after login. Separately, what the in-house
-webmail does with filters and folders is an *Unknown*. The only way to
+script, which [#101][i101] replaces; `mailctl probe` also says whether each
+list was read before or after login. Separately, what the in-house webmail
+does with filters and folders is an *Unknown*. The only way to
 settle it is to use it: create one filter there and read the script back
 with `mailctl show`.
 
