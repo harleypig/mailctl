@@ -13,6 +13,7 @@ from ...components.imap import alerts as imap_alerts
 from ...components.imap import messages as imap_records
 from ...components.imap import servers as imap_servers
 from ...components.imap import status as imap_status
+from ...components.managesieve import responses as sieve_responses
 from ...components.managesieve import servers as sieve_servers
 from ...components.managesieve.capabilities import Capabilities
 from .. import model
@@ -26,6 +27,7 @@ __all__ = [
     "message_summary",
     "rules_server",
     "server_alert",
+    "server_warning",
     "session_plan",
     "sort_criteria",
 ]
@@ -42,7 +44,14 @@ SORT_CRITERIA = {
 
 # ----------------------------------------------------------------------------
 def server_alert(value: imap_alerts.ServerAlert) -> model.ServerAlert:
-    return model.ServerAlert(text=value.text)
+    return model.ServerAlert(text=value.text, kind="alert")
+
+
+# ----------------------------------------------------------------------------
+def server_warning(
+    value: sieve_responses.ServerWarning,
+) -> model.ServerAlert:
+    return model.ServerAlert(text=value.text, kind="warning")
 
 
 # ----------------------------------------------------------------------------

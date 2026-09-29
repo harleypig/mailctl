@@ -4,7 +4,9 @@ Two layers. :class:`SieveClient` is sievelib's ``Client`` with the gaps
 ADR 0006 names closed where they are: GETSCRIPT read byte-exact (S1, mailctl
 #90), the CAPABILITY response kept whole (S4), a configurable read timeout
 (S5), debug output impossible (S8), and a closed connection an error rather
-than an endless loop (S9, mailctl #95). :class:`SieveSession` sits on it,
+than an endless loop (S9, mailctl #95); it also reads an OK's text, which
+sievelib drops, so a WARNINGS is kept and a literal is not left unread
+(mailctl #208). :class:`SieveSession` sits on it,
 turns sievelib's two failure conventions -- a raised ``Error`` and a
 returned ``False`` -- into ``MailctlError`` with a readable message, and
 takes plain connection parameters so that nothing here knows which host,
@@ -36,6 +38,7 @@ from sievelib.managesieve import Error as SieveProtocolError
 
 from ... import MailctlError
 from .capabilities import Capabilities, parse_capabilities
+from .responses import ServerWarning, literal_size, response_text, warning_in
 from .servers import ServerProfile, select_server
 
 __all__ = [
@@ -100,6 +103,9 @@ class SieveClient(Client):
         self.timeout = timeout
         self.capability_response = b""
 
+        # The WARNINGS the last status response carried, if any.
+        self.warning: ServerWarning | None = None
+
     # ------------------------------------------------------------------------
     def _private(self, name: str) -> Any:
         """Return one of sievelib's name-mangled ``Client`` privates."""
@@ -118,6 +124,10 @@ class SieveClient(Client):
         through :meth:`_fill`, which raises instead, and otherwise keeps
         sievelib's contract: a literal's size is raised as ``Literal``, a
         status line as ``Response``, and ``BYE`` as an error.
+
+        An OK's text is read here too, into ``warning``. sievelib never
+        reads it, so an OK whose text is a literal -- Pigeonhole's
+        WARNINGS -- left the literal for the next command to read.
         """
         line = self._read_line()
 
@@ -134,13 +144,34 @@ class SieveClient(Client):
         if status is None:
             return line
 
+        self.warning = None
+
         if status[1] == b"BYE":
             raise SieveProtocolError(CONNECTION_CLOSED)
 
         if status[1] == b"NO":
             self._private("parse_error")(status[2])
 
+        else:
+            self.warning = self._ok_warning(status[2] or b"")
+
         raise Response(status[1], status[2])
+
+    # ------------------------------------------------------------------------
+    def _ok_warning(self, rest: bytes) -> ServerWarning | None:
+        """Read an OK's text, literal included; return its WARNINGS."""
+        code, string = response_text(rest)
+        size = literal_size(string)
+
+        if size is not None:
+            string = self._read_exact(size)
+
+            if self._read_line() != b"":
+                raise SieveProtocolError(
+                    "malformed response: no line end after its text"
+                )
+
+        return warning_in(code, string)
 
     # ------------------------------------------------------------------------
     def _Client__read_block(self, size: int) -> bytes:
@@ -356,7 +387,7 @@ class SieveSession:
         username: str,
         password: Callable[[], Revealable],
         tls: str = "starttls",
-        progress: Callable[[str], None] | None = None,
+        progress: Callable[[str | ServerWarning], None] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
     ):
         """Record the settings; no connection is made until ``open()``.
@@ -372,7 +403,9 @@ class SieveSession:
         ``progress`` receives step-by-step messages. It is a callback rather
         than a print so this module stays free of presentation -- the CLI
         passes a printer under ``--verbose``, and anything else can route
-        the same messages to a status bar or a log.
+        the same messages to a status bar or a log. A :class:`ServerWarning`
+        PUTSCRIPT returns goes to it too, whatever the caller does with the
+        rest: RFC 5804 says a client presents one.
         """
         self.host = host
         self.port = port
@@ -396,7 +429,7 @@ class SieveSession:
         return False
 
     # ------------------------------------------------------------------------
-    def _log(self, message: str) -> None:
+    def _log(self, message: str | ServerWarning) -> None:
         """Hand a progress message to the caller's callback, if any."""
         if self.progress is not None:
             self.progress(message)
@@ -547,7 +580,13 @@ class SieveSession:
 
     # ------------------------------------------------------------------------
     def check_script(self, content: str) -> None:
-        """Ask the server to validate a script before uploading it."""
+        """Ask the server to validate a script before uploading it.
+
+        A warning it returns is progress, not a :class:`ServerWarning`:
+        the PUTSCRIPT that follows returns the same warnings about the
+        stored script, by its name, where Pigeonhole names a temporary
+        file here. It is quoted with ``repr``, since it is the server's.
+        """
         client = self._require_client()
         self._log("validating script with CHECKSCRIPT")
 
@@ -565,9 +604,15 @@ class SieveSession:
                 "returned failure); nothing was uploaded"
             )
 
+        if client.warning is not None:
+            self._log(f"CHECKSCRIPT warned: {client.warning.text!r}")
+
     # ------------------------------------------------------------------------
     def put_script(self, name: str, content: str) -> None:
-        """Upload a script, replacing any script of the same name."""
+        """Upload a script, replacing any script of the same name.
+
+        A warning the server returns with its OK goes to ``progress``.
+        """
         client = self._require_client()
         self._log(f"uploading script {name!r} ({len(content)} bytes)")
 
@@ -579,6 +624,9 @@ class SieveSession:
 
         if not stored:
             raise MailctlError(f"PUTSCRIPT {name!r} failed")
+
+        if client.warning is not None:
+            self._log(client.warning)
 
     # ------------------------------------------------------------------------
     def set_active(self, name: str) -> None:

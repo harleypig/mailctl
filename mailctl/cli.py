@@ -275,22 +275,28 @@ def progress_from_args(args, stream=None):
     is made once, here. Progress is shown under --verbose, on ``stream``;
     stdout by default.
 
-    A server's alert is shown with or without --verbose, since RFC 9051
-    has a client present one, and always on stderr, so --json's stdout
-    stays the document alone. It is shown once per run: the same alert
-    again, as on a reconnection's greeting, says nothing new.
+    A server's alert or warning is shown with or without --verbose, since
+    RFC 9051 and RFC 5804 have a client present one, and always on stderr,
+    so --json's stdout stays the document alone -- a line each, as a
+    warning's text may hold several. It is shown once per run: the same
+    alert again, as on a reconnection's greeting, says nothing new.
     """
     shown = vars(args).setdefault("server_alerts_shown", set())
 
     def emit(channel: str, message: str | utilities.events.ServerAlert):
         if isinstance(message, utilities.events.ServerAlert):
-            if (channel, message.text) not in shown:
-                shown.add((channel, message.text))
-                print(
-                    f"mailctl: alert from the {channel} server: "
-                    f"{safe_line(message.text)}",
-                    file=sys.stderr,
-                )
+            key = (channel, message.kind, message.text)
+
+            if key not in shown:
+                shown.add(key)
+
+                for line in message.text.splitlines():
+                    if line.strip():
+                        print(
+                            f"mailctl: {message.kind} from the {channel} "
+                            f"server: {safe_line(line)}",
+                            file=sys.stderr,
+                        )
 
         elif args.verbose:
             print(f"[{channel}] {message}", file=stream or sys.stdout)

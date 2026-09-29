@@ -1,0 +1,43 @@
+$ mailctl add --from noreply@github.com --flag \Bogus
+exit: 0
+--- stdout
+
+Rule 'from-noreply-github-com' on script 'managesieve':
+  when:  From contains 'noreply@github.com'
+  then:  addflag \Bogus; stop
+
+Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -11,3 +11,8 @@
+     fileinto "INBOX.Noise";
+     stop;
+ }
++# rule:[from-noreply-github-com]
++if anyof (header :contains "From" "noreply@github.com") {
++    addflag "\\Bogus";
++    stop;
++}
+
+--- end diff ---
+Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Uploaded and activated script 'managesieve'
+
+Mail already delivered was not touched; to act on it, run 'mailctl apply' with the same criteria and actions.
+
+--- stderr
+mailctl: warning from the sieve server: managesieve: line 16: warning: IMAP flag '\Bogus' specified for the addflag command is invalid and will be ignored (only first invalid is reported).
+mailctl: warning from the sieve server: managesieve: line 17: warning: specified date part 'bogus' is not known.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('checkscript',)
+('putscript', 'managesieve', 'require ["fileinto", "imap4flags"];\n\n# rule:[keep-boss]\nif header :contains "from" "boss@example.com" {\n    fileinto "INBOX.Boss";\n    setflag "\\\\Flagged";\n    stop;\n}\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter" {\n    fileinto "INBOX.Noise";\n    stop;\n}\n# rule:[from-noreply-github-com]\nif anyof (header :contains "From" "noreply@github.com") {\n    addflag "\\\\Bogus";\n    stop;\n}\n')
+('setactive', 'managesieve')
+('logout',)
+--- imap calls

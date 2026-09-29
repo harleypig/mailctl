@@ -16,6 +16,7 @@ from datetime import datetime
 from email.errors import HeaderParseError
 from email.header import Header, decode_header, make_header
 from email.message import Message
+from typing import Literal
 
 from ..config import Source
 
@@ -549,14 +550,18 @@ class MailActionResult:
 class ServerAlert:
     """Something the server asked to be shown to the user, in its words.
 
-    IMAP's ALERT (RFC 9051 section 7.1): a server warning -- a mailbox
-    over quota, maintenance tonight -- that a client is to present so it
-    catches the user's attention. It reaches a front-end on the session's
-    progress callback, as the message, whatever the front-end does with
-    ordinary progress. ``text`` is untrusted, like mail content.
+    ``kind`` says which: an ``alert`` is IMAP's ALERT (RFC 9051 section
+    7.1), a server warning -- a mailbox over quota, maintenance tonight --
+    that a client is to present so it catches the user's attention; a
+    ``warning`` is ManageSieve's WARNINGS (RFC 5804 section 1.3), a script
+    stored but perhaps not doing what was meant, which a client should
+    present. It reaches a front-end on the session's progress callback, as
+    the message, whatever the front-end does with ordinary progress.
+    ``text`` is untrusted, like mail content, and may run to several lines.
     """
 
     text: str
+    kind: Literal["alert", "warning"]
 
 
 @dataclass(frozen=True)
