@@ -297,8 +297,19 @@ mailctl search --like 4127 --build-filter --json \
 mailctl apply --subject '[SPAM]' --fileinto Quarantine --create-folder \
     --mark-read
 
+# Copy rather than move: --keep files a copy and leaves each message where
+# it is, as the saved rule does. A re-run skips what the folder already
+# holds (same Message-ID); a message with no Message-ID cannot be looked
+# for, so it is copied each time, and apply says how many.
+mailctl apply --list-id news.example.com --fileinto Lists/News --keep
+
 mailctl list
 mailctl show
+
+# The rules in the order the server runs them, and any an earlier rule
+# makes unreachable ('!' is decided, '?' worth checking). Changes nothing.
+mailctl rules
+
 mailctl remove-rule from-newsletter-example-com
 
 # Reorder a rule without restating it; reports what the move would starve.
@@ -329,6 +340,10 @@ mailctl restore ~/mailctl-before-first-run.sieve
 # Coming from mxfilter: move the old config directory's contents across.
 mailctl migrate-config --dry-run
 mailctl migrate-config
+
+# Any command's help, the same as --help, for the provider configured.
+# Contacts no server.
+mailctl help apply
 ```
 
 **Before the first run against a real mailbox, work through
@@ -425,6 +440,13 @@ and error handling.
   "header", "match_type", "keys"}`), and `uncertain` (`{"kind", "rules",
   "reason"}`), what was left alone for want of certainty; `considered`
   names the kinds of change looked for.
+* An `apply` plan's `mail` is `null` where the actions leave delivered mail
+  as it is. Otherwise it holds `source`, `destination`, `flags`,
+  `discard`, `moves`, `copies`, `count`, `held`, `unidentified`, and
+  `messages` (each as in `search`). `copies` is `true` for `--keep` with a
+  folder; `held` is the UIDs the folder already has by Message-ID, which
+  are not copied again, and `unidentified` the UIDs with no Message-ID,
+  which are copied regardless.
 * A `search` listing's `sort` is `null` for newest first, else
   `{"key", "reverse"}` as `--sort` and `--reverse` gave them, and
   `messages` are in that order. `more` is `true` when there may be
@@ -573,7 +595,21 @@ and save again.
 * `apply` **always previews and always confirms** before it
   touches anything — `--dry-run` shortens that path, it is not what creates
   it. `--yes` skips the prompts. Deletion says in as many words that it
-  cannot be undone; a move says it can be reversed.
+  cannot be undone; a move says it can be reversed; a copy says the
+  originals stay where they are.
+* `apply --fileinto FOLDER --keep` **copies rather than moves**, as the
+  saved rule does: a rule that files and keeps leaves the message in place
+  too. Any `--mark-read` or `--flag` is set on the originals before they
+  are copied, so the copies carry it as well. **A re-run copies only what
+  the folder lacks**: a match whose Message-ID the folder already holds is
+  skipped, and one with no Message-ID, which cannot be looked for, is
+  copied every time; the preview says how many of each. When the folder
+  holds every match and there is no flag to set, `apply` says so and
+  changes nothing.
+* `apply --discard --keep` **deletes nothing**. An explicit keep outlives a
+  discard in Sieve (RFC 5228, section 4.4), and `apply` does what the rule
+  would: with no flag to set it skips the pass, and with one it only sets
+  the flag.
 * `--max-messages` (default 500) refuses the whole batch when more matches
   than that come back. It never processes a partial set: silent truncation
   reads as "it handled everything" when it did not. Raising it is safe:
