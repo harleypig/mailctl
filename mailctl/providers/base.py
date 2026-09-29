@@ -50,6 +50,10 @@ from .model import (
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
+    SORT_KEYS,
+    SORT_RECEIVED,
+    SORT_SENT,
+    SORT_SIZE,
     ActionSpec,
     Capability,
     CountSupport,
@@ -68,6 +72,7 @@ from .model import (
     Placement,
     ProbeRecord,
     ServerDescription,
+    SortOrder,
     Wording,
     action_names,
     decode_header_value,
@@ -90,6 +95,10 @@ __all__ = [
     "PLACE_LAST",
     "READ",
     "RULES",
+    "SORT_KEYS",
+    "SORT_RECEIVED",
+    "SORT_SENT",
+    "SORT_SIZE",
     "TRANSPORT_KINDS",
     "TRANSPORT_OPERATIONS",
     "WRITE",
@@ -116,6 +125,7 @@ __all__ = [
     "Provider",
     "ProviderCapabilities",
     "ServerDescription",
+    "SortOrder",
     "Specific",
     "Transport",
     "Wording",
@@ -505,6 +515,13 @@ class Dialect(ABC):
         """Whether the mail half's advertised capabilities let every
         folder be counted in one request, and with sizes."""
 
+    @classmethod
+    @abstractmethod
+    def sorts_messages(cls, capabilities: list[str]) -> bool:
+        """Whether a mail half advertising ``capabilities`` orders a search
+        itself, so :meth:`Transport.sort_messages` may be asked; where it
+        does not, the utilities order what they fetched."""
+
 
 # ############################################################################
 # The transport -- communication with the host's servers, and nothing else
@@ -777,6 +794,23 @@ class Transport(ABC):
         self, folder: str, uid: int
     ) -> tuple[bytes, tuple[str, ...]]:
         """One message's exact bytes and its flags, left unread."""
+
+    @abstractmethod
+    @classified(Operation(READ, MAIL))
+    def sort_messages(
+        self,
+        folder: str,
+        order: SortOrder,
+        criteria: Criteria | None,
+        expression: str | None,
+    ) -> list[int]:
+        """The UIDs :meth:`search` (for ``criteria``) or
+        :meth:`search_messages` (for ``expression``) would return, or every
+        message's with neither, in ``order``, the host sorting them.
+
+        Asked only where the dialect's :meth:`Dialect.sorts_messages` says
+        the server can; the utilities still re-check what comes back.
+        """
 
 
 # ############################################################################

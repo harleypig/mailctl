@@ -29,6 +29,10 @@ __all__ = [
     "PLACE_BEFORE",
     "PLACE_FIRST",
     "PLACE_LAST",
+    "SORT_KEYS",
+    "SORT_RECEIVED",
+    "SORT_SENT",
+    "SORT_SIZE",
     "ActionSpec",
     "Capability",
     "CountSupport",
@@ -47,6 +51,7 @@ __all__ = [
     "Placement",
     "ProbeRecord",
     "ServerDescription",
+    "SortOrder",
     "Wording",
     "action_names",
     "decode_header_value",
@@ -67,6 +72,20 @@ PLACE_FIRST = "first"
 PLACE_LAST = "last"
 PLACE_BEFORE = "before"
 PLACE_AFTER = "after"
+
+# What a message listing can be ordered by. ``sent`` is the message's own
+# Date header, which its sender's clock wrote; ``received`` is when the
+# server took it in (IMAP's INTERNALDATE), which is what a listing shows.
+SORT_SIZE = "size"
+SORT_SENT = "sent"
+SORT_RECEIVED = "received"
+SORT_KEYS = (SORT_SIZE, SORT_SENT, SORT_RECEIVED)
+
+# ICEBOX: 2026-09-29 (#159) -- sort by from / sender / subject / cc
+# (search --sort from|subject, SORT=DISPLAY DISPLAYFROM). IMAP SORT has
+# them, but RFC 5256 sorts FROM by the address's local part and SUBJECT by
+# its base subject; a server without SORT would need both rules copied
+# client-side to agree. Revisit if someone asks to sort by sender.
 
 
 # ############################################################################
@@ -372,6 +391,19 @@ class MessageSummary:
     size: int = 0
     flags: tuple[str, ...] = ()
     has_attachments: bool = False
+
+
+@dataclass(frozen=True)
+class SortOrder:
+    """How to order a message listing: one of :data:`SORT_KEYS`, smallest
+    or oldest first unless ``reverse``.
+
+    Messages the key cannot tell apart keep mailbox (UID) order, reversed
+    or not, as IMAP SORT does (RFC 5256 section 3).
+    """
+
+    key: str
+    reverse: bool = False
 
 
 @dataclass(frozen=True)

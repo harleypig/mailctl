@@ -540,3 +540,209 @@ def test_attachments_are_read_from_the_structure(text, expected):
 # ----------------------------------------------------------------------------
 def test_no_structure_means_no_attachment():
     assert structure_has_attachment(None) is False
+
+
+# ############################################################################
+# Sorting a listing (#159)
+# ############################################################################
+
+# Where the server sorts (SORT advertised) and where the utility does.
+PATHS = pytest.mark.parametrize("server", [True, False], ids=["sort", "local"])
+
+
+# ----------------------------------------------------------------------------
+def sized(uid: int, size: int, sender: str = "a@example.com") -> bytes:
+    """A message of exactly ``size`` bytes, its UID in the subject."""
+    head = rfc822(f"From: {sender}", f"Subject: {uid}")
+
+    return head + b"x" * (size - len(head))
+
+
+# ----------------------------------------------------------------------------
+def dated(date: str | None) -> bytes:
+    """A message with the given Date header, or none."""
+    lines = ["From: a@example.com", "Subject: dated"]
+
+    if date is not None:
+        lines.append(f"Date: {date}")
+
+    return rfc822(*lines)
+
+
+# ----------------------------------------------------------------------------
+def by(key: str, reverse: bool = False) -> utilities.messages.SortOrder:
+    return utilities.messages.SortOrder(key, reverse)
+
+
+# ----------------------------------------------------------------------------
+def uids_of(listing) -> list[int]:
+    return [message.uid for message in listing.messages]
+
+
+# ----------------------------------------------------------------------------
+@PATHS
+def test_the_limit_is_taken_after_sorting(sessions, fake_imap, server):
+    """The N largest, not the largest of the N newest. Red if the limit
+    were applied to the newest candidates before ordering them."""
+    if server:
+        fake_imap.caps.add("SORT")
+
+    fake_imap.messages = {1: sized(1, 900), 2: sized(2, 100), 3: sized(3, 500)}
+    fake_imap.messages |= {uid: sized(uid, 200) for uid in range(4, 9)}
+
+    listing = utilities.messages.list_messages(
+        sessions, "INBOX", limit=2, order=by("size", reverse=True)
+    )
+
+    assert uids_of(listing) == [1, 3]
+    assert [message.size for message in listing.messages] == [900, 500]
+    assert listing.more is True
+    assert listing.order == by("size", reverse=True)
+
+
+# ----------------------------------------------------------------------------
+def test_a_sorting_server_is_asked_and_only_the_first_are_fetched(
+    sessions, fake_imap
+):
+    """One UID SORT, then a FETCH of just what is shown; no SEARCH."""
+    fake_imap.caps.add("SORT")
+    fake_imap.messages = {uid: sized(uid, 100 + uid) for uid in range(1, 9)}
+
+    utilities.messages.list_messages(
+        sessions, "INBOX", limit=3, order=by("size", reverse=True)
+    )
+
+    assert ("sort", ("REVERSE", "SIZE"), "ALL", "UTF-8") in fake_imap.calls
+    assert "search" not in fake_imap.names()
+    assert [uids for uids, _ in fake_imap.fetches] == [(8, 7, 6)]
+
+
+# ----------------------------------------------------------------------------
+def test_without_sort_every_candidate_is_fetched_a_page_at_a_time(
+    sessions, fake_imap
+):
+    """The local sort needs every size: one FETCH per page, never one per
+    message, and no SORT is sent to a server that does not offer it."""
+    page = utilities.messages.LIST_PAGE
+    fake_imap.messages = {
+        uid: sized(uid, 100 + uid % 7) for uid in range(1, page + 11)
+    }
+
+    listing = utilities.messages.list_messages(
+        sessions, "INBOX", limit=1, order=by("size", reverse=True)
+    )
+
+    assert "sort" not in fake_imap.names()
+    assert [len(uids) for uids, _ in fake_imap.fetches] == [page, 10]
+    assert listing.messages[0].size == 106
+    assert listing.more is True
+
+
+# ----------------------------------------------------------------------------
+@PATHS
+def test_the_recheck_keeps_the_sort_order(sessions, fake_imap, server):
+    """Criteria narrow the sorted candidates without reordering them: the
+    non-matches fall between matches in size order and are dropped."""
+    if server:
+        fake_imap.caps.add("SORT")
+
+    news = "news@example.com"
+    fake_imap.messages = {
+        1: sized(1, 400, news),
+        2: sized(2, 300),
+        3: sized(3, 200, news),
+        4: sized(4, 500),
+        5: sized(5, 600, news),
+    }
+    criteria = Criteria()
+    criteria.add("From", news)
+
+    listing = utilities.messages.list_messages(
+        sessions, "INBOX", criteria=criteria, order=by("size")
+    )
+
+    assert uids_of(listing) == [3, 1, 5]
+
+
+# ----------------------------------------------------------------------------
+@PATHS
+def test_ties_keep_uid_order_either_way(sessions, fake_imap, server):
+    """RFC 5256: equal keys stay in mailbox order, reversed or not, so the
+    server and the local sort list the same thing."""
+    if server:
+        fake_imap.caps.add("SORT")
+
+    fake_imap.messages = {
+        1: sized(1, 300),
+        2: sized(2, 300),
+        3: sized(3, 100),
+        4: sized(4, 300),
+    }
+
+    ascending = utilities.messages.list_messages(
+        sessions, "INBOX", order=by("size")
+    )
+    descending = utilities.messages.list_messages(
+        sessions, "INBOX", order=by("size", reverse=True)
+    )
+
+    assert uids_of(ascending) == [3, 1, 2, 4]
+    assert uids_of(descending) == [1, 2, 4, 3]
+
+
+# ----------------------------------------------------------------------------
+def test_sent_is_the_date_header_in_utc_then_the_arrival_time(
+    sessions, fake_imap
+):
+    """Locally, as RFC 5256's DATE: zones are compared in UTC, a date with
+    no zone (-0000) is UTC, and a missing or unreadable Date falls back
+    to INTERNALDATE, which the double reports as 2026-02-03."""
+    fake_imap.messages = {
+        1: dated("Mon, 1 Jun 2026 10:00:00 +0500"),
+        2: dated("Mon, 1 Jun 2026 06:00:00 +0000"),
+        3: dated(None),
+        4: dated("not a date"),
+        5: dated("Fri, 1 Jan 2027 00:00:00 -0000"),
+        6: dated("Wed, 1 Jan 2025 00:00:00 +0000"),
+    }
+
+    listing = utilities.messages.list_messages(
+        sessions, "INBOX", order=by("sent")
+    )
+
+    assert uids_of(listing) == [6, 3, 4, 1, 2, 5]
+
+
+# ----------------------------------------------------------------------------
+def test_received_is_the_arrival_time_not_the_date_header(sessions, fake_imap):
+    """Every message arrived at the double's one INTERNALDATE, so however
+    their Date headers differ, received order is UID order."""
+    fake_imap.messages = {
+        1: dated("Fri, 1 Jan 2027 00:00:00 +0000"),
+        2: dated("Wed, 1 Jan 2025 00:00:00 +0000"),
+    }
+
+    listing = utilities.messages.list_messages(
+        sessions, "INBOX", order=by("received")
+    )
+
+    assert uids_of(listing) == [1, 2]
+
+
+# ----------------------------------------------------------------------------
+def test_a_raw_query_is_sorted_by_the_server_as_given(sessions, fake_imap):
+    fake_imap.caps.add("SORT")
+    fake_imap.messages = {1: sized(1, 200), 2: sized(2, 100)}
+
+    listing = utilities.messages.list_messages(
+        sessions, "INBOX", raw="UNSEEN", order=by("size")
+    )
+
+    assert uids_of(listing) == [2, 1]
+    assert ("sort", ("SIZE",), "UNSEEN", "UTF-8") in fake_imap.calls
+
+
+# ----------------------------------------------------------------------------
+def test_an_unknown_sort_key_is_refused_naming_the_known_ones(sessions):
+    with pytest.raises(MailctlError, match="size, sent, received"):
+        utilities.messages.list_messages(sessions, "INBOX", order=by("from"))

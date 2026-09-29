@@ -16,10 +16,13 @@ Two hazards this file exists to remove:
 """
 
 import datetime
+import email
+import email.utils
 import os
 import socket
 
 import pytest
+from imapclient import exceptions as imapclient_exceptions
 from sievelib import parser
 from utilities_support import FakeSieveSession, mxroute
 
@@ -351,6 +354,41 @@ class FakeIMAPClient:
         )
 
         return sorted(self.messages)
+
+    # ------------------------------------------------------------------------
+    def sort(self, sort_criteria, criteria="ALL", charset="UTF-8"):
+        """Every message, ordered as RFC 5256 would order it.
+
+        Like ``search``, the criteria are recorded and not applied. SIZE
+        is the source's length, DATE the Date header (or, as for ARRIVAL,
+        the fixed INTERNALDATE ``fetch`` reports), and ties keep UID
+        order in either direction.
+        """
+        self._maybe_fail("sort")
+        self.calls.append(("sort", tuple(sort_criteria), criteria, charset))
+
+        if "SORT" not in self.caps:
+            raise imapclient_exceptions.CapabilityError(
+                "Server does not support SORT"
+            )
+
+        reverse = sort_criteria[0] == "REVERSE"
+        key = sort_criteria[-1]
+        stamp = datetime.datetime(2026, 2, 3, 4, 5, 6).astimezone()
+
+        def value(uid):
+            if key == "SIZE":
+                return len(self.messages[uid])
+
+            if key == "DATE":
+                header = email.message_from_bytes(self.messages[uid])["Date"]
+
+                if header:
+                    return email.utils.parsedate_to_datetime(header)
+
+            return stamp
+
+        return sorted(sorted(self.messages), key=value, reverse=reverse)
 
     # ------------------------------------------------------------------------
     def fetch(self, uids, parts):

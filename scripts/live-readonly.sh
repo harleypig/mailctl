@@ -38,6 +38,7 @@ readonly TESTS=(
   backup
   search
   search-unread
+  search-sort
   search-like
   build-filter
   json
@@ -153,6 +154,33 @@ for folder in doc["folders"]:
     )
 PYTHON
 readonly COUNTS_CHECK
+
+# What `search --sort size --reverse --json` must hold: at most three
+# messages, sizes that never grow, and the order named. Prints the first
+# problem found and exits non-zero.
+read -r -d '' SORT_CHECK << 'PYTHON'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        doc = json.load(handle)
+
+except ValueError as exc:
+    sys.exit(f"not JSON: {exc}")
+
+sizes = [message.get("size") for message in doc.get("messages", [])]
+
+if doc.get("sort") != {"key": "size", "reverse": True}:
+    sys.exit(f"sort is {doc.get('sort')!r}, not size reversed")
+
+if len(sizes) > 3:
+    sys.exit(f"--limit 3 listed {len(sizes)} messages")
+
+if any(later > earlier for earlier, later in zip(sizes, sizes[1:])):
+    sys.exit(f"sizes are not largest first: {sizes}")
+PYTHON
+readonly SORT_CHECK
 
 # Lines mailctl prints only when it has actually changed something.
 CHANGED_RE='^(Backed up|Created IMAP|Uploaded|Moved [0-9]|Flagged [0-9]'
@@ -549,6 +577,19 @@ t_search_unread() {
 
   message_marks | awk '$2 !~ /N/ { bad = 1 } END { exit bad }' \
     || fail "--unread listed a message that is not unread"
+}
+
+#-----------------------------------------------------------------------------
+# One call: the largest three, largest first -- the limit is taken after
+# sorting, by the server where it advertises SORT.
+t_search_sort() {
+  local problem
+
+  run_mailctl search --sort size --reverse --limit 3 --json
+  expect_ok 'search --sort size --reverse --limit 3 --json' || return 1
+
+  problem=$(python3 -c "$SORT_CHECK" "$RAW" 2>&1) \
+    || fail "search --sort: ${problem:-not a listing document}"
 }
 
 #-----------------------------------------------------------------------------

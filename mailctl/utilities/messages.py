@@ -6,14 +6,25 @@ saved.
 """
 
 import email
+import email.utils
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from html.parser import HTMLParser
 
 from .. import MailctlError
 from ..criteria import Criteria
 from ..engine import Session
-from ..providers.base import MessageSummary, Transport, decode_header_value
+from ..providers.base import (
+    SORT_KEYS,
+    SORT_SENT,
+    SORT_SIZE,
+    FetchedMessage,
+    MessageSummary,
+    SortOrder,
+    Transport,
+    decode_header_value,
+)
 from .mail import header_values
 from .rules import require_capability
 
@@ -27,6 +38,10 @@ DEFAULT_LIST_LIMIT = 20
 # limit on a large folder reads only about what it shows. The same size as
 # the IMAP component's command chunk, so a round is one FETCH.
 LIST_PAGE = 250
+
+# How the IMAP component writes a message's INTERNALDATE: local time, the
+# zone already dropped.
+RECEIVED_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # Undecodable 8-bit bytes surface as these; no output stream can encode one.
 LONE_SURROGATES = re.compile("[\ud800-\udfff]")
@@ -70,15 +85,16 @@ HTML_HIDDEN = frozenset(("head", "script", "style", "template", "title"))
 
 @dataclass(frozen=True)
 class MessageListing:
-    """The newest messages in a folder that matched, newest first.
+    """The messages in a folder that matched: newest first, or in
+    ``order`` where one was asked for.
 
-    ``more`` is true when candidates beyond the limit were not examined,
-    so there may be further matches to page to.
+    ``more`` is true when there may be further matches past the limit.
     """
 
     folder: str
     messages: list[MessageSummary]
     more: bool = False
+    order: SortOrder | None = None
 
 
 @dataclass(frozen=True)
@@ -138,6 +154,7 @@ def list_messages(
     criteria: Criteria | None = None,
     raw: str | None = None,
     limit: int | None = DEFAULT_LIST_LIMIT,
+    order: SortOrder | None = None,
 ) -> MessageListing:
     """List the newest messages in ``folder``, read-only.
 
@@ -147,6 +164,12 @@ def list_messages(
     A raw query is refused, before anything connects, by a provider that
     does not declare ``raw_query``. ``limit`` None lists all. Nothing is
     marked read.
+
+    With ``order`` the matches are listed in that order instead, and the
+    limit is taken after sorting: the ``limit`` largest, or newest. A
+    server that sorts is asked to, and only the first matches in its
+    order are fetched; otherwise every candidate is fetched, a page at a
+    time, and sorted here (:func:`sorted_matches`).
     """
     if criteria is not None and not criteria:
         criteria = None
@@ -162,12 +185,32 @@ def list_messages(
             f"the message limit must be at least 1, not {limit}"
         )
 
+    if order is not None and order.key not in SORT_KEYS:
+        raise MailctlError(
+            f"cannot sort by {order.key!r}; sort by one of "
+            f"{', '.join(SORT_KEYS)}"
+        )
+
     transport = session.transport
     folder = session.dialect.normalize(folder, transport.list_folders())
 
-    messages, more = newest_matches(transport, folder, criteria, raw, limit)
+    if order is None:
+        messages, more = newest_matches(
+            transport, folder, criteria, raw, limit
+        )
 
-    return MessageListing(folder, messages, more)
+    elif session.dialect.sorts_messages(transport.mail_capabilities()):
+        ordered = transport.sort_messages(folder, order, criteria, raw)
+        messages, more = first_matches(
+            transport, folder, ordered, criteria, limit
+        )
+
+    else:
+        messages, more = sorted_matches(
+            transport, folder, criteria, raw, order, limit
+        )
+
+    return MessageListing(folder, messages, more, order)
 
 
 # ----------------------------------------------------------------------------
@@ -185,19 +228,48 @@ def newest_matches(
     headers, as the existing-mail pass does; ``expression`` is a raw host
     search taken as given; with neither, every message is a candidate.
     """
+    uids = candidates(transport, folder, criteria, expression)
+
+    return first_matches(
+        transport, folder, sorted(uids, reverse=True), criteria, limit
+    )
+
+
+# ----------------------------------------------------------------------------
+def candidates(
+    transport: Transport,
+    folder: str,
+    criteria: Criteria | None,
+    expression: str | None,
+) -> list[int]:
+    """The UIDs the host's search returns, before any re-check."""
     if criteria is not None:
-        uids = transport.search(folder, criteria)
+        return transport.search(folder, criteria)
 
-    else:
-        uids = transport.search_messages(folder, expression or "ALL")
+    return transport.search_messages(folder, expression or "ALL")
 
-    newest = sorted(uids, reverse=True)
+
+# ----------------------------------------------------------------------------
+def first_matches(
+    transport: Transport,
+    folder: str,
+    ordered: list[int],
+    criteria: Criteria | None,
+    limit: int | None,
+) -> tuple[list[MessageSummary], bool]:
+    """Up to ``limit`` matches, in the order of ``ordered``, and whether
+    candidates beyond the limit went unexamined.
+
+    Fetched a page at a time from the front, so a small limit reads only
+    about what it shows; ``criteria`` is re-checked against the fetched
+    headers, which keeps the order and drops what does not match.
+    """
     step = min(LIST_PAGE, limit or LIST_PAGE)
     matches: list[MessageSummary] = []
     examined = 0
 
-    while examined < len(newest) and not (limit and len(matches) >= limit):
-        chunk = newest[examined : examined + step]
+    while examined < len(ordered) and not (limit and len(matches) >= limit):
+        chunk = ordered[examined : examined + step]
         fetched = {
             item.summary.uid: item
             for item in transport.fetch_summaries(chunk, folder)
@@ -222,7 +294,82 @@ def newest_matches(
             if limit and len(matches) >= limit:
                 break
 
-    return matches, examined < len(newest)
+    return matches, examined < len(ordered)
+
+
+# ----------------------------------------------------------------------------
+def sorted_matches(
+    transport: Transport,
+    folder: str,
+    criteria: Criteria | None,
+    expression: str | None,
+    order: SortOrder,
+    limit: int | None,
+) -> tuple[list[MessageSummary], bool]:
+    """Up to ``limit`` matches in ``order``, sorted here, and whether more
+    matched than are returned.
+
+    For a server that cannot sort. The first in order may be anywhere in
+    the folder, so every candidate is fetched: one FETCH per page of
+    :data:`LIST_PAGE`, never one per message, and on a large folder that
+    is the whole folder's headers. The keys match IMAP SORT's (RFC 5256):
+    ties keep UID order in either direction.
+    """
+    uids = sorted(candidates(transport, folder, criteria, expression))
+    matches: list[FetchedMessage] = []
+
+    for start in range(0, len(uids), LIST_PAGE):
+        for item in transport.fetch_summaries(
+            uids[start : start + LIST_PAGE], folder
+        ):
+            if criteria is None or criteria.matches(
+                header_values(item.headers)
+            ):
+                matches.append(item)
+
+    # Stable, and reverse=True keeps equal keys in their UID order.
+    matches.sort(key=_sort_key(order.key), reverse=order.reverse)
+    shown = matches[:limit] if limit else matches
+
+    return [item.summary for item in shown], len(shown) < len(matches)
+
+
+# ----------------------------------------------------------------------------
+def _sort_key(key: str):
+    """The client-side reading of one of :data:`SORT_KEYS`."""
+    if key == SORT_SIZE:
+        return lambda item: item.summary.size
+
+    if key == SORT_SENT:
+        return _sent
+
+    return lambda item: _received(item.summary)
+
+
+# ----------------------------------------------------------------------------
+def _sent(item: FetchedMessage) -> datetime:
+    """The Date header, in UTC where it names no zone; the arrival time
+    where it is missing or unreadable, as RFC 5256's DATE key does."""
+    value = item.headers.get("Date")
+
+    try:
+        sent = email.utils.parsedate_to_datetime(str(value))
+
+    except (TypeError, ValueError, IndexError):
+        return _received(item.summary)
+
+    return sent if sent.tzinfo else sent.replace(tzinfo=UTC)
+
+
+# ----------------------------------------------------------------------------
+def _received(summary: MessageSummary) -> datetime:
+    """When the server took the message in, as an aware time; the start
+    of time when the host gave none."""
+    try:
+        return datetime.strptime(summary.date, RECEIVED_FORMAT).astimezone()
+
+    except ValueError:
+        return datetime.min.replace(tzinfo=UTC)
 
 
 # ----------------------------------------------------------------------------

@@ -196,7 +196,8 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   Two reads are here too: `probe --json` checked against what the server
   says about itself, and against printing the password; and
   `folders --counts --json` checked against each folder's own `STATUS`,
-  leaving every message unread ([#157][i157]).
+  leaving every message unread ([#157][i157]). `search --sort` runs
+  against Dovecot's own `SORT` in `test_search_sort.py` ([#159][i159]).
   New mail is also handed to `dovecot-lda`, which runs the uploaded script,
   so the going-forward half is seen filing it too — by header, and by
   body through an `add --body` rule.
@@ -328,3 +329,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i154]: https://github.com/harleypig/mailctl/issues/154
 [i49]: https://github.com/harleypig/mailctl/issues/49
 [i157]: https://github.com/harleypig/mailctl/issues/157
+[i159]: https://github.com/harleypig/mailctl/issues/159

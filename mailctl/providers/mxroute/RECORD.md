@@ -428,7 +428,11 @@ the parser extended before mailctl can round-trip a script that uses it.
 ### IMAP
 
 mailctl uses `MOVE` when it is advertised, `UIDPLUS` for `UID EXPUNGE` in
-the move fallback, and `ID` to choose a server profile. `folders --counts`
+the move fallback, `ID` to choose a server profile, and, since
+[#159][i159], `SORT` for `search --sort`: one `UID SORT` when it is
+advertised, a client-side sort when it is not. `SORT` was seen advertised
+on 2026-09-28 (*Observed*); the sort has run against the container tier's
+Dovecot, not yet against an MXroute server. `folders --counts`
 ([#157][i157]) uses `LIST-STATUS` to count every folder in one `LIST`, and
 asks for each folder's size too when `STATUS=SIZE` is advertised; without
 `LIST-STATUS` it is refused. It reads `FILTER=SIEVE` only to report on
@@ -448,8 +452,10 @@ serve mailctl. Each line says what it might do, not what will be built:
   is sent as IMAP4rev1's own `BEFORE`, with a date counted back from today,
   so it needs no extension and works to the day. `WITHIN`'s `OLDER` /
   `YOUNGER` would give it to the second.
-- **`SORT`**, **`SORT=DISPLAY`**, and **`THREAD=*`**: server-side ordering
-  and threading for `mailctl search`.
+- **`SORT=DISPLAY`**, **`ESORT`**, and **`THREAD=*`**: sorting by the
+  displayed name rather than the address (`DISPLAYFROM`), sort results
+  returned as ranges, and threading, for `mailctl search`. `SORT` itself
+  is used (above); its `FROM`, `CC`, and `SUBJECT` keys are not.
 - **`METADATA`**: per-mailbox annotations. Whether mailctl has a use for it
   is unclear; it is recorded as available.
 - **`QUOTA`**: the account's quota is a setting on the account, so under
@@ -514,6 +520,7 @@ with `mailctl show`.
 [i152]: https://github.com/harleypig/mailctl/issues/152
 [i157]: https://github.com/harleypig/mailctl/issues/157
 [i158]: https://github.com/harleypig/mailctl/issues/158
+[i159]: https://github.com/harleypig/mailctl/issues/159
 [rc-script]: https://github.com/roundcube/roundcubemail/blob/cbf2500dd8db31ada3fccf71e247c8d8c852c3d7/plugins/managesieve/lib/Roundcube/rcube_sieve_script.php
 [blog-redirect]: https://blog.mxroute.com/why-we-disabled-redirect-sieve-filters-on-mxroute
 [blog-dovecot24]: https://blog.mxroute.com/we-fixed-quota-reporting-then-dovecot-2-4-happened

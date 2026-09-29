@@ -128,10 +128,16 @@ def folder_listing(listing, statuses=None) -> dict:
 
 # ----------------------------------------------------------------------------
 def message_listing(listing) -> dict:
-    """``search``: the matched messages, newest first."""
+    """``search``: the matched messages, newest first, or in the order
+    ``sort`` names; ``sort`` is null for newest first."""
+    order = listing.order
+
     return _document(
         folder=listing.folder,
         more=listing.more,
+        sort=None
+        if order is None
+        else {"key": order.key, "reverse": order.reverse},
         messages=[_summary(item) for item in listing.messages],
     )
 

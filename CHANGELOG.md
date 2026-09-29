@@ -54,6 +54,19 @@ FEATURES:
   refuses it by name, before connecting, if it is given anyway. MXroute
   advertises both capabilities.
 
+* **`mailctl search --sort size|sent|received [--reverse]`** ([#159]).
+  Lists matches by size, by their `Date:` header (`sent`), or by when the
+  server received them (`received`, the Received column), instead of
+  newest first; `--reverse` puts the largest or newest first. `--limit` is
+  taken after sorting, so `search --sort size --reverse --limit 10` is the
+  ten largest messages in the folder. A server advertising IMAP `SORT`
+  sorts in one command and only the messages shown are fetched; otherwise
+  mailctl fetches every candidate a page at a time and sorts them itself.
+  `--json` and `--uids-only` keep the order, and the `search` document
+  gains a `sort` key: `null` for newest first, else `{"key", "reverse"}`.
+  `--reverse` without `--sort`, and `--sort` with `--build-filter`, are
+  refused.
+
 * **`mailctl probe` prints what a provider record needs** ([#101]). It
   reads both servers and changes nothing: the date and time in UTC, where
   each half connects, each server's identity (IMAP `ID`, ManageSieve
@@ -1002,6 +1015,7 @@ NOTES:
 
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
 [#158]: https://github.com/harleypig/mailctl/issues/158
+[#159]: https://github.com/harleypig/mailctl/issues/159
 [#53]: https://github.com/harleypig/mailctl/issues/53
 [#52]: https://github.com/harleypig/mailctl/issues/52
 [#54]: https://github.com/harleypig/mailctl/issues/54

@@ -1,0 +1,9 @@
+$ mailctl search --sort size --build-filter --from noreply@github.com
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --sort orders a listing; --build-filter prints a filter, which has no order
+
+--- sieve calls
+--- imap calls

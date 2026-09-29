@@ -438,6 +438,7 @@ EXPECTED_KINDS = {
     "remove_flags": (WRITE, MAIL),
     "message_headers": (READ, MAIL),
     "message_source": (READ, MAIL),
+    "sort_messages": (READ, MAIL),
     "open": (CONNECTION, None),
     "connect": (CONNECTION, None),
     "disconnect": (CONNECTION, None),

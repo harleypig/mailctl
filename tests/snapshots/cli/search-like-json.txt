@@ -5,6 +5,7 @@ exit: 0
   "version": 1,
   "folder": "INBOX",
   "more": false,
+  "sort": null,
   "messages": [
     {
       "uid": 3,

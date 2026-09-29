@@ -23,7 +23,17 @@ __all__ = [
     "message_summary",
     "rules_server",
     "session_plan",
+    "sort_criteria",
 ]
+
+# RFC 5256's name for each neutral sort key. DATE is the Date header, in
+# UTC, falling back to INTERNALDATE where it is missing or unreadable;
+# ARRIVAL is INTERNALDATE.
+SORT_CRITERIA = {
+    model.SORT_SIZE: "SIZE",
+    model.SORT_SENT: "DATE",
+    model.SORT_RECEIVED: "ARRIVAL",
+}
 
 
 # ----------------------------------------------------------------------------
@@ -143,3 +153,11 @@ def mail_namespaces(
         )
 
     return found
+
+
+# ----------------------------------------------------------------------------
+def sort_criteria(order: model.SortOrder) -> list[str]:
+    """A neutral sort order as IMAP SORT criteria."""
+    key = SORT_CRITERIA[order.key]
+
+    return ["REVERSE", key] if order.reverse else [key]

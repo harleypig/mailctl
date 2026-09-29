@@ -1,0 +1,21 @@
+$ mailctl search --raw UNSEEN --sort size
+exit: 0
+--- stdout
+5 message(s) in 'INBOX', by size, smallest first:
+     UID  Received               Size  Mark  From                          Subject
+       1  2026-02-03 04:05:06    118B        Someone <noreply@github.com>  PR opened
+       2  2026-02-03 04:05:06    121B  N     Someone <noreply@github.com>  Issue closed
+       5  2026-02-03 04:05:06    131B  N     News <news@example.com>       Weekly
+       3  2026-02-03 04:05:06    163B  N     Someone <list@lists.example…  Digest
+       4  2026-02-03 04:05:06    591B  N     Boss <boss@example.com>       Q3 report — draft
+Marks: N unread, F flagged, R replied, D deleted, @ attachment
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('sort', ('SIZE',), 'UNSEEN', 'UTF-8')
+('fetch', (1, 2, 5, 3, 4))
+('logout',)

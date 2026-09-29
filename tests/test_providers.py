@@ -313,6 +313,10 @@ class FakeDialect(Dialect):
     def count_support(cls, capabilities):
         return CountSupport(sizes=True)
 
+    @classmethod
+    def sorts_messages(cls, capabilities):
+        return "ORDERED" in capabilities
+
 
 class FakeTransport(Transport):
     """The fake host's servers: the rule sets and the mailbox are dicts.
@@ -339,6 +343,7 @@ class FakeTransport(Transport):
         self.flags: dict[int, tuple[str, ...]] = {}
         # Each folder's (messages, unseen, size).
         self.counts = {"INBOX": (2, 1, 512), "INBOX.Lists": (0, 0, 0)}
+        self.mail_caps: list[str] = []
 
     # ------------------------------------------------------------------------
     @classmethod
@@ -393,7 +398,7 @@ class FakeTransport(Transport):
         return self.mail_on
 
     def mail_capabilities(self):
-        return []
+        return list(self.mail_caps)
 
     def list_folders(self):
         return FolderListing(".", list(self.folders), list(self.subscribed))
@@ -438,7 +443,13 @@ class FakeTransport(Transport):
     def _fetched(self, uid, folder):
         headers = email.message_from_string(self.messages[uid])
         summary = MessageSummary(
-            uid, "", headers["From"], "", folder, flags=self.flags.get(uid, ())
+            uid,
+            "",
+            headers["From"],
+            "",
+            folder,
+            size=len(self.messages[uid]),
+            flags=self.flags.get(uid, ()),
         )
 
         return FetchedMessage(headers, summary)
@@ -461,6 +472,13 @@ class FakeTransport(Transport):
 
     def message_source(self, folder, uid):
         return self.messages[uid].encode(), ()
+
+    def sort_messages(self, folder, order, criteria, expression):
+        # As coarse as search: every message, ordered by size or by UID.
+        def key(uid):
+            return len(self.messages[uid]) if order.key == "size" else uid
+
+        return sorted(sorted(self.messages), key=key, reverse=order.reverse)
 
 
 FAKE = Provider("fake", FULL, FakeDialect, FakeTransport)
@@ -1533,6 +1551,10 @@ class BareTransport(FakeTransport):
     def folder_status(self, sizes):
         """No folder counts to read."""
 
+    @declined
+    def sort_messages(self, folder, order, criteria, expression):
+        """No ordered search; the utilities sort what they fetch."""
+
 
 # The fake with no connection settings, no ordering, no extensions.
 BARE = Provider(
@@ -1557,6 +1579,7 @@ BARE = Provider(
                 "remove_flags",
                 "count_support",
                 "folder_status",
+                "sort_messages",
             )
         ),
     ),
@@ -1892,3 +1915,101 @@ def test_a_host_that_cannot_test_the_body_refuses_it_by_name(fakes):
         utilities.rules.plan_rule(session, Config(), request, folder)
 
     assert fake_transport(session).scripts == before
+
+
+# ############################################################################
+# Sorting a listing (#159)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def sorted_listing(session: Session):
+    """``search --sort size --reverse --limit 1`` for GitHub's mail."""
+    criteria = Criteria()
+    criteria.add("From", GITHUB)
+
+    return utilities.messages.list_messages(
+        session,
+        "INBOX",
+        criteria=criteria,
+        limit=1,
+        order=model.SortOrder(model.SORT_SIZE, reverse=True),
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("server", [True, False], ids=["sorts", "does-not"])
+def test_a_sorted_listing_makes_the_same_calls_whichever_provider(
+    fake_imap, imap_session, fakes, server
+):
+    """Whether the host sorts is the dialect's reading of what the mail
+    half advertises; the utility then makes the same calls on either
+    provider -- one ordered search, or a search and a local sort."""
+    fake_imap.messages = {7: github_message(7), 8: github_message(8)}
+    fake = fake_session()
+
+    if server:
+        fake_imap.caps.add("SORT")
+        fake_transport(fake).mail_caps = ["ORDERED"]
+
+    real = Recorder(mxroute(imap=imap_session))
+    recorded = Recorder(fake)
+
+    sorted_listing(real.session)
+    sorted_listing(recorded.session)
+
+    names = [call[0] for call in real.calls]
+
+    assert ("transport.sort_messages" in names) is server
+    assert ("transport.search" in names) is not server
+    assert recorded.calls == real.calls
+
+
+# ----------------------------------------------------------------------------
+def test_the_fake_sorts_by_its_own_sizes(fakes):
+    """The fake is a working host: its largest GitHub message is listed,
+    though it is not the newest, on either path."""
+    for caps in ([], ["ORDERED"]):
+        session = fake_session()
+        transport = fake_transport(session)
+        transport.mail_caps = caps
+        transport.messages[6] = transport.messages[7] + "Body: long\r\n" * 5
+
+        listing = sorted_listing(session)
+
+        assert [message.uid for message in listing.messages] == [6], caps
+        assert listing.more is True
+
+
+# ----------------------------------------------------------------------------
+def test_a_host_that_cannot_sort_is_sorted_by_the_utilities(bare):
+    """``bare`` declines the ordered search outright; its dialect never
+    says it sorts, so the utility sorts what it fetched and the declined
+    operation is never called."""
+    session = fake_session(BARE)
+    transport = fake_transport(session)
+    transport.messages[6] = transport.messages[7] + "Body: long\r\n" * 5
+
+    listing = sorted_listing(session)
+
+    assert [message.uid for message in listing.messages] == [6]
+
+    with pytest.raises(MailctlError, match="the bare provider cannot"):
+        transport.sort_messages("INBOX", model.SortOrder("size"), None, None)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("advertised", "sorts"),
+    [
+        (["IMAP4REV1", "SORT", "SORT=DISPLAY"], True),
+        (["imap4rev1", "sort"], True),
+        (["IMAP4REV1", "ESEARCH", "THREAD=REFS"], False),
+        ([], False),
+    ],
+)
+def test_mxroute_sorts_on_the_server_where_it_advertises_sort(
+    advertised, sorts
+):
+    """Read at runtime from the capability list, never assumed."""
+    assert MxrouteDialect.sorts_messages(advertised) is sorts

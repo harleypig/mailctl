@@ -198,6 +198,13 @@ mailctl search --body 'build failed' --since 2026-09-01
 mailctl search --unread --older-than 3w
 mailctl apply --flagged --before 2026-01-01 --fileinto Archive --dry-run
 
+# What is biggest? --sort lists in another order than newest first:
+# size (bytes), sent (the Date header), or received (when the server took
+# it in -- the Received column). Smallest or oldest first; --reverse turns
+# it round. --limit is taken after sorting, so this is the 10 largest.
+mailctl search --sort size --reverse --limit 10
+mailctl search --folder Archive --sort sent --reverse --limit 20
+
 # Find mail like one you have: criteria taken from message 4127 (its
 # List-Id, else its From; --derive picks the headers). A criteria flag
 # replaces what was taken for its header, and adds any other header.
@@ -361,7 +368,7 @@ handling.
 |---------|----------|
 | `list` | `{"version", "scripts": [{"name", "active"}]}` |
 | `folders` | `{"version", "delimiter", "prefix", "folders": [{"name", "subscribed"}]}`; with `--counts`, each folder also has `"messages", "unseen", "size"` (`null` where the server gave none) |
-| `search` | `{"version", "folder", "more", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
+| `search` | `{"version", "folder", "more", "sort", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
 | `view` | `{"version", "message": {"uid", "folder", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
 | `rules` | `{"version", "script", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — what else a plan holds depends on the command |
@@ -375,6 +382,10 @@ handling.
   server's date reaches mailctl without one.
 * A plan's `changes` is `false` where the command would do nothing; its
   `diff`, on a script change, is then `null`.
+* A `search` listing's `sort` is `null` for newest first, else
+  `{"key", "reverse"}` as `--sort` and `--reverse` gave them, and
+  `messages` are in that order. `more` is `true` when there may be
+  matches past `--limit`.
 * `search --build-filter --json` prints a filter document instead (below),
   and `search --uids-only` prints the matching UIDs, one per line.
 
@@ -654,6 +665,37 @@ attachment's text. So `apply --body` can find a word the rule would not.
 mailctl takes the server's answer on the body, and on the dates and states,
 rather than re-checking it: re-checking a body would mean downloading every
 candidate, and IMAP answers the dates and states exactly.
+
+## Sorting a listing
+
+`search --sort KEY` lists matches in another order than newest first, and
+`--reverse` turns that order round. There are three keys, named so that
+the two dates cannot be confused:
+
+* `size` — the message's size in bytes, as the server counts it (the
+  Size column).
+* `sent` — the message's own `Date:` header, compared in UTC. A message
+  with no readable `Date:` header sorts by when it was received.
+* `received` — when the server took the message in (the Received
+  column), which is also what `--since` and `--before` test.
+
+Without `--reverse` the smallest or oldest come first. Messages the key
+cannot tell apart keep their mailbox order either way, as IMAP's own sort
+does.
+
+**`--limit` is taken after sorting.** `--sort size --reverse --limit 10`
+is the ten largest messages in the folder, not the ten newest put in size
+order. Criteria still narrow the list, and do not change its order.
+
+**Where the server can sort, it does.** A server advertising IMAP `SORT`
+(MXroute's does) is asked for the order in one command, and only the
+messages shown are fetched. On a server without it, mailctl fetches every
+matching message's headers and size — one command per 250 messages, never
+one per message — and sorts them itself, with the same result. On a large
+folder that is noticeably slower.
+
+`--sort` cannot be combined with `--build-filter`, which prints a filter
+rather than a listing, and `--reverse` needs `--sort`.
 
 ## `--compare` tests the whole header value
 

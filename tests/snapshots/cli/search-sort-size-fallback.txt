@@ -1,0 +1,19 @@
+$ mailctl search --sort size --reverse --limit 2
+exit: 0
+--- stdout
+2 message(s) in 'INBOX', by size, largest first:
+     UID  Received               Size  Mark  From                          Subject
+       4  2026-02-03 04:05:06    591B  N     Boss <boss@example.com>       Q3 report — draft
+       3  2026-02-03 04:05:06    163B  N     Someone <list@lists.example…  Digest
+Marks: N unread, F flagged, R replied, D deleted, @ attachment
+Showing the first 2 in that order; there may be more -- raise --limit to see them.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', 'ALL')
+('fetch', (1, 2, 3, 4, 5))
+('logout',)

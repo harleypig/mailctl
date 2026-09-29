@@ -279,6 +279,19 @@ NEWSLETTER = (
 
 MAIL = {"mail": {4: REPORT, 5: NEWSLETTER}, "flags": {1: (b"\\Seen",)}}
 
+# MAIL on a server that sorts (#159).
+SORTED = {**MAIL, "imap_caps": {"MOVE", "UIDPLUS", "SORT"}}
+
+# A GitHub message larger than every other, so a size sort puts it last
+# and the list message the re-check drops falls between two it keeps.
+GITHUB_LONG = (
+    b"From: Someone <noreply@github.com>\r\n"
+    b"To: user@example.com\r\n"
+    b"Subject: Release published, with a much longer subject line than "
+    b"any other message here\r\n"
+    b"Date: Tue, 3 Feb 2026 04:05:06 +0000\r\n\r\n"
+)
+
 # For 'mark': 1 read, 2 neither, 3 read, flagged, and keyword $Todo.
 MARKED = {
     "flags": {
@@ -1309,6 +1322,47 @@ SCENARIOS = {
             "3w",
             "--unread",
         ],
+        {},
+    ),
+    # #159: --sort, by the server where it advertises SORT (SORTED) and
+    # client-side where it does not; --limit is taken after sorting.
+    "search-sort-size": (
+        ["search", "--sort", "size", "--reverse", "--limit", "2"],
+        SORTED,
+    ),
+    "search-sort-size-fallback": (
+        ["search", "--sort", "size", "--reverse", "--limit", "2"],
+        MAIL,
+    ),
+    "search-sort-size-json": (
+        ["search", "--sort", "size", "--reverse", "--limit", "2", "--json"],
+        SORTED,
+    ),
+    "search-sort-sent": (["search", "--sort", "sent"], SORTED),
+    "search-sort-received-fallback": (
+        ["search", "--sort", "received", "--reverse"],
+        MAIL,
+    ),
+    "search-sort-uids-only": (
+        ["search", "--sort", "size", "--reverse", "--uids-only"],
+        SORTED,
+    ),
+    "search-sort-from-uids-only": (
+        ["search", "--sort", "size", "--uids-only", *GITHUB],
+        {"mail": {6: GITHUB_LONG}, "imap_caps": SORTED["imap_caps"]},
+    ),
+    "search-sort-raw": (
+        ["search", "--raw", "UNSEEN", "--sort", "size"],
+        SORTED,
+    ),
+    "search-sort-nonascii": (
+        ["search", "--subject", "Café", "--sort", "size", "--limit", "1"],
+        SORTED,
+    ),
+    "search-sort-bad": (["search", "--sort", "from"], {}),
+    "search-reverse-alone": (["search", "--reverse"], {}),
+    "search-sort-build-filter": (
+        ["search", "--sort", "size", "--build-filter", *GITHUB],
         {},
     ),
     "search-build-filter-more-json": (

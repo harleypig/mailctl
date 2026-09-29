@@ -29,6 +29,8 @@ faults to inject, so a test can watch a check go red:
   unread count null
 - ``no-list-status``  -- ``folders --counts`` is refused, the server not
   advertising LIST-STATUS
+- ``sort-unordered``  -- ``search --sort size --reverse`` lists a smaller
+  message ahead of a larger one
 """
 
 import json
@@ -349,8 +351,22 @@ def counted() -> list[dict]:
 # ----------------------------------------------------------------------------
 def document(command: str) -> str:
     """A --json document shaped like the real one for ``command``."""
-    if command == "search":
-        body = {"folder": "INBOX", "more": True, "messages": []}
+    if command == "search" and option("--sort"):
+        sizes = (
+            [100, 5000, 800] if "sort-unordered" in BREAK else [5000, 800, 100]
+        )
+        body = {
+            "folder": "INBOX",
+            "more": True,
+            "sort": {"key": option("--sort"), "reverse": "--reverse" in ARGV},
+            "messages": [
+                {"uid": uid, "size": size}
+                for uid, size in enumerate(sizes, start=1)
+            ],
+        }
+
+    elif command == "search":
+        body = {"folder": "INBOX", "more": True, "sort": None, "messages": []}
 
     elif command == "folders" and "--counts" in ARGV:
         body = {"delimiter": ".", "prefix": None, "folders": counted()}
