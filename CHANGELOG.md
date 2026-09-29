@@ -320,6 +320,19 @@ ENHANCEMENTS:
 
 BUG FIXES:
 
+* **Running `apply --keep` again no longer copies the same mail twice**
+  ([#192]). `apply --fileinto X --keep` leaves the originals where they
+  are, so they still match next time, and every re-run -- from cron, or
+  after a failure part-way -- put another copy of each into X. Before
+  copying, `apply` now looks in X, reading only, and leaves out every
+  match X already holds with the same Message-ID, including copies the
+  saved rule filed there itself. The preview says how many are left out,
+  a run with nothing left to copy says so and changes nothing, and the
+  `--json` mail plan gains `"held"` and `"unidentified"`, the UIDs of
+  each. A message with no Message-ID cannot be looked for, so it is still
+  copied every time, and the preview counts those too. Any flag asked
+  for is still set on every match.
+
 * **`apply --keep` with a folder copies the mail there, as the rule
   does** ([#188]). The rule `add` saves for `--fileinto X --keep` files a
   copy into X and leaves the message in the inbox, but `apply` with the
@@ -1222,3 +1235,4 @@ NOTES:
 [#21]: https://github.com/harleypig/mailctl/issues/21
 [#39]: https://github.com/harleypig/mailctl/issues/39
 [#188]: https://github.com/harleypig/mailctl/issues/188
+[#192]: https://github.com/harleypig/mailctl/issues/192

@@ -43,6 +43,11 @@ exit: 0
       "moves": false,
       "copies": true,
       "count": 2,
+      "held": [],
+      "unidentified": [
+        1,
+        2
+      ],
       "messages": [
         {
           "uid": 1,

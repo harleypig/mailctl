@@ -8,6 +8,7 @@ Searching 'INBOX' for existing matches...
 2 message(s) match:
   uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
   uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+2 message(s) with no Message-ID cannot be looked for in 'INBOX.Lists', so they will be copied.
 Flagged 2 message(s) with \Seen
 Copied 2 message(s) from 'INBOX' to 'INBOX.Lists'; the originals stay in 'INBOX'
 

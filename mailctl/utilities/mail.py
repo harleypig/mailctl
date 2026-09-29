@@ -12,11 +12,11 @@ really matches (ADR 0007).
 import email.utils
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from email.message import Message
 
 from .. import MailctlError
-from ..criteria import Criteria, merge_criteria
+from ..criteria import Criteria, Term, merge_criteria
 from ..engine import Session
 from ..providers.base import (
     ActionSpec,
@@ -93,8 +93,8 @@ def plan_mail(
 
     transport = session.transport
     uids = transport.search(source, criteria)
-    messages = (
-        recheck(criteria, transport.fetch_headers(uids, source))
+    matched = (
+        matching(criteria, transport.fetch_headers(uids, source))
         if uids
         else []
     )
@@ -102,14 +102,96 @@ def plan_mail(
     # The rule's own meaning: a discarding rule files nowhere, and an
     # explicit keep outlives the discard (RFC 5228 section 4.4), so only a
     # discard without keep deletes.
-    return MailActionPlan(
+    plan = MailActionPlan(
         source,
         "" if spec.discard else destination,
         list(spec.flags),
         spec.discard and not spec.keep,
-        messages,
+        [candidate.summary for candidate in matched],
         keep=spec.keep,
     )
+
+    if not plan.copies or not matched:
+        return plan
+
+    held, unidentified = already_held(session, criteria, matched, destination)
+
+    return replace(plan, held=held, unidentified=unidentified)
+
+
+# ----------------------------------------------------------------------------
+def already_held(
+    session: Session,
+    criteria: Criteria,
+    matched: list[FetchedMessage],
+    destination: str,
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Which matches ``destination`` already holds, read-only.
+
+    Returns the UIDs of the matches whose Message-ID the destination has,
+    and of those with no Message-ID, which cannot be looked for. A copy
+    has the same headers and body as its original, so one search of the
+    destination with the rule's own header and body tests finds every
+    copy; the date and state filters are left out, since a copy is read
+    or flagged on its own. A rule of date and state filters alone has no
+    such test, so every message with a Message-ID is fetched instead.
+    """
+    transport = session.transport
+
+    if not transport.list_folders().exists(destination):
+        return (), ()
+
+    ids = {
+        candidate.summary.uid: message_id(candidate.headers)
+        for candidate in matched
+    }
+    unidentified = tuple(uid for uid, value in ids.items() if value is None)
+
+    if len(unidentified) == len(ids):
+        return (), unidentified
+
+    if criteria.terms or criteria.body:
+        copies = replace(
+            criteria,
+            since=None,
+            before=None,
+            older_than=None,
+            unread=False,
+            flagged=False,
+        )
+
+    else:
+        # RFC 3501 section 6.4.4: an empty HEADER string matches every
+        # message that has the field.
+        copies = Criteria(terms=[Term("Message-ID", "")])
+
+    uids = transport.search(destination, copies)
+    present = {
+        message_id(candidate.headers)
+        for candidate in (
+            transport.fetch_headers(uids, destination) if uids else []
+        )
+    }
+    held = tuple(
+        uid for uid, value in ids.items() if value and value in present
+    )
+
+    return held, unidentified
+
+
+# ----------------------------------------------------------------------------
+def message_id(headers: Message) -> str | None:
+    """A message's Message-ID, or None when it has none.
+
+    Folding whitespace is dropped: a msg-id holds none (RFC 5322 section
+    3.6.4), and a server may fold a long one differently in each copy.
+    """
+    value = headers.get("Message-ID")
+
+    if value is None:
+        return None
+
+    return "".join(str(value).split()) or None
 
 
 # ----------------------------------------------------------------------------
@@ -123,8 +205,16 @@ def recheck(
     match, so it is the only thing that makes ``--compare is`` and
     ``--compare matches`` mean the same here as they will in Sieve.
     """
+    return [candidate.summary for candidate in matching(criteria, candidates)]
+
+
+# ----------------------------------------------------------------------------
+def matching(
+    criteria: Criteria, candidates: Iterable[FetchedMessage]
+) -> list[FetchedMessage]:
+    """The candidates :func:`recheck` keeps, with their headers."""
     return [
-        candidate.summary
+        candidate
         for candidate in candidates
         if criteria.matches(header_values(candidate.headers))
     ]
@@ -199,7 +289,8 @@ def execute_mail(
 
     A plan that keeps its messages is flagged where they are and then
     copied, so the copy carries the flags too -- as a rule's ``addflag``
-    reaches both what it files and what it keeps.
+    reaches both what it files and what it keeps. Only the matches the
+    destination did not already hold are copied.
     """
     check_message_cap(plan, max_messages)
 
@@ -216,7 +307,12 @@ def execute_mail(
         transport.add_flags(plan.source, plan.uids, plan.flags)
         flagged = plan.count
 
-    copied = transport.copy_messages(plan.source, plan.uids, plan.destination)
+    uids = plan.copy_uids
+    copied = (
+        transport.copy_messages(plan.source, uids, plan.destination)
+        if uids
+        else 0
+    )
 
     return MailActionResult(flagged=flagged, copied=copied)
 

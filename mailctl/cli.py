@@ -910,6 +910,14 @@ def apply_to_existing(
 
     print(f"{plan.count} message(s) match:")
     print_preview(plan.messages)
+    describe_copy_check(plan)
+
+    if not plan.changes:
+        print(
+            f"Nothing to do: {plan.destination!r} already holds every match."
+        )
+
+        return 0
 
     if args.dry_run:
         describe_plan(plan, prefix="[dry-run] would ")
@@ -959,7 +967,7 @@ def emit_mail_plan(sessions, criteria, args, spec, folder, source) -> int:
         args,
         json_output.plan(
             "apply",
-            changes=bool(mail and mail.count),
+            changes=bool(mail and mail.changes),
             criteria=criteria.to_dict(),
             actions=json_output.actions(spec),
             folder=json_output.folder_plan(folder),
@@ -985,10 +993,26 @@ def describe_plan(plan, prefix: str = "") -> None:
     elif plan.moves:
         print(f"{prefix}move {plan.count} message(s) to {plan.destination!r}")
 
-    elif plan.copies:
+    elif plan.copies and plan.copy_uids:
         print(
-            f"{prefix}copy {plan.count} message(s) to {plan.destination!r}, "
-            f"leaving them in {plan.source!r}"
+            f"{prefix}copy {len(plan.copy_uids)} message(s) to "
+            f"{plan.destination!r}, leaving them in {plan.source!r}"
+        )
+
+
+# ----------------------------------------------------------------------------
+def describe_copy_check(plan) -> None:
+    """Say which matches a copy leaves out, and which it could not check."""
+    if plan.held:
+        print(
+            f"{len(plan.held)} message(s) already in {plan.destination!r} "
+            f"(same Message-ID) will not be copied again."
+        )
+
+    if plan.unidentified:
+        print(
+            f"{len(plan.unidentified)} message(s) with no Message-ID cannot "
+            f"be looked for in {plan.destination!r}, so they will be copied."
         )
 
 
@@ -1031,9 +1055,9 @@ def action_prompt(plan, move_threshold: int) -> str:
             f"{plan.source!r}? This cannot be undone"
         )
 
-    if plan.copies:
+    if plan.copies and plan.copy_uids:
         return (
-            f"Copy {plan.count} message(s) from {plan.source!r} to "
+            f"Copy {len(plan.copy_uids)} message(s) from {plan.source!r} to "
             f"{plan.destination!r}, leaving them in {plan.source!r}?"
         )
 

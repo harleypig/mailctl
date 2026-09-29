@@ -227,6 +227,12 @@ class FakeIMAPClient:
         ]
         self.messages: dict[int, bytes] = {}
         self.flags: dict[int, tuple] = {}
+
+        # Mail held by one folder in particular, by folder name. A folder
+        # not named here holds ``messages``, so a test that never sets
+        # this sees one mailbox whatever it selects.
+        self.folder_messages: dict[str, dict[int, bytes]] = {}
+        self.selected: str | None = None
         self.structures: dict[int, object] = {}
         self.caps = {"MOVE", "UIDPLUS"}
 
@@ -385,6 +391,12 @@ class FakeIMAPClient:
         self._maybe_fail("select_folder")
         self.calls.append(("select_folder", folder, readonly))
         self.readonly = readonly
+        self.selected = folder
+
+    # ------------------------------------------------------------------------
+    def _mailbox(self) -> dict[int, bytes]:
+        """The mail in the selected folder."""
+        return self.folder_messages.get(self.selected, self.messages)
 
     # ------------------------------------------------------------------------
     def search(self, key, charset=None):
@@ -393,7 +405,7 @@ class FakeIMAPClient:
             ("search", key) if charset is None else ("search", key, charset)
         )
 
-        return sorted(self.messages)
+        return sorted(self._mailbox())
 
     # ------------------------------------------------------------------------
     def sort(self, sort_criteria, criteria="ALL", charset="UTF-8"):
@@ -448,13 +460,14 @@ class FakeIMAPClient:
             )
 
         stamp = datetime.datetime(2026, 2, 3, 4, 5, 6)
+        mailbox = self._mailbox()
         response = {}
 
         for uid in uids:
-            if uid not in self.messages:
+            if uid not in mailbox:
                 continue
 
-            source = self.messages[uid]
+            source = mailbox[uid]
             data = {b"BODY[HEADER]": source, b"INTERNALDATE": stamp}
 
             if "BODY.PEEK[]" in parts:
