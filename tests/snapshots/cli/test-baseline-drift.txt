@@ -1,0 +1,64 @@
+$ mailctl test
+exit: 0
+--- stdout
+Sources:   environment
+Provider:  mxroute  (default)
+Host:      mail.example.com  (environment)
+User:      user@example.com  (environment)
+Password:  set  (MAILCTL_PASSWORD, environment)
+IMAP:      mail.example.com:993  (host: same as host, port: default)
+Sieve:     mail.example.com:4190 (tls=starttls)  (default)
+Folder:    INBOX  (default)  -- read by apply, search, view, and add --like
+
+ManageSieve: connected
+  Sieve extensions (* = mailctl's own rules can need it):
+    * body        unavailable
+      copy        unavailable
+      enotify     unavailable
+      envelope    unavailable
+      extlists    unavailable
+    * fileinto    unavailable
+    * imap4flags  available    enabled
+    * mailbox     available    enabled
+      regex       available    enabled
+      spamtest    unavailable
+      vacation    unavailable
+
+  active script: managesieve
+  other scripts: (none)
+  (mailctl always edits the ACTIVE script under its own name; it never guesses one.)
+
+IMAP: connected
+  delimiter: '.'
+  folders:   3 (2 subscribed)
+  not subscribed (exist, but webmail will not show them): INBOX.spam
+  MOVE:      yes
+  UIDPLUS:   yes
+  FILTER=SIEVE: no -- no server-side retroactive filtering (Dovecot imap_filter_sieve is not enabled).
+                mailctl's client-side search-and-move pass is the only option here.
+
+Baseline:  5 serious, 7 informational change(s) since <STAMP> -- 'mailctl check-baseline' lists them
+
+Note: MXRoute disables the Sieve 'redirect' action as a matter of policy (2024-03-22) -- use a panel forwarder, which handles SRS properly. That is the only MXRoute restriction mailctl asserts; everything else above came from the server.
+
+Note: this covers the Sieve stage only. Mail may first pass a DirectAdmin panel filter (an Exim filter, run before Sieve) that mailctl cannot see or change; a message it drops never reaches any Sieve rule. Whether your account has one is unconfirmed -- see 'A filtering stage mailctl cannot see' in the README.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('namespace',)
+('logout',)
+('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
+('logout',)

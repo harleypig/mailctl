@@ -712,6 +712,52 @@ SCENARIOS = {
         ["show-baseline"],
         {**BASELINE, "baseline_edit": other_account},
     ),
+    # #19: drift, in the terms of what it means for this account.
+    "check-baseline": (["check-baseline"], BASELINE),
+    "check-baseline-json": (["check-baseline", "--json"], BASELINE),
+    "check-baseline-none": (["check-baseline"], PROBE),
+    "check-baseline-none-json": (["check-baseline", "--json"], PROBE),
+    "check-baseline-info": (
+        ["check-baseline"],
+        {**BASELINE, "baseline_edit": only_added},
+    ),
+    "check-baseline-other-account": (
+        ["check-baseline"],
+        {**DRIFTED, "baseline_edit": other_account},
+    ),
+    "check-baseline-version": (
+        ["check-baseline"],
+        {
+            **BASELINE,
+            "baseline_edit": lambda document: document.update(version=2),
+        },
+    ),
+    "check-baseline-probe-version": (
+        ["check-baseline"],
+        {
+            **BASELINE,
+            "baseline_edit": lambda document: document["server"].update(
+                version=9
+            ),
+        },
+    ),
+    "check-baseline-missing-key": (
+        ["check-baseline", "--json"],
+        {
+            **BASELINE,
+            "baseline_edit": lambda document: document.__delitem__("accounts"),
+        },
+    ),
+    "check-baseline-unparseable-script": (
+        ["check-baseline"],
+        {**DRIFTED, "script": "this is not sieve {"},
+    ),
+    "test-baseline": (["test"], BASELINE),
+    "test-baseline-drift": (["test"], DRIFTED),
+    "test-baseline-corrupt": (
+        ["test"],
+        {**BASELINE, "baseline_edit": lambda document: "[]\n"},
+    ),
     "search": (["search"], MAIL),
     "search-from": (["search", *GITHUB], MAIL),
     "search-limit": (["search", "--limit", "2"], MAIL),
@@ -1613,6 +1659,9 @@ SCENARIOS = {
         {"caps": ["FileInto", "fileinto", "Body", "imap4flags"]},
     ),
     "test-no-extensions": (["test"], {"caps": []}),
+    # #19: every kind of drift, a hostile capability value among them.
+    "check-baseline-drift": (["check-baseline"], DRIFTED),
+    "check-baseline-drift-json": (["check-baseline", "--json"], DRIFTED),
     "save-baseline-drift-dry": (["save-baseline", "--dry-run"], DRIFTED),
     "add-disabled-mailbox": (
         [
@@ -1917,6 +1966,11 @@ def test_the_machine_output_scenarios_are_found():
     assert "add-json-nodry" in MACHINE
 
 
+# Non-zero exits that are a result, not a failure: the document is still
+# printed. check-baseline exits 3 or 4 on drift (#19).
+RESULT_EXITS = {"check-baseline": ("3", "4")}
+
+
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize("name", MACHINE)
 def test_stdout_holds_only_the_data(
@@ -1939,7 +1993,7 @@ def test_stdout_holds_only_the_data(
     elif "--uids-only" in argv and code == "0":
         assert all(line.isdigit() for line in stdout.splitlines()), stdout
 
-    elif code == "0":
+    elif code == "0" or code in RESULT_EXITS.get(argv[0], ()):
         assert json.loads(stdout)["version"] == 1
 
     elif "--json" not in argv:
@@ -1986,6 +2040,9 @@ def test_no_output_carries_the_password(
         (["save-baseline"], PROBE),
         (["save-baseline", "--yes", "-v"], DRIFTED),
         (["show-baseline"], BASELINE),
+        (["check-baseline", "-v"], DRIFTED),
+        (["check-baseline", "--json", "-v"], DRIFTED),
+        (["test"], DRIFTED),
     ],
     ids=lambda value: " ".join(value) if isinstance(value, list) else "",
 )
@@ -2028,6 +2085,8 @@ def test_a_baseline_never_holds_or_prints_the_password(
 @pytest.mark.parametrize(
     "argv",
     [
+        ["check-baseline", "--json"],
+        ["check-baseline", "--json", "-v"],
         ["show-baseline", "--json"],
     ],
     ids=" ".join,

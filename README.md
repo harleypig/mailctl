@@ -179,11 +179,11 @@ mailctl test --env-file
 mailctl probe
 mailctl probe --json > probe-$(date -u +%F).json
 
-# Save what the servers say now as this host's baseline, in
-# $XDG_CONFIG_HOME/mailctl/baselines/<host>.json (mode 0600, no
-# credential). Saving again shows what changed and asks. Saving writes a
-# local file only.
+# Save what the servers say now as this host's baseline, then later ask
+# what has changed since and what it means for your rules (see "Baselines
+# and drift" below). Saving writes a local file only.
 mailctl save-baseline
+mailctl check-baseline
 mailctl show-baseline
 
 # What does this server call its folders, and which does webmail show?
@@ -366,8 +366,9 @@ the place of the criteria flags, so giving both is refused, and so is
 `--json` prints a command's result as one JSON document on stdout, and
 nothing else there: whatever the command says on the way goes to stderr.
 It is offered where the output is data — `search`, `view`, `folders`,
-`rules`, `list` — and on every write command's plan, where it needs
-`--dry-run`. `test` is a report for a person and has none. `probe --json`
+`rules`, `list`, `check-baseline`, `show-baseline` — and on every write
+command's plan, where it needs `--dry-run`; `backup` and `save-baseline`,
+which write only a local file, have none. `test` is a report for a person and has none. `probe --json`
 prints its own versioned document (above), with the same stdout and error
 handling.
 
@@ -379,6 +380,8 @@ handling.
 | `view` | `{"version", "message": {"uid", "folder", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
 | `rules` | `{"version", "script", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — what else a plan holds depends on the command |
+| `check-baseline` | `{"version", "host", "baseline", "baseline_taken", "taken", "account_recorded", "requires_known", "serious", "informational", "drift": [{"severity", "kind", "half", "name", "before", "after"}]}` |
+| `show-baseline` | the saved file as stored (see *Baselines and drift*) |
 | any, failing | `{"version", "error": {"message"}}`, one line, the last on stderr |
 
 * `version` is `1`. A key may be added without changing it; one renamed,
@@ -395,6 +398,42 @@ handling.
   matches past `--limit`.
 * `search --build-filter --json` prints a filter document instead (below),
   and `search --uids-only` prints the matching UIDs, one per line.
+
+## Baselines and drift
+
+MXroute is migrating its servers, and a server that changes underneath a
+filter does not announce it: a rule just stops behaving as it did.
+`mailctl save-baseline` records what both servers say about themselves —
+the same things `mailctl probe` prints — and `mailctl check-baseline`
+compares a fresh probe with it, saying what each difference means for this
+account:
+
+* **Serious** (`!`): an extension the active script `require`s is gone; the
+  folder delimiter or the personal namespace changed; an IMAP capability
+  mailctl behaves differently without (`ID`, `LIST-STATUS`, `MOVE`,
+  `NAMESPACE`, `SORT`, `STATUS=SIZE`, `UIDPLUS`) came or went; the active script is another one.
+* **Informational** (`-`): an extension appeared, an identity string
+  (ManageSieve `IMPLEMENTATION`, IMAP `ID`) changed — the clearest sign of a
+  migration — or any other capability or endpoint changed.
+
+The baseline **records and never decides**. Nothing refuses to run because
+of drift; `check-baseline` reports it, and `mailctl test` adds one line
+saying whether there is any. Refreshing the baseline is `save-baseline`
+again, which shows what changed and the file's diff and asks first
+(`--yes` skips the question, `--dry-run` stops before it).
+
+`check-baseline` exits **0** with no drift, **3** with informational drift
+only, and **4** with serious drift, so a scheduled run can alert on either;
+**1** is a failure (no baseline saved, one that cannot be read, no
+connection). `--json` prints the report as a versioned document, and
+`show-baseline --json` prints the saved file as it is.
+
+The file is `$XDG_CONFIG_HOME/mailctl/baselines/<host>.json`, one per
+`host` setting, written mode 0600 in a directory created 0700. What
+describes the server is kept once; the active script is kept per account.
+It holds no credential. A file mailctl cannot read — damaged, or from
+another version — is refused by name and never overwritten; move it aside
+and save again.
 
 ## Safety
 

@@ -513,3 +513,47 @@ def test_the_host_is_folded_to_lower_case(where):
     path = baseline.baseline_path(Config(host="Mail.Example.COM"), where)
 
     assert path == where / "mail.example.com.json"
+
+
+# ----------------------------------------------------------------------------
+def test_a_check_with_no_baseline_says_how_to_make_one(
+    sessions, imap_config, where, fake_sieve
+):
+    with pytest.raises(MailctlError, match="'mailctl save-baseline'"):
+        baseline.check_baseline(sessions, imap_config, where)
+
+    assert fake_sieve.calls == []
+
+
+# ----------------------------------------------------------------------------
+def test_a_check_reads_what_the_active_script_requires(
+    sessions, imap_config, where, fake_sieve
+):
+    """The lost 'fileinto' is serious because the script requires it; the
+    lost 'mailbox' is not, because it does not."""
+    save(sessions, imap_config, where, now=THEN)
+    fake_sieve.caps = ["imap4flags"]
+
+    check = baseline.check_baseline(sessions, imap_config, where, now=NOW)
+
+    assert check.account_recorded
+    assert check.requires_known
+    assert check.stored.taken == THEN
+    assert kinds(check.drift) == [
+        (baseline.SERIOUS, baseline.EXTENSION_REMOVED, "fileinto"),
+        (baseline.INFO, baseline.EXTENSION_REMOVED, "mailbox"),
+    ]
+    assert ("get_script", "managesieve") in fake_sieve.calls
+
+
+# ----------------------------------------------------------------------------
+def test_a_check_under_another_provider_is_refused(
+    sessions, imap_config, where
+):
+    plan = save(sessions, imap_config, where)
+    document = json.loads(plan.path.read_text())
+    document["server"]["provider"] = "gmail"
+    plan.path.write_text(json.dumps(document))
+
+    with pytest.raises(MailctlError, match="provider 'gmail'"):
+        baseline.check_baseline(sessions, imap_config, where)

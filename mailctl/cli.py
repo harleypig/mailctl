@@ -60,6 +60,14 @@ __all__ = ["build_parser", "main"]
 
 DEFAULT_MOVE_THRESHOLD = 25
 
+# What 'check-baseline' exits with when it finds drift, so a scheduled run
+# can tell "something changed" from "something that matters changed", and
+# both from a failure (1) and a usage error (2).
+DRIFT_INFO_EXIT = 3
+DRIFT_SERIOUS_EXIT = 4
+
+# The version of the document 'check-baseline --json' prints.
+DRIFT_VERSION = 1
 PREVIEW_LIMIT = 20
 
 ACTIVATE_HELP = (
@@ -1699,10 +1707,46 @@ def cmd_test(args) -> int:
 
         print_facts(mail.facts)
 
+    print_baseline_summary(config, args)
+
     for note in words.notes:
         print(f"\nNote: {note}")
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def print_baseline_summary(config, args) -> None:
+    """One line on drift since the saved baseline, where there is one.
+
+    Warn-only: 'test' neither fails nor stops over drift, or over a
+    baseline it cannot check; the line says which it was.
+    """
+    try:
+        if utilities.baseline.find_baseline(config) is None:
+            return
+
+        with connect(config, args, mail=True) as sessions:
+            check = utilities.baseline.check_baseline(sessions, config)
+
+    except MailctlError as exc:
+        reason = str(exc).split("\n")[0]
+
+        print(f"\nBaseline:  not checked -- {reason}")
+
+        return
+
+    taken = check.stored.taken.strftime(utilities.reports.TIME_FORMAT)
+
+    if not check.drift:
+        print(f"\nBaseline:  no drift since {taken}")
+
+        return
+
+    print(
+        f"\nBaseline:  {drift_counts(check.drift)} since {taken} -- "
+        f"'mailctl check-baseline' lists them"
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -1879,6 +1923,55 @@ def cmd_show_baseline(args) -> int:
 
 
 # ----------------------------------------------------------------------------
+def cmd_check_baseline(args) -> int:
+    """Compare what the servers say now with the saved baseline."""
+    config = configure(args)
+    progress = progress_from_args(args, sys.stderr if args.json else None)
+
+    with engine.connect(config, mail=True, progress=progress) as sessions:
+        check = utilities.baseline.check_baseline(sessions, config)
+        words = sessions.wording
+
+    code = drift_exit(check.drift)
+
+    # The exit status still says whether there was drift under --json.
+    if args.json:
+        emit_json(args, drift_document(check))
+
+        return code
+
+    before = check.stored.taken.strftime(utilities.reports.TIME_FORMAT)
+
+    print(
+        f"Baseline for {check.baseline.host}, taken {before}: "
+        f"{check.baseline.path}"
+    )
+
+    if not check.account_recorded:
+        print(
+            f"  ({config.user} has no part in it, so the active script was "
+            f"not compared)"
+        )
+
+    if not check.drift:
+        print("\nNo drift: the servers say what they said then.")
+
+        return code
+
+    print(f"\n{drift_counts(check.drift)}:")
+    print_drift(check.drift, words)
+
+    print_unknown_requires(check.requires_known)
+
+    print(
+        "\nNothing was refused: the baseline records, it does not decide. "
+        "'mailctl save-baseline' replaces it, after showing what changed."
+    )
+
+    return code
+
+
+# ----------------------------------------------------------------------------
 def print_unknown_requires(known: bool) -> None:
     """Say so where a lost extension was counted serious unread."""
     if not known:
@@ -1889,11 +1982,59 @@ def print_unknown_requires(known: bool) -> None:
 
 
 # ----------------------------------------------------------------------------
+def drift_exit(drift) -> int:
+    """The exit status a drift report ends with, for a script to test."""
+    if any(item.severity == utilities.baseline.SERIOUS for item in drift):
+        return DRIFT_SERIOUS_EXIT
+
+    return DRIFT_INFO_EXIT if drift else 0
+
+
+# ----------------------------------------------------------------------------
+def drift_counts(drift) -> str:
+    """``N serious, M informational change(s)``."""
+    serious = sum(
+        item.severity == utilities.baseline.SERIOUS for item in drift
+    )
+
+    return f"{serious} serious, {len(drift) - serious} informational change(s)"
+
+
+# ----------------------------------------------------------------------------
 def saved_on(baseline, user: str) -> str:
     """When ``user``'s part of a baseline was taken, else the server's."""
     record = baseline.record_for(user)
 
     return record.taken.strftime(utilities.reports.TIME_FORMAT)
+
+
+# ----------------------------------------------------------------------------
+def drift_document(check) -> dict:
+    """A drift check as the versioned document ``--json`` prints."""
+    taken = utilities.reports.TIME_FORMAT
+
+    return {
+        "version": DRIFT_VERSION,
+        "host": check.baseline.host,
+        "baseline": str(check.baseline.path),
+        "baseline_taken": check.stored.taken.strftime(taken),
+        "taken": check.record.taken.strftime(taken),
+        "account_recorded": check.account_recorded,
+        "requires_known": check.requires_known,
+        "serious": len(check.serious),
+        "informational": len(check.drift) - len(check.serious),
+        "drift": [
+            {
+                "severity": item.severity,
+                "kind": item.kind,
+                "half": item.half,
+                "name": item.name,
+                "before": item.before,
+                "after": item.after,
+            }
+            for item in check.drift
+        ],
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -3419,6 +3560,28 @@ def build_parser(
         "--json", action="store_true", help="print the file as it is stored"
     )
     show_baseline.set_defaults(handler=cmd_show_baseline)
+
+    check_baseline = command(
+        "check-baseline",
+        parents=[common, connection],
+        help="report what has changed on the servers since the baseline",
+        description="Probe both servers and compare what they say with the "
+        "saved baseline, saying what each difference means for this "
+        "account. Serious (!): an extension the active script requires is "
+        "gone; the folder delimiter or the personal namespace changed; an "
+        "IMAP capability mailctl behaves differently without came or went; "
+        "the active script is another one. Everything else is "
+        "informational. Nothing is refused and nothing is changed.",
+        epilog=f"Exit status: 0 no drift, {DRIFT_INFO_EXIT} informational "
+        f"drift only, {DRIFT_SERIOUS_EXIT} serious drift, 1 on a failure "
+        f"(no baseline saved, one that cannot be read, no connection).",
+    )
+    check_baseline.add_argument(
+        "--json",
+        action="store_true",
+        help="print the report as a versioned JSON document",
+    )
+    check_baseline.set_defaults(handler=cmd_check_baseline)
 
     add = command(
         "add",

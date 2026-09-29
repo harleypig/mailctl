@@ -78,6 +78,17 @@ FEATURES:
   file as stored. A file that is damaged or from another version is refused
   by name and left alone.
 
+* **`mailctl check-baseline` reports drift from the baseline, in terms of
+  what it means for this account** ([#19]). Serious: an extension the active
+  script requires is gone, the folder delimiter or personal namespace
+  changed, an IMAP capability mailctl relies on came or went, or the active
+  script is another one. Informational: everything else, an identity change
+  (the clearest migration signal) and a new extension among it. It refuses
+  nothing. It exits 0 with no drift, 3 with informational drift only, and 4
+  with serious drift; `--json` prints the report as a versioned document.
+  `mailctl test` adds one line saying whether there is drift, and never
+  fails over it.
+
 * **`mailctl probe` prints what a provider record needs** ([#101]). It
   reads both servers and changes nothing: the date and time in UTC, where
   each half connects, each server's identity (IMAP `ID`, ManageSieve
@@ -1065,6 +1076,7 @@ NOTES:
 [#101]: https://github.com/harleypig/mailctl/issues/101
 [#152]: https://github.com/harleypig/mailctl/issues/152
 [#18]: https://github.com/harleypig/mailctl/issues/18
+[#19]: https://github.com/harleypig/mailctl/issues/19
 [#153]: https://github.com/harleypig/mailctl/issues/153
 [#155]: https://github.com/harleypig/mailctl/issues/155
 [#147]: https://github.com/harleypig/mailctl/issues/147

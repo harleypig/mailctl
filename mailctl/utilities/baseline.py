@@ -50,9 +50,11 @@ __all__ = [
     "SERIOUS",
     "AccountRecord",
     "Baseline",
+    "BaselineCheck",
     "BaselineSavePlan",
     "Drift",
     "baseline_path",
+    "check_baseline",
     "compare_probes",
     "execute_save_baseline",
     "find_baseline",
@@ -182,6 +184,31 @@ class BaselineSavePlan:
     diff: list[str]
     drift: list[Drift]
     requires_known: bool = True
+
+
+@dataclass(frozen=True)
+class BaselineCheck:
+    """A fresh probe compared with the saved one.
+
+    ``account_recorded`` is False where the baseline holds no part for
+    this account, so the active rule set was not compared.
+    ``requires_known`` is False where the active rule set would not parse,
+    so every lost extension was taken to be one it needs. ``stored`` is
+    the probe compared with, as saved for this account; ``record`` the one
+    taken now.
+    """
+
+    baseline: Baseline
+    stored: ProbeRecord
+    record: ProbeRecord
+    account_recorded: bool
+    requires_known: bool
+    drift: list[Drift]
+
+    # ------------------------------------------------------------------------
+    @property
+    def serious(self) -> list[Drift]:
+        return [item for item in self.drift if item.severity == SERIOUS]
 
 
 # ############################################################################
@@ -513,6 +540,55 @@ def _capability_list(items: tuple[Capability, ...]) -> list[dict]:
 # ############################################################################
 # Checking
 # ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def check_baseline(
+    session: Session,
+    config: Config,
+    directory: Path | None = None,
+    *,
+    now: datetime | None = None,
+) -> BaselineCheck:
+    """Probe the servers and compare what they say with the baseline.
+
+    Read-only. The active rule set is read so a lost extension it
+    ``require``s can be told from one it does not use; where it will not
+    parse, every lost extension is treated as one it might need.
+    """
+    path = baseline_path(config, directory)
+    baseline = read_baseline(path)
+
+    if baseline is None:
+        raise MailctlError(
+            f"no baseline has been saved for {path.stem} (looked for "
+            f"{path}); 'mailctl save-baseline' records one"
+        )
+
+    record = probe_servers(session, config, now=now)
+
+    if record.provider != baseline.server.provider:
+        raise MailctlError(
+            f"the baseline {path} was taken through provider "
+            f"{baseline.server.provider!r}, and this run uses "
+            f"{record.provider!r}; the two do not describe the same thing. "
+            f"'mailctl save-baseline' replaces it."
+        )
+
+    requires = _active_requires(session, record)
+    recorded = config.user in baseline.accounts
+    stored = baseline.record_for(config.user)
+    drift = compare_probes(
+        stored,
+        record,
+        requires,
+        session.dialect.drift_terms(),
+        account_recorded=recorded,
+    )
+
+    return BaselineCheck(
+        baseline, stored, record, recorded, requires is not None, drift
+    )
 
 
 # ----------------------------------------------------------------------------

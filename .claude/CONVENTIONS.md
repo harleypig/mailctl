@@ -706,9 +706,10 @@ account, recorded with the command, the date, and the server's hostname:
   ([#101][i101]). `--json` is the same as a versioned document with sorted
   lists, so two probes of an unchanged server differ only in the time.
 - **`mailctl test`** adds the folder and subscription counts and what
-  `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean for mailctl.
-- **`mailctl save-baseline`** stores the probe as the host's baseline
-  ([#18][i18]).
+  `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean for mailctl, and one line on
+  drift where a baseline is saved.
+- **`mailctl save-baseline`** stores the probe as the host's baseline, and
+  **`mailctl check-baseline`** reports drift from it (below).
 - **`make testlive`** is the live tier's read-only smoke tests. It
   confirms the port, the TLS mode, and the delimiter.
 - **`make livecheck`** runs the read-only CLI checks against the account
@@ -717,12 +718,14 @@ account, recorded with the command, the date, and the server's hostname:
 A probe never prints the password. It is held to the same bar as a debug
 shim (*Credentials*).
 
-**The automated form is half built.** [#18][i18] is
-`save-baseline`: the probe, dated, in
+**The automated form is built** ([#18][i18], [#19][i19]).
+`save-baseline` writes the probe to
 `$XDG_CONFIG_HOME/mailctl/baselines/<host>.json`, the server's part once
-and the active script per account. [#19][i19], comparing the live server
-against it and reporting drift, is not built. The file is on one machine
-and is not versioned, so the record still transcribes what a probe saw.
+and the active script per account; `check-baseline` compares a fresh probe
+with it and says what each difference means for the account, exiting 0, 3
+(informational drift), or 4 (serious drift). The file is on one machine and
+is not versioned, so the record still transcribes what a probe saw; a
+refresh is *save a baseline, then copy what changed into the record*.
 
 ### Discover, don't hardcode
 
