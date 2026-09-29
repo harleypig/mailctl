@@ -307,6 +307,11 @@ class MxrouteDialect(Dialect):
             sizes=STATUS_SIZE in advertised,
         )
 
+    # ------------------------------------------------------------------------
+    @classmethod
+    def sorts_messages(cls, capabilities: list[str]) -> bool:
+        return "SORT" in {item.upper() for item in capabilities}
+
 
 # ----------------------------------------------------------------------------
 def capability_facts(capabilities: list[str]) -> list[Fact]:

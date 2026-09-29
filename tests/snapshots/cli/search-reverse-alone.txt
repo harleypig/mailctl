@@ -1,0 +1,9 @@
+$ mailctl search --reverse
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --reverse reverses --sort; give --sort too
+
+--- sieve calls
+--- imap calls

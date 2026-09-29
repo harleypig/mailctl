@@ -39,7 +39,12 @@ from .criteria import (
 from .rules import CERTAIN
 from .utilities.folders import FolderCreation
 from .utilities.mail import DEFAULT_MAX_MESSAGES
-from .utilities.messages import DEFAULT_LIST_LIMIT, decode_header_value
+from .utilities.messages import (
+    DEFAULT_LIST_LIMIT,
+    SORT_KEYS,
+    SortOrder,
+    decode_header_value,
+)
 from .utilities.rules import (
     PLACE_AFTER,
     PLACE_BEFORE,
@@ -2241,6 +2246,17 @@ def cmd_search(args) -> int:
             "--like or --build-filter"
         )
 
+    if args.reverse and args.sort is None:
+        raise MailctlError("--reverse reverses --sort; give --sort too")
+
+    if args.sort is not None and args.build_filter:
+        raise MailctlError(
+            "--sort orders a listing; --build-filter prints a filter, which "
+            "has no order"
+        )
+
+    order = None if args.sort is None else SortOrder(args.sort, args.reverse)
+
     if args.like is None:
         if args.build_filter:
             return print_filter(args, criteria)
@@ -2252,6 +2268,7 @@ def cmd_search(args) -> int:
                 criteria=criteria,
                 raw=args.raw,
                 limit=args.limit,
+                order=order,
             )
 
         return show_listing(args, listing)
@@ -2277,6 +2294,7 @@ def cmd_search(args) -> int:
             criteria=like.criteria,
             raw=args.raw,
             limit=args.limit,
+            order=order,
         )
 
     return show_listing(args, listing)
@@ -2320,7 +2338,7 @@ def show_listing(args, listing) -> int:
 
 # ----------------------------------------------------------------------------
 def print_listing(listing) -> int:
-    """Print a search's listing, newest first."""
+    """Print a search's listing, newest first or in the order asked for."""
     if not listing.messages:
         print(f"No messages found in {safe_line(listing.folder)!r}.")
 
@@ -2328,7 +2346,7 @@ def print_listing(listing) -> int:
 
     print(
         f"{len(listing.messages)} message(s) in "
-        f"{safe_line(listing.folder)!r}, newest first:"
+        f"{safe_line(listing.folder)!r}, {order_words(listing.order)}:"
     )
     print(
         f"{'UID':>8}  {'Received':<19}  {'Size':>6}  {'Mark':<4}  "
@@ -2347,13 +2365,42 @@ def print_listing(listing) -> int:
     if any(marks for _, marks in rows):
         print(f"Marks: {MARK_LEGEND}")
 
-    if listing.more:
+    if listing.more and listing.order is None:
         print(
             f"Showing the {len(listing.messages)} newest; there may be "
             f"more -- raise --limit to see them."
         )
 
+    elif listing.more:
+        print(
+            f"Showing the first {len(listing.messages)} in that order; there "
+            f"may be more -- raise --limit to see them."
+        )
+
     return 0
+
+
+# How a listing's order reads, ascending and reversed, by sort key.
+ORDER_WORDS = {
+    "size": ("by size, smallest first", "by size, largest first"),
+    "sent": (
+        "by sent date (Date header), oldest first",
+        "by sent date (Date header), newest first",
+    ),
+    "received": (
+        "by date received, oldest first",
+        "by date received, newest first",
+    ),
+}
+
+
+# ----------------------------------------------------------------------------
+def order_words(order: SortOrder | None) -> str:
+    """How a listing in ``order`` is ordered, for its heading."""
+    if order is None:
+        return "newest first"
+
+    return ORDER_WORDS[order.key][order.reverse]
 
 
 # ----------------------------------------------------------------------------
@@ -3142,6 +3189,19 @@ def build_parser(
         type=int,
         default=DEFAULT_LIST_LIMIT,
         help=f"show at most N messages; default {DEFAULT_LIST_LIMIT}",
+    )
+    search.add_argument(
+        "--sort",
+        choices=SORT_KEYS,
+        help="list in this order instead of newest first: size (in bytes), "
+        "sent (the Date header), or received (when the server took it in, "
+        "the Received column); smallest or oldest first. --limit is taken "
+        "after sorting",
+    )
+    search.add_argument(
+        "--reverse",
+        action="store_true",
+        help="with --sort, largest or newest first",
     )
     search.add_argument(
         "--like",

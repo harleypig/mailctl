@@ -1,0 +1,26 @@
+$ mailctl search --sort from
+exit: SystemExit(2)
+--- stdout
+
+--- stderr
+usage: mailctl search [-h] [--verbose] [--debug] [--provider PROVIDER]
+                      [--host HOST] [--user USER]
+                      [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
+                      [--env-file [PATH]] [--imap-host IMAP_HOST]
+                      [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
+                      [--sieve-tls {starttls,ssl,none}]
+                      [--backup-dir BACKUP_DIR] [--disable-extension NAME]
+                      [--from VALUE] [--to VALUE] [--cc VALUE]
+                      [--subject VALUE] [--list-id VALUE]
+                      [--header NAME=VALUE] [--body TEXT] [--since DATE]
+                      [--before DATE] [--older-than AGE] [--unread]
+                      [--flagged] [--match {any,all}]
+                      [--compare {contains,is,matches}] [--folder FOLDER]
+                      [--raw QUERY] [--limit LIMIT]
+                      [--sort {size,sent,received}] [--reverse] [--like UID]
+                      [--derive DERIVE] [--build-filter] [--json]
+                      [--uids-only]
+mailctl search: error: argument --sort: invalid choice: 'from' (choose from size, sent, received)
+
+--- sieve calls
+--- imap calls

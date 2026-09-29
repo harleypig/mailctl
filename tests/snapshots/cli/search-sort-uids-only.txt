@@ -1,0 +1,18 @@
+$ mailctl search --sort size --reverse --uids-only
+exit: 0
+--- stdout
+4
+3
+5
+2
+1
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('sort', ('REVERSE', 'SIZE'), 'ALL', 'UTF-8')
+('fetch', (4, 3, 5, 2, 1))
+('logout',)

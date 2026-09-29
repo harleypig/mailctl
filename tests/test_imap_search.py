@@ -318,3 +318,108 @@ def test_a_non_ascii_body_with_a_date_keeps_the_date_outside_the_literal(
     assert literals == ["équipe".encode()], wire[-1]
     assert skeleton.endswith(b"SINCE 1-Sep-2026\r\n"), skeleton
     assert balanced(skeleton), wire[-1]
+
+
+# ############################################################################
+# The same keys under UID SORT (#159)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def serialize_sort(order, criteria, charset) -> bytes:
+    """Return the SORT command IMAPClient would send, as ``serialize``
+    does for SEARCH; SORT is advertised, which IMAPClient checks."""
+    client = IMAPClient.__new__(IMAPClient)
+    # IMAPClient types _imap as imaplib's IMAP4; this stands in for it.
+    client._imap = RecordingTransport()  # pyright: ignore[reportAttributeAccessIssue]
+    client.use_uid = True
+    client._starttls_done = False
+    client._cached_capabilities = (b"IMAP4REV1", b"LITERAL+", b"SORT")
+
+    assert client.sort(order, criteria, charset=charset) == []
+
+    return b"".join(client._imap.sent)
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def sort_wire(fake_imap, monkeypatch) -> list[bytes]:
+    """Route the double's SORT through IMAPClient's real serializer."""
+    commands: list[bytes] = []
+    fake_imap.caps.add("SORT")
+
+    def sort(order, criteria="ALL", charset="UTF-8"):
+        fake_imap.calls.append(("sort", tuple(order), criteria, charset))
+        commands.append(serialize_sort(order, criteria, charset))
+
+        return sorted(fake_imap.messages)
+
+    monkeypatch.setattr(fake_imap, "sort", sort)
+
+    return commands
+
+
+# ----------------------------------------------------------------------------
+def sorted_listing(imap_session, criteria):
+    """``search --sort size --reverse`` over the session."""
+    return utilities.messages.list_messages(
+        mxroute(imap=imap_session),
+        "INBOX",
+        criteria=criteria,
+        order=utilities.messages.SortOrder("size", reverse=True),
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("shape", ["flat", "or"])
+@pytest.mark.parametrize("header", sorted(NON_ASCII))
+def test_a_non_ascii_value_under_sort_is_one_utf8_literal(
+    imap_session, fake_imap, sort_wire, header, shape
+):
+    """#89's path holds under SORT: the value arrives whole after the
+    sort criteria and the UTF-8 charset, and every group closes."""
+    value, _line = NON_ASCII[header]
+    fake_imap.messages = {}
+
+    sorted_listing(imap_session, criteria_for(header, value, shape))
+
+    skeleton, literals = parse_wire(sort_wire[-1])
+
+    assert skeleton.startswith(b"A1 UID SORT (REVERSE SIZE) UTF-8 "), skeleton
+    assert literals == [value.encode("utf-8")], sort_wire[-1]
+    assert balanced(skeleton), sort_wire[-1]
+
+
+# ----------------------------------------------------------------------------
+def test_an_ascii_sort_goes_out_as_plain_atoms(
+    imap_session, fake_imap, sort_wire
+):
+    criteria = Criteria(since=date(2026, 9, 1), unread=True)
+    criteria.add("from", "a@example.com")
+    fake_imap.messages = {}
+
+    sorted_listing(imap_session, criteria)
+
+    assert sort_wire[-1] == (
+        b"A1 UID SORT (REVERSE SIZE) UTF-8 (FROM a@example.com) "
+        b"SINCE 1-Sep-2026 UNSEEN\r\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_sorted_matches_are_rechecked_against_the_value(
+    imap_session, fake_imap, sort_wire
+):
+    """The re-check still compares the decoded text, so only the message
+    carrying the non-ASCII subject is listed."""
+    value, line = NON_ASCII["subject"]
+    fake_imap.messages = {
+        1: carrying(line),
+        2: carrying(b"Subject: Cafe menu"),
+    }
+
+    listing = sorted_listing(
+        imap_session, criteria_for("subject", value, "flat")
+    )
+
+    assert [message.uid for message in listing.messages] == [1]

@@ -931,16 +931,7 @@ class ImapSession:
         self._select(folder, readonly=True)
 
         self._log(f"raw search in {folder!r}: {expression}")
-
-        # IMAPClient sends a whole-string expression unquoted, so a
-        # non-ASCII one would go out as a single literal the server cannot
-        # parse as search keys. Only structured criteria can carry it.
-        if not expression.isascii():
-            raise MailctlError(
-                f"IMAP search {expression!r} has non-ASCII text, which a raw "
-                f"expression cannot carry; use the criteria flags (e.g. "
-                f"--subject) for it, which search in {SEARCH_CHARSET}."
-            )
+        _refuse_non_ascii(expression)
 
         try:
             return list(client.search(expression))
@@ -950,6 +941,58 @@ class ImapSession:
                 f"IMAP search {expression!r} failed -- {exc}. Use IMAP "
                 f"syntax, e.g. 'FROM boss@example.com' or 'UNSEEN'."
             ) from exc
+
+    # ------------------------------------------------------------------------
+    def sort_uids(
+        self,
+        folder: str,
+        order: list[str],
+        criteria: SearchCriteria | None = None,
+        expression: str | None = None,
+    ) -> list[int]:
+        """Return the UIDs a search matches, in the server's sort order.
+
+        One ``UID SORT`` (RFC 5256) in ``folder``, selected read-only:
+        ``order`` is its sort criteria (``["REVERSE", "SIZE"]``), and the
+        search is ``criteria``, else the raw ``expression``, else ``ALL``.
+        The charset is always UTF-8, which RFC 5256 requires every server
+        to take. The server must advertise ``SORT``.
+        """
+        client = self._require_client()
+        self._select(folder, readonly=True)
+
+        if criteria is not None:
+            key, _charset = encode_search_key(criteria.imap_search_key())
+
+        else:
+            key = expression or "ALL"
+            _refuse_non_ascii(key)
+
+        self._log(f"sorting {folder!r} by {' '.join(order)} with {key}")
+
+        try:
+            return list(client.sort(order, key, charset=SEARCH_CHARSET))
+
+        except IMAPClientError as exc:
+            raise MailctlError(
+                f"IMAP sort in {folder!r} failed -- {exc}"
+            ) from exc
+
+
+# ----------------------------------------------------------------------------
+def _refuse_non_ascii(expression: str) -> None:
+    """Refuse a raw search expression IMAPClient cannot send.
+
+    IMAPClient sends a whole-string expression unquoted, so a non-ASCII
+    one would go out as a single literal the server cannot parse as search
+    keys. Only structured criteria can carry it.
+    """
+    if not expression.isascii():
+        raise MailctlError(
+            f"IMAP search {expression!r} has non-ASCII text, which a raw "
+            f"expression cannot carry; use the criteria flags (e.g. "
+            f"--subject) for it, which search in {SEARCH_CHARSET}."
+        )
 
 
 # ----------------------------------------------------------------------------

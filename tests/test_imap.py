@@ -1212,3 +1212,80 @@ def test_a_refused_namespace_is_empty(fake_imap, imap_session):
     fake_imap.failures["namespace"] = IMAPClientError("BAD")
 
     assert imap_session.namespaces() == ((), (), ())
+
+
+# ############################################################################
+# Sorting (#159)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_sort_examines_the_folder_and_sends_one_sort(imap_session, fake_imap):
+    fake_imap.caps.add("SORT")
+    fake_imap.messages = {1: b"x" * 50, 2: b"x" * 10, 3: b"x" * 30}
+    criteria = Criteria()
+    criteria.add("From", "a@example.com")
+
+    uids = imap_session.sort_uids("INBOX", ["REVERSE", "SIZE"], criteria)
+
+    assert uids == [1, 3, 2]
+    assert ("select_folder", "INBOX", True) in fake_imap.calls
+    assert fake_imap.calls[-1] == (
+        "sort",
+        ("REVERSE", "SIZE"),
+        [["FROM", "a@example.com"]],
+        "UTF-8",
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_sort_takes_a_raw_expression_or_everything(imap_session, fake_imap):
+    fake_imap.caps.add("SORT")
+
+    imap_session.sort_uids("INBOX", ["ARRIVAL"], expression="UNSEEN")
+    imap_session.sort_uids("INBOX", ["DATE"])
+
+    sorts = [call for call in fake_imap.calls if call[0] == "sort"]
+
+    assert sorts == [
+        ("sort", ("ARRIVAL",), "UNSEEN", "UTF-8"),
+        ("sort", ("DATE",), "ALL", "UTF-8"),
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_non_ascii_raw_expression_is_refused_before_sorting(
+    imap_session, fake_imap
+):
+    fake_imap.caps.add("SORT")
+
+    with pytest.raises(MailctlError, match="non-ASCII"):
+        imap_session.sort_uids("INBOX", ["SIZE"], expression="SUBJECT café")
+
+    assert "sort" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_refused_sort_names_the_folder(imap_session, fake_imap):
+    """A server without SORT is not meant to be asked; if it is, the
+    library's refusal comes back as mailctl's error, naming the folder."""
+    with pytest.raises(MailctlError, match="IMAP sort in 'INBOX' failed"):
+        imap_session.sort_uids("INBOX", ["SIZE"])
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("key", "reverse", "expected"),
+    [
+        ("size", False, ["SIZE"]),
+        ("size", True, ["REVERSE", "SIZE"]),
+        ("sent", False, ["DATE"]),
+        ("received", True, ["REVERSE", "ARRIVAL"]),
+    ],
+)
+def test_a_neutral_order_is_sent_as_rfc_5256_criteria(key, reverse, expected):
+    """``sent`` is the Date header (DATE); ``received`` is INTERNALDATE
+    (ARRIVAL) -- swapping the two would sort by the wrong clock."""
+    order = utilities.messages.SortOrder(key, reverse)
+
+    assert records.sort_criteria(order) == expected

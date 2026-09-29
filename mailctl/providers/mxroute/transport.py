@@ -31,6 +31,7 @@ from ..base import (
     Namespace,
     Progress,
     ServerDescription,
+    SortOrder,
     Transport,
 )
 from . import records
@@ -282,3 +283,15 @@ class MxrouteTransport(Transport):
         self, folder: str, uid: int
     ) -> tuple[bytes, tuple[str, ...]]:
         return self._imap().fetch_message_source(folder, uid)
+
+    # ------------------------------------------------------------------------
+    def sort_messages(
+        self,
+        folder: str,
+        order: SortOrder,
+        criteria: Criteria | None,
+        expression: str | None,
+    ) -> list[int]:
+        return self._imap().sort_uids(
+            folder, records.sort_criteria(order), criteria, expression
+        )

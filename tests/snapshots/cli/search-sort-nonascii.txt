@@ -1,0 +1,18 @@
+$ mailctl search --subject Café --sort size --limit 1
+exit: 0
+--- stdout
+No messages found in 'INBOX'.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('sort', ('SIZE',), [[b'SUBJECT', b'Caf\xc3\xa9', b'ALL']], 'UTF-8')
+('fetch', (1,))
+('fetch', (2,))
+('fetch', (5,))
+('fetch', (3,))
+('fetch', (4,))
+('logout',)

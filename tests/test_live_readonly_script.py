@@ -31,6 +31,7 @@ ALL_TESTS = [
     "backup",
     "search",
     "search-unread",
+    "search-sort",
     "search-like",
     "build-filter",
     "json",
@@ -205,6 +206,7 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("backup-writes-elsewhere", "backup"),
         ("like-drops-source", "search-like"),
         ("unread-lists-read", "search-unread"),
+        ("sort-unordered", "search-sort"),
         ("filter-on-stdout", "build-filter"),
         ("mark-writes", "mark"),
         ("mark-reports-change", "mark"),
@@ -474,3 +476,23 @@ def test_search_unread_is_one_call_with_the_state_and_date_filters(tmp_path):
     assert argv[2] == "--since"
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", argv[3])
     assert argv[4:] == ["--limit", "5"]
+
+
+# ----------------------------------------------------------------------------
+def test_search_sort_is_one_call_and_checks_the_order(tmp_path):
+    """#159: one sorted search, the largest three as a document."""
+    proc, calls = run(tmp_path, "search-sort")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - search-sort"]
+    assert calls == [
+        ["search", "--sort", "size", "--reverse", "--limit", "3", "--json"]
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_search_sort_names_sizes_out_of_order(tmp_path):
+    proc, _ = run(tmp_path, "search-sort", breaks=["sort-unordered"])
+
+    assert proc.stdout.splitlines()[2] == (
+        "# search --sort: sizes are not largest first: [100, 5000, 800]"
+    )
