@@ -27,7 +27,9 @@ from ..base import (
     FolderListing,
     MailActionPlan,
     MailActionResult,
+    Namespace,
     Progress,
+    ServerDescription,
     Transport,
 )
 from . import records
@@ -169,6 +171,10 @@ class MxrouteTransport(Transport):
     def activate_rule_set(self, name: str) -> None:
         self._sieve().set_active(name)
 
+    # ------------------------------------------------------------------------
+    def describe_rules_server(self) -> ServerDescription:
+        return records.rules_server(self._sieve().server_capabilities())
+
     # ########################################################################
     # The mail half, over IMAP
     # ########################################################################
@@ -204,6 +210,16 @@ class MxrouteTransport(Transport):
     # ------------------------------------------------------------------------
     def unsubscribe(self, folder: str) -> None:
         self._imap().unsubscribe(folder)
+
+    # ------------------------------------------------------------------------
+    def describe_mail_server(self) -> ServerDescription:
+        imap = self._imap()
+
+        return records.mail_server(imap.identity(), imap.capabilities())
+
+    # ------------------------------------------------------------------------
+    def mail_namespaces(self) -> list[Namespace]:
+        return records.mail_namespaces(self._imap().namespaces())
 
     # ------------------------------------------------------------------------
     def search(self, folder: str, criteria: Criteria) -> list[int]:

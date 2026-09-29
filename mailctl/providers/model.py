@@ -12,6 +12,7 @@ configuration, or prints.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from email.errors import HeaderParseError
 from email.header import Header, decode_header, make_header
 from email.message import Message
@@ -23,11 +24,13 @@ __all__ = [
     "FILEINTO",
     "FLAG",
     "KEEP",
+    "NAMESPACE_KINDS",
     "PLACE_AFTER",
     "PLACE_BEFORE",
     "PLACE_FIRST",
     "PLACE_LAST",
     "ActionSpec",
+    "Capability",
     "DeliveryCreate",
     "DisplayDiff",
     "ExtensionState",
@@ -38,7 +41,10 @@ __all__ = [
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
+    "Namespace",
     "Placement",
+    "ProbeRecord",
+    "ServerDescription",
     "Wording",
     "action_names",
     "decode_header_value",
@@ -442,3 +448,83 @@ class Wording:
     mail_service: str
     extensions: str
     notes: tuple[str, ...] = ()
+
+
+# ############################################################################
+# What a server says about itself
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class Capability:
+    """One thing a server advertised, named as the server named it.
+
+    ``value`` is None for a capability sent bare (``IDLE``, ``STARTTLS``).
+    """
+
+    name: str
+    value: str | None = None
+
+
+@dataclass(frozen=True)
+class ServerDescription:
+    """What one half's server says about itself, as it said it.
+
+    * ``identity`` -- how the server names its software, as ``(field,
+      value)`` pairs; empty when it says nothing.
+    * ``capabilities`` -- everything it advertised.
+    * ``after_login`` -- whether ``capabilities`` was read once logged in.
+      A server may advertise a different list before and after, so two
+      lists read at different stages are not evidence of a change.
+    """
+
+    identity: tuple[tuple[str, str], ...]
+    capabilities: tuple[Capability, ...]
+    after_login: bool
+
+
+# The kinds of namespace a mail server reports, in the order it reports
+# them: the user's own folders, other users', and shared ones.
+NAMESPACE_KINDS = ("personal", "other", "shared")
+
+
+@dataclass(frozen=True)
+class Namespace:
+    """One namespace the mail half reported.
+
+    ``kind`` is one of :data:`NAMESPACE_KINDS`. ``prefix`` is where its
+    folders sit (``""`` is the root); ``delimiter`` is None where the
+    server gave none.
+    """
+
+    kind: str
+    prefix: str
+    delimiter: str | None
+
+
+@dataclass(frozen=True)
+class ProbeRecord:
+    """What the servers said about themselves at one moment, as data.
+
+    Everything a provider's record observes, in one place: when, where,
+    each half's identity and capabilities, and the account's shape. Lists
+    are sorted, so two records of an unchanged server differ only in
+    ``taken``. A half this provider does not have is None, with its
+    fields below empty.
+
+    * ``taken`` -- when, in UTC.
+    * ``endpoints`` -- where each half connects, as the configuration
+      resolves it, in the provider's words.
+    * ``extensions`` -- the rule-language extensions the rule half
+      advertises, for a provider that declares ``extensions``.
+    """
+
+    taken: datetime
+    provider: str
+    endpoints: tuple[Fact, ...]
+    rules: ServerDescription | None
+    extensions: tuple[str, ...]
+    active_rule_set: str | None
+    mail: ServerDescription | None
+    delimiter: str | None
+    namespaces: tuple[Namespace, ...]

@@ -226,18 +226,18 @@ def human_size(size: int) -> str:
 
 
 # ----------------------------------------------------------------------------
-def progress_from_args(args):
+def progress_from_args(args, stream=None):
     """Return the engine's progress callback, or None without --verbose.
 
     The engine reports protocol progress by calling back rather than
     printing, so the decision to show it -- and the decoration around it --
-    is made once, here.
+    is made once, here. ``stream`` is where it goes; stdout by default.
     """
     if not args.verbose:
         return None
 
     def emit(channel: str, message: str) -> None:
-        print(f"[{channel}] {message}")
+        print(f"[{channel}] {message}", file=stream or sys.stdout)
 
     return emit
 
@@ -1513,6 +1513,83 @@ def cmd_test(args) -> int:
 
 
 # ----------------------------------------------------------------------------
+def cmd_probe(args) -> int:
+    """Print what the servers say about themselves; change nothing."""
+    config = configure(args)
+    words = utilities.reports.wording(config)
+
+    # With --json only the document goes to stdout, so a script can read
+    # it whole; --verbose's protocol chatter goes to stderr instead.
+    progress = progress_from_args(args, sys.stderr if args.json else None)
+
+    with engine.connect(config, mail=True, progress=progress) as sessions:
+        record = utilities.reports.probe_servers(sessions, config)
+
+    if args.json:
+        sys.stdout.write(utilities.reports.dump_probe(record))
+
+        return 0
+
+    taken = record.taken.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    print(f"Probe of {record.provider}, taken {taken}")
+
+    for fact in record.endpoints:
+        print(f"{fact.label + ':':<10} {fact.text}")
+
+    if record.rules is not None:
+        print_server(words.rules_service, record.rules)
+
+        if record.extensions:
+            print(f"  {words.extensions}: {len(record.extensions)}")
+
+            for name in record.extensions:
+                print(f"    {safe_line(name)}")
+
+        print(f"  active script: {safe_line(record.active_rule_set or '')}")
+
+    if record.mail is not None:
+        print_server(words.mail_service, record.mail)
+        print(f"  delimiter: {safe_line(record.delimiter or '')!r}")
+        print("  namespaces:")
+
+        for space in record.namespaces:
+            print(
+                f"    {space.kind:<8}  prefix {safe_line(space.prefix)!r}  "
+                f"delimiter {safe_line(space.delimiter or '')!r}"
+            )
+
+        if not record.namespaces:
+            print("    (none reported)")
+
+    print("\n--json prints it as a versioned document.")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def print_server(service: str, server) -> None:
+    """One half's identity and capabilities, one value per line."""
+    stage = "after" if server.after_login else "before"
+
+    print(f"\n{service} (capabilities read {stage} login):")
+    print("  identity:")
+
+    for name, value in server.identity:
+        print(f"    {safe_line(name)}: {safe_line(value)}")
+
+    if not server.identity:
+        print("    (none reported)")
+
+    print(f"  capabilities: {len(server.capabilities)}")
+
+    for item in server.capabilities:
+        value = "" if item.value is None else f" {safe_line(item.value)}"
+
+        print(f"    {safe_line(item.name)}{value}")
+
+
+# ----------------------------------------------------------------------------
 def print_facts(facts) -> None:
     """One labelled fact per line, a long one's lines under its first."""
     for fact in facts:
@@ -2663,6 +2740,26 @@ def build_parser(
         help="check reachability, change nothing",
     )
     test.set_defaults(handler=cmd_test)
+
+    probe = command(
+        "probe",
+        parents=[common, connection],
+        help="print what the servers say about themselves, change nothing",
+        description="Print, dated, everything a provider record's Observed "
+        "tier needs: where each half connects, each server's identity and "
+        "its full capability list (and whether that list was read before "
+        "or after login), the active script, the folder delimiter, and "
+        "the namespaces. Lists are sorted, so two probes of an unchanged "
+        "server differ only in the time. Nothing is changed, and no "
+        "credential is printed.",
+    )
+    probe.add_argument(
+        "--json",
+        action="store_true",
+        help="print it as a versioned JSON document, for storing and "
+        "comparing",
+    )
+    probe.set_defaults(handler=cmd_probe)
 
     add = command(
         "add",

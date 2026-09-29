@@ -406,6 +406,46 @@ class ImapSession:
         }
 
     # ------------------------------------------------------------------------
+    def namespaces(
+        self,
+    ) -> tuple[tuple[tuple[str, str | None], ...], ...]:
+        """Return the whole ``NAMESPACE`` response (RFC 2342).
+
+        Three tuples -- personal, other users', shared -- each of
+        ``(prefix, delimiter)`` pairs in the server's order. A kind the
+        server reports none of is empty, and so is every kind when it does
+        not advertise ``NAMESPACE`` or fails the command: like ``ID``, the
+        response is advisory.
+        """
+        client = self._require_client()
+
+        if not client.has_capability("NAMESPACE"):
+            return ((), (), ())
+
+        try:
+            response = client.namespace()
+
+        except IMAPClientError:
+            return ((), (), ())
+
+        def text(value) -> str | None:
+            if value is None or isinstance(value, str):
+                return value
+
+            return value.decode("utf-8", "replace")
+
+        kinds = []
+
+        for part in tuple(response)[:3]:
+            pairs = [
+                (text(prefix) or "", text(delimiter))
+                for prefix, delimiter in part or ()
+            ]
+            kinds.append(tuple(pairs))
+
+        return tuple(kinds)
+
+    # ------------------------------------------------------------------------
     def server(self) -> ServerProfile:
         """Return the profile of the server software this session is on.
 

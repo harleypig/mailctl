@@ -675,16 +675,14 @@ anyone can check. Nothing automates it yet.
 **What a probe is, today.** A probe is a read-only live session against one
 account, recorded with the command, the date, and the server's hostname:
 
-- **`mailctl test`** gives the delimiter, the folder and subscription
-  counts, the active script, `MOVE`, `UIDPLUS`, `FILTER=SIEVE`, and whether
-  each Sieve extension mailctl emits or reports on is advertised.
-- **The full sets, which `mailctl test` does not print.** Read these through
-  the components:
-  - IMAP `ID`, from `ImapSession.identity()`;
-  - IMAP `CAPABILITY`, from `ImapSession.capabilities()`;
-  - the whole ManageSieve CAPABILITY response, from
-    `SieveSession.server_capabilities()`. It carries `IMPLEMENTATION`,
-    `SIEVE`, `SASL`, `MAXREDIRECTS`, and `OWNER`.
+- **`mailctl probe`** prints, dated and with the hosts configured, each
+  server's identity (IMAP `ID`, ManageSieve `IMPLEMENTATION`) and its whole
+  capability list — saying whether it was read before or after login — the
+  Sieve extensions, the active script, the delimiter, and the namespaces
+  ([#101][i101]). `--json` is the same as a versioned document with sorted
+  lists, so two probes of an unchanged server differ only in the time.
+- **`mailctl test`** adds the folder and subscription counts and what
+  `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean for mailctl.
 - **`make testlive`** is the live tier's read-only smoke tests. It
   confirms the port, the TLS mode, and the delimiter.
 - **`make livecheck`** runs the read-only CLI checks against the account
@@ -1158,6 +1156,7 @@ will read it.
 [rec-mxroute]: ../mailctl/providers/mxroute/RECORD.md
 [i17]: https://github.com/harleypig/mailctl/issues/17
 [i18]: https://github.com/harleypig/mailctl/issues/18
+[i101]: https://github.com/harleypig/mailctl/issues/101
 [i19]: https://github.com/harleypig/mailctl/issues/19
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [i13]: https://github.com/harleypig/mailctl/issues/13

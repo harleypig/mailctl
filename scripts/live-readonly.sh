@@ -29,6 +29,7 @@ PAUSE=${LIVECHECK_PAUSE:-2}
 # taken before the first test.
 readonly TESTS=(
   test
+  probe
   list
   show
   rules
@@ -67,6 +68,45 @@ readonly MUTATING=(
   subscribe
   unsubscribe
 )
+
+# What `probe --json` must hold: it parses, it is version 1, and each half
+# has its identity, a non-empty capability list, and the account's shape.
+# Prints the first problem found and exits non-zero.
+read -r -d '' PROBE_CHECK << 'PYTHON'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        doc = json.load(handle)
+
+except ValueError as exc:
+    sys.exit(f"not JSON: {exc}")
+
+
+def need(ok, what):
+    if not ok:
+        sys.exit(what)
+
+
+need(isinstance(doc, dict), "not a JSON object")
+need(doc.get("version") == 1, "version is not 1")
+need(isinstance(doc.get("taken"), str), "no taken time")
+need(doc.get("endpoints"), "no endpoints")
+
+for half, keys in (
+    ("rules", ("active_rule_set", "extensions")),
+    ("mail", ("delimiter", "namespaces")),
+):
+    section = doc.get(half)
+    need(isinstance(section, dict), f"no {half} section")
+    need(isinstance(section.get("identity"), dict), f"no {half} identity")
+    need(section.get("capabilities"), f"no {half} capabilities")
+
+    for key in keys:
+        need(key in section, f"no {half} {key}")
+PYTHON
+readonly PROBE_CHECK
 
 # Lines mailctl prints only when it has actually changed something.
 CHANGED_RE='^(Backed up|Created IMAP|Uploaded|Moved [0-9]|Flagged [0-9]'
@@ -282,6 +322,17 @@ t_test() {
   fi
 
   expect_line '^Password:  set( |$)'
+}
+
+#-----------------------------------------------------------------------------
+t_probe() {
+  local problem
+
+  run_mailctl probe --json
+  expect_ok 'probe --json' || return 1
+
+  problem=$(python3 -c "$PROBE_CHECK" "$RAW" 2>&1) \
+    || fail "probe --json: ${problem:-not a probe document}"
 }
 
 #-----------------------------------------------------------------------------

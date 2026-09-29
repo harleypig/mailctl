@@ -45,11 +45,13 @@ from .model import (
     FILEINTO,
     FLAG,
     KEEP,
+    NAMESPACE_KINDS,
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
     PLACE_LAST,
     ActionSpec,
+    Capability,
     DeliveryCreate,
     DisplayDiff,
     ExtensionState,
@@ -60,7 +62,10 @@ from .model import (
     MailActionPlan,
     MailActionResult,
     MessageSummary,
+    Namespace,
     Placement,
+    ProbeRecord,
+    ServerDescription,
     Wording,
     action_names,
     decode_header_value,
@@ -75,6 +80,7 @@ __all__ = [
     "FLAG",
     "KEEP",
     "MAIL",
+    "NAMESPACE_KINDS",
     "OPERATIONS",
     "PLACE_AFTER",
     "PLACE_BEFORE",
@@ -86,6 +92,7 @@ __all__ = [
     "TRANSPORT_OPERATIONS",
     "WRITE",
     "ActionSpec",
+    "Capability",
     "DeliveryCreate",
     "Dialect",
     "DisplayDiff",
@@ -97,11 +104,14 @@ __all__ = [
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
+    "Namespace",
     "Operation",
     "Placement",
+    "ProbeRecord",
     "Progress",
     "Provider",
     "ProviderCapabilities",
+    "ServerDescription",
     "Specific",
     "Transport",
     "Wording",
@@ -613,6 +623,12 @@ class Transport(ABC):
     def activate_rule_set(self, name: str) -> None:
         """Make ``name`` the rule set that runs."""
 
+    @abstractmethod
+    @classified(Operation(READ, RULES))
+    def describe_rules_server(self) -> ServerDescription:
+        """What the rule half's server says about itself: its identity and
+        every capability it advertised, not only its extensions."""
+
     # ------------------------------------------------------------------------
     # The mail half -- folders
     # ------------------------------------------------------------------------
@@ -648,6 +664,18 @@ class Transport(ABC):
     @classified(Operation(WRITE, MAIL))
     def unsubscribe(self, folder: str) -> None:
         """Unsubscribe from a folder."""
+
+    @abstractmethod
+    @classified(Operation(READ, MAIL))
+    def describe_mail_server(self) -> ServerDescription:
+        """What the mail half's server says about itself: its identity and
+        every capability it advertised."""
+
+    @abstractmethod
+    @classified(Operation(READ, MAIL))
+    def mail_namespaces(self) -> list[Namespace]:
+        """Every namespace the mail half reports, in its order; empty
+        where it reports none."""
 
     # ------------------------------------------------------------------------
     # The mail half -- the existing-mail pass and messages

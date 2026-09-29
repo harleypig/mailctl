@@ -40,6 +40,17 @@ BREAKING CHANGES:
 
 FEATURES:
 
+* **`mailctl probe` prints what a provider record needs** ([#101]). It
+  reads both servers and changes nothing: the date and time in UTC, where
+  each half connects, each server's identity (IMAP `ID`, ManageSieve
+  `IMPLEMENTATION`), its whole capability list and whether that list was
+  read before or after login, the Sieve extensions, the active script, the
+  folder delimiter, and the IMAP namespaces. `--json` prints it as a
+  versioned document (`"version": 1`) with every list sorted, so two probes
+  of an unchanged server differ only in the time. No part of the password
+  is printed; with `--json`, `--verbose` output goes to stderr so stdout
+  stays one document.
+
 * **`mailctl help [COMMAND]`** ([#153]). `mailctl help` prints what
   `mailctl --help` prints, and `mailctl help add` what `mailctl add --help`
   prints, with the same exit code. It follows the provider as a command's
@@ -959,6 +970,7 @@ NOTES:
 [#137]: https://github.com/harleypig/mailctl/issues/137
 [#154]: https://github.com/harleypig/mailctl/issues/154
 [#150]: https://github.com/harleypig/mailctl/issues/150
+[#101]: https://github.com/harleypig/mailctl/issues/101
 [#153]: https://github.com/harleypig/mailctl/issues/153
 [#155]: https://github.com/harleypig/mailctl/issues/155
 [#147]: https://github.com/harleypig/mailctl/issues/147

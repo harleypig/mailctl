@@ -1,0 +1,40 @@
+$ mailctl probe
+exit: 0
+--- stdout
+Probe of mxroute, taken <STAMP>
+IMAP:      mail.example.com:993
+Sieve:     mail.example.com:4190 (tls=starttls)
+
+ManageSieve (capabilities read before login):
+  identity:
+    (none reported)
+  capabilities: 1
+    SIEVE fileinto imap4flags mailbox regex
+  Sieve extensions: 4
+    fileinto
+    imap4flags
+    mailbox
+    regex
+  active script: managesieve
+
+IMAP (capabilities read after login):
+  identity:
+    (none reported)
+  capabilities: 2
+    MOVE
+    UIDPLUS
+  delimiter: '.'
+  namespaces:
+    (none reported)
+
+--json prints it as a versioned document.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('logout',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

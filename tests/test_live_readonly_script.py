@@ -22,6 +22,7 @@ FAKE = Path(__file__).resolve().parent / "fixtures" / "fake_mailctl.py"
 
 ALL_TESTS = [
     "test",
+    "probe",
     "list",
     "show",
     "rules",
@@ -203,6 +204,8 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("filter-on-stdout", "build-filter"),
         ("mark-writes", "mark"),
         ("mark-reports-change", "mark"),
+        ("probe-not-json", "probe"),
+        ("probe-no-mail", "probe"),
     ],
 )
 def test_a_failing_check_is_not_ok_and_the_run_exits_nonzero(
@@ -253,6 +256,28 @@ def test_an_unset_password_fails_test_by_name(tmp_path):
         "not ok 1 - test",
         "# the password is unset",
     ]
+
+
+# ----------------------------------------------------------------------------
+def test_probe_makes_one_call_and_passes_on_a_probe_document(tmp_path):
+    proc, calls = run(tmp_path, "probe")
+
+    assert proc.stdout.splitlines() == ["1..1", "ok 1 - probe"]
+    assert calls == [["probe", "--json"]]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("fault", "reason"),
+    [
+        ("probe-not-json", "# probe --json: not JSON: "),
+        ("probe-no-mail", "# probe --json: no mail section"),
+    ],
+)
+def test_probe_names_what_is_wrong_with_the_document(tmp_path, fault, reason):
+    proc, _ = run(tmp_path, "probe", breaks=[fault])
+
+    assert proc.stdout.splitlines()[2].startswith(reason)
 
 
 # ----------------------------------------------------------------------------
@@ -362,7 +387,14 @@ def test_the_guard_refuses_yes_whatever_else_is_given(tmp_path, argv):
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "argv", [["list"], ["show"], ["search", "--limit", "5"], ["view", "4"]]
+    "argv",
+    [
+        ["list"],
+        ["show"],
+        ["probe", "--json"],
+        ["search", "--limit", "5"],
+        ["view", "4"],
+    ],
 )
 def test_the_guard_allows_read_only_calls(tmp_path, argv):
     proc, _ = run(tmp_path, "--selftest-guard", *argv)

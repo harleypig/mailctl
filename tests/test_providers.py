@@ -34,6 +34,7 @@ from utilities_support import mxroute
 
 from mailctl import MailctlError, cli, engine, utilities
 from mailctl.components.managesieve import SieveSession
+from mailctl.components.managesieve.capabilities import Capabilities
 from mailctl.config import (
     CONFIG_FILE,
     DEFAULT,
@@ -55,6 +56,7 @@ from mailctl.providers.base import (
     KEEP,
     OPERATIONS,
     TRANSPORT_OPERATIONS,
+    Capability,
     DeliveryCreate,
     Dialect,
     DisplayDiff,
@@ -63,9 +65,11 @@ from mailctl.providers.base import (
     FolderListing,
     MailActionResult,
     MessageSummary,
+    Namespace,
     Placement,
     Provider,
     ProviderCapabilities,
+    ServerDescription,
     Specific,
     Transport,
     Wording,
@@ -362,6 +366,11 @@ class FakeTransport(Transport):
     def activate_rule_set(self, name):
         self.active = name
 
+    def describe_rules_server(self):
+        return ServerDescription(
+            (("name", "fake rules"),), (Capability("JSON"),), True
+        )
+
     # -- the mail half -------------------------------------------------------
 
     @property
@@ -382,6 +391,14 @@ class FakeTransport(Transport):
 
     def unsubscribe(self, folder):
         self.subscribed.remove(folder)
+
+    def describe_mail_server(self):
+        return ServerDescription(
+            (("name", "fake mail"),), (Capability("LABELS"),), True
+        )
+
+    def mail_namespaces(self):
+        return [Namespace("personal", "", ".")]
 
     def search(self, folder, criteria):
         # A host search coarser than the rule: every message is a
@@ -605,6 +622,9 @@ class RuleSession:
     def capabilities(self):
         return ["fileinto", "imap4flags", "mailbox"]
 
+    def server_capabilities(self):
+        return Capabilities((("SIEVE", " ".join(self.capabilities())),))
+
     def list_scripts(self):
         return ("managesieve", [])
 
@@ -666,6 +686,8 @@ def drive(session: Session, config: Config) -> None:
     add, remove = utilities.flags.mark_flags(read=True, flagged=False)
     marks = utilities.flags.plan_mark(session, "INBOX", [7, 8], add, remove)
     utilities.flags.execute_mark(session, marks)
+
+    utilities.reports.probe_servers(session, config)
 
 
 # ############################################################################
@@ -914,6 +936,49 @@ def test_the_fake_really_stored_the_rule_and_moved_the_mail(
         ("keep-boss", False),
         ("github", True),
     ]
+
+
+# ----------------------------------------------------------------------------
+def test_the_probe_reports_the_fake_in_its_own_terms(imap_config, fakes):
+    """#101: the document is the neutral model filled from the fake's
+    transport and dialect -- nothing about Sieve or MXroute."""
+    record = utilities.reports.probe_servers(fake_session(), imap_config)
+    text = utilities.reports.dump_probe(record)
+    document = json.loads(text)
+
+    assert document["provider"] == "fake"
+    assert document["endpoints"] == [
+        {"label": "Fake", "value": "fake.example"}
+    ]
+    assert document["rules"]["identity"] == {"name": "fake rules"}
+    assert document["rules"]["active_rule_set"] == "main"
+    assert document["mail"]["capabilities"] == [
+        {"name": "LABELS", "value": None}
+    ]
+    assert document["mail"]["namespaces"] == [
+        {"kind": "personal", "prefix": "", "delimiter": "."}
+    ]
+    assert not re.search(r"(?i)sieve|mxroute|imap", text)
+
+
+# ----------------------------------------------------------------------------
+def test_the_probe_lists_no_extensions_for_a_host_without_them(
+    imap_config, fakes
+):
+    """Extensions are asked for only where the capabilities declare
+    them; the fake that does is the known positive."""
+    asked = {}
+
+    for provider in (FAKE, UNORDERED):
+        recorder = Recorder(fake_session(provider))
+        record = utilities.reports.probe_servers(recorder.session, imap_config)
+        asked[provider.name] = [call[0] for call in recorder.calls]
+
+        assert record.extensions == ()
+        assert record.rules is not None
+
+    assert "transport.rules_capabilities" in asked["fake"]
+    assert "transport.rules_capabilities" not in asked["unordered"]
 
 
 # ----------------------------------------------------------------------------

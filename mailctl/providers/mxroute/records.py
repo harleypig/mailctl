@@ -1,19 +1,25 @@
-"""Between the neutral model and the ``imap`` component's own records.
+"""Between the neutral model and the components' own records.
 
-The component keeps records of its own, and the utilities speak
-:mod:`mailctl.providers.model`. The two are field for field alike today, so
-each translation here is a straight copy; keeping it in one place is what
-lets either side change without the other noticing. The ManageSieve
-records -- a placement, a diff -- cross in the dialect (``sieve.py``).
+The components keep records of their own, and the utilities speak
+:mod:`mailctl.providers.model`. The ``imap`` records are field for field
+alike today, so each translation here is a straight copy; keeping it in one
+place is what lets either side change without the other noticing. What
+each server says about itself crosses here too, for the transport. The
+ManageSieve records a rule edit needs -- a placement, a diff -- cross in
+the dialect (``sieve.py``).
 """
 
 from ...components.imap import messages as imap_records
+from ...components.managesieve.capabilities import Capabilities
 from .. import model
 
 __all__ = [
     "fetched_message",
+    "mail_namespaces",
     "mail_result",
+    "mail_server",
     "message_summary",
+    "rules_server",
     "session_plan",
 ]
 
@@ -74,3 +80,57 @@ def mail_result(
     value: imap_records.MailActionResult,
 ) -> model.MailActionResult:
     return model.MailActionResult(value.flagged, value.moved, value.deleted)
+
+
+# ----------------------------------------------------------------------------
+def rules_server(value: Capabilities) -> model.ServerDescription:
+    """The ManageSieve CAPABILITY response, as the neutral description.
+
+    sievelib reads it on connecting and again after STARTTLS, and never
+    after AUTHENTICATE, so it is the list from before login. The identity
+    is the ``IMPLEMENTATION`` line, which is how ManageSieve names its
+    software.
+    """
+    identity = (
+        (("implementation", value.implementation),)
+        if value.implementation is not None
+        else ()
+    )
+
+    return model.ServerDescription(
+        identity,
+        tuple(model.Capability(name, text) for name, text in value.entries),
+        after_login=False,
+    )
+
+
+# ----------------------------------------------------------------------------
+def mail_server(
+    identity: dict[str, str], capabilities: list[str]
+) -> model.ServerDescription:
+    """The IMAP ``ID`` and ``CAPABILITY`` answers, as the neutral one.
+
+    The session logs in before anything asks for capabilities, so
+    IMAPClient's list is the one from after login.
+    """
+    return model.ServerDescription(
+        tuple(identity.items()),
+        tuple(model.Capability(name) for name in capabilities),
+        after_login=True,
+    )
+
+
+# ----------------------------------------------------------------------------
+def mail_namespaces(
+    value: tuple[tuple[tuple[str, str | None], ...], ...],
+) -> list[model.Namespace]:
+    """The ``NAMESPACE`` response, one record per namespace, kind by kind."""
+    found = []
+
+    for kind, pairs in zip(model.NAMESPACE_KINDS, value, strict=False):
+        found.extend(
+            model.Namespace(kind, prefix, delimiter)
+            for prefix, delimiter in pairs
+        )
+
+    return found

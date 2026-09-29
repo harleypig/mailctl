@@ -171,6 +171,12 @@ mailctl test
 # The same, taking settings from ./.env rather than the environment.
 mailctl test --env-file
 
+# Everything each server says about itself, dated: identity, every
+# capability, the active script, delimiter, and namespaces. --json prints
+# a versioned document, sorted so two probes can be diffed.
+mailctl probe
+mailctl probe --json > probe-$(date -u +%F).json
+
 # What does this server call its folders, and which does webmail show?
 mailctl folders
 

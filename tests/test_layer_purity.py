@@ -1262,6 +1262,7 @@ KNOWN_READERS = (
     "messages.list_messages",
     "messages.read_message",
     "reports.probe_rules",
+    "reports.probe_servers",
     "rules.plan_rule",
     "rules.read_rules",
     "scripts.read_script",

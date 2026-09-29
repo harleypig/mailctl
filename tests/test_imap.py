@@ -1169,3 +1169,46 @@ def test_a_large_flag_store_goes_out_in_chunks(imap_session, fake_imap):
     )
 
     assert chunk_sizes(fake_imap, "remove_flags") == [250, 250, 100]
+
+
+# ############################################################################
+# The whole NAMESPACE response (#101)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_every_namespace_is_read_kind_by_kind(fake_imap, imap_session):
+    """All three kinds, in the server's order; bytes decoded, a missing
+    delimiter kept as None rather than guessed."""
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.namespace_response = (
+        (("", "."), (b"INBOX.", b".")),
+        None,
+        ((b"#shared", None),),
+    )
+
+    assert imap_session.namespaces() == (
+        (("", "."), ("INBOX.", ".")),
+        (),
+        (("#shared", None),),
+    )
+    assert records.mail_namespaces(imap_session.namespaces())[-1].kind == (
+        "shared"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_server_without_namespace_is_not_asked(fake_imap, imap_session):
+    before = fake_imap.names().count("namespace")
+
+    assert imap_session.namespaces() == ((), (), ())
+    assert fake_imap.names().count("namespace") == before
+
+
+# ----------------------------------------------------------------------------
+def test_a_refused_namespace_is_empty(fake_imap, imap_session):
+    """Like ID, the response is advisory; not getting one is ordinary."""
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.failures["namespace"] = IMAPClientError("BAD")
+
+    assert imap_session.namespaces() == ((), (), ())
