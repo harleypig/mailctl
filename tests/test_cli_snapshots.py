@@ -193,6 +193,29 @@ if header :contains "from" "boss@example.com"
 }
 """
 
+# The fixture script with keep-boss switched off in Roundcube, CRLF as the
+# server sends it: `if false # <its test>`, the body kept (#158).
+DISABLED_BOSS = """require ["fileinto","imap4flags"];
+# rule:[keep-boss]
+if false # allof (header :contains "from" "boss@example.com")
+{
+\tfileinto "INBOX.Boss";
+\tsetflag "\\\\Flagged";
+\tstop;
+}
+# rule:[bin-the-noise]
+if header :contains "subject" "newsletter"
+{
+\tfileinto "INBOX.Noise";
+\tstop;
+}
+""".replace("\n", "\r\n")
+
+# The same rule off with nothing kept after `if false`: nothing to restore.
+BARE_FALSE = DISABLED_BOSS.replace(
+    ' # allof (header :contains "from" "boss@example.com")', ""
+)
+
 # A message worth reading: a plain part beside its HTML twin, and a PDF.
 REPORT = (
     b"From: Boss <boss@example.com>\r\n"
@@ -759,6 +782,33 @@ SCENARIOS = {
         ["apply", "--from", "nobody@x.y", "--fileinto", "Lists", "--yes"],
         {},
     ),
+    "disable-yes": (["disable-rule", "keep-boss", "--yes"], {}),
+    "disable-dry": (["disable-rule", "keep-boss", "--dry-run"], {}),
+    "disable-notty": (["disable-rule", "keep-boss"], {}),
+    "disable-unknown": (["disable-rule", "phantom", "--yes"], {}),
+    "disable-already": (
+        ["disable-rule", "keep-boss", "--yes"],
+        {"script": DISABLED_BOSS},
+    ),
+    "disable-empty": (["disable-rule", "keep-boss", "--yes"], {"script": ""}),
+    "enable-yes": (
+        ["enable-rule", "keep-boss", "--yes"],
+        {"script": DISABLED_BOSS},
+    ),
+    "enable-dry": (
+        ["enable-rule", "keep-boss", "--dry-run"],
+        {"script": DISABLED_BOSS},
+    ),
+    "enable-already": (["enable-rule", "keep-boss", "--yes"], {}),
+    "enable-unknown": (
+        ["enable-rule", "phantom", "--yes"],
+        {"script": DISABLED_BOSS},
+    ),
+    "enable-no-test": (
+        ["enable-rule", "keep-boss", "--yes"],
+        {"script": BARE_FALSE},
+    ),
+    "rules-disabled": (["rules"], {"script": DISABLED_BOSS}),
     "remove-yes": (["remove-rule", "keep-boss", "--yes"], {}),
     "remove-dry": (["remove-rule", "keep-boss", "--dry-run"], {}),
     "remove-unknown": (["remove-rule", "phantom", "--yes"], {}),

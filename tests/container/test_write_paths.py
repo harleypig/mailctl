@@ -281,6 +281,61 @@ def test_move_rule_reorders_without_changing_the_rule(account):
     assert 'if header :contains "subject" "gamma"' in stored
 
 
+# A rule that files invoices, for switching off and on (#158).
+INVOICES = """require ["fileinto"];
+# rule:[invoices]
+if header :contains "subject" "invoice"
+{
+\tfileinto "INBOX.Bills";
+\tstop;
+}
+"""
+
+
+# ----------------------------------------------------------------------------
+def test_disable_then_enable_switches_the_rule_off_and_on(account):
+    """A disabled rule is stored in Roundcube's form and files nothing;
+    enabled again, it files mail as before.
+
+    Red if the stored script is not ``if false # <its test>`` on one line
+    (Roundcube would no longer show the rule as disabled), if the server
+    still runs a rule mailctl says is off, or if enabling does not restore
+    a test that files the mail again.
+    """
+    account.seed_script(ROUNDCUBE_NAME, INVOICES)
+
+    with account.imap() as client:
+        client.create_folder("INBOX.Bills")
+
+    disabled = account.run("disable-rule", "invoices", "--yes")
+
+    assert disabled.code == 0, disabled.err
+
+    stored = account.script_bytes(ROUNDCUBE_NAME).decode()
+
+    assert (
+        "# rule:[invoices]\n"
+        'if false # header :contains "subject" "invoice"\n'
+        "{\n"
+    ) in stored.replace("\r\n", "\n")
+
+    account.deliver(message("billing@example.org", "invoice 1"), "b@x.org")
+
+    assert mail_in(account, "INBOX.Bills") == {}
+    assert [s for s, _ in mail_in(account, "INBOX").values()] == ["invoice 1"]
+
+    enabled = account.run("enable-rule", "invoices", "--yes")
+
+    assert enabled.code == 0, enabled.err
+    assert "if false" not in account.script(ROUNDCUBE_NAME)
+
+    account.deliver(message("billing@example.org", "invoice 2"), "b@x.org")
+
+    filed = mail_in(account, "INBOX.Bills")
+
+    assert [subject for subject, _ in filed.values()] == ["invoice 2"]
+
+
 # ----------------------------------------------------------------------------
 def test_a_fresh_account_gets_a_new_active_script(account):
     """With nothing stored, ``add`` creates and activates ``mailctl``.

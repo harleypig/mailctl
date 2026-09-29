@@ -35,7 +35,9 @@ __all__ = [
     "DisplayDiff",
     "NameDialect",
     "Placement",
+    "disable_rule",
     "display_diff",
+    "enable_rule",
     "merge_rule",
     "move_rule",
     "parse_script",
@@ -289,6 +291,11 @@ class _CommentedFiltersSet(factory.FiltersSet):
                 comments.remove(test)
                 entry["disabled_test"] = (command, test)
 
+            if _is_disabled(command):
+                entry["disabled_condition"] = _disabled_condition(
+                    command, test, self.requires
+                )
+
             entry["comments"] = comments
 
         # Whatever the parser collected after the last command belongs to
@@ -397,6 +404,194 @@ def _render_entry(plain: factory.FiltersSet, entry: dict[str, Any]) -> str:
         return text
 
     return text.replace("\nif false {\n", f"\nif false {test}\n{{\n", 1)
+
+
+# ----------------------------------------------------------------------------
+def _disabled_condition(
+    command: commands.Command, test: str | None, requires: list[str]
+) -> tuple[commands.Command, commands.Command | None, commands.Command]:
+    """What a disabled rule would test and do, were it switched back on.
+
+    ``(command, condition, body)``: the rule it was read from, its test
+    (None where it cannot be read), and the command whose children are its
+    actions. Roundcube keeps the test in the comment after ``false``;
+    sievelib's own ``disablefilter`` wraps the whole rule in ``if false``
+    instead, and that form carries its test on the rule inside.
+    """
+    wrapped = _wrapped_rule(command)
+
+    if wrapped is not None:
+        return command, wrapped["test"], wrapped
+
+    if test is None:
+        return command, None, command
+
+    try:
+        return command, _parse_test(test, requires), command
+
+    except MailctlError:
+        return command, None, command
+
+
+# ----------------------------------------------------------------------------
+def _wrapped_rule(command: commands.Command) -> commands.Command | None:
+    """The rule sievelib's ``if false { ... }`` wraps, or None."""
+    children = command.children
+
+    if len(children) == 1 and isinstance(children[0], commands.IfCommand):
+        return children[0]
+
+    return None
+
+
+# ----------------------------------------------------------------------------
+def _parse_test(comment: str, requires: list[str]) -> commands.Command:
+    """Parse the test Roundcube keeps in a disabled rule's comment.
+
+    The comment is parsed as the test of an empty ``if``, under the
+    script's own ``require`` line, so a test needing an extension the
+    script never loads is refused here rather than by the server.
+    """
+    text = comment.lstrip("#").strip()
+    loaded = ", ".join('"' + name.strip('"') + '"' for name in requires)
+    source = f"require [{loaded}];\n" if requires else ""
+    source += f"if {text}\n{{\n}}\n"
+
+    script_parser = parser.Parser()
+
+    if text and script_parser.parse(source):
+        result = [
+            command
+            for command in script_parser.result
+            if not isinstance(command, commands.RequireCommand)
+        ]
+
+        if len(result) == 1 and isinstance(result[0], commands.IfCommand):
+            return result[0]["test"]
+
+    raise MailctlError(
+        f"the test kept in the comment ({text!r}) is not a Sieve test "
+        f"mailctl can read"
+    )
+
+
+# ----------------------------------------------------------------------------
+def _single_line_test(name: str, test: commands.Command) -> str:
+    """A rule's test on one line, as Roundcube writes it after ``if false``.
+
+    sievelib already renders a test on one line -- ``anyof (a, b)`` with
+    ``, `` between the tests, which is Roundcube's own form. A multi-line
+    string (``text:``) cannot be, and a comment ends at the line's end.
+    """
+    buffer = io.StringIO()
+    test.tosieve(target=buffer)
+    line = buffer.getvalue().strip()
+
+    if "\n" in line or "\r" in line:
+        raise MailctlError(
+            f"rule {name!r} cannot be disabled: its test spans more than "
+            f"one line, and a disabled rule keeps its test in a comment on "
+            f"the 'if false' line, where Roundcube looks for it"
+        )
+
+    return line
+
+
+# ----------------------------------------------------------------------------
+def _named_entry(filters: factory.FiltersSet, name: str) -> dict[str, Any]:
+    """The first rule called ``name``; refused, listing the names, if none."""
+    for entry in filters.filters:
+        if entry["name"] == name:
+            return cast(dict[str, Any], entry)
+
+    known = ", ".join(rule_names(filters)) or "(none)"
+
+    raise MailctlError(
+        f"no rule named {name!r} in the active script. Known rules: {known}"
+    )
+
+
+# ----------------------------------------------------------------------------
+def disable_rule(
+    existing: str, name: str, dialect: NameDialect = SIEVELIB_DIALECT
+) -> str:
+    """Switch a named rule off, keeping it, and return the new source.
+
+    Written the way Roundcube writes it -- ``if false # <its test>``, the
+    body kept -- so the webmail shows the rule as disabled and can switch
+    it back on. A rule already disabled returns ``existing`` unchanged.
+    """
+    filters = parse_script(existing, dialect)
+    entry = _named_entry(filters, name)
+    command = entry["content"]
+
+    if not isinstance(command, commands.IfCommand):
+        raise MailctlError(
+            f"rule {name!r} cannot be disabled: it has no 'if' test to "
+            f"switch off"
+        )
+
+    if _is_disabled(command):
+        return existing
+
+    test = command["test"]
+    line = f"# {_single_line_test(name, test)}"
+
+    command.arguments["test"] = commands.get_command_instance("false", command)
+    entry["enabled"] = False
+    entry["disabled_test"] = (command, line)
+    entry["disabled_condition"] = (command, test, command)
+
+    return render_script(filters, dialect)
+
+
+# ----------------------------------------------------------------------------
+def enable_rule(
+    existing: str, name: str, dialect: NameDialect = SIEVELIB_DIALECT
+) -> str:
+    """Switch a disabled rule back on and return the new source.
+
+    Reads either disabled form: Roundcube's test in the comment after
+    ``if false``, or sievelib's ``if false { <the rule> }``. A rule whose
+    test cannot be read back is refused -- guessing one would change what
+    it matches. A rule already enabled returns ``existing`` unchanged.
+    """
+    filters = parse_script(existing, dialect)
+    entry = _named_entry(filters, name)
+    command = entry["content"]
+
+    if not _is_disabled(command):
+        return existing
+
+    wrapped = _wrapped_rule(command)
+
+    if wrapped is not None:
+        entry["content"] = wrapped
+
+    else:
+        _, comment = entry.get("disabled_test", (None, None))
+
+        if comment is None:
+            raise MailctlError(
+                f"rule {name!r} cannot be enabled: it is disabled with no "
+                f"test kept after 'if false', so there is nothing to restore"
+            )
+
+        try:
+            test = _parse_test(comment, filters.requires)
+
+        except MailctlError as error:
+            raise MailctlError(
+                f"rule {name!r} cannot be enabled: {error}"
+            ) from None
+
+        command.arguments["test"] = test
+
+    entry["enabled"] = True
+    entry.pop("disabled_test", None)
+    entry.pop("disabled_condition", None)
+
+    return render_script(filters, dialect)
 
 
 # ----------------------------------------------------------------------------

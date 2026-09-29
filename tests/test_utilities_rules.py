@@ -566,3 +566,88 @@ def test_an_executed_move_is_backed_up_and_uploaded(
         "set_active",
     ]
     assert len(list(tmp_path.iterdir())) == 1
+
+
+# ############################################################################
+# Switching a rule off and on (#158)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_disabling_is_planned_without_touching_the_server(
+    sessions, fake_sieve, reparse
+):
+    plan = utilities.rules.plan_switch(sessions, "keep-boss", enable=False)
+
+    assert plan.changes
+    assert 'if false # header :contains "from"' in plan.after
+    assert rule_names(parse_script(plan.after)) == [
+        "keep-boss",
+        "bin-the-noise",
+    ]
+    assert [
+        rule.disabled for rule in MxrouteDialect.read_rules(plan.after)
+    ] == [
+        True,
+        False,
+    ]
+    assert "put_script" not in fake_sieve.names()
+    reparse(plan.after)
+
+
+# ----------------------------------------------------------------------------
+def test_a_switch_backs_up_before_it_uploads(
+    sessions, imap_config, fake_sieve, tmp_path
+):
+    imap_config.backup_dir = tmp_path / "backups"
+    plan = utilities.rules.plan_switch(sessions, "keep-boss", enable=False)
+
+    path = utilities.rules.execute_script_change(sessions, imap_config, plan)
+
+    assert path.read_bytes() == plan.before.encode()
+    assert fake_sieve.calls[-2][:3] == (
+        "put_script",
+        "managesieve",
+        plan.after,
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_enabling_restores_what_disabling_took_away(sessions):
+    off = utilities.rules.plan_switch(sessions, "keep-boss", enable=False)
+    again = mxroute(sieve=FakeSieveSession(script=off.after))
+
+    on = utilities.rules.plan_switch(again, "keep-boss", enable=True)
+
+    assert render_script(parse_script(on.after)) == render_script(
+        parse_script(off.before)
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("enable", [False, True], ids=["disable", "enable"])
+def test_a_rule_already_in_that_state_changes_nothing(sessions, enable):
+    source = sessions.transport.read_rule_set("managesieve")
+
+    if not enable:
+        source = MxrouteDialect.disable_rule(source, "keep-boss")
+
+    live = mxroute(sieve=FakeSieveSession(script=source))
+    plan = utilities.rules.plan_switch(live, "keep-boss", enable=enable)
+
+    assert not plan.changes
+    assert plan.after == plan.before
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("enable", [False, True], ids=["disable", "enable"])
+def test_switching_an_unknown_rule_or_an_empty_script_is_refused(
+    sessions, enable
+):
+    with pytest.raises(MailctlError, match="no rule named 'phantom'"):
+        utilities.rules.plan_switch(sessions, "phantom", enable=enable)
+
+    empty = mxroute(sieve=FakeSieveSession(script=""))
+
+    with pytest.raises(MailctlError, match="is empty"):
+        utilities.rules.plan_switch(empty, "keep-boss", enable=enable)

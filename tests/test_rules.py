@@ -578,3 +578,85 @@ def test_an_uncomparable_condition_does_not_rescue_a_disjoint_one():
     )
 
     assert not analysis
+
+
+# ############################################################################
+# Disabled rules (#158)
+# ############################################################################
+
+BROAD = 'header :contains "to" "@lists.example.com"'
+NARROW = 'header :contains "to" "announce@lists.example.com"'
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_rule_is_read_with_the_test_it_would_have():
+    rules = build(rule("Lists", f"false # {BROAD}"), rule("Other", NARROW))
+
+    assert [entry.disabled for entry in rules] == [True, False]
+    assert rules[0].tests == build(rule("x", BROAD))[0].tests
+    assert rules[0].actions == ("fileinto", "stop")
+    assert rules[0].stops
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_rule_with_no_readable_test_is_not_modelled():
+    rules = build(rule("Lists", "false"))
+
+    assert rules[0].disabled
+    assert not rules[0].modelled
+    assert rules[0].unmodelled == (
+        "a test kept in a form mailctl cannot read",
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_rule_shadows_nothing_it_would_otherwise_cover():
+    """The same pair shadows when enabled -- the control -- and not when
+    the broad rule is off."""
+    enabled = build(rule("Lists", BROAD), rule("Announce", NARROW))
+    disabled = build(
+        rule("Lists", f"false # {BROAD}"), rule("Announce", NARROW)
+    )
+
+    assert [finding.narrow for finding in audit(enabled)] == ["Announce"]
+    assert audit(disabled) == []
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_rule_is_never_reported_as_shadowed():
+    rules = build(rule("Lists", BROAD), rule("Announce", f"false # {NARROW}"))
+
+    assert audit(rules) == []
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("off", [False, True], ids=["enabled", "disabled"])
+def test_a_new_rule_neither_starves_nor_meets_a_disabled_one(off):
+    """Enabled is the control: the same pair is a finding both ways."""
+    prefix = "false # " if off else ""
+
+    starving = analyze_placement(
+        build(rule("Announce", prefix + NARROW)),
+        candidate(value="@lists.example.com"),
+        at_index=0,
+    )
+    blocked = analyze_placement(
+        build(rule("Lists", prefix + BROAD)), candidate()
+    )
+
+    assert bool(starving) is not off
+    assert bool(blocked) is not off
+
+
+# ----------------------------------------------------------------------------
+def test_a_rule_sievelib_disabled_is_read_from_the_rule_it_wraps():
+    wrapped = (
+        "# rule:[Lists]\nif false\n{\n"
+        f'\tif {BROAD} {{\n\t\tfileinto "INBOX.Lists";\n\t\tstop;\n\t}}\n}}'
+    )
+
+    rules = build(wrapped)
+
+    assert rules[0].disabled
+    assert rules[0].tests == build(rule("x", BROAD))[0].tests
+    assert rules[0].actions == ("fileinto", "stop")

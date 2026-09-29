@@ -887,7 +887,8 @@ def print_rules(rules) -> None:
     print(f"{len(rules)} rule(s), in evaluation order:\n")
 
     for rule in rules:
-        marker = "  [stop]" if rule.stops else ""
+        marker = "  [disabled]" if rule.disabled else ""
+        marker += "  [stop]" if rule.stops else ""
 
         actions = safe_line(", ".join(rule.actions))
 
@@ -1677,6 +1678,50 @@ def cmd_move_rule(args) -> int:
 
 
 # ----------------------------------------------------------------------------
+def cmd_switch_rule(args) -> int:
+    """Switch a named rule off or on, keeping it in the script."""
+    config = configure(args)
+    utilities.rules.check_switch(config)
+    verb = "Enable" if args.enable else "Disable"
+    state = "enabled" if args.enable else "disabled"
+
+    with connect(config, args) as sessions:
+        plan = utilities.rules.plan_switch(
+            sessions, args.rule_name, args.enable, args.script, args.activate
+        )
+
+        if not plan.changes:
+            print(
+                f"Rule {plan.rule!r} is already {state} in "
+                f"{plan.script!r}; nothing to change."
+            )
+
+            return 0
+
+        print(f"{verb} rule {plan.rule!r} in script {plan.script!r}:")
+        print_script_diff(plan.diff)
+        print_activation(plan)
+
+        if args.dry_run:
+            print("\n[dry-run] the script was NOT uploaded.")
+
+            return 0
+
+        if not confirm(
+            f"{verb} rule {plan.rule!r} in {plan.script!r}?", args.yes
+        ):
+            print("Aborted; nothing was changed.")
+
+            return 0
+
+        utilities.rules.execute_script_change(
+            sessions, config, plan, render_event
+        )
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
 def print_message(message, uid: int, folder: str, file=None) -> None:
     """Show the message a rule is about to be derived from.
 
@@ -2316,9 +2361,10 @@ def build_parser(
         parents=[common, connection],
         help="show the rules in order, and which cannot fire",
         description="List the active script's rules in the order the server "
-        "evaluates them, marking which carry 'stop', then report any rule an "
-        "earlier one makes unreachable. A '!' finding is decided; a '?' is a "
-        "suspicion worth checking. Nothing is changed.",
+        "evaluates them, marking which carry 'stop' and which are disabled, "
+        "then report any rule an earlier one makes unreachable. A '!' "
+        "finding is decided; a '?' is a suspicion worth checking. Nothing is "
+        "changed.",
     )
     rules.add_argument("--script", help="script name; default active")
     rules.set_defaults(handler=cmd_rules)
@@ -2600,6 +2646,26 @@ def build_parser(
         help="immediately after the rule named OTHER",
     )
     move.set_defaults(handler=cmd_move_rule)
+
+    for enable, name in ((False, "disable-rule"), (True, "enable-rule")):
+        verb = "enable" if enable else "disable"
+        switch = command(
+            name,
+            offer.disable,
+            parents=[common, connection, safety],
+            help=f"{verb} a named rule, keeping it in the script",
+            description=f"Switch one rule {'on' if enable else 'off'} "
+            "without removing it. A disabled rule stays in the script, "
+            "written the way Roundcube writes one -- 'if false # <its "
+            "test>' -- so the webmail shows it as disabled too. The script "
+            "is backed up first and you are asked to confirm.",
+        )
+        switch.add_argument("rule_name", metavar="NAME")
+        switch.add_argument("--script", help="script name; default active")
+        switch.add_argument(
+            "--activate", action="store_true", help=ACTIVATE_HELP
+        )
+        switch.set_defaults(handler=cmd_switch_rule, enable=enable)
 
     migrate = command(
         "migrate-config",

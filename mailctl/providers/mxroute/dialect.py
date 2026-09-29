@@ -187,6 +187,16 @@ class MxrouteDialect(Dialect):
 
     # ------------------------------------------------------------------------
     @classmethod
+    def disable_rule(cls, source: str, name: str) -> str:
+        return mxroute_sieve.disable_rule(source, name)
+
+    # ------------------------------------------------------------------------
+    @classmethod
+    def enable_rule(cls, source: str, name: str) -> str:
+        return mxroute_sieve.enable_rule(source, name)
+
+    # ------------------------------------------------------------------------
+    @classmethod
     def position(
         cls, names: list[str], placement: Placement | None, name: str
     ) -> int:

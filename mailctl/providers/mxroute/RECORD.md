@@ -159,6 +159,29 @@ see* is the user-facing account of it.
 - #30 recorded neither the DirectAdmin URLs nor their fetch dates. That
   gap is recorded rather than filled.
 
+### Roundcube's disabled rule
+
+This is documented by Roundcube, the software, and not by MXroute:
+**documented (upstream Roundcube source, 2026-09-28)**, not observed on
+MXroute's instance. Read from the managesieve plugin's
+[`rcube_sieve_script.php`][rc-script] at `master`
+(`cbf2500dd8db`), fetched 2026-09-28 ([#158][i158]).
+
+- **Writing.** A disabled rule is written as `if false # <its test>`:
+  `'if ' . ($rule['disabled'] ? 'false # ' : '')`, then the test, then a
+  CRLF and the body's `{`. The body is kept. The name marker stays
+  `# rule:[NAME]`.
+- **The test is on one line.** Several tests are joined by a comma and a
+  space inside `allof (...)` or `anyof (...)`; a single test is written
+  bare, or inside `allof (...)` when the rule says *all of*.
+- **Reading.** Right after `if`, the parser matches
+  `/^\s*false\s+#\s*/i` and then reads the rest of that line as the test.
+  So the comment must stay on the `if false` line, directly after `false`.
+
+mailctl's `disable-rule` and `enable-rule` write and read exactly this
+form, so a rule switched off in either shows as off in the other. Whether
+MXroute's Roundcube is a version with this code is under *Unknown*.
+
 ## Observed
 
 ### `mailctl test`, 2026-08-14, one account
@@ -325,6 +348,9 @@ Say so plainly rather than filling the gap:
   the phase-out.
 - **Port 143 with STARTTLS**, beyond the panel page (see *Connecting to
   IMAP*).
+- **Whether MXroute's Roundcube writes a disabled rule the way upstream
+  does** (*Roundcube's disabled rule*). Settle it by switching one rule
+  off in the webmail and reading the script with `mailctl show`.
 - **Whether this server's IMAP `CAPABILITY` list changes at login.** Only
   the after-login list is recorded, so the 2026-08-14 count cannot be
   placed against it.
@@ -418,6 +444,7 @@ might do, not what will be built:
 | 2026-09-27 | *Documented*: every public source re-fetched; announced changes added | WebFetch of the URLs above; OpenAPI paths counted; no probe run |
 | 2026-09-27 | *Documented*: in-house webmail sources (migration post, branding guide, 2023 post); recorded as a known condition | Web search of docs, blog and community; no webmail documentation exists beyond these |
 | 2026-09-28 | *Observed*: IMAP `CAPABILITY` (43, after login), `ID`, `NAMESPACE`; also a `mailctl test` read and the read-only CLI commands | One read-only IMAP session through `ImapSession` in a throwaway script (#101, #120); server `heracles.mxrouting.net` |
+| 2026-09-28 | *Documented*: Roundcube's disabled-rule form | Upstream `rcube_sieve_script.php` read at `cbf2500dd8db` (#158); not probed on MXroute |
 
 **Due next:** a probe, by 2026-12-28 on the quarterly cadence. The in-house
 webmail does not bring it forward; see *Known condition* above. The
@@ -442,6 +469,8 @@ with `mailctl show`.
 [i102]: https://github.com/harleypig/mailctl/issues/102
 [i116]: https://github.com/harleypig/mailctl/issues/116
 [i120]: https://github.com/harleypig/mailctl/issues/120
+[i158]: https://github.com/harleypig/mailctl/issues/158
+[rc-script]: https://github.com/roundcube/roundcubemail/blob/cbf2500dd8db31ada3fccf71e247c8d8c852c3d7/plugins/managesieve/lib/Roundcube/rcube_sieve_script.php
 [blog-redirect]: https://blog.mxroute.com/why-we-disabled-redirect-sieve-filters-on-mxroute
 [blog-dovecot24]: https://blog.mxroute.com/we-fixed-quota-reporting-then-dovecot-2-4-happened
 [blog-bandages]: https://blog.mxroute.com/ripping-off-bandages

@@ -1,0 +1,14 @@
+$ mailctl disable-rule keep-boss --yes
+exit: 0
+--- stdout
+Rule 'keep-boss' is already disabled in 'managesieve'; nothing to change.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

@@ -122,6 +122,12 @@ class Rule:
     # it cannot support a CERTAIN verdict in either direction.
     unmodelled: tuple[str, ...] = ()
 
+    # Switched off without being removed (Roundcube's `if false # <test>`).
+    # The tests and actions are what it would do if switched back on; it
+    # never fires as it stands, so it shadows nothing and nothing shadows
+    # it.
+    disabled: bool = False
+
     # ------------------------------------------------------------------------
     @property
     def modelled(self) -> bool:
@@ -352,8 +358,17 @@ def read_rules(filters) -> list[Rule]:
     for index, entry in enumerate(entries):
         content = entry.get("content")
         arguments = getattr(content, "arguments", {}) or {}
+        test = arguments.get("test")
+        disabled = getattr(test, "name", None) == "false"
 
-        combinator, tests, leftovers = _read_condition(arguments.get("test"))
+        if disabled:
+            content, test = _disabled_rule(entry, content)
+
+        combinator, tests, leftovers = _read_condition(test)
+
+        if disabled and test is None:
+            leftovers = ["a test kept in a form mailctl cannot read"]
+
         actions, stops = _read_actions(getattr(content, "children", []) or [])
 
         rules.append(
@@ -365,10 +380,29 @@ def read_rules(filters) -> list[Rule]:
                 actions=tuple(actions),
                 stops=stops,
                 unmodelled=tuple(leftovers),
+                disabled=disabled,
             )
         )
 
     return rules
+
+
+# ----------------------------------------------------------------------------
+def _disabled_rule(entry, content):
+    """The body and test a disabled rule would have if switched back on.
+
+    ``parse_script`` records them on the entry as ``disabled_condition``,
+    for the command it read them from; the test is None where it could
+    not be read.
+    """
+    recorded = entry.get("disabled_condition")
+
+    if recorded is None or recorded[0] is not content:
+        return content, None
+
+    _, test, body = recorded
+
+    return body, test
 
 
 # ----------------------------------------------------------------------------
@@ -774,14 +808,18 @@ def analyze_placement(
     ever running; rules after it can be stopped by it.
 
     Only a rule carrying ``stop`` can shadow anything, because without it
-    evaluation continues to the next rule regardless.
+    evaluation continues to the next rule regardless. A disabled rule
+    never runs, so it neither shadows nor is shadowed.
     """
     position = len(existing) if at_index is None else max(0, at_index)
 
     analysis = Analysis()
 
+    if candidate.disabled:
+        return analysis
+
     for rule in existing[:position]:
-        if not rule.stops:
+        if not rule.stops or rule.disabled:
             continue
 
         certainty = _covers(rule, candidate)
@@ -798,6 +836,9 @@ def analyze_placement(
 
     if candidate.stops:
         for rule in existing[position:]:
+            if rule.disabled:
+                continue
+
             certainty = _covers(candidate, rule)
 
             if certainty:
