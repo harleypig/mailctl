@@ -14,10 +14,12 @@ dialect; this module knows none of them.
 
 import difflib
 import io
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from typing import Any, TextIO, cast
 
-from sievelib import factory, parser
+from sievelib import commands, factory, parser
 
 from ... import MailctlError
 
@@ -207,6 +209,112 @@ def rewrite_hash_comments(
 
 
 # ----------------------------------------------------------------------------
+def _free_standing(
+    comments: Iterable[bytes | str], filters: factory.FiltersSet
+) -> list[str]:
+    """The comments that are neither a rule's name nor its description."""
+    kept = []
+
+    for comment in comments:
+        text = (
+            comment.decode("utf-8") if isinstance(comment, bytes) else comment
+        )
+
+        if not text.startswith(
+            (filters.filter_name_pretext, filters.filter_desc_pretext)
+        ):
+            kept.append(text)
+
+    return kept
+
+
+# ----------------------------------------------------------------------------
+class _CommentedFiltersSet(factory.FiltersSet):
+    """sievelib's filter set, keeping the hash comments a person wrote.
+
+    sievelib's parser hands every top-level command the hash comments seen
+    since the one before it, body comments included, and its renderer
+    writes back only the name and description markers -- so every other
+    comment was lost on the first merge (#7). Here each rule entry keeps
+    its own under ``comments`` and they are written directly above its
+    name marker, so a comment moves with its rule, is kept by
+    ``--replace`` (sievelib updates the entry in place), and goes with it
+    when the rule is removed. A comment inside a rule's body is kept the
+    same way and so moves above the rule: sievelib renders a body from its
+    parse tree, which has nowhere to hold one.
+
+    The two comment runs no rule owns are the script's own: those before
+    ``require`` stay at the top, and those after the last rule stay at the
+    end.
+
+    ICEBOX: 2026-09-28 -- bracket comments /* ... */ are still dropped on
+    merge; keep, preserve, retain multi-line block comments in a Sieve
+    script. sievelib's parser discards them without recording where they
+    were, so keeping them means re-deriving its command boundaries from
+    the lexer. Revisit if a user's script is found to rely on them.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.leading_comments: list[str] = []
+        self.trailing_comments: list[str] = []
+
+    def keep_comments(self, script_parser: parser.Parser) -> None:
+        """Record the parsed script's free-standing comments.
+
+        Call it straight after ``from_parser_result`` on the same parser:
+        it pairs the parser's commands with the entries that call just
+        made, in order, one entry per command other than ``require``.
+        """
+        entries = iter(self.filters)
+
+        for command in script_parser.result:
+            comments = _free_standing(command.hash_comments, self)
+
+            if isinstance(command, commands.RequireCommand):
+                self.leading_comments += comments
+
+            else:
+                cast(dict[str, Any], next(entries))["comments"] = comments
+
+        # Whatever the parser collected after the last command belongs to
+        # no command at all.
+        self.trailing_comments = _free_standing(
+            script_parser.hash_comments, self
+        )
+
+    def tosieve(self, target: TextIO = sys.stdout) -> None:
+        """sievelib's rendering, with each rule's comments above it."""
+        _write_comments(target, self.leading_comments)
+        self._plain([], self.requires).tosieve(target)
+
+        for entry in self.filters:
+            _write_comments(
+                target, cast(dict[str, Any], entry).get("comments", [])
+            )
+            self._plain([entry], []).tosieve(target)
+
+        _write_comments(target, self.trailing_comments)
+
+    def _plain(self, entries: list, requires: list[str]) -> factory.FiltersSet:
+        """A plain filter set over ``entries``, to render with sievelib."""
+        plain = factory.FiltersSet(
+            self.name, self.filter_name_pretext, self.filter_desc_pretext
+        )
+        plain.filters = entries
+        plain.requires = requires
+
+        return plain
+
+
+# ----------------------------------------------------------------------------
+def _write_comments(target: TextIO, comments: Iterable[str]) -> None:
+    """Write each comment on its own line."""
+    for comment in comments:
+        target.write(f"{comment}\n")
+
+
+# ----------------------------------------------------------------------------
 def parse_script(
     text: str, dialect: NameDialect = SIEVELIB_DIALECT
 ) -> factory.FiltersSet:
@@ -216,7 +324,7 @@ def parse_script(
     it just yields an empty set. A script that will not parse is a hard
     stop: merging into it would risk losing rules.
     """
-    filters = factory.FiltersSet(FILTERSET_NAME)
+    filters = _CommentedFiltersSet(FILTERSET_NAME)
 
     if not text or not text.strip():
         return filters
@@ -231,6 +339,7 @@ def parse_script(
         )
 
     filters.from_parser_result(script_parser)
+    filters.keep_comments(script_parser)
 
     return filters
 

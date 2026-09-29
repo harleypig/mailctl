@@ -27,6 +27,19 @@ ENHANCEMENTS:
   with no action, stops with its error before logging in to either server
   or asking for the password. What each command prints is unchanged.
 
+BUG FIXES:
+
+* **Your own comments in the filter script are kept** ([#7]). A comment
+  you wrote in the script -- `# this one is for the accountant` -- was
+  dropped the first time mailctl added, moved, or removed a rule, while
+  the command reported success. Each comment now stays with the rule
+  that follows it and is written directly above that rule: it moves when
+  the rule moves, stays when the rule is replaced, and goes when that
+  rule is removed. A comment above the `require` line stays at the top,
+  and one after the last rule stays at the end. A comment inside a rule
+  is kept too, but moves up to sit above the rule. `/* ... */` comments
+  are still dropped.
+
 NOTES:
 
 * **The engine is split into the session and the utilities; no behaviour
@@ -830,3 +843,4 @@ NOTES:
 [#137]: https://github.com/harleypig/mailctl/issues/137
 [#154]: https://github.com/harleypig/mailctl/issues/154
 [#147]: https://github.com/harleypig/mailctl/issues/147
+[#7]: https://github.com/harleypig/mailctl/issues/7
