@@ -411,13 +411,10 @@ make such a change visible.
 
 ## The command surface
 
-**This is the target, and parts of it are not built yet.** The decisions
-are the operator's, 2026-09-28 ([#145][i145]); the implementing issues are
+**The decisions are the operator's**, 2026-09-28 ([#145][i145]), built in
 [#147][i147] through [#155][i155]. `add` saves the rule only, `apply` acts
-on mail already delivered, and `add --like` and `apply --like` take the
-place of `from-message` ([#149][i149], as decided on [#148][i148]).
-Where this section and the CLI disagree, the CLI is what runs and this is
-where it is going.
+on mail already delivered, and `add --like` and `apply --like` build
+the criteria from a message ([#149][i149], as decided on [#148][i148]).
 
 **Read and write are separate at every layer.** A command, a utility, and a
 transport operation each either changes the server or does not, even where
@@ -434,8 +431,8 @@ command's name. `mailctl help [command]` prints the same as `--help`
 **`add` saves a filter; `apply` acts on mail already delivered.** `add` writes
 the rule into the active script and touches no message; `apply` is the only
 command that acts on existing mail ([#149][i149]). So `--max-messages` and
-`--move-threshold` are `apply`'s alone, `add` asks nothing and takes no
-`--yes`, and `add` ends by saying the mail already there was left alone and
+`--move-threshold` are `apply`'s and not `add`'s, `add` asks nothing and takes
+no `--yes`, and `add` ends by saying the mail already there was left alone and
 pointing at `apply`. Both take their criteria as flags **or** as `--filter
 FILE|-` (a filter file, or `-` for stdin), never both — `--match` and
 `--compare` count as flags, since the document carries its own — and both take
@@ -446,11 +443,11 @@ refusals is made before connecting.
 
 **Dates and message state select delivered mail only** ([#152][i152]).
 `--since`, `--before`, `--older-than`, `--unread`, and `--flagged` are
-`search` and `apply` criteria, always ANDed with the rest. `add` refuses
-them before connecting, from flags or a `--filter` document, because a
-message being delivered is new, unread, and unflagged; and `add` has no
-date `--before`, since its `--before RULE` places the rule. `--body` is in
-all three, and is always a substring test.
+`search`, `senders`, and `apply` criteria, always ANDed with the rest. `add`
+refuses them before connecting, from flags or a `--filter` document, because a
+message being delivered is new, unread, and unflagged; and `add` has no date
+`--before`, since its `--before NAME` places the rule. `--body` is in all
+four, and is always a substring test.
 
 **The split was decided over a recorded objection** (operator, 2026-09-28):
 it puts the tool's two halves, the rule and the existing mail, in two
@@ -555,9 +552,9 @@ fails before any login or password prompt (decided on [#137][i137]).
 - **Differences are data, never a branch.** A provider declares
   `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, `disable`, its
   `actions`, `extensions`, `raw_query`, `mark`, `folder_counts`, its
-  namespaced `specifics` with their schema, the connection `settings` it reads, and the
-  operations it `declined`. The utilities read those and never ask which
-  provider they have.
+  namespaced `specifics` with their schema, the connection `settings` it
+  reads, and the operations it `declined`. The utilities read those and never
+  ask which provider they have.
 - **Refused before any network work.** `utilities.rules.check_rule`
   refuses a rule the provider cannot express, through one error naming the
   provider, the construct, and why.
@@ -585,22 +582,21 @@ fails before any login or password prompt (decided on [#137][i137]).
   `stop` capability: a host that cannot stop is never asked to, so its
   default rules are not refused. `--no-stop` sends False; an explicit True
   is still refused where `stop` is not declared.
-- **Offered only what it declares** ([#26][i26] constraint 4). The CLI
-  parses twice: a first pass reads only `--provider` and `--env-file` and
-  resolves the provider, then the parsers are built from its capabilities.
-  Without `ordering`, the placement flags and `move-rule` are not offered;
-  without `stop`, `--no-stop`; without `rule_sets`, `add`'s `--script` and
-  `--activate`; without `disable`, `disable-rule` and `enable-rule`;
-  without `extensions`, `--disable-extension`; without `raw_query`,
-  `search`'s `--raw`; without `mark`, `mark`; without `folder_counts`,
-  `folders`'s `--counts`. The connection flags (`--host`, `--imap-*`, `--sieve-*`) are offered only
-  where `ProviderCapabilities.settings` names them, with the help it
-  gives — they keep their names and their `MAILCTL_*` variables, being
+- **Offered only what it declares** ([#26][i26] constraint 4). The CLI parses
+  twice: a first pass reads only `--provider` and `--env-file` and resolves
+  the provider, then the parsers are built from its capabilities. Without
+  `ordering`, the placement flags and `move-rule` are not offered; without
+  `stop`, `--no-stop`; without `rule_sets`, `add`'s `--script` and
+  `--activate`; without `disable`, `disable-rule` and `enable-rule`; without
+  `extensions`, `--disable-extension`; without `raw_query`, `search`'s
+  `--raw`; without `mark`, `mark`; without `folder_counts`, `folders`'s
+  `--counts`. The connection flags (`--host`, `--imap-*`, `--sieve-*`) are
+  offered only where `ProviderCapabilities.settings` names them, with the help
+  it gives — they keep their names and their `MAILCTL_*` variables, being
   `mxroute`'s connection options. An unoffered option is **hidden, not
   removed**: given anyway it still parses and meets the refusal below the
-  front-end naming the provider, which stays the backstop for every
-  front-end. A
-  first pass that cannot resolve a provider falls back to the default
+  front-end naming the provider, which stays the backstop for every front-end.
+  A first pass that cannot resolve a provider falls back to the default
   provider's offer, and the run reports the problem. `mxroute` declares
   everything, so its help is what it always was.
 - **A setting belongs to the provider that can use it.**

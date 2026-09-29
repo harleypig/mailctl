@@ -6,8 +6,8 @@ carries the layout convention (`tests/` at the repo root, mirroring the
 package). This file records what belongs here.
 
 **The offline tier is written and green** (`make test`); the only skips are
-the live- and container-gated ones. `pytest -q` reports the current count; none is kept
-here, because a count nobody re-derives is only ever stale.
+the live- and container-gated ones. `pytest -q` reports the current count;
+none is kept here, because a count nobody re-derives is only ever stale.
 The live tier is scaffolded (`tests/live/`) and skipped by default; it stays
 open until it has run against a real account. The write guards it needs
 before anything writes to one are built and proved on the container tier
@@ -131,7 +131,9 @@ where every write path is proved first.
        transport imports no building helper and no utility;
      - the **interface guard**: a front-end imports only the utilities, the
        session's opening calls, and the neutral model — never a provider, a
-       component, or the session's transport, connection, or dialect.
+       component, or the session's transport, connection, or dialect;
+     - a utility reaches the transport only through the session it was
+       handed;
      - the **read/write guard** ([#154][i154]): a read-only utility never
        reaches a transport operation classified write ([#135][i135]).
        Read-only is derived, not listed: every function under
@@ -160,8 +162,12 @@ where every write path is proved first.
      placement flags and `move-rule` are not offered in help and are
      refused by name if given; without `extensions` `disabled_extensions`
      is refused; without `raw_query` `search --raw` is not offered in help
-     and is refused by name, by the CLI and by the utility alike; a
-     connection flag the provider does not read is hidden and refused; and `add` and `test` under a fake carry its own wording, with
+     and is refused by name, by the CLI and by the utility alike; without
+     `disable` `disable-rule` and `enable-rule` are not listed and a switch
+     is refused; without `mark` `mark` is not listed and is refused;
+     without `folder_counts` `folders --counts` is not offered and is
+     refused; a connection flag the provider does not read is hidden and
+     refused; and `add` and `test` under a fake carry its own wording, with
      nothing about Sieve or MXroute. `mxroute`'s help hides nothing but the
      always-hidden flags.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
@@ -190,32 +196,34 @@ running Docker daemon and skips cleanly without one, or without
 container run cannot be mistaken for an MXroute one ([#49][i49]).
 
 - **What it proves.** `add` merging beside a Roundcube-written rule (ADR
-  0002), `remove-rule`, `move-rule`, a fresh account's new active script,
-  `backup` then `restore` byte for byte, `--create-folder` with and without
-  `--no-subscribe` and the `subscribe` / `unsubscribe` toggles, `apply`
-  moving, flagging and discarding existing mail, `--max-messages` refusing
-  the whole pass, one filter document from `search --build-filter --json`
-  driving both `add --filter` and `apply --filter`, `view` and the
-  message listing leaving mail unread, and `search` and `apply --dry-run`
-  selecting appended mail by body (a non-ASCII one included), arrival
-  date, `--older-than`, and read or flagged state, alone and together
-  ([#152][i152]). Its dates are counted from the day it runs, so it means
-  the same whenever it does.
-  Two reads are here too: `probe --json` checked against what the server
-  says about itself, and against printing the password; and
-  `folders --counts --json` checked against each folder's own `STATUS`,
-  leaving every message unread ([#157][i157]). `search --sort` runs
-  against Dovecot's own `SORT` in `test_search_sort.py` ([#159][i159]).
-  And baselines: one saved from the server checks clean against it, saving
-  writes nothing there, and drift made by editing the saved file exits 3 or
-  4 as documented.
-  `rename-folder` in `test_rename_folder.py` ([#5][i5]): the folder and
-  its subfolder moved, both subscribed under the new names and gone from
-  `LSUB` under the old, the message count kept, and the script's bytes
-  changed only in the two folder names.
-  New mail is also handed to `dovecot-lda`, which runs the uploaded script,
-  so the going-forward half is seen filing it too — by header, and by
-  body through an `add --body` rule.
+  0002), `remove-rule`, `move-rule`, `disable-rule` then `enable-rule` (a
+  replaced disabled rule staying disabled), a fresh account's new active
+  script, `backup` then `restore` byte for byte, `--create-folder` with and
+  without `--no-subscribe` and the `subscribe` / `unsubscribe` toggles,
+  `apply` moving, flagging and discarding existing mail, `--max-messages`
+  refusing the whole pass, one filter document from `search --build-filter
+  --json` driving both `add --filter` and `apply --filter`, `view` and the
+  message listing leaving mail unread, `mark` setting then clearing read,
+  flagged, and a keyword and refusing a UID the folder does not hold, and
+  `search` and `apply --dry-run` selecting appended mail by body (a non-ASCII
+  one included), arrival date, `--older-than`, and read or flagged state,
+  alone and together ([#152][i152]). Its dates are counted from the day it
+  runs, so it means the same whenever it does. Reads are here too: `probe
+  --json` checked against what the server says about itself, and against
+  printing the password; `folders --counts --json` checked against each
+  folder's own `STATUS`, leaving every message unread ([#157][i157]); and
+  `senders` in `test_senders.py` ([#160][i160]), counting each address and its
+  unread exactly, grouping by domain and List-Id, refusing above its ceiling,
+  and leaving every message as it was. `search --sort` runs against Dovecot's
+  own `SORT` in `test_search_sort.py` ([#159][i159]). And baselines: one saved
+  from the server checks clean against it, saving writes nothing there, and
+  drift made by editing the saved file exits 3 or 4 as documented.
+  `rename-folder` in `test_rename_folder.py` ([#5][i5]): the folder and its
+  subfolder moved, both subscribed under the new names and gone from `LSUB`
+  under the old, the message count kept, and the script's bytes changed only
+  in the two folder names. New mail is also handed to `dovecot-lda`, which
+  runs the uploaded script, so the going-forward half is seen filing it too —
+  by header, and by body through an `add --body` rule.
 - **The oracle is not mailctl.** Each test reads the server back with
   sievelib's and IMAPClient's own clients, and a byte-exact claim with the
   script file on the container's disk, so a write that mailctl both gets
@@ -227,11 +235,11 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   through the same `Mailbox` type, as context managers and as fixtures in
   a child pytest run that fails, is interrupted, or passes
   ([#9](https://github.com/harleypig/mailctl/issues/9)).
-- **The server.** Debian trixie's own `dovecot-*` packages — **Dovecot
-  2.4.1 with Pigeonhole** — rather than the `dovecot/docker` image, whose
-  packaging is CC BY-NC-SA 4.0. Debian was the first choice on #49 and it
-  ships 2.4, the side of MXroute's 2.3 → 2.4 migration worth testing;
-  Ubuntu 24.04 and 25.04 ship 2.3.21, and Alpine ships 2.4.5.
+- **The server.** Debian trixie's own `dovecot-*` packages — **Dovecot 2.4.1
+  with Pigeonhole** — rather than the `dovecot/docker` image, whose packaging
+  is CC BY-NC-SA 4.0. Debian was the first choice on [#49][i49] and it ships
+  2.4, the side of MXroute's 2.3 → 2.4 migration worth testing; Ubuntu 24.04
+  and 25.04 ship 2.3.21, and Alpine ships 2.4.5.
 - **Shaped after the MXroute record, and where it differs.** Maildir++, a
   `.` separator, an empty personal-namespace prefix (as read on
   2026-09-28), `PLAIN` only, STARTTLS on 4190 and 143, implicit TLS on 993,
@@ -362,3 +370,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i49]: https://github.com/harleypig/mailctl/issues/49
 [i157]: https://github.com/harleypig/mailctl/issues/157
 [i159]: https://github.com/harleypig/mailctl/issues/159
+[i160]: https://github.com/harleypig/mailctl/issues/160
