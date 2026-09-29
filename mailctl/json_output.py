@@ -84,9 +84,18 @@ def _document(**body) -> dict:
 
 
 # ----------------------------------------------------------------------------
-def error(message: str) -> dict:
-    """A failure, as ``main`` reports it on stderr under ``--json``."""
-    return _document(error={"message": message})
+def error(message: str, code: str | None = None) -> dict:
+    """A failure, as ``main`` reports it on stderr under ``--json``.
+
+    ``code`` names the condition, where the failure has one, so a script
+    can tell one refusal from another without reading the message.
+    """
+    body = {"message": message}
+
+    if code is not None:
+        body["code"] = code
+
+    return _document(error=body)
 
 
 # ############################################################################

@@ -163,10 +163,7 @@ def sieve_actions(spec: ActionSpec, folder: str, use_create: bool) -> list:
     actions = _action_tuples(spec, folder, use_create)
 
     if not actions:
-        raise MailctlError(
-            "no action requested -- use --fileinto, --discard, --mark-read, "
-            "--flag, or --keep"
-        )
+        raise MailctlError("no action requested", code="no_action")
 
     if spec.stop:
         actions.append(("stop",))

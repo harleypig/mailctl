@@ -9,6 +9,7 @@ read, and the ceiling must refuse before a single header is fetched.
 import pytest
 
 from mailctl import MailctlError, utilities
+from mailctl.cli import error_text
 from mailctl.criteria import Criteria
 
 SEEN = (b"\\Seen",)
@@ -301,7 +302,8 @@ def test_over_the_ceiling_is_refused_before_any_header_is_read(
         utilities.senders.count_senders(sessions, max_messages=2)
 
     assert "found 3 message(s)" in str(caught.value)
-    assert "--max-messages 3 or higher" in str(caught.value)
+    assert "raise the ceiling to 3 or higher" in str(caught.value)
+    assert "--max-messages 3 or higher" in error_text(caught.value)
     assert fake_imap.fetches == []
 
 
@@ -353,18 +355,26 @@ def test_counting_never_marks_mail_read(sessions, fake_imap):
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    ("kwargs", "text"),
+    ("kwargs", "text", "flag"),
     [
-        ({"by": "subject"}, "cannot group senders by 'subject'"),
-        ({"top": 0}, "--top must be at least 1"),
-        ({"minimum": 0}, "--min must be at least 1"),
-        ({"max_messages": 0}, "--max-messages must be at least 1"),
+        ({"by": "subject"}, "cannot group senders by 'subject'", None),
+        ({"top": 0}, "the number of rows must be at least 1", "--top"),
+        ({"minimum": 0}, "the minimum count must be at least 1", "--min"),
+        (
+            {"max_messages": 0},
+            "the message ceiling must be at least 1",
+            "--max-messages",
+        ),
     ],
 )
 def test_bad_arguments_are_refused_before_searching(
-    sessions, fake_imap, kwargs, text
+    sessions, fake_imap, kwargs, text, flag
 ):
-    with pytest.raises(MailctlError, match=text):
+    """#51: the utility names the setting; the CLI names its flag."""
+    with pytest.raises(MailctlError, match=text) as caught:
         utilities.senders.count_senders(sessions, **kwargs)
 
     assert not [call for call in fake_imap.calls if call[0] == "search"]
+
+    if flag is not None:
+        assert error_text(caught.value) == f"{flag} must be at least 1, not 0"

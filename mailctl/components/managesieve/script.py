@@ -667,7 +667,11 @@ def rule_names(filters: factory.FiltersSet) -> list[str]:
 
 # ----------------------------------------------------------------------------
 def resolve_position(
-    names: list[str], placement: Placement | None, name: str
+    names: list[str],
+    placement: Placement | None,
+    name: str,
+    *,
+    moving: bool = False,
 ) -> int:
     """Return the index ``name`` should end up at, counting other rules only.
 
@@ -680,6 +684,9 @@ def resolve_position(
     ``placement`` of None is what every caller got before the flags existed,
     and it keeps that behaviour exactly: a new rule is appended, and an
     existing one stays at the index it already has.
+
+    ``moving`` says the rule is an existing one being moved rather than
+    one being added, so a refusal names what is happening to it.
 
     Failing here rather than at render time is deliberate. A named anchor
     that does not exist is almost always a typo, and quietly appending
@@ -711,19 +718,32 @@ def resolve_position(
         return len(others)
 
     if placement.anchor == name:
+        verb = "moved" if moving else "added"
+
         raise MailctlError(
-            f"--{placement.where} {placement.anchor!r} names the rule being "
-            f"added, which has no position to be relative to. Name another "
-            f"rule, or use --first / --last."
+            f"{placement.anchor!r} is the rule being {verb}, which has no "
+            f"position to be relative to. Name another rule, or place it "
+            f"first or last.",
+            code="self_anchor",
+            fields={
+                "where": placement.where,
+                "anchor": placement.anchor,
+                "verb": verb,
+            },
         )
 
     if placement.anchor not in others:
         known = ", ".join(names) or "(none)"
 
         raise MailctlError(
-            f"no rule named {placement.anchor!r} in the active script, so "
-            f"--{placement.where} has nothing to place this rule against. "
-            f"Known rules: {known}"
+            f"no rule named {placement.anchor!r} in the active script to "
+            f"place this rule {placement.where}. Known rules: {known}",
+            code="unknown_anchor",
+            fields={
+                "where": placement.where,
+                "anchor": placement.anchor,
+                "known": known,
+            },
         )
 
     index = others.index(placement.anchor)
@@ -873,8 +893,8 @@ def merge_rule(
 
     if exists and not replace:
         raise MailctlError(
-            f"a rule named {name!r} already exists in the active script. "
-            f"Use --replace to overwrite it, or --name to pick another."
+            f"a rule named {name!r} already exists in the active script.",
+            code="rule_exists",
         )
 
     # Resolved against the script as it stands, before the merge changes
@@ -981,7 +1001,9 @@ def move_rule(
             f"{known}"
         )
 
-    position = resolve_position(rule_names(filters), placement, name)
+    position = resolve_position(
+        rule_names(filters), placement, name, moving=True
+    )
     _move_rule(filters, name, position)
 
     return render_script(filters, dialect)

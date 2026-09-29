@@ -223,8 +223,8 @@ def baseline_path(config: Config, directory: Path | None = None) -> Path:
 
     if not host:
         raise MailctlError(
-            "no host is configured, so there is no baseline to name; set "
-            "--host or MAILCTL_HOST"
+            "no host is configured, so there is no baseline to name",
+            code="no_host",
         )
 
     if not HOST_NAME.fullmatch(host) or ".." in host:

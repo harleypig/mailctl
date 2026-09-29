@@ -17,7 +17,7 @@ covers the two things that are not visible in the rendered script:
 import pytest
 
 from mailctl import MailctlError, utilities
-from mailctl.cli import build_parser, placement_from_args
+from mailctl.cli import build_parser, error_text, placement_from_args
 from mailctl.components.managesieve import (
     PLACE_AFTER,
     PLACE_BEFORE,
@@ -167,8 +167,10 @@ def test_an_unknown_anchor_names_the_flag_that_could_not_be_satisfied():
     with pytest.raises(MailctlError) as raised:
         resolve_position(NAMES, Placement(PLACE_AFTER, "typo"), "new")
 
-    assert "--after" in str(raised.value)
+    assert "place this rule after" in str(raised.value)
     assert "one, two, three" in str(raised.value)
+    assert "--after 'typo'" not in str(raised.value)
+    assert "so --after has nothing" in error_text(raised.value)
 
 
 # ----------------------------------------------------------------------------
@@ -180,8 +182,23 @@ def test_naming_the_rule_itself_is_refused_before_the_lookup():
     rule does not exist -- while listing it among the known ones. Checking
     self-reference first is what keeps the message honest.
     """
-    with pytest.raises(MailctlError, match="names the rule being added"):
+    with pytest.raises(MailctlError, match="is the rule being added"):
         resolve_position(NAMES, Placement(PLACE_BEFORE, "two"), "two")
+
+
+# ----------------------------------------------------------------------------
+def test_a_self_anchor_while_moving_says_moved():
+    """#51: move-rule shared add's message and called its rule "added"."""
+    with pytest.raises(MailctlError) as raised:
+        resolve_position(
+            NAMES, Placement(PLACE_BEFORE, "two"), "two", moving=True
+        )
+
+    assert "is the rule being moved" in str(raised.value)
+    assert error_text(raised.value) == (
+        "--before 'two' names the rule being moved, which has no position "
+        "to be relative to. Name another rule, or use --first / --last."
+    )
 
 
 # ############################################################################

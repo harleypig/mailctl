@@ -155,7 +155,7 @@ def test_a_folder_that_cannot_be_created_is_planned_then_refused(
     assert plan.status == utilities.folders.FOLDER_UNCREATABLE
 
     with pytest.raises(MailctlError, match="cannot be created"):
-        utilities.folders.check_folder(plan)
+        utilities.folders.check_folder(live, plan)
 
     request = RuleRequest(criteria(), ActionSpec(fileinto="New"))
 

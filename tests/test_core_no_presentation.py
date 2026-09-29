@@ -27,11 +27,13 @@ and a call written as ``builtins.print`` still is.
 """
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
 
 import mailctl
+from mailctl import cli
 
 # Anything that puts a value in front of a person, or takes one from them.
 BANNED_NAMES = {"print", "input", "breakpoint"}
@@ -276,3 +278,148 @@ def test_reveal_is_called_only_where_a_credential_is_handed_to_a_client():
         f"password to a connection method and nothing else; review the "
         f"new one against CONVENTIONS.md > Credentials."
     )
+
+
+# ############################################################################
+# A core message names no front-end's flag (#51)
+# ############################################################################
+
+# A flag is one front-end's control: "--max-messages" means nothing to a
+# TUI user. So a core message states the condition, and a MailctlError code
+# lets the CLI add its flags (cli.ERROR_TEXT). Any string a core module
+# builds is checked, an f-string with each interpolated value standing in as
+# "{}" -- so f"--{where}" is caught as well as "--after". Docstrings are
+# not messages and are skipped.
+FLAG = re.compile(r"--(?:[a-z]|\{\})")
+
+# (module, string) -> why it may name a flag.
+FLAG_ALLOWED = {
+    ("config", "--password-file"): "provenance: the Source of a password "
+    "that came from this flag, recorded because it did",
+    ("config", "--password-cmd"): "provenance, as --password-file",
+    ("config", "--password"): "provenance, as --password-file",
+    ("config", "--{}"): "_flag_name: the Source of any setting that came "
+    "from a flag, spelt as the flag that was given",
+}
+
+
+# ----------------------------------------------------------------------------
+def built_strings(tree: ast.AST) -> list[tuple[int, str]]:
+    """Every string a module builds, with its line: literals, and
+    f-strings with "{}" for each value, but no docstring."""
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(
+            node,
+            ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+        )
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    inside = set()
+    found = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.JoinedStr):
+            inside |= {id(part) for part in node.values}
+            found.append(
+                (
+                    node.lineno,
+                    "".join(
+                        part.value if isinstance(part, ast.Constant) else "{}"
+                        for part in node.values
+                    ),
+                )
+            )
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings | inside
+        ):
+            found.append((node.lineno, node.value))
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def flag_strings(name: str, tree: ast.AST) -> list[str]:
+    """Every string ``name`` builds that names a flag, less the allowed."""
+    return [
+        f"line {line}: {text!r}"
+        for line, text in built_strings(tree)
+        if FLAG.search(text) and (name, text) not in FLAG_ALLOWED
+    ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", CORE_MODULES)
+def test_a_core_message_names_no_flag(name):
+    found = flag_strings(name, module_tree(name))
+
+    assert found == [], (
+        f"mailctl/{name}.py names a CLI flag in {found}; state the "
+        f"condition, give the MailctlError a code, and let cli.ERROR_TEXT "
+        f"add the flag"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_every_allowed_flag_string_is_still_there():
+    """A stale allowance would let the next string with that text in."""
+    for name, text in FLAG_ALLOWED:
+        built = [found for _, found in built_strings(module_tree(name))]
+
+        assert text in built, text
+
+
+# ----------------------------------------------------------------------------
+def test_the_flag_guard_would_actually_catch_a_violation():
+    """Each shape a flag can take in a message is seen; a docstring and a
+    bare "--" separator are not."""
+    tree = ast.parse(
+        "def f(where, n):\n"
+        '    """Takes --where, as the CLI spells it."""\n'
+        '    a = "nothing to do -- use --fileinto"\n'
+        '    b = f"--{where} names the rule"\n'
+        '    c = f"over the cap; pass --max-messages {n}"\n'
+        '    d = "a -- b"\n'
+    )
+
+    assert [text for _, text in built_strings(tree) if FLAG.search(text)] == [
+        "--{} names the rule",
+        "over the cap; pass --max-messages {}",
+        "nothing to do -- use --fileinto",
+    ]
+
+
+# ############################################################################
+# Every code the core raises is one the CLI renders (#51)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def raised_codes(tree: ast.AST) -> set[str]:
+    """Every literal ``code=`` a module passes to a call."""
+    return {
+        keyword.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+        if keyword.arg == "code"
+        and isinstance(keyword.value, ast.Constant)
+        and isinstance(keyword.value.value, str)
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_every_raised_code_is_rendered_and_every_rendering_raised():
+    """A code with no rendering loses its flag hint silently; a rendering
+    nobody raises is dead text that drifts."""
+    raised = set().union(*(raised_codes(module_tree(n)) for n in CORE_MODULES))
+
+    assert "max_messages" in raised
+    assert raised == set(cli.ERROR_TEXT)

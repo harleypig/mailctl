@@ -59,6 +59,19 @@ class MxrouteDialect(Dialect):
         rules_service="ManageSieve",
         mail_service="IMAP",
         extensions="Sieve extensions",
+        extension="Sieve extension",
+        host="MXRoute",
+        filters="Sieve filters",
+        rule_language="Sieve",
+        rule_set="Sieve script",
+        rule_sets="Sieve scripts",
+        validation="CHECKSCRIPT",
+        disabled_form="written the way Roundcube writes one -- 'if false "
+        "# <its test>' -- so the webmail shows it as disabled too",
+        backup_file="<script>-<UTC timestamp>.sieve",
+        delivery_create="the Sieve 'mailbox' extension",
+        file_action="fileinto",
+        create_action="fileinto :create",
         notes=(
             "MXRoute disables the Sieve 'redirect' action as a matter of "
             "policy (2024-03-22) -- use a panel forwarder, which handles "

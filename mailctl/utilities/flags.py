@@ -130,10 +130,7 @@ def mark_flags(
         )
 
     if not add and not remove:
-        raise MailctlError(
-            "nothing to mark -- use --read, --unread, --flag, --unflag, "
-            "--keyword, or --no-keyword"
-        )
+        raise MailctlError("nothing to mark", code="no_marks")
 
     return tuple(add), tuple(remove)
 

@@ -485,7 +485,7 @@ def test_with_mailbox_disabled_and_no_imap_a_new_folder_is_refused(
     assert folder.status == utilities.folders.FOLDER_UNCREATABLE
 
     with pytest.raises(MailctlError) as caught:
-        utilities.folders.check_folder(folder)
+        utilities.folders.check_folder(live, folder)
 
     assert "disabled by mailctl" in str(caught.value)
     assert "flag --disable-extension" in str(caught.value)

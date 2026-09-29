@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 import pytest
 
 from mailctl import MailctlError, utilities
+from mailctl.cli import error_text
 from mailctl.components.imap.capabilities import CHECKED_CAPABILITIES
 from mailctl.config import Config, Secret
 from mailctl.providers.base import (
@@ -506,6 +507,19 @@ def test_a_host_that_cannot_name_a_file_is_refused(where, host):
     """Red if a host setting can steer the file out of the directory."""
     with pytest.raises(MailctlError):
         baseline.baseline_path(Config(host=host), where)
+
+
+# ----------------------------------------------------------------------------
+def test_no_host_is_refused_and_the_cli_names_its_flag(where):
+    """#51: the utility states the condition; the CLI adds --host."""
+    with pytest.raises(MailctlError) as caught:
+        baseline.baseline_path(Config(), where)
+
+    assert "--host" not in str(caught.value)
+    assert error_text(caught.value) == (
+        "no host is configured, so there is no baseline to name; set "
+        "--host or MAILCTL_HOST"
+    )
 
 
 # ----------------------------------------------------------------------------

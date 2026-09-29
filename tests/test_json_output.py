@@ -132,6 +132,27 @@ def test_a_probe_failure_under_json_is_a_json_line(monkeypatch, capsys):
 
 
 # ----------------------------------------------------------------------------
+def test_a_coded_failure_under_json_carries_its_code(monkeypatch, capsys):
+    """#51: a script can tell one refusal from another by its code, and
+    the message is the CLI's, flags included."""
+
+    def fail(sessions, config):
+        raise MailctlError("nothing to mark", code="no_marks")
+
+    monkeypatch.setattr(cli.utilities.reports, "probe_servers", fail)
+
+    assert cli.main(["probe", "--json"]) == 1
+
+    failure = json.loads(capsys.readouterr().err.splitlines()[-1])
+
+    assert failure["error"] == {
+        "message": "nothing to mark -- use --read, --unread, --flag, "
+        "--unflag, --keyword, or --no-keyword",
+        "code": "no_marks",
+    }
+
+
+# ----------------------------------------------------------------------------
 def test_what_a_command_prints_on_the_way_goes_to_stderr(monkeypatch, capsys):
     """The redirect, not each command's care, keeps stdout clean."""
 

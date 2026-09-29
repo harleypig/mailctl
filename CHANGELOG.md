@@ -254,6 +254,26 @@ ENHANCEMENTS:
   with no action, stops with its error before logging in to either server
   or asking for the password. What each command prints is unchanged.
 
+* **Errors from below the command line no longer name its flags, and
+  another host's help and messages no longer name MXroute's** ([#51],
+  [#109]). A refusal from the work itself -- no criteria, no action, a
+  message ceiling, a rule name already taken -- now states the condition
+  in words any front-end can show, and carries a code; the command line
+  adds its own flags (`--max-messages`, `--replace`, ...) when it prints
+  it, so what `mailctl` says is unchanged. One sentence goes: `apply`'s
+  `--max-messages` refusal no longer ends by saying a rule in the command
+  was already uploaded, which since [#149] `apply` never does. Under `--json` the error
+  document carries that code beside the message, as
+  `{"version", "error": {"message", "code"}}`, so a script can tell one
+  refusal from another without reading the text. `move-rule --before
+  NAME` naming the rule being moved now says "the rule being moved"
+  rather than "the rule being added". The words that describe the host
+  -- its name, its rule language, how it validates and disables a rule,
+  what a backup file is called -- are the provider's own, so a provider
+  other than `mxroute` gets help and messages in its terms; `mxroute`'s
+  are unchanged, and `mailctl test` shows its `Host:` row only for a
+  provider that reads a host setting.
+
 BUG FIXES:
 
 * **Your own comments in the filter script are kept** ([#7]). A comment
@@ -1127,3 +1147,5 @@ NOTES:
 [#175]: https://github.com/harleypig/mailctl/issues/175
 [#157]: https://github.com/harleypig/mailctl/issues/157
 [#160]: https://github.com/harleypig/mailctl/issues/160
+[#51]: https://github.com/harleypig/mailctl/issues/51
+[#109]: https://github.com/harleypig/mailctl/issues/109

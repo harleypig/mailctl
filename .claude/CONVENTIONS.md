@@ -353,6 +353,10 @@ uploaded, folder created) leave the utilities through an `on_event`
 callback; the CLI decides whether and how to show either. Do not add a
 second output path beside them.
 
+**A core message names no front-end's flag.** It states the condition and
+carries a `MailctlError` code, which the front-end renders with its own
+controls (`cli.ERROR_TEXT`, [#51][i51]).
+
 **Safety policy lives in the utilities, not the front-end or the
 provider**: the backup before every upload (`scripts.upload_script`, the
 one upload path), merge-never-overwrite, and the `--max-messages` ceiling
@@ -1188,6 +1192,7 @@ will read it.
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
 [adr7]: ../adr/0007-interfaces-utilities-session-provider-layering.md
 [i137]: https://github.com/harleypig/mailctl/issues/137
+[i51]: https://github.com/harleypig/mailctl/issues/51
 [i99]: https://github.com/harleypig/mailctl/issues/99
 [i26]: https://github.com/harleypig/mailctl/issues/26
 [rec-mxroute]: ../mailctl/providers/mxroute/RECORD.md

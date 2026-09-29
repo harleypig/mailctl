@@ -516,8 +516,28 @@ class Wording:
 
     * ``rules_service`` / ``mail_service`` -- what each half connects to,
       as a person would name it (``ManageSieve``, ``IMAP``).
-    * ``extensions`` -- what the rule language calls its extensions, for
-      a provider that declares ``extensions``.
+    * ``extensions`` / ``extension`` -- what the rule language calls its
+      extensions, plural and singular, for a provider that declares
+      ``extensions``.
+    * ``host`` -- the host's own name (``MXRoute``).
+    * ``filters`` -- what its rules are called, as in "manage *filters*"
+      (``Sieve filters``).
+    * ``rule_language`` -- the name of the language rules are written in,
+      a proper noun that reads at the start of a sentence and before
+      "rule" (``Sieve``).
+    * ``rule_set`` / ``rule_sets`` -- one stored rule set and several, as
+      a noun (``Sieve script``, ``Sieve scripts``).
+    * ``validation`` -- how the server checks a rule set before storing
+      it, as a noun (``CHECKSCRIPT``).
+    * ``disabled_form`` -- how a disabled rule is kept, and why, as a
+      clause following "a disabled rule stays in the script, ...".
+    * ``backup_file`` -- the name a backup is written under, with its
+      placeholders (``<script>-<UTC timestamp>.sieve``).
+    * ``delivery_create`` -- what lets a rule create its target folder as
+      mail arrives, as a noun (``the Sieve 'mailbox' extension``).
+    * ``file_action`` / ``create_action`` -- the action that files a
+      message, without and with creating the folder (``fileinto``,
+      ``fileinto :create``).
     * ``notes`` -- what a report about the host should end by saying: the
       host's policies and the limits of what mailctl can see there.
     """
@@ -525,6 +545,18 @@ class Wording:
     rules_service: str
     mail_service: str
     extensions: str
+    extension: str
+    host: str
+    filters: str
+    rule_language: str
+    rule_set: str
+    rule_sets: str
+    validation: str
+    disabled_form: str
+    backup_file: str
+    delivery_create: str
+    file_action: str
+    create_action: str
     notes: tuple[str, ...] = ()
 
 

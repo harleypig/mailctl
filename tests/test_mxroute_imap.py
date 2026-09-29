@@ -13,6 +13,7 @@ import pytest
 from imapclient.exceptions import LoginError
 
 from mailctl import MailctlError
+from mailctl.cli import error_text
 from mailctl.config import Config, Secret
 from mailctl.providers.mxroute.imap import imap_session, new_imap_session
 
@@ -87,8 +88,8 @@ def test_a_login_failure_names_the_full_address_convention(
         ),
         pytest.param(
             OSError("no route"),
-            "cannot reach mail.example.com:993 -- no route. Check "
-            "--imap-host and --imap-port.",
+            "cannot reach mail.example.com:993 -- no route. Check the "
+            "IMAP host and port settings.",
             id="unreachable",
         ),
     ],
@@ -103,6 +104,23 @@ def test_a_connection_failure_gains_the_advice_that_fits_it(
         open_and_close(imap_config)
 
     assert str(caught.value) == expected
+
+
+# ----------------------------------------------------------------------------
+def test_the_cli_names_the_flags_that_set_the_unreachable_server(
+    fake_imap, imap_config
+):
+    """#51: the provider names its settings; the CLI names their flags."""
+    fake_imap.failures["login"] = OSError("no route")
+
+    with pytest.raises(MailctlError) as caught:
+        open_and_close(imap_config)
+
+    assert error_text(caught.value) == (
+        "cannot reach mail.example.com:993 -- no route. Check --imap-host "
+        "and --imap-port."
+    )
+    assert "--imap" not in str(caught.value)
 
 
 # ----------------------------------------------------------------------------

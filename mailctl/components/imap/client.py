@@ -1026,10 +1026,15 @@ def _refuse_non_ascii(expression: str) -> None:
     keys. Only structured criteria can carry it.
     """
     if not expression.isascii():
-        raise MailctlError(
+        refused = (
             f"IMAP search {expression!r} has non-ASCII text, which a raw "
-            f"expression cannot carry; use the criteria flags (e.g. "
-            f"--subject) for it, which search in {SEARCH_CHARSET}."
+            f"expression cannot carry"
+        )
+
+        raise MailctlError(
+            f"{refused}; criteria can, searching in {SEARCH_CHARSET}.",
+            code="raw_non_ascii",
+            fields={"refused": refused, "charset": SEARCH_CHARSET},
         )
 
 

@@ -396,7 +396,7 @@ and error handling.
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — what else a plan holds depends on the command |
 | `check-baseline` | `{"version", "host", "baseline", "baseline_taken", "taken", "account_recorded", "requires_known", "serious", "informational", "drift": [{"severity", "kind", "half", "name", "before", "after"}]}` |
 | `show-baseline` | the saved file as stored (see *Baselines and drift*) |
-| any, failing | `{"version", "error": {"message"}}`, one line, the last on stderr |
+| any, failing | `{"version", "error": {"message", "code"}}`, one line, the last on stderr; `code` names the refusal where it has one, and is absent otherwise |
 
 * `version` is `1`. A key may be added without changing it; one renamed,
   removed, or given a new meaning changes it.

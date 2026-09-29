@@ -22,6 +22,7 @@ from imapclient import IMAPClient
 from utilities_support import mxroute
 
 from mailctl import MailctlError, utilities
+from mailctl.cli import error_text
 from mailctl.criteria import Criteria
 from mailctl.providers.base import ActionSpec
 
@@ -248,9 +249,13 @@ def test_a_value_that_is_not_text_is_refused_by_name(imap_session, wire):
 # ----------------------------------------------------------------------------
 def test_a_non_ascii_raw_expression_is_refused_with_a_pointer(imap_session):
     """A raw SEARCH expression goes to the server unquoted, so a non-ASCII
-    one cannot be sent correctly at all; the criteria flags can."""
-    with pytest.raises(MailctlError, match="criteria flags"):
+    one cannot be sent correctly at all; structured criteria can."""
+    with pytest.raises(MailctlError, match="criteria can") as caught:
         imap_session.raw_search("INBOX", "SUBJECT café")
+
+    assert "use the criteria flags (e.g. --subject)" in error_text(
+        caught.value
+    )
 
 
 # ############################################################################
