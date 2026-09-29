@@ -62,19 +62,22 @@ where every write path is proved first.
      `scripts`, `backup`, `baseline`, `flags`, `folders`,
      `folder_rename`, `mail`, `messages`, `optimize`, `senders`,
      `reports`, and `server_report` under `mailctl/utilities/`; a backup's
-     bytes on disk are `test_backup.py`,
-     and the migration utility `test_migration.py`) —
-     every plan and execute step driven with plain inputs over a session,
-     as any front-end would call it. The safety
+     bytes on disk are `test_backup.py`, and the migration utility
+     `test_migration.py`) — every plan and execute step driven with plain
+     inputs over a session, as any front-end would call it. The safety
      policy is pinned here, since it lives here: an upload backs up first
      and still leaves the backup when the server rejects the script, a
      rule is merged rather than written over, and a mail plan over the
      `--max-messages` ceiling is refused whole. `test_utilities_mail.py`
      also holds the re-check narrowing the host's search to what the rule
-     matches. `test_utilities_server_report.py` pins the redaction: servers
-     echo a sentinel address, host, folder, and script name back, and none
-     of them, the password, or the script's text may reach the report
-     ([#39][i39]). The fakes they share are `tests/utilities_support.py`.
+     matches, and a rule that keeps its mail copying it rather than moving
+     it ([#188][i188]), with a second run copying only what the folder
+     lacks, by Message-ID, and reading the folder only while planning
+     ([#192][i192]). `test_utilities_server_report.py` pins the redaction:
+     servers echo a sentinel address, host, IPv4 address, folder, and
+     script name back, and none of them, the password, or the script's
+     text may reach the report ([#39][i39]). The fakes they share are
+     `tests/utilities_support.py`.
    - **The session** (`test_engine.py`) — only what is about the
      connection: a half opens the first time a utility uses it and never if
      the command did not ask for it; a read the server cut off is sent once
@@ -166,19 +169,19 @@ where every write path is proved first.
      coarse host search is narrowed by the utilities rather than the
      transport. A capability it declines is refused before it is opened.
      `mxroute` hands back the neutral records, never its components'.
-     Fakes without a capability pin what that removes ([#99][i99]):
-     without `stop` a default rule still plans; without `ordering` the
-     placement flags and `move-rule` are not offered in help and are
-     refused by name if given; without `extensions` `disabled_extensions`
-     is refused; without `raw_query` `search --raw` is not offered in help
-     and is refused by name, by the CLI and by the utility alike; without
-     `disable` `disable-rule` and `enable-rule` are not listed and a switch
-     is refused; without `mark` `mark` is not listed and is refused;
-     without `folder_counts` `folders --counts` is not offered and is
-     refused; a connection flag the provider does not read is hidden and
-     refused; and `add` and `test` under a fake carry its own wording, with
-     nothing about Sieve or MXroute. `mxroute`'s help hides nothing but the
-     always-hidden flags.
+     Fakes without a capability pin what that removes ([#99][i99]): without
+     `stop` a default rule still plans; without `ordering` the placement
+     flags, `move-rule`, and `optimize-rules` are not offered in help and are
+     refused by name if given; without `extensions` `disabled_extensions` is
+     refused; without `raw_query` `search --raw` is not offered in help and is
+     refused by name, by the CLI and by the utility alike; without `disable`
+     `disable-rule` and `enable-rule` are not listed and a switch is refused;
+     without `mark` `mark` is not listed and is refused; without
+     `folder_counts` `folders --counts` is not offered and is refused; a
+     connection flag the provider does not read is hidden and refused; and
+     `add` and `test` under a fake carry its own wording, with nothing about
+     Sieve or MXroute. `mxroute`'s help hides nothing but the always-hidden
+     flags.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
@@ -209,7 +212,9 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   replaced disabled rule staying disabled), a fresh account's new active
   script, `backup` then `restore` byte for byte, `--create-folder` with and
   without `--no-subscribe` and the `subscribe` / `unsubscribe` toggles,
-  `apply` moving, flagging and discarding existing mail, `--max-messages`
+  `apply` moving, flagging and discarding existing mail, `apply --keep`
+  copying it as the saved rule does, both copies flagged ([#188][i188]),
+  and run again copying nothing twice ([#192][i192]), `--max-messages`
   refusing the whole pass, one filter document from `search --build-filter
   --json` driving both `add --filter` and `apply --filter`, `view` and the
   message listing leaving mail unread, `mark` setting then clearing read,
@@ -219,8 +224,9 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   alone and together ([#152][i152]). Its dates are counted from the day it
   runs, so it means the same whenever it does. Reads are here too: `probe
   --json` checked against what the server says about itself, and against
-  printing the password; this server being a recognised one, `probe
-  --report` finding nothing to report ([#39][i39]); `folders --counts --json` checked against each
+  printing the password; `probe --report` finding nothing to report on
+  this recognised server, and neither `probe` nor `test` calling it
+  unrecognised ([#39][i39]); `folders --counts --json` checked against each
   folder's own `STATUS`, leaving every message unread ([#157][i157]); and
   `senders` in `test_senders.py` ([#160][i160]), counting each address and its
   unread exactly, grouping by domain and List-Id, refusing above its ceiling,
@@ -233,10 +239,11 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   under the old, the message count kept, and the script's bytes changed only
   in the two folder names. `optimize-rules` in `test_optimize_rules.py`
   ([#21][i21]): the same messages handed to `dovecot-lda` before and after a
-  merge and a removal land in the same folders, and a reorder moves only the
-  starved rule's mail. New mail is also handed to `dovecot-lda`, which runs
-  the uploaded script, so the going-forward half is seen filing it too — by
-  header, and by body through an `add --body` rule.
+  merge and a removal land in the same folders, a reorder moves only the
+  starved rule's mail, and a dry run stores nothing. New mail is also
+  handed to `dovecot-lda`, which runs the uploaded script, so the
+  going-forward half is seen filing it too — by header, and by body through
+  an `add --body` rule.
 - **The oracle is not mailctl.** Each test reads the server back with
   sievelib's and IMAPClient's own clients, and a byte-exact claim with the
   script file on the container's disk, so a write that mailctl both gets
@@ -390,4 +397,6 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i39]: https://github.com/harleypig/mailctl/issues/39
 [i159]: https://github.com/harleypig/mailctl/issues/159
 [i183]: https://github.com/harleypig/mailctl/issues/183
+[i188]: https://github.com/harleypig/mailctl/issues/188
+[i192]: https://github.com/harleypig/mailctl/issues/192
 [i160]: https://github.com/harleypig/mailctl/issues/160
