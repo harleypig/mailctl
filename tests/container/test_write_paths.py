@@ -12,6 +12,7 @@ pass filed the old.
 Every test names, in its docstring, the break that turns it red.
 """
 
+import re
 import uuid
 
 import pytest
@@ -334,6 +335,77 @@ def test_disable_then_enable_switches_the_rule_off_and_on(account):
     filed = mail_in(account, "INBOX.Bills")
 
     assert [subject for subject, _ in filed.values()] == ["invoice 2"]
+
+
+# ----------------------------------------------------------------------------
+def test_replacing_a_disabled_rule_keeps_it_disabled(account):
+    """``add --replace`` on a rule switched off in Roundcube stores the new
+    rule still switched off, in Roundcube's form (#168).
+
+    Red if the stored rule is sievelib's ``if false { if <test> ... }``
+    (Roundcube would show it as enabled), if the old test survives, if
+    ``rules`` stops listing it as disabled or lists the old test, if the
+    server runs the replacement, or if enabling does not restore the new
+    test.
+    """
+    account.seed_script(
+        ROUNDCUBE_NAME,
+        INVOICES.replace(
+            'if header :contains "subject" "invoice"',
+            'if false # header :contains "subject" "invoice"',
+        ),
+    )
+
+    with account.imap() as client:
+        client.create_folder("INBOX.Bills")
+
+    replaced = account.run(
+        "add",
+        "--subject",
+        "receipt",
+        "--name",
+        "invoices",
+        "--fileinto",
+        "Bills",
+        "--replace",
+        "--no-apply",
+        "--yes",
+    )
+
+    assert replaced.code == 0, replaced.err
+
+    stored = account.script_bytes(ROUNDCUBE_NAME).decode()
+    rule = stored.replace("\r\n", "\n").split("# rule:[invoices]\nif", 1)[1]
+    false_line = rule.split("\n", 1)[0]
+
+    # Roundcube's own test for a disabled rule, right after `if`
+    # (rcube_sieve_script.php).
+    assert re.match(r"^\s*false\s+#\s*", rule, re.IGNORECASE)
+    assert "receipt" in false_line
+    assert "invoice" not in rule
+    assert "if " not in rule
+
+    rules = account.run("rules")
+
+    assert rules.code == 0, rules.err
+    assert "invoices  [disabled]" in rules.out
+    assert "receipt" in rules.out
+
+    account.deliver(message("shop@example.org", "receipt 1"), "s@x.org")
+
+    assert mail_in(account, "INBOX.Bills") == {}
+    assert [s for s, _ in mail_in(account, "INBOX").values()] == ["receipt 1"]
+
+    enabled = account.run("enable-rule", "invoices", "--yes")
+
+    assert enabled.code == 0, enabled.err
+    assert "if false" not in account.script(ROUNDCUBE_NAME)
+
+    account.deliver(message("shop@example.org", "receipt 2"), "s@x.org")
+
+    filed = mail_in(account, "INBOX.Bills")
+
+    assert [subject for subject, _ in filed.values()] == ["receipt 2"]
 
 
 # ----------------------------------------------------------------------------

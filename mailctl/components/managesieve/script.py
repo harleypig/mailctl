@@ -392,8 +392,9 @@ def _render_entry(plain: factory.FiltersSet, entry: dict[str, Any]) -> str:
 
     sievelib writes ``if false {``; Roundcube needs the comment after
     ``false`` on that line, so the brace moves to the next. The comment
-    belongs to the content it was read with -- after ``--replace`` it
-    describes a test the rule no longer has, and is dropped.
+    belongs to the content it was read with: on any other content it
+    describes a test the rule no longer has, and is dropped
+    (``_replace_rule`` gives replaced content its own).
     """
     buffer = io.StringIO()
     plain.tosieve(buffer)
@@ -476,25 +477,34 @@ def _parse_test(comment: str, requires: list[str]) -> commands.Command:
 
 
 # ----------------------------------------------------------------------------
-def _single_line_test(name: str, test: commands.Command) -> str:
+def _single_line_test(test: commands.Command) -> str | None:
     """A rule's test on one line, as Roundcube writes it after ``if false``.
 
     sievelib already renders a test on one line -- ``anyof (a, b)`` with
     ``, `` between the tests, which is Roundcube's own form. A multi-line
-    string (``text:``) cannot be, and a comment ends at the line's end.
+    string (``text:``) cannot be, and a comment ends at the line's end, so
+    such a test is None.
     """
     buffer = io.StringIO()
     test.tosieve(target=buffer)
     line = buffer.getvalue().strip()
 
     if "\n" in line or "\r" in line:
-        raise MailctlError(
-            f"rule {name!r} cannot be disabled: its test spans more than "
-            f"one line, and a disabled rule keeps its test in a comment on "
-            f"the 'if false' line, where Roundcube looks for it"
-        )
+        return None
 
     return line
+
+
+# ----------------------------------------------------------------------------
+def _switch_off(entry: dict[str, Any], line: str) -> None:
+    """Disable ``entry`` in Roundcube's form, ``line`` its one-line test."""
+    command = entry["content"]
+    test = command["test"]
+
+    command.arguments["test"] = commands.get_command_instance("false", command)
+    entry["enabled"] = False
+    entry["disabled_test"] = (command, f"# {line}")
+    entry["disabled_condition"] = (command, test, command)
 
 
 # ----------------------------------------------------------------------------
@@ -534,13 +544,16 @@ def disable_rule(
     if _is_disabled(command):
         return existing
 
-    test = command["test"]
-    line = f"# {_single_line_test(name, test)}"
+    line = _single_line_test(command["test"])
 
-    command.arguments["test"] = commands.get_command_instance("false", command)
-    entry["enabled"] = False
-    entry["disabled_test"] = (command, line)
-    entry["disabled_condition"] = (command, test, command)
+    if line is None:
+        raise MailctlError(
+            f"rule {name!r} cannot be disabled: its test spans more than "
+            f"one line, and a disabled rule keeps its test in a comment on "
+            f"the 'if false' line, where Roundcube looks for it"
+        )
+
+    _switch_off(entry, line)
 
     return render_script(filters, dialect)
 
@@ -782,7 +795,7 @@ def merge_rule(
     position = resolve_position(rule_names(filters), placement, name)
 
     if exists:
-        filters.updatefilter(name, name, conditions, actions, matchtype)
+        _replace_rule(filters, name, conditions, actions, matchtype)
 
     else:
         filters.addfilter(name, conditions, actions, matchtype)
@@ -790,6 +803,44 @@ def merge_rule(
     _move_rule(filters, name, position)
 
     return render_script(filters, dialect)
+
+
+# ----------------------------------------------------------------------------
+def _replace_rule(
+    filters: factory.FiltersSet,
+    name: str,
+    conditions: list[tuple],
+    actions: list[tuple],
+    matchtype: str,
+) -> None:
+    """Give a named rule new content, keeping it disabled if it was.
+
+    sievelib's ``updatefilter`` re-disables a disabled rule by wrapping it,
+    ``if false { if <test> { ... } }``, which Roundcube shows as enabled
+    (#168). So the rule is updated as though enabled and then switched off
+    in Roundcube's own form, the new test after ``false``.
+    """
+    entry = _named_entry(filters, name)
+    disabled = not entry["enabled"]
+
+    entry["enabled"] = True
+    filters.updatefilter(name, name, conditions, actions, matchtype)
+
+    if not disabled:
+        return
+
+    line = _single_line_test(entry["content"]["test"])
+
+    if line is None:
+        raise MailctlError(
+            f"rule {name!r} cannot be replaced while disabled: its new test "
+            f"spans more than one line, and a disabled rule keeps its test "
+            f"in a comment on the 'if false' line, where Roundcube looks "
+            f"for it. Enable it first (mailctl enable-rule {name}), then "
+            f"replace it"
+        )
+
+    _switch_off(entry, line)
 
 
 # ----------------------------------------------------------------------------
