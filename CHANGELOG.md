@@ -40,6 +40,22 @@ BREAKING CHANGES:
 
 FEATURES:
 
+* **`mailctl probe --report` prints an issue body for a server mailctl does
+  not recognise** ([#39]). Each connection picks a server module from the
+  IMAP `ID` and ManageSieve `IMPLEMENTATION` answers; where one matches
+  none, mailctl works with the plain protocol, and now says so: `probe`
+  ends with a line naming the unrecognised server, and `test` adds one
+  `Servers:` line. `probe --report` prints a Markdown issue body with each
+  server's identity and capabilities, the extensions, the delimiter and
+  namespaces, the number of folders and scripts, and the mailctl version.
+  The address, its domain and local part, the configured hosts, folder and
+  script names, and anything shaped like an address or IPv4 address are
+  replaced wherever they appear, and `OWNER`'s value is redacted; the
+  password, script text, and messages are never read. Nothing is sent:
+  the body goes to stdout, and stderr says where and how to file it. On a
+  recognised server it prints nothing and says there is nothing to
+  report.
+
 * **`mailctl senders` shows who sends the most mail, and how much of it is
   left unread** ([#160]) — the list to make filters from. It counts a
   folder's mail by sender address (lower-cased), by `--by domain`, or by
@@ -1182,3 +1198,4 @@ NOTES:
 [#51]: https://github.com/harleypig/mailctl/issues/51
 [#109]: https://github.com/harleypig/mailctl/issues/109
 [#21]: https://github.com/harleypig/mailctl/issues/21
+[#39]: https://github.com/harleypig/mailctl/issues/39

@@ -6,7 +6,7 @@ extension.
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 from .. import MailctlError
@@ -140,15 +140,15 @@ def probe_servers(
 # ----------------------------------------------------------------------------
 def _sorted_description(value: ServerDescription) -> ServerDescription:
     """``value`` with its identity and capabilities in a stable order."""
-    return ServerDescription(
-        tuple(sorted(value.identity)),
-        tuple(
+    return replace(
+        value,
+        identity=tuple(sorted(value.identity)),
+        capabilities=tuple(
             sorted(
                 value.capabilities,
                 key=lambda item: (item.name.upper(), item.value or ""),
             )
         ),
-        value.after_login,
     )
 
 

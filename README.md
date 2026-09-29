@@ -179,6 +179,11 @@ mailctl test --env-file
 mailctl probe
 mailctl probe --json > probe-$(date -u +%F).json
 
+# A server mailctl does not recognise? probe and test say so. --report
+# prints an issue body to file, with your address, hosts, folder and
+# script names, and password left out. It sends nothing; read it first.
+mailctl probe --report > report.md
+
 # Save what the servers say now as this host's baseline, then later ask
 # what has changed since and what it means for your rules (see "Baselines
 # and drift" below). Saving writes a local file only.

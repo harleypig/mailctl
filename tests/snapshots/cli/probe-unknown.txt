@@ -7,9 +7,13 @@ Sieve:     mail.example.com:4190 (tls=starttls)
 
 ManageSieve (capabilities read before login):
   identity:
-    (none reported)
-  capabilities: 1
+    implementation: Acme Sieve 1.0
+  capabilities: 5
+    IMPLEMENTATION Acme Sieve 1.0
+    OWNER user@example.com
     SIEVE fileinto imap4flags mailbox regex
+    X-HOST mail.example.com 192.0.2.7
+    X-HOSTILE \x1b[31mred\x07
   Sieve extensions: 4
     fileinto
     imap4flags
@@ -19,13 +23,16 @@ ManageSieve (capabilities read before login):
 
 IMAP (capabilities read after login):
   identity:
-    (none reported)
-  capabilities: 2
-    MOVE
+    name: Acme IMAP
+    support-url: https://mail.example.com/help/Lists
+  capabilities: 4
+    ID
+    IMAP4REV1
+    NAMESPACE
     UIDPLUS
   delimiter: '.'
   namespaces:
-    (none reported)
+    personal  prefix 'INBOX.'  delimiter '.'
 
 --json prints it as a versioned document.
 
@@ -39,4 +46,7 @@ mailctl does not recognise the ManageSieve or the IMAP server, so it works with 
 ('logout',)
 --- imap calls
 ('login', 'user@example.com')
+('namespace',)
+('id_',)
+('namespace',)
 ('logout',)

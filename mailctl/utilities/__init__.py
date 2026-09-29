@@ -34,6 +34,7 @@ stores (ADR 0007). One module per subject:
 ``optimize``   proposing a better arrangement of the rules, and applying it
 ``migration``  what the rename from ``mxfilter`` left behind
 ``reports``    probes, provider wording, and extension state
+``server_report`` a redacted report of a server mailctl does not recognise
 ``events``     the steps of a change, as a front-end is told of them
 """
 
@@ -53,6 +54,7 @@ from . import (
     rules,
     scripts,
     senders,
+    server_report,
 )
 
 __all__ = [
@@ -71,4 +73,5 @@ __all__ = [
     "rules",
     "scripts",
     "senders",
+    "server_report",
 ]

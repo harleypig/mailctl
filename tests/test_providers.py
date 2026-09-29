@@ -1093,6 +1093,31 @@ def test_the_probe_reports_the_fake_in_its_own_terms(imap_config, fakes):
 
 
 # ----------------------------------------------------------------------------
+def test_the_unknown_server_report_is_in_the_fakes_own_terms(
+    imap_config, fakes
+):
+    """#39: a host with no server modules reports both halves as
+    unrecognised, and the body is filled from its own words."""
+    session = fake_session()
+
+    assert utilities.server_report.unrecognised_servers(session) == [
+        "rules",
+        "mail",
+    ]
+
+    report = utilities.server_report.build_server_report(session, imap_config)
+    body = utilities.server_report.render_server_report(report)
+
+    assert report.provider == "fake"
+    assert report.title == (
+        f"Unrecognised server: {FAKE.wording.rules_service} fake rules; "
+        f"{FAKE.wording.mail_service} fake mail"
+    )
+    assert "  - `LABELS`" in body
+    assert not re.search(r"(?i)sieve|mxroute|imap", body)
+
+
+# ----------------------------------------------------------------------------
 def test_the_probe_lists_no_extensions_for_a_host_without_them(
     imap_config, fakes
 ):
@@ -2414,3 +2439,18 @@ def test_optimize_rules_speaks_in_the_fake_hosts_words(
     assert not HOST_WORDS.search(text), text
     assert ":contains" not in text
     assert "again" in text and "bills" in text and "two" in text
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("report", [[], ["--report"]], ids=["probe", "report"])
+def test_probe_names_an_unrecognised_server_in_the_fake_hosts_words(
+    fakes, capsys, report
+):
+    """#39: the fake has no server modules, so both halves are
+    unrecognised; what probe and its report say owes nothing to Sieve or
+    MXroute."""
+    code, text = run_fake(capsys, "probe", *report)
+
+    assert code == 0, text
+    assert "fake rules" in text
+    assert not HOST_WORDS.search(text), text

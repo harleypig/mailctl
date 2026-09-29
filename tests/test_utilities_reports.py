@@ -87,6 +87,7 @@ def test_the_probe_reads_both_halves_and_sorts_every_list(
             Capability("STARTTLS"),
         ),
         after_login=False,
+        software="pigeonhole",
     )
     assert record.extensions == ("fileinto", "mailbox", "regex")
     assert record.active_rule_set == "managesieve"
@@ -96,6 +97,7 @@ def test_the_probe_reads_both_halves_and_sorts_every_list(
             Capability(name) for name in ("ID", "MOVE", "NAMESPACE", "UIDPLUS")
         ),
         after_login=True,
+        software="dovecot",
     )
     assert record.delimiter == "."
     assert record.namespaces == (

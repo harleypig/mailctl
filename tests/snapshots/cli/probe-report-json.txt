@@ -1,0 +1,17 @@
+$ mailctl probe --report --json
+exit: SystemExit(2)
+--- stdout
+
+--- stderr
+usage: mailctl probe [-h] [--verbose] [--debug] [--provider PROVIDER]
+                     [--host HOST] [--user USER]
+                     [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
+                     [--env-file [PATH]] [--imap-host IMAP_HOST]
+                     [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
+                     [--sieve-tls {starttls,ssl,none}]
+                     [--backup-dir BACKUP_DIR] [--disable-extension NAME]
+                     [--json | --report]
+mailctl probe: error: argument --json: not allowed with argument --report
+
+--- sieve calls
+--- imap calls
