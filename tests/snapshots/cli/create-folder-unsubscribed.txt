@@ -1,0 +1,12 @@
+$ mailctl create-folder spam
+exit: 0
+--- stdout
+Folder 'spam' resolves to 'INBOX.spam' (delimiter '.')
+'INBOX.spam' already exists but is not subscribed, so webmail does not show it; nothing was changed. 'mailctl subscribe INBOX.spam' shows it.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

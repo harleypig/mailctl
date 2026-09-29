@@ -1,0 +1,13 @@
+$ mailctl create-folder Work/2026 --no-subscribe --dry-run
+exit: 0
+--- stdout
+Folder 'Work/2026' resolves to 'INBOX.Work.2026' (delimiter '.')
+Parent folder 'INBOX.Work' does not exist either; the IMAP server is expected to create it along with 'INBOX.Work.2026'.
+[dry-run] would create IMAP folder 'INBOX.Work.2026', not subscribed (--no-subscribe)
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

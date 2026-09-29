@@ -35,6 +35,7 @@ ALL_TESTS = [
     "from-message",
     "remove-rule",
     "subscribe",
+    "create-folder",
     "unchanged",
 ]
 
@@ -42,6 +43,7 @@ MUTATING = [
     "add",
     "apply",
     "backup",
+    "create-folder",
     "from-message",
     "migrate-config",
     "move-rule",

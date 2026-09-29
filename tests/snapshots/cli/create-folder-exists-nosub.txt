@@ -1,0 +1,13 @@
+$ mailctl create-folder Lists --no-subscribe
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+'INBOX.Lists' already exists and is subscribed; nothing to change.
+  --no-subscribe only shapes a folder this command creates; 'mailctl unsubscribe INBOX.Lists' hides it.
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('logout',)

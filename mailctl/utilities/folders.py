@@ -333,3 +333,101 @@ def realize_folder(
         on_event(FolderCreated(result))
 
     return result
+
+
+# ############################################################################
+# A folder created on its own -- 'mailctl create-folder'
+# ############################################################################
+
+
+@dataclass(frozen=True)
+class FolderCreationPlan:
+    """A folder asked for by name, and what creating it would do.
+
+    ``target`` is the folder as :func:`create_folder` takes it: planned
+    for IMAP creation, or already there (``FOLDER_EXISTS``), in which case
+    there is nothing to create. ``subscribed_now`` is its subscription as
+    it stands, meaningful only when it exists.
+
+    ``missing_parents`` are the levels above the folder that do not exist
+    either, outermost first. IMAP CREATE is expected to make them too
+    (RFC 3501 section 6.3.3, a SHOULD); only the folder itself is
+    subscribed.
+    """
+
+    target: FolderPlan
+    subscribed_now: bool = False
+    missing_parents: tuple[str, ...] = ()
+
+    # ------------------------------------------------------------------------
+    @property
+    def exists(self) -> bool:
+        """Whether the folder is already there, so nothing is created."""
+        return self.target.status == FOLDER_EXISTS
+
+
+# ----------------------------------------------------------------------------
+def plan_folder_creation(
+    session: Session, name: str, subscribe: bool = True
+) -> FolderCreationPlan:
+    """Work out creating a folder by name, without creating it.
+
+    The name is normalized like every other folder name, and a new one
+    goes under the server's namespace prefix. A folder that differs from
+    an existing one only in case is refused rather than planned: folder
+    names are case-sensitive, so it would be a second folder beside the
+    one the user most likely meant (#56).
+    """
+    listing = session.transport.list_folders()
+    folder = session.dialect.normalize(name, listing)
+    delimiter = listing.delimiter
+
+    shape = {
+        "requested": name,
+        "folder": folder,
+        "delimiter": delimiter,
+        "delimiter_assumed": False,
+        "subscribe": subscribe,
+    }
+
+    if listing.exists(folder):
+        return FolderCreationPlan(
+            FolderPlan(status=FOLDER_EXISTS, **shape),
+            subscribed_now=listing.is_subscribed(folder),
+        )
+
+    variants = listing.case_variants(folder)
+
+    if variants:
+        raise MailctlError(
+            f"not creating {folder!r}: {case_variant_hint(variants)}"
+            f"Creating it would put a second folder beside "
+            f"{'it' if len(variants) == 1 else 'them'}. To use the existing "
+            f"folder, give its name as listed."
+        )
+
+    parts = folder.split(delimiter) if delimiter else [folder]
+    parents = [delimiter.join(parts[:depth]) for depth in range(1, len(parts))]
+
+    return FolderCreationPlan(
+        FolderPlan(status=FOLDER_IMAP_CREATE, **shape),
+        missing_parents=tuple(
+            parent for parent in parents if not listing.exists(parent)
+        ),
+    )
+
+
+# ----------------------------------------------------------------------------
+def execute_folder_creation(
+    session: Session, plan: FolderCreationPlan
+) -> FolderCreation | None:
+    """Create the planned folder; a folder already there is left alone.
+
+    Returns None when there was nothing to create, otherwise what
+    :func:`create_folder` achieved -- including a subscription that failed
+    after the folder was made.
+    """
+    if plan.exists:
+        return None
+
+    return create_folder(session, plan.target)

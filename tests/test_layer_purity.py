@@ -1254,6 +1254,7 @@ KNOWN_READERS = (
     "backup.plan_restore",
     "folders.list_folders",
     "folders.plan_folder",
+    "folders.plan_folder_creation",
     "folders.plan_subscription",
     "mail.plan_mail",
     "messages.list_messages",

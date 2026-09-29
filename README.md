@@ -190,6 +190,11 @@ mailctl view 4127 --raw > message.eml   # the exact bytes, to keep
 mailctl subscribe Lists/News
 mailctl unsubscribe Lists/Noisy --dry-run
 
+# Make a folder on its own, subscribed so webmail shows it. Its missing
+# parents are named; a folder that exists is left as it is.
+mailctl create-folder Lists/News --dry-run
+mailctl create-folder Lists/Archive --no-subscribe
+
 # See exactly what would change, without changing it.
 mailctl add --from newsletter@example.com --fileinto Lists/News --dry-run
 

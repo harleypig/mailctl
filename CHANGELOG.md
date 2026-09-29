@@ -27,6 +27,19 @@ FEATURES:
   provider offers. An unknown command is refused as `mailctl nosuch` is,
   naming the valid ones. It never connects or asks for the password.
 
+* **`mailctl create-folder NAME` makes a folder on its own** ([#155]).
+  Until now a folder was only created as a side effect of
+  `--create-folder` on `add` or `apply`. The name is normalized like every
+  other (`Lists/News` and `INBOX.Lists.News` are the same folder), a new
+  one goes where the server says new folders belong, and it is subscribed
+  so webmail shows it unless `--no-subscribe` is given. The plan is shown
+  first — including any parent folders that do not exist yet, which the
+  server is expected to create along with it — then `--dry-run` stops, or
+  you are asked to confirm (`--yes` skips the question). A folder that
+  already exists is left exactly as it is, and if it is not subscribed
+  mailctl says so and points at `mailctl subscribe`. A name that differs
+  from an existing folder only in case is refused, naming that folder.
+
 ENHANCEMENTS:
 
 * **A command given bad input fails before logging in** ([#137]). The CLI
@@ -855,5 +868,6 @@ NOTES:
 [#137]: https://github.com/harleypig/mailctl/issues/137
 [#154]: https://github.com/harleypig/mailctl/issues/154
 [#153]: https://github.com/harleypig/mailctl/issues/153
+[#155]: https://github.com/harleypig/mailctl/issues/155
 [#147]: https://github.com/harleypig/mailctl/issues/147
 [#7]: https://github.com/harleypig/mailctl/issues/7

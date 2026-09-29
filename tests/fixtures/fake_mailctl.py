@@ -257,6 +257,12 @@ def main() -> int:
     elif command == "subscribe":
         out = "'INBOX' is already subscribed; nothing to change.\n"
 
+    elif command == "create-folder":
+        out = (
+            f"[dry-run] would create IMAP folder 'INBOX.{ARGV[-1]}' and "
+            f"subscribe to it\n"
+        )
+
     else:
         print(f"fake mailctl: no canned output for {command}", file=sys.stderr)
 

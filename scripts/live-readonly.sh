@@ -42,6 +42,7 @@ readonly TESTS=(
   from-message
   remove-rule
   subscribe
+  create-folder
   unchanged
 )
 
@@ -50,6 +51,7 @@ readonly MUTATING=(
   add
   apply
   backup
+  create-folder
   from-message
   migrate-config
   move-rule
@@ -528,6 +530,28 @@ t_subscribe() {
   expect_nothing_changed || return 1
 
   expect_line 'already subscribed; nothing to change\.$|^\[dry-run\]'
+}
+
+#-----------------------------------------------------------------------------
+t_create_folder() {
+  local probe
+
+  probe="MailctlReadonlyProbe-$(date -u +%Y%m%dT%H%M%S)-$$"
+
+  run_mailctl create-folder --dry-run "$probe"
+  expect_ok 'create-folder --dry-run' || return 1
+  expect_nothing_changed || return 1
+
+  expect_line '^\[dry-run\] would create IMAP folder' || return 1
+
+  run_mailctl folders
+  expect_ok folders || return 1
+
+  if folder_names | grep -qF -- "$probe"; then
+    fail "the probe folder exists after a dry run"
+
+    return 1
+  fi
 }
 
 #-----------------------------------------------------------------------------

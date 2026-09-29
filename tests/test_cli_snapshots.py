@@ -360,6 +360,29 @@ SCENARIOS = {
     "unsubscribe": (["unsubscribe", "Lists"], {}),
     "unsubscribe-already": (["unsubscribe", "spam"], {}),
     "unsubscribe-missing": (["unsubscribe", "Nowhere"], {}),
+    # #155: a folder made on its own, not only by --create-folder.
+    "create-folder-dry": (["create-folder", "Lists/GitHub", "--dry-run"], {}),
+    "create-folder-yes": (["create-folder", "Lists/GitHub", "--yes"], {}),
+    "create-folder-nosub": (
+        ["create-folder", "New", "--no-subscribe", "--yes"],
+        {},
+    ),
+    "create-folder-notty": (["create-folder", "New"], {}),
+    "create-folder-parents": (
+        ["create-folder", "Work/2026/Q3", "--dry-run"],
+        {},
+    ),
+    "create-folder-parent-nosub": (
+        ["create-folder", "Work/2026", "--no-subscribe", "--dry-run"],
+        {},
+    ),
+    "create-folder-exists": (["create-folder", "Lists"], {}),
+    "create-folder-exists-nosub": (
+        ["create-folder", "Lists", "--no-subscribe"],
+        {},
+    ),
+    "create-folder-unsubscribed": (["create-folder", "spam"], {}),
+    "create-folder-case-variant": (["create-folder", "lists", "--yes"], {}),
     "add-nosubscribe-alone": (
         ["add", *GITHUB, "--fileinto", "Lists", "--no-subscribe"],
         {},

@@ -1,0 +1,15 @@
+$ mailctl create-folder Lists/GitHub --yes
+exit: 0
+--- stdout
+Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
+Will create IMAP folder 'INBOX.Lists.GitHub' and subscribe to it
+Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('create_folder', 'INBOX.Lists.GitHub')
+('subscribe_folder', 'INBOX.Lists.GitHub')
+('logout',)
