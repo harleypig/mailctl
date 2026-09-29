@@ -5,6 +5,7 @@ import pytest
 from mailctl import MailctlError, cli
 from mailctl.components.managesieve import client as sieve_client
 from mailctl.config import Config
+from mailctl.criteria import Criteria, load_filter
 
 
 # ----------------------------------------------------------------------------
@@ -120,3 +121,32 @@ def test_the_old_names_are_gone(argv, error, capsys):
 
     assert stopped.value.code == 2
     assert error in capsys.readouterr().err
+
+
+# ----------------------------------------------------------------------------
+def test_build_filter_json_is_what_the_filter_loader_reads(capsys):
+    """The document 'search --build-filter --json' prints is the one 'add
+    --filter' will read (#149), and building it needs no server."""
+    code = cli.main(
+        [
+            "search",
+            "--build-filter",
+            "--json",
+            "--from",
+            "a@x.org",
+            "--subject",
+            "Hi",
+            "--match",
+            "all",
+            "--compare",
+            "is",
+        ]
+    )
+
+    out = capsys.readouterr().out
+    expected = Criteria(match="all", compare="is")
+    expected.add("From", "a@x.org")
+    expected.add("Subject", "Hi")
+
+    assert code == 0
+    assert load_filter(out) == expected

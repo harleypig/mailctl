@@ -35,6 +35,8 @@ readonly TESTS=(
   folders
   backup
   search
+  search-like
+  build-filter
   view-keeps-unread
   apply
   add
@@ -391,6 +393,45 @@ t_search() {
   rows=$(message_marks | wc -l)
 
   ((rows <= 5)) || fail "--limit 5 listed $rows rows"
+}
+
+#-----------------------------------------------------------------------------
+t_search_like() {
+  local uid
+
+  run_mailctl search --limit 1
+  expect_ok 'search --limit 1' || return 1
+  uid=$(message_marks | awk '{ print $1; exit }')
+  need "$uid" "the folder has no messages" || return 2
+
+  run_mailctl search --like "$uid" --limit 5
+  expect_ok "search --like $uid" || return 1
+  expect_line '^Criteria: ' || return 1
+
+  # Criteria derived from a message match it, and it is the newest, so it
+  # is listed unless five newer matches arrived in between.
+  message_marks | awk -v uid="$uid" '$1 == uid { f = 1 } END { exit !f }' \
+    || fail "uid $uid is not listed by criteria derived from it"
+}
+
+#-----------------------------------------------------------------------------
+t_build_filter() {
+  local uid
+
+  run_mailctl search --limit 1
+  expect_ok 'search --limit 1' || return 1
+  uid=$(message_marks | awk '{ print $1; exit }')
+  need "$uid" "the folder has no messages" || return 2
+
+  run_mailctl search --like "$uid" --build-filter --json
+  expect_ok "search --like $uid --build-filter --json" || return 1
+
+  # Only the document goes to stdout; the message shown goes to stderr.
+  [[ $(head -n 1 "$OUT") == '{' ]] \
+    || fail "stdout holds more than the filter document" || return 1
+
+  expect_line '^  "version": 1,$' || return 1
+  expect_line '^    "terms": \[$'
 }
 
 #-----------------------------------------------------------------------------

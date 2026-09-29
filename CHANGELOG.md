@@ -40,6 +40,24 @@ FEATURES:
   mailctl says so and points at `mailctl subscribe`. A name that differs
   from an existing folder only in case is refused, naming that folder.
 
+* **`mailctl search --like UID` finds mail like a message you have, and
+  `--build-filter` prints the filter** ([#148]). `--like` reads the
+  message in `--folder`, shows its identifying headers, and takes criteria
+  from it — its List-Id, else its From; `--derive` names the headers
+  instead, as for `from-message`. Criteria flags given as well are merged
+  in: a flag replaces what was derived for its own header, any other
+  header is added, and `--match` and `--compare` govern the whole set as
+  always. `--build-filter` prints the filter the criteria make — flags,
+  `--like`, or both — and saves nothing; without `--like` it needs no
+  server at all. `--build-filter --json` prints it as a versioned filter
+  document (`{"version": 1, "criteria": {…}}`, criteria only, no actions)
+  with nothing else on stdout; the README describes the format, and `add`
+  and `apply` will read it ([#149]). `--build-filter` with no criteria is
+  refused, and so is a `--like` UID the folder does not hold, naming both.
+  `from-message` stays until `add --like` and `apply --like` land in
+  [#149], so there is no release without a way to write a filter from a
+  message.
+
 ENHANCEMENTS:
 
 * **A command given bad input fails before logging in** ([#137]). The CLI
@@ -883,3 +901,5 @@ NOTES:
 [#147]: https://github.com/harleypig/mailctl/issues/147
 [#7]: https://github.com/harleypig/mailctl/issues/7
 [#49]: https://github.com/harleypig/mailctl/issues/49
+[#148]: https://github.com/harleypig/mailctl/issues/148
+[#149]: https://github.com/harleypig/mailctl/issues/149

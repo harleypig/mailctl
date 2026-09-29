@@ -194,6 +194,126 @@ def test_a_missing_header_is_reported_as_skipped_not_raised():
 
 
 # ############################################################################
+# Criteria like a message (search --like)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def listed(fake_imap):
+    fake_imap.messages = {
+        1: raw_message("noreply@github.com", "PR opened"),
+        7: (
+            b"From: Dev <dev@x.org>\r\nSubject: Digest\r\n"
+            b"List-Id: Dev list <dev.x.org>\r\n\r\n"
+        ),
+    }
+
+    return fake_imap
+
+
+# ----------------------------------------------------------------------------
+def test_criteria_like_a_message_are_derived_from_it(sessions, listed):
+    like = utilities.mail.criteria_like(sessions, "INBOX", 7)
+
+    assert like.message.uid == 7
+    assert like.message.folder == "INBOX"
+    assert like.message.headers["Subject"] == "Digest"
+    assert like.criteria == criteria_of(("List-Id", "dev.x.org"))
+    assert like.skipped == []
+
+
+# ----------------------------------------------------------------------------
+def test_the_folder_is_normalized_before_the_message_is_read(sessions, listed):
+    like = utilities.mail.criteria_like(sessions, "Lists", 7)
+
+    assert like.message.folder == "INBOX.Lists"
+    assert ("select_folder", "INBOX.Lists", True) in listed.calls
+
+
+# ----------------------------------------------------------------------------
+def test_derive_chooses_the_headers(sessions, listed):
+    like = utilities.mail.criteria_like(
+        sessions, "INBOX", 7, derive="from,cc,subject"
+    )
+
+    assert like.criteria == criteria_of(
+        ("From", "dev@x.org"), ("Subject", "Digest")
+    )
+    assert like.skipped == ["cc"]
+
+
+# ----------------------------------------------------------------------------
+def test_explicit_criteria_override_and_extend_what_is_derived(
+    sessions, listed
+):
+    explicit = Criteria(match="all", compare="is")
+    explicit.add("list-id", "other.x.org")
+    explicit.add("subject", "Digest")
+
+    like = utilities.mail.criteria_like(
+        sessions, "INBOX", 7, explicit, derive="list-id,from"
+    )
+
+    assert like.criteria == criteria_of(
+        ("From", "dev@x.org"),
+        ("List-Id", "other.x.org"),
+        ("Subject", "Digest"),
+        match="all",
+        compare="is",
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_message_lacking_every_header_asked_for_derives_nothing(
+    sessions, listed
+):
+    like = utilities.mail.criteria_like(sessions, "INBOX", 1, derive="cc")
+
+    assert not like.criteria
+    assert like.skipped == ["cc"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_uid_that_is_not_there_is_refused_naming_folder_and_uid(
+    sessions, listed
+):
+    with pytest.raises(MailctlError, match=r"uid 99 in 'INBOX.Lists'"):
+        utilities.mail.criteria_like(sessions, "Lists", 99)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("uid", [0, -3])
+def test_a_uid_below_one_is_refused_before_any_fetch(sessions, listed, uid):
+    with pytest.raises(MailctlError, match="start at 1"):
+        utilities.mail.criteria_like(sessions, "INBOX", uid)
+
+    assert not any(call[0] == "fetch" for call in listed.calls)
+
+
+# ----------------------------------------------------------------------------
+def test_criteria_like_a_message_reads_and_marks_nothing(sessions, listed):
+    utilities.mail.criteria_like(sessions, "INBOX", 7)
+
+    assert listed.marked_seen == set()
+    assert {call[0] for call in listed.calls} <= {
+        "login",
+        "select_folder",
+        "fetch",
+    }
+
+
+# ----------------------------------------------------------------------------
+def criteria_of(*pairs, match="any", compare="contains") -> Criteria:
+    result = Criteria(match=match, compare=compare)
+
+    for header, value in pairs:
+        result.add(header, value)
+
+    return result
+
+
+# ############################################################################
 # Folder creation happens on execute
 # ############################################################################
 

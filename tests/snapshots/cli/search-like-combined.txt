@@ -1,0 +1,27 @@
+$ mailctl search --like 2 --subject Issue --match all
+exit: 0
+--- stdout
+Message uid 2 in 'INBOX':
+  Date:    Tue, 3 Feb 2026 04:05:06 +0000
+  From:    Someone <noreply@github.com>
+  To:      user@example.com
+  Subject: Issue closed
+
+Criteria: From contains 'noreply@github.com' AND Subject contains 'Issue'
+
+1 message(s) in 'INBOX', newest first:
+     UID  Received               Size  Mark  From                          Subject
+       2  2026-02-03 04:05:06    121B  N     Someone <noreply@github.com>  Issue closed
+Marks: N unread, F flagged, R replied, D deleted, @ attachment
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (2,))
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com'], ['SUBJECT', 'Issue']])
+('fetch', (3, 2, 1))
+('logout',)

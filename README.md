@@ -180,6 +180,17 @@ mailctl search
 mailctl search --folder Lists/News --from newsletter@example.com
 mailctl search --raw 'UNSEEN SINCE 1-Sep-2026' --limit 50
 
+# Find mail like one you have: criteria taken from message 4127 (its
+# List-Id, else its From; --derive picks the headers). A criteria flag
+# replaces what was taken for its header, and adds any other header.
+mailctl search --like 4127
+mailctl search --like 4127 --subject Invoice --match all
+
+# Print the filter those criteria make, and save nothing. --json prints it
+# as a filter document (see "Filter documents" below).
+mailctl search --like 4127 --build-filter
+mailctl search --like 4127 --build-filter --json > news.json
+
 # Read one by UID. It stays unread, and no attachment is saved.
 mailctl view 4127
 mailctl view 4127 --headers-only
@@ -240,15 +251,47 @@ mailctl migrate-config
 touch nothing to ones that move mail, and it is where the unconfirmed
 assumptions below get settled for your account.
 
+## Filter documents
+
+`mailctl search --build-filter --json` prints a filter's criteria as a
+JSON document, for a script to keep, edit, or hand on. It holds criteria
+only — what to match, never what to do with it:
+
+```json
+{
+  "version": 1,
+  "criteria": {
+    "match": "any",
+    "compare": "contains",
+    "terms": [
+      {"header": "List-Id", "value": "news.example.com"}
+    ]
+  }
+}
+```
+
+* `version` is `1`. A document with any other version is refused, not
+  guessed at.
+* `match` (`any` or `all`) and `compare` (`contains`, `is`, or `matches`)
+  mean what the flags of the same name mean, and default the same way when
+  left out.
+* `terms` is one or more header and value pairs; neither may be empty.
+* Any other key is refused, so a misspelt one cannot silently fall back to
+  a default.
+
+Reading one back into `add` and `apply` is coming
+([#149](https://github.com/harleypig/mailctl/issues/149)); until then,
+`from-message` remains the way to write a filter from a message.
+
 ## Safety
 
 * `--dry-run` changes nothing, on every mutating command. It prints whatever
   that command would have changed: the Sieve diff for `add`, `from-message`,
   and `remove-rule`; the list of matching messages for `add`, `from-message`,
   and `apply`; the file that would have been written for `backup`.
-* `from-message` **shows you the message first** — Date, From, To, Subject,
-  and List-Id when it has one — before it derives anything and before it
-  writes a rule. The UID is something you read out of webmail by hand, and
+* `from-message` and `search --like` **show you the message first** —
+  Date, From, To, Subject, and List-Id when it has one — before anything
+  is derived from it, and `from-message` before it writes a rule. The UID is something you read out of webmail by hand, and
   the derived criteria look equally plausible whichever message produced
   them, so the headers are the only thing that catches a mistyped digit
   before mail starts moving.

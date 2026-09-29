@@ -1,0 +1,21 @@
+$ mailctl search --build-filter --json --from noreply@github.com
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "criteria": {
+    "match": "any",
+    "compare": "contains",
+    "terms": [
+      {
+        "header": "From",
+        "value": "noreply@github.com"
+      }
+    ]
+  }
+}
+
+--- stderr
+
+--- sieve calls
+--- imap calls
