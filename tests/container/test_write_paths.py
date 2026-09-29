@@ -153,7 +153,6 @@ def test_add_merges_into_a_roundcube_script_and_keeps_its_rule(account):
         "--fileinto",
         "Lists/GitHub",
         "--create-folder",
-        "--yes",
     )
 
     assert result.code == 0, result.err
@@ -193,8 +192,6 @@ def test_listing_commands_show_the_added_rule(account):
         "--name",
         "invoices",
         "--keep",
-        "--no-apply",
-        "--yes",
     )
 
     assert added.code == 0, added.err
@@ -234,7 +231,6 @@ def test_the_uploaded_rule_files_new_mail(account):
         "--flag",
         "\\Flagged",
         "--create-folder",
-        "--yes",
     )
 
     assert added.code == 0, added.err
@@ -368,8 +364,6 @@ def test_replacing_a_disabled_rule_keeps_it_disabled(account):
         "--fileinto",
         "Bills",
         "--replace",
-        "--no-apply",
-        "--yes",
     )
 
     assert replaced.code == 0, replaced.err
@@ -422,8 +416,6 @@ def test_a_fresh_account_gets_a_new_active_script(account):
         "--subject",
         "hello",
         "--keep",
-        "--no-apply",
-        "--yes",
     )
 
     assert result.code == 0, result.err
@@ -492,8 +484,6 @@ def test_create_folder_subscribes_unless_told_not_to(account):
         "--fileinto",
         "Lists/Shown",
         "--create-folder",
-        "--no-apply",
-        "--yes",
     )
     hidden = account.run(
         "add",
@@ -503,8 +493,6 @@ def test_create_folder_subscribes_unless_told_not_to(account):
         "Lists/Hidden",
         "--create-folder",
         "--no-subscribe",
-        "--no-apply",
-        "--yes",
     )
 
     assert shown.code == 0, shown.err
@@ -636,6 +624,75 @@ def test_max_messages_refuses_the_whole_pass(account):
     assert result.code != 0
     assert "max-messages" in result.err or "max-messages" in result.out
     assert len(mail_in(account, "INBOX")) == 3
+
+
+# ----------------------------------------------------------------------------
+def test_one_filter_document_drives_both_halves(account, tmp_path):
+    """#149: ``search --like --build-filter --json`` writes the filter,
+    ``add --filter`` saves it as the rule, and ``apply --filter`` acts on
+    the mail already there -- the same criteria, from one file, for both.
+
+    Red if the document does not read back as the criteria it was written
+    from (the rule or the pass matches something else), if ``add`` touches
+    delivered mail, if ``apply`` leaves a match behind or moves a
+    non-match, or if the uploaded rule does not file new mail the way the
+    pass filed the old.
+    """
+    account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
+
+    like = account.append("INBOX", message(GITHUB, "pr 1"))
+    account.append("INBOX", message(GITHUB, "pr 2"))
+    account.append("INBOX", message("friend@example.org", "lunch?"))
+
+    built = account.run(
+        "search", "--like", str(like), "--build-filter", "--json"
+    )
+
+    assert built.code == 0, built.err
+
+    document = tmp_path / "github.json"
+    document.write_text(built.out, encoding="utf-8")
+
+    added = account.run(
+        "add",
+        "--filter",
+        str(document),
+        "--name",
+        "github",
+        "--fileinto",
+        "Lists/GitHub",
+        "--create-folder",
+    )
+
+    assert added.code == 0, added.err
+    assert rule_names(account.script(ROUNDCUBE_NAME)) == [
+        "keep-boss",
+        "github",
+    ]
+    assert len(mail_in(account, "INBOX")) == 3
+
+    applied = account.run(
+        "apply",
+        "--filter",
+        str(document),
+        "--fileinto",
+        "Lists/GitHub",
+        "--yes",
+    )
+
+    assert applied.code == 0, applied.err
+    assert [subject for subject, _ in mail_in(account, "INBOX").values()] == [
+        "lunch?"
+    ]
+
+    account.deliver(message(GITHUB, "pr 3"), GITHUB)
+    account.deliver(message("friend@example.org", "dinner?"), "friend@x.org")
+
+    filed = sorted(s for s, _ in mail_in(account, "Lists.GitHub").values())
+    inbox = sorted(s for s, _ in mail_in(account, "INBOX").values())
+
+    assert filed == ["pr 1", "pr 2", "pr 3"]
+    assert inbox == ["dinner?", "lunch?"]
 
 
 # ############################################################################

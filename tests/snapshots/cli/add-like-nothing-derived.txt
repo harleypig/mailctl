@@ -1,0 +1,19 @@
+$ mailctl add --like 2 --derive cc --fileinto Lists
+exit: 1
+--- stdout
+Message uid 2 in 'INBOX':
+  Date:    Tue, 3 Feb 2026 04:05:06 +0000
+  From:    Someone <noreply@github.com>
+  To:      user@example.com
+  Subject: Issue closed
+
+--- stderr
+warning: message has no 'cc' header; skipping it
+mailctl: nothing to derive from uid 2: it has none of the headers asked for (cc)
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (2,))
+('logout',)

@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap --yes
+$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap
 exit: 0
 --- stdout
 Folder 'INBOX.Lists.GitHub' will be created by Sieve (fileinto :create)
@@ -33,7 +33,7 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
 Uploaded and activated script 'managesieve'
 
-Skipping the existing-mail pass (--no-apply).
+Mail already delivered was not touched; to act on it, run 'mailctl apply' with the same criteria and actions.
 
 --- stderr
 warning: no IMAP connection: assuming delimiter '.', target folder 'INBOX.Lists.GitHub'

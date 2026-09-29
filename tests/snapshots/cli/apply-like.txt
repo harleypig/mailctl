@@ -1,0 +1,30 @@
+$ mailctl apply --like 3 --fileinto Lists --dry-run
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+Message uid 3 in 'INBOX':
+  Date:    Tue, 3 Feb 2026 04:05:06 +0000
+  From:    Someone <list@lists.example.com>
+  To:      user@example.com
+  Subject: Digest
+  List-Id: Some list <dev.lists.example.com>
+
+Criteria: List-Id contains 'dev.lists.example.com'
+
+Searching 'INBOX' for existing matches...
+1 message(s) match:
+  uid 3        2026-02-03 04:05:06  Someone <list@lists.example.c… Digest
+[dry-run] would move 1 message(s) to 'INBOX.Lists'
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (3,))
+('select_folder', 'INBOX', True)
+('search', [['HEADER', 'List-Id', 'dev.lists.example.com']])
+('fetch', (1, 2, 3))
+('logout',)

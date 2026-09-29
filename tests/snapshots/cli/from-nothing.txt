@@ -1,9 +1,0 @@
-$ mailctl from-message --fileinto Lists
-exit: 1
---- stdout
-
---- stderr
-mailctl: give either --uid N or --search EXPRESSION
-
---- sieve calls
---- imap calls

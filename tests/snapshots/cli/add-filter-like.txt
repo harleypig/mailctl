@@ -1,0 +1,9 @@
+$ mailctl add --filter <TMP>/restore.sieve --like 2 --fileinto Lists
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --like and --filter both supply the criteria; give one of them
+
+--- sieve calls
+--- imap calls

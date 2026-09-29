@@ -1,12 +1,10 @@
-$ mailctl from-message --uid 9 --derive subject --fileinto Lists --dry-run
+$ mailctl add --like 9 --derive subject --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Message uid 9 in 'INBOX':
   From:    m@example.com
   Subject: Inv\x1b]0;pwn\x07oice
 
-Derived criteria:
-  Subject contains 'Inv\x1b]0;pwn\x07oice'
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 Rule 'subject-inv-0-pwn-oice' on script 'managesieve':
@@ -32,11 +30,6 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 
 [dry-run] the script was NOT uploaded.
 
-Searching 'INBOX' for existing matches...
-1 message(s) match:
-  uid 9        2026-02-03 04:05:06  m@example.com                  Inv\x1b]0;pwn\x07oice
-[dry-run] would move 1 message(s) to 'INBOX.Lists'
-
 --- stderr
 
 --- sieve calls
@@ -49,9 +42,4 @@ Searching 'INBOX' for existing matches...
 ('login', 'user@example.com')
 ('select_folder', 'INBOX', True)
 ('fetch', (9,))
-('logout',)
-('login', 'user@example.com')
-('select_folder', 'INBOX', True)
-('search', [['SUBJECT', 'Inv\x1b]0;pwn\x07oice']])
-('fetch', (1, 2, 3, 9))
 ('logout',)

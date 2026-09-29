@@ -498,7 +498,7 @@ def test_the_built_in_defaults_apply_when_nothing_is_configured():
     [
         pytest.param(["apply", "--from", "x"], id="apply"),
         pytest.param(["add", "--from", "x"], id="add"),
-        pytest.param(["from-message", "--uid", "1"], id="from-message"),
+        pytest.param(["add", "--like", "1"], id="add-like"),
         pytest.param(["search"], id="search"),
         pytest.param(["view", "1"], id="view"),
     ],

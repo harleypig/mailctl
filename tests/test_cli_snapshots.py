@@ -55,6 +55,19 @@ FULL = ["fileinto", "imap4flags", "mailbox", "regex"]
 NO_MAILBOX = ["fileinto", "imap4flags"]
 GITHUB = ["--from", "noreply@github.com"]
 
+# The filter document 'search --build-filter --json' prints for GITHUB.
+FILTER_DOC = """{
+  "version": 1,
+  "criteria": {
+    "match": "any",
+    "compare": "contains",
+    "terms": [
+      {"header": "From", "value": "noreply@github.com"}
+    ]
+  }
+}
+"""
+
 # ############################################################################
 # Fakes
 # ############################################################################
@@ -278,7 +291,7 @@ SPOOFED = (
 )
 
 # Message- and script-derived text carrying terminal escapes: an OSC title
-# change in a Subject that 'from-message --derive subject' copies into the
+# change in a Subject that 'add --like --derive subject' copies into the
 # rule and 'search --like --build-filter' into the filter, and colour
 # sequences in a stored script's rule name, test, and folder, which 'show'
 # and 'rules' print back.
@@ -299,10 +312,10 @@ if header :contains "subject" "x\x1b]0;pwn\x07y"
 """
 
 HOSTILE = {
-    "from-hostile": (
+    "add-like-hostile": (
         [
-            "from-message",
-            "--uid",
+            "add",
+            "--like",
             "9",
             "--derive",
             "subject",
@@ -541,7 +554,6 @@ SCENARIOS = {
             "--fileinto",
             "Lists/GitHub",
             "--create-folder",
-            "--yes",
         ],
         {},
     ),
@@ -553,7 +565,6 @@ SCENARIOS = {
             "Lists/GitHub",
             "--create-folder",
             "--no-imap",
-            "--yes",
         ],
         {},
     ),
@@ -575,7 +586,6 @@ SCENARIOS = {
             "--fileinto",
             "Lists/GitHub",
             "--create-folder",
-            "--yes",
             "--mark-read",
         ],
         {"caps": NO_MAILBOX},
@@ -587,31 +597,18 @@ SCENARIOS = {
             "--fileinto",
             "Lists/GitHub",
             "--create-folder",
-            "--yes",
             "-v",
         ],
         {"caps": NO_MAILBOX},
     ),
     "add-real-exists": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--yes", "--first"],
+        ["add", *GITHUB, "--fileinto", "Lists", "--first"],
         {},
     ),
     "add-real-noconfirm": (["add", *GITHUB, "--fileinto", "Lists"], {}),
-    "add-overcap": (
+    "apply-dry-overcap": (
         [
-            "add",
-            *GITHUB,
-            "--fileinto",
-            "Lists",
-            "--yes",
-            "--max-messages",
-            "1",
-        ],
-        {},
-    ),
-    "add-dry-overcap": (
-        [
-            "add",
+            "apply",
             *GITHUB,
             "--fileinto",
             "Lists",
@@ -621,10 +618,18 @@ SCENARIOS = {
         ],
         {},
     ),
-    "add-noapply": (
+    # #149: add saves the rule only, so the existing-mail pass's flags --
+    # and from-message, which --like replaced -- are gone rather than
+    # ignored.
+    "add-noapply-gone": (
         ["add", *GITHUB, "--fileinto", "Lists", "--no-apply"],
         {},
     ),
+    "add-maxmessages-gone": (
+        ["add", *GITHUB, "--fileinto", "Lists", "--max-messages", "1"],
+        {},
+    ),
+    "from-message-gone": (["from-message", "--uid", "2"], {}),
     "add-noimap": (
         [
             "add",
@@ -644,16 +649,16 @@ SCENARIOS = {
     "add-nocriteria": (["add", "--fileinto", "Lists"], {}),
     "add-redirect": (["add", *GITHUB, "--redirect", "x@y.z"], {}),
     "add-vacation": (["add", *GITHUB, "--vacation", "hi"], {}),
-    "add-discard-yes": (["add", *GITHUB, "--discard", "--yes"], {}),
-    "add-flag-only": (["add", *GITHUB, "--flag", "\\Flagged", "--yes"], {}),
-    "add-keep-only": (["add", *GITHUB, "--keep", "--yes"], {}),
+    "add-discard": (["add", *GITHUB, "--discard"], {}),
+    "add-flag-only": (["add", *GITHUB, "--flag", "\\Flagged"], {}),
+    "add-keep-only": (["add", *GITHUB, "--keep"], {}),
     "add-default-folder-extmissing": (
-        ["add", *GITHUB, "--dry-run", "--no-apply"],
+        ["add", *GITHUB, "--dry-run"],
         {"caps": ["imap4flags"], "config": 'default_folder = "Lists"\n'},
     ),
-    "add-fileinto-source-normalized": (
+    "apply-fileinto-source-normalized": (
         [
-            "add",
+            "apply",
             *GITHUB,
             "--folder",
             "Lists",
@@ -663,10 +668,16 @@ SCENARIOS = {
         ],
         {},
     ),
-    "add-fileinto-source": (
-        ["add", *GITHUB, "--fileinto", "INBOX", "--yes"],
+    "apply-fileinto-source": (
+        ["apply", *GITHUB, "--fileinto", "INBOX", "--yes"],
         {},
     ),
+    "apply-discard-yes": (["apply", *GITHUB, "--discard", "--yes"], {}),
+    "apply-flag-only": (
+        ["apply", *GITHUB, "--flag", "\\Flagged", "--yes"],
+        {},
+    ),
+    "apply-keep-only": (["apply", *GITHUB, "--keep", "--yes"], {}),
     "add-before-unknown": (
         ["add", *GITHUB, "--fileinto", "Lists", "--before", "phantom"],
         {},
@@ -691,11 +702,11 @@ SCENARIOS = {
         {},
     ),
     "add-rejected": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--no-apply"],
+        ["add", *GITHUB, "--fileinto", "Lists"],
         {"reject": True},
     ),
     "add-empty-account": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--no-apply"],
+        ["add", *GITHUB, "--fileinto", "Lists"],
         {"active": None},
     ),
     "add-extmissing": (
@@ -748,7 +759,6 @@ SCENARIOS = {
             "--fileinto",
             "Lists/GitHub",
             "--create-folder",
-            "--no-apply",
         ],
         {"caps": NO_MAILBOX, "reject": True},
     ),
@@ -831,29 +841,49 @@ SCENARIOS = {
         ],
         {"others": {"spare": ONE_RULE}},
     ),
-    "from-uid": (
-        ["from-message", "--uid", "2", "--fileinto", "Lists", "--dry-run"],
+    # #149: --like takes the criteria from a message, as 'search --like'
+    # does; a criteria flag replaces what was derived for its header.
+    "add-like": (
+        ["add", "--like", "2", "--fileinto", "Lists", "--dry-run"],
         {},
     ),
-    "from-uid-listid": (
-        ["from-message", "--uid", "3", "--fileinto", "Lists", "--dry-run"],
+    "add-like-listid": (
+        ["add", "--like", "3", "--fileinto", "Lists", "--dry-run"],
         {},
     ),
-    "from-search": (
+    "add-like-real": (["add", "--like", "3", "--fileinto", "Lists"], {}),
+    "add-like-combined": (
         [
-            "from-message",
-            "--search",
-            "ALL",
+            "add",
+            "--like",
+            "2",
+            "--subject",
+            "Issue",
+            "--match",
+            "all",
             "--fileinto",
             "Lists",
             "--dry-run",
         ],
         {},
     ),
-    "from-derive-missing": (
+    "add-like-folder": (
         [
-            "from-message",
-            "--uid",
+            "add",
+            "--like",
+            "2",
+            "--folder",
+            "Lists",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
+        {},
+    ),
+    "add-like-derive-missing": (
+        [
+            "add",
+            "--like",
             "2",
             "--derive",
             "cc,list-id",
@@ -863,7 +893,92 @@ SCENARIOS = {
         ],
         {},
     ),
-    "from-nothing": (["from-message", "--fileinto", "Lists"], {}),
+    "add-like-nothing-derived": (
+        ["add", "--like", "2", "--derive", "cc", "--fileinto", "Lists"],
+        {},
+    ),
+    "add-like-missing": (["add", "--like", "99", "--fileinto", "Lists"], {}),
+    "add-like-noimap": (
+        ["add", "--like", "2", "--fileinto", "Lists", "--no-imap"],
+        {},
+    ),
+    "add-folder-alone": (
+        ["add", *GITHUB, "--folder", "Lists", "--fileinto", "Lists"],
+        {},
+    ),
+    "add-derive-alone": (
+        ["add", *GITHUB, "--derive", "from", "--fileinto", "Lists"],
+        {},
+    ),
+    "apply-like": (
+        ["apply", "--like", "3", "--fileinto", "Lists", "--dry-run"],
+        {},
+    ),
+    "apply-like-yes": (
+        ["apply", "--like", "2", "--fileinto", "Lists", "--yes"],
+        {},
+    ),
+    "apply-like-combined": (
+        [
+            "apply",
+            "--like",
+            "2",
+            "--subject",
+            "Issue",
+            "--match",
+            "all",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
+        {},
+    ),
+    # #149: --filter reads the document 'search --build-filter --json'
+    # prints, from a file or standard input, instead of criteria flags.
+    "add-filter": (
+        ["add", "--filter", "<FILE>", "--fileinto", "Lists", "--dry-run"],
+        {"file": FILTER_DOC},
+    ),
+    "add-filter-stdin": (
+        ["add", "--filter", "-", "--fileinto", "Lists", "--dry-run"],
+        {"stdin": FILTER_DOC},
+    ),
+    "add-filter-both": (
+        ["add", "--filter", "<FILE>", *GITHUB, "--fileinto", "Lists"],
+        {"file": FILTER_DOC},
+    ),
+    "add-filter-match": (
+        ["add", "--filter", "<FILE>", "--match", "all", "--fileinto", "L"],
+        {"file": FILTER_DOC},
+    ),
+    "add-filter-like": (
+        ["add", "--filter", "<FILE>", "--like", "2", "--fileinto", "Lists"],
+        {"file": FILTER_DOC},
+    ),
+    "add-filter-bad": (
+        ["add", "--filter", "<FILE>", "--fileinto", "Lists"],
+        {"file": '{"version": 2, "criteria": {}}\n'},
+    ),
+    "add-filter-missing": (
+        ["add", "--filter", "/nonexistent/f.json", "--fileinto", "Lists"],
+        {},
+    ),
+    "apply-filter": (
+        ["apply", "--filter", "<FILE>", "--fileinto", "Lists", "--yes"],
+        {"file": FILTER_DOC},
+    ),
+    "apply-filter-stdin": (
+        ["apply", "--filter", "-", "--fileinto", "Lists", "--dry-run"],
+        {"stdin": FILTER_DOC},
+    ),
+    "apply-filter-stdin-bad": (
+        ["apply", "--filter", "-", "--fileinto", "Lists", "--dry-run"],
+        {"stdin": "not json\n"},
+    ),
+    "apply-filter-both": (
+        ["apply", "--filter", "-", *GITHUB, "--fileinto", "Lists"],
+        {"stdin": FILTER_DOC},
+    ),
     # #82: disabled_extensions, from a flag and from the config file, and
     # what 'add' does with it -- refuse, or fall back to IMAP creation.
     "test-disabled": (
@@ -905,7 +1020,6 @@ SCENARIOS = {
             "--create-folder",
             "--disable-extension",
             "mailbox",
-            "--yes",
         ],
         {},
     ),
@@ -1009,7 +1123,7 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     monkeypatch.setenv("MAILCTL_HOST", "mail.example.com")
     monkeypatch.setenv("MAILCTL_USER", "user@example.com")
     monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
-    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(options.get("stdin", "")))
 
     out, err = Stdout(tty=options.get("tty", False)), io.StringIO()
     monkeypatch.setattr(sys, "stdout", out)

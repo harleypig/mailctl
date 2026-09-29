@@ -1,4 +1,4 @@
-$ mailctl from-message --uid 2 --derive cc,list-id --fileinto Lists --dry-run
+$ mailctl add --like 2 --derive cc,list-id --fileinto Lists --dry-run
 exit: 1
 --- stdout
 Message uid 2 in 'INBOX':
@@ -10,7 +10,7 @@ Message uid 2 in 'INBOX':
 --- stderr
 warning: message has no 'cc' header; skipping it
 warning: message has no 'list-id' header; skipping it
-mailctl: no criteria given -- use --from/--to/--cc/--subject/--list-id/--header
+mailctl: nothing to derive from uid 2: it has none of the headers asked for (cc, list-id)
 
 --- sieve calls
 --- imap calls

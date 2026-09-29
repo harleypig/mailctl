@@ -387,14 +387,13 @@ make such a change visible.
 
 ## The command surface
 
-**This is the target, and most of it is not built yet.** The decisions are
-the operator's, 2026-09-28 ([#145][i145]); the implementing issues are
-[#147][i147] through [#155][i155]. Until [#149][i149] lands the CLI
-still has `from-message`, and `add` still runs the existing-mail pass
-after it saves the rule. `from-message` goes only once `add --like` and
-`apply --like` exist, so no release lacks a way to write a filter from a
-message (decided on [#148][i148]). Where this section and the CLI
-disagree, the CLI is what runs and this is where it is going.
+**This is the target, and parts of it are not built yet.** The decisions
+are the operator's, 2026-09-28 ([#145][i145]); the implementing issues are
+[#147][i147] through [#155][i155]. `add` saves the rule only, `apply` acts
+on mail already delivered, and `add --like` and `apply --like` take the
+place of `from-message` ([#149][i149], as decided on [#148][i148]).
+Where this section and the CLI disagree, the CLI is what runs and this is
+where it is going.
 
 **Read and write are separate at every layer.** A command, a utility, and a
 transport operation each either changes the server or does not, even where
@@ -408,12 +407,18 @@ never a subcommand group. The grouping is presentation, not part of a
 command's name. `mailctl help [command]` prints the same as `--help`
 ([#153][i153]).
 
-**`add` saves a filter; `apply` acts on mail already delivered.** `add`
-writes the rule into the active script and touches no message; `apply` is
-the only command that acts on existing mail ([#149][i149]). Both take their
-criteria as flags **or** as `--filter FILE|-` (a filter file, or `-` for
-stdin), never both, and both take `--like UID`, which pre-fills the
-criteria from a message.
+**`add` saves a filter; `apply` acts on mail already delivered.** `add` writes
+the rule into the active script and touches no message; `apply` is the only
+command that acts on existing mail ([#149][i149]). So `--max-messages` and
+`--move-threshold` are `apply`'s alone, `add` asks nothing and takes no
+`--yes`, and `add` ends by saying the mail already there was left alone and
+pointing at `apply`. Both take their criteria as flags **or** as `--filter
+FILE|-` (a filter file, or `-` for stdin), never both — `--match` and
+`--compare` count as flags, since the document carries its own — and both take
+`--like UID`, which pre-fills the criteria from a message in `--folder`.
+`--like` merges with criteria flags exactly as `search --like` does, and is
+refused with `--filter`, since each supplies the whole set. Every one of these
+refusals is made before connecting.
 
 **The split was decided over a recorded objection** (operator, 2026-09-28):
 it puts the tool's two halves, the rule and the existing mail, in two
@@ -431,8 +436,7 @@ keeps the two in step.
   `--json` form is the filter document `add --filter` and `apply
   --filter` read: versioned, criteria only, written and read by
   `criteria.dump_filter` / `load_filter`, which refuse a version or a key
-  they do not know. `from-message` is folded into `search --like`, `add
-  --like`, and `apply --like`.
+  they do not know.
 - `--raw QUERY` is the escape hatch, a query in the host's own search
   language. Each provider declares it, and it is offered only where
   declared, like every other capability-gated option (*Providers*).

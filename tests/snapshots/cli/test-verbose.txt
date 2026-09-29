@@ -8,7 +8,7 @@ User:      user@example.com  (environment)
 Password:  set  (MAILCTL_PASSWORD, environment)
 IMAP:      mail.example.com:993  (host: same as host, port: default)
 Sieve:     mail.example.com:4190 (tls=starttls)  (default)
-Folder:    INBOX  (default)  -- read by apply, search, view, from-message
+Folder:    INBOX  (default)  -- read by apply, search, view, and add --like
 [sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
 [sieve] authenticated
 

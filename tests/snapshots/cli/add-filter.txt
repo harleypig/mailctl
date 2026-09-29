@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists --no-apply
+$ mailctl add --filter <TMP>/restore.sieve --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
@@ -23,10 +23,8 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 +}
 
 --- end diff ---
-Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
-Uploaded and activated script 'managesieve'
 
-Skipping the existing-mail pass (--no-apply).
+[dry-run] the script was NOT uploaded.
 
 --- stderr
 
@@ -35,9 +33,6 @@ Skipping the existing-mail pass (--no-apply).
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
-('checkscript',)
-('putscript', 'managesieve', 'require ["fileinto", "imap4flags"];\n\n# rule:[keep-boss]\nif header :contains "from" "boss@example.com" {\n    fileinto "INBOX.Boss";\n    setflag "\\\\Flagged";\n    stop;\n}\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter" {\n    fileinto "INBOX.Noise";\n    stop;\n}\n# rule:[from-noreply-github-com]\nif anyof (header :contains "From" "noreply@github.com") {\n    fileinto "INBOX.Lists";\n    stop;\n}\n')
-('setactive', 'managesieve')
 ('logout',)
 --- imap calls
 ('login', 'user@example.com')

@@ -763,7 +763,7 @@ class ImapSession:
 
     # ------------------------------------------------------------------------
     def fetch_message_headers(self, folder: str, uid: int):
-        """Return one message's headers, for ``from-message``."""
+        """Return one message's headers, for ``--like``."""
         data = self._fetch_one(folder, uid, ["BODY.PEEK[HEADER]"])
 
         return email.message_from_bytes(data.get(b"BODY[HEADER]") or b"")
@@ -799,7 +799,7 @@ class ImapSession:
 
     # ------------------------------------------------------------------------
     def raw_search(self, folder: str, expression: str) -> list[int]:
-        """Run a raw IMAP SEARCH expression, for ``from-message --search``."""
+        """Run a raw IMAP SEARCH expression, for ``search --raw``."""
         client = self._require_client()
         self._select(folder, readonly=True)
 

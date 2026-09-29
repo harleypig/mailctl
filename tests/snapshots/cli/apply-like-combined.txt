@@ -1,0 +1,29 @@
+$ mailctl apply --like 2 --subject Issue --match all --fileinto Lists --dry-run
+exit: 0
+--- stdout
+Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
+
+Message uid 2 in 'INBOX':
+  Date:    Tue, 3 Feb 2026 04:05:06 +0000
+  From:    Someone <noreply@github.com>
+  To:      user@example.com
+  Subject: Issue closed
+
+Criteria: From contains 'noreply@github.com' AND Subject contains 'Issue'
+
+Searching 'INBOX' for existing matches...
+1 message(s) match:
+  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
+[dry-run] would move 1 message(s) to 'INBOX.Lists'
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (2,))
+('select_folder', 'INBOX', True)
+('search', [['FROM', 'noreply@github.com'], ['SUBJECT', 'Issue']])
+('fetch', (1, 2, 3))
+('logout',)

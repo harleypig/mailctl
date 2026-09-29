@@ -1,10 +1,16 @@
-$ mailctl add --from noreply@github.com --fileinto Lists --dry-run --max-messages 1
+$ mailctl add --like 2 --subject Issue --match all --fileinto Lists --dry-run
 exit: 0
 --- stdout
+Message uid 2 in 'INBOX':
+  Date:    Tue, 3 Feb 2026 04:05:06 +0000
+  From:    Someone <noreply@github.com>
+  To:      user@example.com
+  Subject: Issue closed
+
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 Rule 'from-noreply-github-com' on script 'managesieve':
-  when:  From contains 'noreply@github.com'
+  when:  From contains 'noreply@github.com' AND Subject contains 'Issue'
   then:  fileinto INBOX.Lists; stop
 
 Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
@@ -17,7 +23,7 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
      stop;
  }
 +# rule:[from-noreply-github-com]
-+if anyof (header :contains "From" "noreply@github.com") {
++if allof (header :contains "From" "noreply@github.com", header :contains "Subject" "Issue") {
 +    fileinto "INBOX.Lists";
 +    stop;
 +}
@@ -25,13 +31,6 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 --- end diff ---
 
 [dry-run] the script was NOT uploaded.
-
-Searching 'INBOX' for existing matches...
-2 message(s) match:
-  uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
-  uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
-[dry-run] would move 2 message(s) to 'INBOX.Lists'
-[dry-run] note: 2 matches exceed --max-messages 1; a real run would stop and ask.
 
 --- stderr
 
@@ -44,6 +43,5 @@ Searching 'INBOX' for existing matches...
 --- imap calls
 ('login', 'user@example.com')
 ('select_folder', 'INBOX', True)
-('search', [['FROM', 'noreply@github.com']])
-('fetch', (1, 2, 3))
+('fetch', (2,))
 ('logout',)

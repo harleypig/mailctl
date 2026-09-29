@@ -150,21 +150,6 @@ def test_a_mail_pass_that_would_do_nothing_is_refused(sessions, imap_config):
 
 
 # ----------------------------------------------------------------------------
-def test_a_search_picks_the_newest_match_and_says_how_many(sessions, mailbox):
-    picked = utilities.mail.pick_message(sessions, "INBOX", search="ALL")
-
-    assert picked.uid == 3
-    assert picked.candidates == 3
-    assert picked.headers["Subject"] == "Lunch"
-
-
-# ----------------------------------------------------------------------------
-def test_a_search_with_no_match_is_refused(sessions, fake_imap):
-    with pytest.raises(MailctlError, match="matched"):
-        utilities.mail.pick_message(sessions, "INBOX", search="FROM nobody")
-
-
-# ----------------------------------------------------------------------------
 def test_auto_derivation_prefers_list_id_over_from():
     listed = headers(From="A <a@x.org>", List_Id="Dev <dev.x.org>")
     plain = headers(From="A <a@x.org>")

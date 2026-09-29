@@ -1,0 +1,9 @@
+$ mailctl add --filter <TMP>/restore.sieve --match all --fileinto L
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --filter carries its own criteria; give criteria flags or --filter, not both
+
+--- sieve calls
+--- imap calls

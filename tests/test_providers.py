@@ -1229,7 +1229,6 @@ def test_the_cli_adds_a_default_rule_on_a_host_without_stop(fakes, capsys):
             "--fileinto",
             "Lists",
             "--dry-run",
-            "--no-apply",
         ]
     )
 
@@ -1259,7 +1258,6 @@ def test_a_diff_and_its_actions_are_shown_in_the_hosts_own_words(
             "--fileinto",
             "Lists",
             "--dry-run",
-            "--no-apply",
         ]
     )
 

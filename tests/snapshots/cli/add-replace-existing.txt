@@ -33,9 +33,6 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 
 [dry-run] the script was NOT uploaded.
 
-Searching 'INBOX' for existing matches...
-No existing messages match.
-
 --- stderr
 
 --- sieve calls
@@ -46,7 +43,4 @@ No existing messages match.
 ('logout',)
 --- imap calls
 ('login', 'user@example.com')
-('select_folder', 'INBOX', True)
-('search', [['SUBJECT', 'newsletter']])
-('fetch', (1, 2, 3))
 ('logout',)

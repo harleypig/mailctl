@@ -1,0 +1,9 @@
+$ mailctl add --from noreply@github.com --folder Lists --fileinto Lists
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --folder needs --like UID
+
+--- sieve calls
+--- imap calls

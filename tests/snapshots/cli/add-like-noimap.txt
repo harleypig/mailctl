@@ -1,0 +1,9 @@
+$ mailctl add --like 2 --fileinto Lists --no-imap
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: --like reads the message over IMAP, so it cannot be combined with --no-imap
+
+--- sieve calls
+--- imap calls

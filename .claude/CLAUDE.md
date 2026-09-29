@@ -13,9 +13,7 @@ the test layout are pulled in via the imports at the bottom.
   already delivered is why this exists. The halves are two commands, `add`
   then `apply`: `add` saves the rule, `apply` acts on the mail already
   there, and both take the same criteria so they stay in step (see
-  [CONVENTIONS.md](CONVENTIONS.md) › *The command surface*; until
-  [#149](https://github.com/harleypig/mailctl/issues/149) lands, `add` still
-  runs both).
+  [CONVENTIONS.md](CONVENTIONS.md) › *The command surface*).
 - **Credentials are a hard boundary.** The mailbox password must **never**
   reach stdout, stderr, a log, or a transcript. `config.Secret` renders
   `<redacted>` from both `__str__` and `__repr__`; only `reveal()` returns the

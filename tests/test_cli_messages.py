@@ -341,7 +341,7 @@ def test_safe_line_collapses_line_breaks():
 
 # ----------------------------------------------------------------------------
 def test_clip_sanitizes_before_it_truncates():
-    """The from-message and apply previews show the same untrusted
+    """The --like and apply previews show the same untrusted
     headers, through ``clip``."""
     assert cli.clip("\x1b[31mred", 40) == "\\x1b[31mred"
 

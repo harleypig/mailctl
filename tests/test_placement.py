@@ -224,22 +224,6 @@ def test_each_flag_reaches_the_resolver_as_a_placement(argv, expected):
 
 
 # ----------------------------------------------------------------------------
-def test_from_message_carries_the_same_flags_as_add():
-    """Both subcommands run the same body, so both need the same flags.
-
-    They are attached in one shared helper for that reason; this is the
-    test that notices if a later flag is added to only one of them.
-    """
-    args = build_parser().parse_args(
-        ["from-message", "--uid", "1", "--before", "Lists"]
-    )
-
-    assert placement_from_args(args) == utilities.rules.Placement(
-        PLACE_BEFORE, "Lists"
-    )
-
-
-# ----------------------------------------------------------------------------
 def test_two_placement_flags_at_once_are_refused_by_the_parser():
     """Four answers to one question, so argparse rejects the pair.
 

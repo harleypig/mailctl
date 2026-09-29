@@ -292,7 +292,7 @@ def main() -> int:
         out = "Searching 'INBOX' for existing matches...\n"
         out += "[dry-run] would move 1 message(s) to 'INBOX.Lists'\n"
 
-    elif command in ("add", "from-message"):
+    elif command == "add":
         out = add()
 
     elif command == "remove-rule":
@@ -321,6 +321,9 @@ def main() -> int:
         print(f"fake mailctl: no canned output for {command}", file=sys.stderr)
 
         return 2
+
+    if command in ("add", "apply") and "--like" in ARGV:
+        out = f"Message uid {option('--like')} in 'INBOX':\n\n" + out
 
     sys.stdout.write(out)
 

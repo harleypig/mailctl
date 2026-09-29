@@ -170,8 +170,9 @@ mailctl add --from newsletter@example.com --fileinto Lists/News --dry-run
 
 **You should see**, in this order: a folder-resolution line if the name you
 typed had to be respelled, a plain-English summary of the rule (`when:` /
-`then:`), a unified diff of the script, the line `[dry-run] the script was NOT
-uploaded.`, and then the existing-mail preview.
+`then:`), a unified diff of the script, and the line `[dry-run] the script
+was NOT uploaded.` `add` never touches mail already delivered — that is
+step 6's `apply` — so there is no message list here.
 
 **Scrutinize the diff, line by line. This is the important part.**
 
@@ -187,16 +188,6 @@ uploaded.`, and then the existing-mail preview.
 * **The `require` line may gain entries** such as `fileinto` or `imap4flags`.
   That is mailctl keeping the header correct for the union of all rules.
 
-**Then scrutinize the message list.**
-
-* It prints `N message(s) match:` and up to 20 of them, with uid, date,
-  sender, and subject.
-* **Is this the mail you expected?** Read the senders and subjects. One
-  message in that list you would be unhappy to see moved means the criteria
-  are wrong, not that the tool is.
-* The last line says what a real run would do — `[dry-run] would move N
-  message(s) to '<folder>'`.
-
 **Stop if:**
 
 * The diff says `(no change)`. Either the rule already exists or the criteria
@@ -206,17 +197,13 @@ uploaded.`, and then the existing-mail preview.
 * A warning says the target folder does not exist. `add` will still write the
   rule, and mail the server files there later may be lost. Add
   `--create-folder`, or fix the folder name against step 2.
-* The match count is far larger than you expected. Fix the criteria. If you
-  used `--compare is` or `--compare matches`, read [the whole-header
-  section][compare] in the README — those two compare against the entire
-  header value, which is almost never just the address.
 
-## 5. First real `add`, with `--no-apply` — Sieve only, no mail moved
+## 5. First real `add` — Sieve only, no mail moved
 
-Same command as step 4, with `--dry-run` swapped for `--no-apply`:
+Same command as step 4, without `--dry-run`:
 
 ```bash
-mailctl add --from newsletter@example.com --fileinto Lists/News --no-apply
+mailctl add --from newsletter@example.com --fileinto Lists/News
 ```
 
 This uploads the rule and touches **no existing mail**. Sieve applies only to
@@ -226,7 +213,8 @@ messages that arrive from now on.
 
 * `Backed up current script to <path>` — note the path.
 * `Uploaded and activated script '<name>'`.
-* `Skipping the existing-mail pass (--no-apply).`
+* `Mail already delivered was not touched; to act on it, run 'mailctl
+  apply' with the same criteria and actions.`
 
 **Verify, in three places:**
 
@@ -281,8 +269,21 @@ mailctl apply --subject 'Your invoice for March' --fileinto Scratch \
     --create-folder --max-messages 5 --dry-run
 ```
 
-Run it with `--dry-run` first and read the message list. Then run it for real
-by dropping that flag:
+Run it with `--dry-run` first and **scrutinize the message list**:
+
+* It prints `N message(s) match:` and up to 20 of them, with uid, date,
+  sender, and subject.
+* **Is this the mail you expected?** Read the senders and subjects. One
+  message in that list you would be unhappy to see moved means the criteria
+  are wrong, not that the tool is.
+* The last line says what a real run would do — `[dry-run] would move N
+  message(s) to '<folder>'`.
+* If the match count is far larger than you expected, fix the criteria. If
+  you used `--compare is` or `--compare matches`, read [the whole-header
+  section][compare] in the README — those two compare against the entire
+  header value, which is almost never just the address.
+
+Then run it for real by dropping that flag:
 
 ```bash
 mailctl apply --subject 'Your invoice for March' --fileinto Scratch \

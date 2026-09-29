@@ -198,16 +198,11 @@ def execute_mail(
 
 @dataclass(frozen=True)
 class PickedMessage:
-    """The message a rule is derived from, and how it was chosen.
-
-    ``candidates`` is how many messages a search matched; above one, the
-    most recent was taken.
-    """
+    """The message a rule is derived from."""
 
     uid: int
     folder: str
     headers: object
-    candidates: int = 1
 
 
 @dataclass(frozen=True)
@@ -230,30 +225,6 @@ class LikeMessage:
     message: PickedMessage
     criteria: Criteria
     skipped: list[str] = field(default_factory=list)
-
-
-# ----------------------------------------------------------------------------
-def pick_message(
-    session: Session,
-    folder: str,
-    uid: int | None = None,
-    search: str | None = None,
-) -> PickedMessage:
-    """Fetch one message's headers, by UID or by the newest search match."""
-    candidates = 1
-
-    if uid is None:
-        uids = session.transport.search_messages(folder, search or "")
-
-        if not uids:
-            raise MailctlError(f"no message in {folder!r} matched {search!r}")
-
-        candidates = len(uids)
-        uid = max(uids)
-
-    headers = session.transport.message_headers(folder, uid)
-
-    return PickedMessage(uid, folder, headers, candidates)
 
 
 # ----------------------------------------------------------------------------
