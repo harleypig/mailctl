@@ -166,6 +166,7 @@ layer may call.
     search to what the rule really matches and the `--max-messages`
     ceiling; and criteria derived from a message.
   - `messages.py` — finding and reading messages, read-only.
+  - `senders.py` — a folder's mail counted by sender, read-only.
   - `migration.py` — what the rename from `mxfilter` left behind.
   - `reports.py` — the probes behind `mailctl test`, the provider's wording
     and connection facts, and each extension's state.
@@ -469,6 +470,10 @@ keeps the two in step.
 `--read`, `--unread`, `--flag`, `--unflag`, `--keyword K`, and
 `--no-keyword K`, several at once, over separate add-flag and remove-flag
 transport operations ([#150][i150]).
+
+**`senders` counts a folder's mail by address, domain, or List-Id and never
+writes** ([#160][i160]): one search, then headers a page per FETCH, refused
+above `--max-messages` (default 5000) before any header is read.
 
 **`--json` is offered where the output is data a script consumes**
 ([#151][i151]). A report for a person, such as `test`, offers none, and its
@@ -1202,5 +1207,6 @@ will read it.
 [i153]: https://github.com/harleypig/mailctl/issues/153
 [i154]: https://github.com/harleypig/mailctl/issues/154
 [i155]: https://github.com/harleypig/mailctl/issues/155
+[i160]: https://github.com/harleypig/mailctl/issues/160
 [icebox-retention]: ../ICEBOX.md#per-folder-retention--expire-mail-after-n-days
 [da495]: https://github.com/harleypig/dotagents/issues/495

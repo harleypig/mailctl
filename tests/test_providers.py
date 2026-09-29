@@ -738,6 +738,7 @@ def drive(session: Session, config: Config) -> None:
     utilities.flags.execute_mark(session, marks)
 
     utilities.folders.list_folder_counts(session)
+    utilities.senders.count_senders(session, "INBOX", criteria)
 
     utilities.reports.probe_servers(session, config)
 

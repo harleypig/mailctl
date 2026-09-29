@@ -59,8 +59,9 @@ where every write path is proved first.
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
      `scripts`, `backup`, `baseline`, `flags`, `folders`, `mail`,
-     `messages`, and `reports` under `mailctl/utilities/`; a backup's bytes on disk are
-     `test_backup.py`, and the migration utility `test_migration.py`) —
+     `messages`, `senders`, and `reports` under `mailctl/utilities/`; a
+     backup's bytes on disk are `test_backup.py`, and the migration
+     utility `test_migration.py`) —
      every plan and execute step driven with plain inputs over a session,
      as any front-end would call it. The safety
      policy is pinned here, since it lives here: an upload backs up first

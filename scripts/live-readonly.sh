@@ -40,6 +40,7 @@ readonly TESTS=(
   search
   search-unread
   search-sort
+  senders
   search-like
   build-filter
   json
@@ -183,6 +184,62 @@ if any(later > earlier for earlier, later in zip(sizes, sizes[1:])):
     sys.exit(f"sizes are not largest first: {sizes}")
 PYTHON
 readonly SORT_CHECK
+
+# What `senders --json` must hold: it parses, it is version 1, no more than
+# five rows, each with whole counts and unread no more than its total, the
+# rows busiest first, and the report's own totals at least what its rows
+# add up to. Prints the first problem found and exits non-zero.
+read -r -d '' SENDERS_CHECK << 'PYTHON'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        doc = json.load(handle)
+
+except ValueError as exc:
+    sys.exit(f"not JSON: {exc}")
+
+
+def need(ok, what):
+    if not ok:
+        sys.exit(what)
+
+
+def whole(value):
+    return type(value) is int and value >= 0
+
+
+need(isinstance(doc, dict), "not a JSON object")
+need(doc.get("version") == 1, "version is not 1")
+need(isinstance(doc.get("senders"), list), "no senders list")
+
+rows = doc["senders"]
+
+need(len(rows) <= 5, f"--top 5 listed {len(rows)} rows")
+
+for row in rows:
+    key = row.get("key")
+
+    for name in ("total", "unread"):
+        need(whole(row.get(name)), f"{key!r} has no integer {name}")
+
+    need(row["unread"] <= row["total"], f"{key!r} unread > total")
+
+order = [(-row["total"], -row["unread"]) for row in rows]
+
+need(order == sorted(order), "the rows are not busiest first")
+
+for name in ("messages", "unread"):
+    need(whole(doc.get(name)), f"the report has no integer {name}")
+
+need(doc["unread"] <= doc["messages"], "the report's unread > its total")
+need(
+    doc["messages"] >= sum(row["total"] for row in rows),
+    "the rows count more messages than the report",
+)
+PYTHON
+readonly SENDERS_CHECK
 
 # Lines mailctl prints only when it has actually changed something.
 CHANGED_RE='^(Backed up|Created IMAP|Uploaded|Moved [0-9]|Flagged [0-9]'
@@ -629,6 +686,28 @@ t_search_sort() {
 
   problem=$(python3 -c "$SORT_CHECK" "$RAW" 2>&1) \
     || fail "search --sort: ${problem:-not a listing document}"
+}
+
+#-----------------------------------------------------------------------------
+# One call over the last 30 days, capped by the default --max-messages: a
+# mailbox busier than that is refused, which is a skip here, not a failure.
+t_senders() {
+  local since problem
+
+  since=$(date -d '30 days ago' +%F 2> /dev/null || date -v-30d +%F)
+
+  run_mailctl senders --since "$since" --top 5 --json
+
+  if ((RC != 0)) && grep -q -- '--max-messages is' "$ERR"; then
+    SKIP_REASON="more mail since $since than --max-messages allows"
+
+    return 2
+  fi
+
+  expect_ok "senders --since $since --top 5 --json" || return 1
+
+  problem=$(python3 -c "$SENDERS_CHECK" "$RAW" 2>&1) \
+    || fail "senders --json: ${problem:-not a senders document}"
 }
 
 #-----------------------------------------------------------------------------

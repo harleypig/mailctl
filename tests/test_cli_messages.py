@@ -201,6 +201,7 @@ def assert_terminal_safe(output: str) -> None:
         pytest.param(("view", "3", "--headers-only"), id="headers-bidi"),
         pytest.param(("view", "3", "--raw"), id="raw-bidi"),
         pytest.param(("search",), id="search"),
+        pytest.param(("senders",), id="senders"),
     ],
 )
 def test_hostile_content_never_reaches_the_terminal_raw(run, argv):
@@ -291,6 +292,7 @@ def test_raw_on_a_terminal_is_still_escaped(run):
         pytest.param(("view", "2"), id="view"),
         pytest.param(("view", "2", "--headers-only"), id="headers-only"),
         pytest.param(("search",), id="search"),
+        pytest.param(("senders",), id="senders"),
     ],
 )
 def test_only_raw_skips_escaping_into_a_pipe(run_piped, argv):

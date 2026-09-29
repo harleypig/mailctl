@@ -425,6 +425,28 @@ DRIFTED = {
     "baseline_edit": drifted,
 }
 
+# #160: a sender report over the default three and four more -- an
+# encoded display name, a shouting address, a domain shared by two
+# senders -- with 1, 4, and 6 read. With 1-3 that is GitHub 3 (1 read),
+# the list sender 1, boss 2 (1 read), news 1 (1 read).
+SENDERS = {
+    "mail": {
+        4: b"From: =?utf-8?q?Boss_=C3=9Cber?= <boss@example.com>\r\n\r\n",
+        5: b"From: GitHub <NoReply@GitHub.com>\r\n\r\n",
+        6: b"From: News <news@example.com>\r\n\r\n",
+        7: b"From: boss@example.com\r\n\r\n",
+    },
+    "flags": {1: (b"\\Seen",), 4: (b"\\Seen",), 6: (b"\\Seen",)},
+}
+
+# A display name and a List-Id description carrying terminal escapes.
+HOSTILE_SENDER = {
+    "mail": {
+        9: b"From: =?utf-8?q?Evil=1B]0;pwn=07?= <evil@example.com>\r\n"
+        b"List-Id: =?utf-8?q?L=1B[31m?= <l.example.com>\r\n\r\n",
+    }
+}
+
 HOSTILE = {
     "add-like-hostile": (
         [
@@ -474,6 +496,13 @@ HOSTILE = {
         ["view", "9", "--json"],
         {"mail": {9: HOSTILE_SUBJECT}},
     ),
+    # #160: a sender's name and a list's description are escaped too.
+    "senders-hostile": (["senders"], HOSTILE_SENDER),
+    "senders-hostile-list-id": (
+        ["senders", "--by", "list-id"],
+        HOSTILE_SENDER,
+    ),
+    "senders-hostile-json": (["senders", "--json"], HOSTILE_SENDER),
 }
 
 # A broad rule ahead of a narrow one it covers, so the narrow one never
@@ -551,6 +580,13 @@ JSON_SCENARIOS = {
         {},
     ),
     "search-like-uids-only": (["search", "--like", "3", "--uids-only"], {}),
+    # #160: the sender report as a document, and its ceiling as an error.
+    "senders-json": (["senders", "--json"], SENDERS),
+    "senders-domain-json": (["senders", "--by", "domain", "--json"], SENDERS),
+    "senders-overcap-json": (
+        ["senders", "--json", "--max-messages", "2"],
+        SENDERS,
+    ),
     "view-json": (["view", "4", "--json"], MAIL),
     "view-html-json": (["view", "5", "--json"], MAIL),
     "view-attachment-json": (["view", "6", "--json"], {"mail": {6: SPOOFED}}),
@@ -758,6 +794,17 @@ SCENARIOS = {
         ["test"],
         {**BASELINE, "baseline_edit": lambda document: "[]\n"},
     ),
+    "senders": (["senders"], SENDERS),
+    "senders-domain": (["senders", "--by", "domain"], SENDERS),
+    "senders-list-id": (["senders", "--by", "list-id"], SENDERS),
+    "senders-top-min": (["senders", "--top", "1", "--min", "2"], SENDERS),
+    "senders-criteria": (
+        ["senders", "--from", "example.com", "--since", "2026-01-01"],
+        SENDERS,
+    ),
+    "senders-empty": (["senders", "--from", "nobody@x.y"], {}),
+    "senders-overcap": (["senders", "--max-messages", "2"], SENDERS),
+    "senders-bad-top": (["senders", "--top", "-1"], {}),
     "search": (["search"], MAIL),
     "search-from": (["search", *GITHUB], MAIL),
     "search-limit": (["search", "--limit", "2"], MAIL),

@@ -1,0 +1,18 @@
+$ mailctl senders --by list-id
+exit: 0
+--- stdout
+7 message(s) in 'INBOX', 4 unread; 2 group(s) by list-id, busiest first:
+  Total   Unread  Unread%  Sender
+      6        3      50%  (no list-id)
+      1        1     100%  dev.lists.example.com (Some list)
+To build a filter for a row: mailctl search --list-id dev.lists.example.com --build-filter
+
+--- stderr
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('search', 'ALL')
+('fetch', (7, 6, 5, 4, 3, 2, 1))
+('logout',)
