@@ -395,8 +395,8 @@ class Criteria:
 
         if given:
             before = (
-                f"a saved rule cannot test a message's date or read or "
-                f"flagged state (given: {', '.join(given)}): a rule runs "
+                f"a saved filter cannot test a message's date or read or "
+                f"flagged state (given: {', '.join(given)}): a filter runs "
                 f"as mail is delivered, when every message is new, unread, "
                 f"and unflagged. They select mail already delivered"
             )

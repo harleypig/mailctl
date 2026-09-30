@@ -11,7 +11,7 @@ exit: 0
       "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -1,12 +1,12 @@\n require [\"fileinto\"];\n \n+# rule:[all-lists]\n+if header :contains \"to\" \"@lists.example.com\" {\n+    fileinto \"INBOX.Lists\";\n+    stop;\n+}\n # rule:[announce]\n if header :contains \"to\" \"announce@lists.example.com\" {\n     fileinto \"INBOX.Announce\";\n     stop;\n }\n-# rule:[all-lists]\n-if header :contains \"to\" \"@lists.example.com\" {\n-    fileinto \"INBOX.Lists\";\n-    stop;\n-}\n",
       "reformats": true
     },
-    "rule": "all-lists",
+    "filter": "all-lists",
     "from_position": 2,
     "to_position": 1,
     "count": 2,
@@ -26,7 +26,7 @@ exit: 0
         }
       ]
     },
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

@@ -84,15 +84,15 @@ Marks: `[built]` built, `[partial]` partly built, `[—]` not built;
 * MAY — **Native query**: pass a query in the server's own search language. `[built]`
 * MAY — **Sender summary**: count a folder's mail by sender, domain, or list. `[built]`
 
-## Filtering and rules
+## Filters
 
 * SHOULD — **Filters**: sort incoming mail automatically by rules. Common practice; [RFC 1820 §3.8][1820] `[built]`
 * SHOULD — **Junk marking**: mark a message as junk or not junk. Common practice; keywords in [RFC 9051 §2.3.2][9051-2.3.2] `[partial]`
-* MAY — **Server-side rules**: store rules on the server, so they run with no client open. [RFC 5804][5804] `[built]`
-* MAY — **Rules on existing mail**: apply a rule to mail already delivered. `[built]`
-* MAY — **Rule from a message**: build a rule from a message's headers. `[built]`
-* MAY — **Rule order and state**: reorder, disable, and enable rules. `[built]`
-* MAY — **Rule backup**: back up and restore the rule set. `[built]`
+* MAY — **Server-side filters**: store filters on the server, so they run with no client open. [RFC 5804][5804] `[built]`
+* MAY — **Filters on existing mail**: apply a filter to mail already delivered. `[built]`
+* MAY — **Filter from a message**: build a filter from a message's headers. `[built]`
+* MAY — **Filter order and state**: reorder, disable, and enable filters. `[built]`
+* MAY — **Filter backup**: back up and restore the filter set. `[built]`
 * MAY — **Mute a thread**: file away future replies in a conversation. `[—]`
 * MAY — **Autoresponder**: reply automatically while away. [RFC 5230][5230] `[—]`
 * MAY — **Forwarding**: forward mail to another address. `[—]` `[out]`

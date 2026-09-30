@@ -4,7 +4,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: 'two\nlines' cannot be written as a rule name: it holds a control character, and a name is one line of the script
+mailctl: 'two\nlines' cannot be written as a filter name: it holds a control character, and a name is one line of the filter set
 
 --- sieve calls
 ('connect',)

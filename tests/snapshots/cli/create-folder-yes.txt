@@ -2,8 +2,8 @@ $ mailctl folder create Lists/GitHub --yes
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-Will create IMAP folder 'INBOX.Lists.GitHub' and subscribe to it
-Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
+Will create folder 'INBOX.Lists.GitHub' and subscribe to it
+Created folder 'INBOX.Lists.GitHub' and subscribed to it
 
 --- stderr
 

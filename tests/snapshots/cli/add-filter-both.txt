@@ -1,4 +1,4 @@
-$ mailctl filter add --filter <TMP>/restore.sieve --from noreply@github.com --fileinto Lists
+$ mailctl filter add --filter <TMP>/restore.sieve --from noreply@github.com --move-to Lists
 exit: 1
 --- stdout
 

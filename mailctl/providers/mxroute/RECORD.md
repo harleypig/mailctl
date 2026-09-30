@@ -378,7 +378,7 @@ Say so plainly rather than filling the gap:
   filters somewhere else.
 - **Whether Sieve subscribes a folder it creates with `fileinto :create`.**
   RFC 5490 says nothing about subscription, and this account has never been
-  seen doing it either way. `mailctl`'s `--no-imap` wording depends on this
+  seen doing it either way. `mailctl`'s `--no-mail` wording depends on this
   staying unknown.
 - **Whether a given account has the DirectAdmin Exim filter,** including
   accounts set up since MXroute began phasing DirectAdmin out.

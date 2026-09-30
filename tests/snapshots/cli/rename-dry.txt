@@ -1,9 +1,9 @@
 $ mailctl filter rename keep-boss The boss --dry-run
 exit: 0
 --- stdout
-Rename rule 'keep-boss' to 'The boss' in script 'managesieve':
+Rename filter 'keep-boss' to 'The boss' in filter set 'managesieve':
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,5 +1,5 @@
@@ -16,7 +16,7 @@ Rename rule 'keep-boss' to 'The boss' in script 'managesieve':
 
 --- end diff ---
 
-[dry-run] the script was NOT uploaded.
+[dry-run] the filter set was NOT uploaded.
 
 --- stderr
 

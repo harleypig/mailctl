@@ -130,14 +130,14 @@ class MxrouteTransport(Transport):
         if half == MAIL and self.imap is None:
             stack = ExitStack()
             self.imap = stack.enter_context(
-                imap_session(self.config, progress=self._channel("imap"))
+                imap_session(self.config, progress=self._channel(MAIL))
             )
             self._stacks[MAIL] = stack
 
         elif half == RULES and self.sieve is None:
             stack = ExitStack()
             self.sieve = stack.enter_context(
-                sieve_session(self.config, progress=self._channel("sieve"))
+                sieve_session(self.config, progress=self._channel(RULES))
             )
             self._stacks[RULES] = stack
 

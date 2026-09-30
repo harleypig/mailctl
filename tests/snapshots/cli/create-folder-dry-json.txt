@@ -11,7 +11,7 @@ exit: 0
       "folder": "INBOX.Lists.GitHub.New",
       "delimiter": ".",
       "delimiter_assumed": false,
-      "status": "imap-create",
+      "status": "create",
       "subscribe": true,
       "case_variants": [],
       "mailbox_disabled_by": null

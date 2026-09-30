@@ -690,7 +690,7 @@ def test_an_unknown_anchor_is_refused_and_the_known_names_listed(where):
     message = str(raised.value)
 
     assert "'typo'" in message
-    assert f"place this rule {where}" in message
+    assert f"place this filter {where}" in message
     assert "one, two, three" in message
     assert raised.value.fields["where"] == where
 
@@ -704,7 +704,7 @@ def test_a_rule_cannot_be_placed_relative_to_itself(where):
     to work out its position, and the realistic cause is a user who meant
     to name a different rule.
     """
-    with pytest.raises(MailctlError, match="is the rule being added"):
+    with pytest.raises(MailctlError, match="is the filter being added"):
         merge_simple(
             three_rules(),
             "two",
@@ -1017,16 +1017,16 @@ def test_remove_an_unknown_rule_raises_and_lists_the_real_names():
     """The failure has to be actionable, since rule names are discovered."""
     existing = merge_simple("", "real-one", "INBOX.Real")
 
-    with pytest.raises(MailctlError, match=r"no rule named 'ghost'"):
+    with pytest.raises(MailctlError, match=r"no filter named 'ghost'"):
         remove_rule(existing, "ghost")
 
-    with pytest.raises(MailctlError, match=r"Known rules: real-one"):
+    with pytest.raises(MailctlError, match=r"Known filters: real-one"):
         remove_rule(existing, "ghost")
 
 
 # ----------------------------------------------------------------------------
 def test_remove_from_an_empty_script_says_none_are_known():
-    with pytest.raises(MailctlError, match=r"Known rules: \(none\)"):
+    with pytest.raises(MailctlError, match=r"Known filters: \(none\)"):
         remove_rule("", "ghost")
 
 
@@ -1626,7 +1626,10 @@ def test_a_rule_already_switched_returns_the_script_untouched(
 def test_switching_an_unknown_rule_names_the_real_ones(switch):
     with pytest.raises(
         MailctlError,
-        match=r"no rule named 'phantom'.*Known rules: paused, bin-the-noise",
+        match=(
+            r"no filter named 'phantom'.*Known filters: paused, "
+            r"bin-the-noise"
+        ),
     ):
         switch(DISABLED_SCRIPT, "phantom")
 
@@ -1636,10 +1639,16 @@ def test_switching_an_unknown_rule_names_the_real_ones(switch):
     ("kept", "reason"),
     [
         ("", "nothing to restore"),
-        ("# was a subject test", "not a Sieve test"),
-        ('# anyof (header :contains "subject"', "not a Sieve test"),
-        ('# header :contains "a" "b" {} if true', "not a Sieve test"),
-        ('# body :contains "invoice"', "not a Sieve test"),
+        ("# was a subject test", "is not a test mailctl can read"),
+        (
+            '# anyof (header :contains "subject"',
+            "is not a test mailctl can read",
+        ),
+        (
+            '# header :contains "a" "b" {} if true',
+            "is not a test mailctl can read",
+        ),
+        ('# body :contains "invoice"', "is not a test mailctl can read"),
     ],
     ids=["nothing", "prose", "truncated", "trailing-block", "not-required"],
 )
@@ -2200,7 +2209,7 @@ def test_renaming_to_the_same_name_returns_the_script_as_it_was():
 @pytest.mark.parametrize(
     ("old", "new", "refusal"),
     [
-        ("phantom", "x", "no rule named 'phantom'"),
+        ("phantom", "x", "no filter named 'phantom'"),
         ("keep-boss", "bin-the-noise", "already exists"),
         ("keep-boss", "", "cannot be empty"),
         ("keep-boss", "  ", "cannot be empty"),
@@ -2240,7 +2249,9 @@ def test_a_name_the_marker_can_carry_is_written_and_read_back(new):
 
 # ----------------------------------------------------------------------------
 def test_a_rule_with_no_name_marker_is_refused():
-    with pytest.raises(MailctlError, match="no name written in the script"):
+    with pytest.raises(
+        MailctlError, match="no name written in the filter set"
+    ):
         rename("keep;\n", "Unnamed rule 1", "named")
 
 
@@ -2254,5 +2265,7 @@ def test_a_rewrite_that_does_not_read_back_as_asked_is_refused(monkeypatch):
         lambda text, name, marker, which, dialect: text,
     )
 
-    with pytest.raises(MailctlError, match="no name written in the script"):
+    with pytest.raises(
+        MailctlError, match="no name written in the filter set"
+    ):
         rename(COMMENTED_SCRIPT, "keep-boss", "The boss")

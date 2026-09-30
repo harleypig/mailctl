@@ -1,10 +1,10 @@
-$ mailctl filter add --body merged --disable-extension body --fileinto Lists --dry-run
+$ mailctl filter add --body merged --disable-extension body --move-to Lists --dry-run
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 --- stderr
-mailctl: the Sieve extension 'body' is disabled by mailctl (disabled_extensions, from flag --disable-extension), and this rule's criteria need it. Drop the criterion that needs it, or take it out of disabled_extensions.
+mailctl: the Sieve extension 'body' is disabled by mailctl (disabled_extensions, from flag --disable-extension), and this filter's criteria need it. Drop the criterion that needs it, or take it out of disabled_extensions.
 
 --- sieve calls
 ('connect',)

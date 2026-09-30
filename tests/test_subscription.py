@@ -51,7 +51,7 @@ def add_args(*extra: str):
             "add",
             "--from",
             "noreply@github.com",
-            "--fileinto",
+            "--move-to",
             "Lists/GitHub",
             "--create-folder",
             *extra,
@@ -434,7 +434,7 @@ def test_planning_a_real_run_creates_nothing_before_the_decision(
     prepare_folder(live, imap_config, add_args())
 
     assert "create_folder" not in fake_imap.names()
-    assert "will be created over IMAP" in capsys.readouterr().out
+    assert "will be created and subscribed to" in capsys.readouterr().out
 
 
 # ----------------------------------------------------------------------------
@@ -450,7 +450,7 @@ def test_no_subscribe_without_create_folder_is_refused(command, capsys):
                 command,
                 "--from",
                 "a@b.c",
-                "--fileinto",
+                "--move-to",
                 "Lists",
                 "--no-subscribe",
             ]

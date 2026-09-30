@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: backup <TMP>/restore.sieve is empty; restoring it would remove every rule from the script. Pass --allow-empty if that is what you want.
+mailctl: backup <TMP>/restore.sieve is empty; restoring it would remove every filter from the filter set. Pass --allow-empty if that is what you want.
 
 --- sieve calls
 --- imap calls

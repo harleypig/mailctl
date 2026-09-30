@@ -479,7 +479,7 @@ def test_with_mailbox_disabled_imap_makes_the_folder_and_the_rule_is_plain(
 def test_with_mailbox_disabled_and_no_imap_a_new_folder_is_refused(
     imap_config,
 ):
-    """As --no-imap already is without 'mailbox', but naming the setting."""
+    """As --no-mail already is without 'mailbox', but naming the setting."""
     live = live_sessions(FakeSieveSession(FULL))
     disable(imap_config, "mailbox")
 

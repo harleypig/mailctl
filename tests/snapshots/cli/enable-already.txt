@@ -1,7 +1,7 @@
 $ mailctl filter enable keep-boss --yes
 exit: 0
 --- stdout
-Rule 'keep-boss' is already enabled in 'managesieve'; nothing to change.
+Filter 'keep-boss' is already enabled in 'managesieve'; nothing to change.
 
 --- stderr
 

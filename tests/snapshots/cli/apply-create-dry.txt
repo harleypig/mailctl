@@ -1,8 +1,8 @@
-$ mailctl filter apply --from noreply@github.com --fileinto Lists/GitHub --create-folder --dry-run
+$ mailctl filter apply --from noreply@github.com --move-to Lists/GitHub --create-folder --dry-run
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-[dry-run] would create IMAP folder 'INBOX.Lists.GitHub' and subscribe to it
+[dry-run] would create folder 'INBOX.Lists.GitHub' and subscribe to it
 Criteria: From contains 'noreply@github.com'
 
 Searching 'INBOX' for existing matches...

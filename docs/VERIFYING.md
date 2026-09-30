@@ -3,7 +3,7 @@
 **Reads and dry runs have been run against a live MXRoute account; no
 write ever has.** The probes, listings, and `--dry-run` plans have run
 against one real account, and a read-only check (`make livecheck`) repeats
-them without changing anything. Every write — saving a rule, moving,
+them without changing anything. Every write — saving a filter, moving,
 flagging, or discarding mail — has been tested only offline and against a
 throwaway local mail server, never against a real mailbox. So the steps that
 change something are a **first-run procedure**, not a regression checklist:
@@ -58,9 +58,9 @@ writes nothing anywhere.
   mailctl knows, each `available` or `unavailable` — read from the server,
   not assumed. An available one also says `enabled`, or `disabled (...)`
   naming where `disabled_extensions` came from; an unavailable one says
-  nothing more. A `*` marks the extensions mailctl's own rules can need.
+  nothing more. A `*` marks the extensions mailctl's own filters can need.
   **`fileinto` and `imap4flags` must say `available` and `enabled`** — those
-  are what an ordinary rule needs. `mailbox` saying `available enabled`
+  are what an ordinary filter needs. `mailbox` saying `available enabled`
   means Sieve can create the target folder itself. If one says `disabled`
   and you did not mean it to, the source in brackets is where to look.
 * `active script:` followed by a name, or `(none)`. Write the name down; that
@@ -88,7 +88,7 @@ it is worth knowing before step 6.
   else, then ask MXRoute support.
 * Authentication fails on either service. The username must be the **full
   email address**, not the part before the `@`.
-* `fileinto` says `unavailable`. Do not continue; a rule that files
+* `fileinto` says `unavailable`. Do not continue; a filter that files
   mail is the whole point, and the server would reject the script.
 
 ## 2. `mailctl folder list` — read-only
@@ -130,7 +130,7 @@ mailctl filterset backup
 `*` and `(active)` marking the active one, and then one line from `backup`:
 
 ```text
-wrote 3 rule(s) to /home/you/.config/mailctl/backups/managesieve-20260814T095659Z.sieve
+wrote 3 filter(s) to /home/you/.config/mailctl/backups/managesieve-20260814T095659Z.sieve
 ```
 
 That file is the script **exactly as the server has it** — no banner lines,
@@ -146,7 +146,8 @@ cat "$(ls -t ~/.config/mailctl/backups/*.sieve | head -1)"
 **You should see** your existing filters as Sieve source and nothing else.
 
 **Use `backup`, not `mailctl filterset show > file`.** `show` wraps its output
-in two banner lines — `# ---- <name> ----` and `# ---- N rule(s): ...` — so a
+in two banner lines — `--- filter set '<name>' ---` and `--- N filter(s): ...
+---` — so a
 redirected `show` is a file that looks like a backup and is not one. `backup`
 exists for exactly this.
 
@@ -163,43 +164,43 @@ protects them.
 * The saved file is empty but `list` showed an active script. Do not continue;
   something is wrong with the download and you have no backup.
 
-## 4. `--dry-run` on a real rule — changes nothing
+## 4. `--dry-run` on a real filter — changes nothing
 
 Pick a real sender you actually get mail from, and a folder that already
 exists (use the exact spelling from step 2).
 
 ```bash
-mailctl filter add --from newsletter@example.com --fileinto Lists/News --dry-run
+mailctl filter add --from newsletter@example.com --move-to Lists/News --dry-run
 ```
 
 **You should see**, in this order: a folder-resolution line if the name you
-typed had to be respelled, a plain-English summary of the rule (`when:` /
-`then:`), a unified diff of the script, and the line `[dry-run] the script
-was NOT uploaded.` `add` never touches mail already delivered — that is
+typed had to be respelled, a plain-English summary of the filter (`when:` /
+`then:`), a unified diff of the filter set, and the line `[dry-run] the
+filter set was NOT uploaded.` `add` never touches mail already delivered — that is
 step 6's `apply` — so there is no message list here.
 
 **Scrutinize the diff, line by line. This is the important part.**
 
-* **Every rule you recognise must still be there.** A `-` line removing a
-  `# Filter: <name>` for a rule you did not name is a **stop**. The merge
+* **Every filter you recognise must still be there.** A `-` line removing a
+  `# Filter: <name>` for a filter you did not name is a **stop**. The merge
   should only ever add.
 * **Reformatting is expected.** mailctl parses the script and re-renders it,
   so indentation, quoting, and line breaks may all change. That is normal.
 * **A rule renamed to `Unnamed rule N` is expected**, for any existing rule
-  that had no `# Filter:` name comment. The rule itself is unchanged; only its
+  that had no `# Filter:` name comment. The filter itself is unchanged; only its
   label is invented. Check the conditions and actions on those lines match
   what was there before.
 * **The `require` line may gain entries** such as `fileinto` or `imap4flags`.
-  That is mailctl keeping the header correct for the union of all rules.
+  That is mailctl keeping the header correct for the union of all filters.
 
 **Stop if:**
 
-* The diff says `(no change)`. Either the rule already exists or the criteria
+* The diff says `(no change)`. Either the filter already exists or the criteria
   produced nothing; find out which before re-running without `--dry-run`.
 * You get `a rule named '<name>' already exists`. Pick a different `--name`,
   or pass `--replace` if you genuinely mean to overwrite it.
 * A warning says the target folder does not exist. `add` will still write the
-  rule, and mail the server files there later may be lost. Add
+  filter, and mail the server files there later may be lost. Add
   `--create-folder`, or fix the folder name against step 2.
 
 ## 5. First real `add` — Sieve only, no mail moved
@@ -207,16 +208,16 @@ step 6's `apply` — so there is no message list here.
 Same command as step 4, without `--dry-run`:
 
 ```bash
-mailctl filter add --from newsletter@example.com --fileinto Lists/News
+mailctl filter add --from newsletter@example.com --move-to Lists/News
 ```
 
-This uploads the rule and touches **no existing mail**. Sieve applies only to
+This uploads the filter and touches **no existing mail**. Sieve applies only to
 messages that arrive from now on.
 
 **You should see** the same summary and diff as step 4, then three new lines:
 
-* `Backed up current script to <path>` — note the path.
-* `Uploaded and activated script '<name>'`.
+* `Backed up the current filter set to <path>` — note the path.
+* `Uploaded and activated filter set '<name>'`.
 * `Mail already delivered was not touched; to act on it, run 'mailctl
   apply' with the same criteria and actions.`
 
@@ -232,13 +233,13 @@ messages that arrive from now on.
    `mailctl filterset backup` writes to in step 3 — one file per upload, named
    `<script>-<UTC timestamp>.sieve`.
 
-2. The server has your rule, and still has the others:
+2. The server has your filter, and still has the others:
 
    ```bash
    mailctl filterset show
    ```
 
-   The last line reads `# ---- N rule(s): <names>`. **Your new rule name must
+   The last line reads `--- N filter(s): <names> ---`. **Your new filter name must
    appear there, and so must every name that was in the file you saved in
    step 3.**
 
@@ -255,7 +256,7 @@ folder rather than INBOX.
 * `the server rejected the generated script (CHECKSCRIPT ...)`. Nothing was
   uploaded and nothing was changed — the check runs before the upload. If a
   warning about unadvertised extensions preceded it, that is your cause.
-* `mailctl filterset show` is missing a rule that was in your step 3 file, or
+* `mailctl filterset show` is missing a filter that was in your step 3 file, or
   Roundcube shows fewer filters than before. Do not run anything else. Go to
   [If something looks wrong](#if-something-looks-wrong).
 
@@ -269,7 +270,7 @@ run it. Send them to a scratch folder, never Trash, and never with
 `--discard`.
 
 ```bash
-mailctl filter apply --subject 'Your invoice for March' --fileinto Scratch \
+mailctl filter apply --subject 'Your invoice for March' --move-to Scratch \
     --create-folder --max-messages 5 --dry-run
 ```
 
@@ -290,7 +291,7 @@ Run it with `--dry-run` first and **scrutinize the message list**:
 Then run it for real by dropping that flag:
 
 ```bash
-mailctl filter apply --subject 'Your invoice for March' --fileinto Scratch \
+mailctl filter apply --subject 'Your invoice for March' --move-to Scratch \
     --create-folder --max-messages 5
 ```
 
@@ -301,7 +302,7 @@ means the criteria were broader than you thought.
 
 **You should see:**
 
-* `Created IMAP folder 'INBOX.Scratch' and subscribed to it` (spelled per
+* `Created folder 'INBOX.Scratch' and subscribed to it` (spelled per
   your server's delimiter). Subscribing is the half that makes the folder
   appear in webmail: a folder that was created but not subscribed to
   receives mail and stays invisible. If instead you see a warning that
@@ -324,10 +325,10 @@ just the headers.
 
 ```bash
 mailctl filter apply --folder INBOX.Scratch --subject 'Your invoice for March' \
-    --fileinto INBOX
+    --move-to INBOX
 ```
 
-`--folder` names the *source* and, unlike `--fileinto`, is passed to the
+`--folder` names the *source* and, unlike `--move-to`, is passed to the
 server exactly as you type it. Use the spelling mailctl printed when it
 created the folder, not `Scratch`.
 
@@ -351,7 +352,7 @@ Only now. Two habits worth keeping:
 
 ## If something looks wrong
 
-**If you just added a rule you did not want**, remove it by name:
+**If you just added a filter you did not want**, remove it by name:
 
 ```bash
 mailctl filter remove <rule-name> --dry-run
@@ -360,7 +361,7 @@ mailctl filter remove <rule-name>
 
 Read the diff before confirming; the same merge round-trip applies.
 
-**If the whole script looks wrong** — rules missing, or mangled — the backup
+**If the whole script looks wrong** — filters missing, or mangled — the backup
 mailctl printed in step 5 is the server's exact previous bytes, before that
 upload. So is the copy you saved in step 3.
 

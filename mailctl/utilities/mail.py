@@ -75,7 +75,7 @@ def source_folder(session: Session, name: str) -> str:
     """Normalize the folder the existing-mail pass reads from.
 
     The same normalization the target gets, so ``--folder Lists/X`` and
-    ``--fileinto Lists/X`` are recognised as one folder, and the search
+    ``--move-to Lists/X`` are recognised as one folder, and the search
     selects the server's real name for it.
     """
     return session.dialect.normalize(name, session.transport.list_folders())

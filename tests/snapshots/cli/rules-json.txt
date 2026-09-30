@@ -3,8 +3,8 @@ exit: 0
 --- stdout
 {
   "version": 2,
-  "script": "managesieve",
-  "rules": [
+  "filterset": "managesieve",
+  "filters": [
     {
       "position": 1,
       "name": "keep-boss",

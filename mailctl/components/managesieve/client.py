@@ -555,7 +555,7 @@ class SieveSession:
             raise MailctlError(f"GETSCRIPT {name!r} failed -- {exc}") from exc
 
         if content is None:
-            raise MailctlError(f"could not download script {name!r}")
+            raise MailctlError(f"could not download filter set {name!r}")
 
         return content
 
@@ -574,8 +574,8 @@ class SieveSession:
 
         except UnicodeDecodeError as exc:
             raise MailctlError(
-                f"script {name!r} is not valid UTF-8, so it cannot be read "
-                f"as Sieve ({exc.reason} at byte {exc.start})"
+                f"filter set {name!r} is not valid UTF-8, so it cannot be "
+                f"read ({exc.reason} at byte {exc.start})"
             ) from exc
 
     # ------------------------------------------------------------------------
@@ -595,13 +595,13 @@ class SieveSession:
 
         except SieveProtocolError as exc:
             raise MailctlError(
-                f"the server rejected the generated script -- {exc}"
+                f"the server rejected the filter set -- {exc}"
             ) from exc
 
         if not accepted:
             raise MailctlError(
-                "the server rejected the generated script (CHECKSCRIPT "
-                "returned failure); nothing was uploaded"
+                "the server rejected the filter set when checking it; "
+                "nothing was uploaded"
             )
 
         if client.warning is not None:

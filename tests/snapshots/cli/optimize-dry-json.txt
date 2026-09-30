@@ -18,13 +18,13 @@ exit: 0
     ],
     "removals": [
       {
-        "rule": "Github again",
+        "filter": "Github again",
         "covered_by": "Github catchall"
       }
     ],
     "reorders": [
       {
-        "rule": "Github billing",
+        "filter": "Github billing",
         "before": "Github catchall"
       }
     ],
@@ -47,22 +47,22 @@ exit: 0
     "uncertain": [
       {
         "kind": "reorder",
-        "rules": [
+        "filters": [
           "Github billing",
           "Any shop"
         ],
-        "reason": "'Github billing' carries stop and may catch mail meant for 'Any shop' first; whether it does cannot be decided from the rules alone"
+        "reason": "'Github billing' carries stop and may catch mail meant for 'Any shop' first; whether it does cannot be decided from the filters alone"
       },
       {
         "kind": "reorder",
-        "rules": [
+        "filters": [
           "Any shop",
           "Bike shop"
         ],
-        "reason": "'Any shop' carries stop and may catch mail meant for 'Bike shop' first; whether it does cannot be decided from the rules alone"
+        "reason": "'Any shop' carries stop and may catch mail meant for 'Bike shop' first; whether it does cannot be decided from the filters alone"
       }
     ],
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

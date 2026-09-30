@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: the mxroute provider cannot count the messages in every folder in one request: the IMAP server does not advertise LIST-STATUS, and without it every folder would be a request of its own
+mailctl: the mxroute provider cannot count the messages in every folder in one request: the mail server does not advertise LIST-STATUS, and without it every folder would be a request of its own
 
 --- sieve calls
 --- imap calls

@@ -1,9 +1,9 @@
-$ mailctl filter apply --from noreply@github.com --fileinto INBOX --yes
+$ mailctl filter apply --from noreply@github.com --move-to INBOX --yes
 exit: 0
 --- stdout
 Criteria: From contains 'noreply@github.com'
 
-Skipping the existing-mail pass: the rule leaves matching mail in 'INBOX' as it is, so there is nothing to do.
+Skipping the existing-mail pass: the filter leaves matching mail in 'INBOX' as it is, so there is nothing to do.
 
 --- stderr
 

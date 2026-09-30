@@ -402,7 +402,7 @@ def test_a_removal_is_planned_without_touching_the_server(
 def test_removing_from_an_empty_script_or_an_unknown_rule_is_refused(
     sessions,
 ):
-    with pytest.raises(MailctlError, match="no rule named"):
+    with pytest.raises(MailctlError, match="no filter named"):
         utilities.rules.plan_removal(sessions, "phantom")
 
     empty = mxroute(sieve=FakeSieveSession(script=""))
@@ -584,10 +584,10 @@ def test_a_move_to_where_the_rule_already_is_changes_nothing(sessions):
 def test_moving_an_unknown_rule_or_against_an_unknown_anchor_is_refused(
     sessions,
 ):
-    with pytest.raises(MailctlError, match="no rule named 'phantom'"):
+    with pytest.raises(MailctlError, match="no filter named 'phantom'"):
         utilities.rules.plan_move(sessions, "phantom", Placement(PLACE_FIRST))
 
-    with pytest.raises(MailctlError, match="Known rules"):
+    with pytest.raises(MailctlError, match="Known filters"):
         utilities.rules.plan_move(
             sessions, "keep-boss", Placement(PLACE_AFTER, "phantom")
         )
@@ -693,7 +693,7 @@ def test_a_rule_already_in_that_state_changes_nothing(sessions, enable):
 def test_switching_an_unknown_rule_or_an_empty_script_is_refused(
     sessions, enable
 ):
-    with pytest.raises(MailctlError, match="no rule named 'phantom'"):
+    with pytest.raises(MailctlError, match="no filter named 'phantom'"):
         utilities.rules.plan_switch(sessions, "phantom", enable=enable)
 
     empty = mxroute(sieve=FakeSieveSession(script=""))
@@ -768,10 +768,10 @@ def test_renaming_a_rule_to_its_own_name_changes_nothing(sessions):
 @pytest.mark.parametrize(
     ("old", "new", "refusal"),
     [
-        ("phantom", "The boss", "no rule named 'phantom'"),
+        ("phantom", "The boss", "no filter named 'phantom'"),
         ("keep-boss", "bin-the-noise", "already exists"),
-        ("keep-boss", "two\nlines", "cannot be written as a rule name"),
-        ("keep-boss", "trailing ", "cannot be written as a rule name"),
+        ("keep-boss", "two\nlines", "cannot be written as a filter name"),
+        ("keep-boss", "trailing ", "cannot be written as a filter name"),
     ],
     ids=["unknown", "taken", "line-break", "trailing-space"],
 )

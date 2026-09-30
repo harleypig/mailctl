@@ -1,4 +1,4 @@
-$ mailctl filter add --like 9 --derive subject --fileinto Lists --dry-run
+$ mailctl filter add --like 9 --derive subject --move-to Lists --dry-run
 exit: 0
 --- stdout
 Message uid 9 in 'INBOX':
@@ -7,13 +7,13 @@ Message uid 9 in 'INBOX':
 
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'subject-inv-0-pwn-oice' on script 'managesieve':
+Filter 'subject-inv-0-pwn-oice' in filter set 'managesieve':
   when:  Subject contains 'Inv\x1b]0;pwn\x07oice'
-  then:  fileinto INBOX.Lists; stop
+  then:  files the message into 'INBOX.Lists'; stops
 
-Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -11,3 +11,8 @@
@@ -28,7 +28,7 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 
 --- end diff ---
 
-[dry-run] the script was NOT uploaded.
+[dry-run] the filter set was NOT uploaded.
 
 --- stderr
 

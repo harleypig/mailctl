@@ -9,15 +9,15 @@ Save filters, and apply them to mail already delivered.
 
 positional arguments:
   {list,add,apply,remove,move,rename,enable,disable,optimize}
-    list                show the rules in order, and which cannot fire
-    add                 save a rule; mail already delivered is left alone
+    list                show the filters in order, and which cannot fire
+    add                 save a filter; mail already delivered is left alone
     apply               act on mail already delivered
-    remove              remove a named rule from the active script
-    move                move a named rule to a new position, unchanged
-    rename              give a named rule a new name, unchanged otherwise
-    enable              enable a named rule, keeping it in the script
-    disable             disable a named rule, keeping it in the script
-    optimize            propose a better order for the rules, and merge
+    remove              remove a named filter from the active filter set
+    move                move a named filter to a new position, unchanged
+    rename              give a named filter a new name, unchanged otherwise
+    enable              enable a named filter, keeping it in the filter set
+    disable             disable a named filter, keeping it in the filter set
+    optimize            propose a better order for the filters, and merge
                         duplicates
 
 options:

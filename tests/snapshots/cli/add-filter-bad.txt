@@ -1,4 +1,4 @@
-$ mailctl filter add --filter <TMP>/restore.sieve --fileinto Lists
+$ mailctl filter add --filter <TMP>/restore.sieve --move-to Lists
 exit: 1
 --- stdout
 

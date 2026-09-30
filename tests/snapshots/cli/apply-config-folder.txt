@@ -1,4 +1,4 @@
-$ mailctl filter apply --from noreply@github.com --fileinto spam --dry-run
+$ mailctl filter apply --from noreply@github.com --move-to spam --dry-run
 exit: 0
 --- stdout
 Folder 'spam' resolves to 'INBOX.spam' (delimiter '.')

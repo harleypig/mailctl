@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: a rule named 'bin-the-noise' already exists in the active script, and two rules of one name cannot be told apart. 'mailctl filter list' lists the names in use.
+mailctl: a filter named 'bin-the-noise' already exists in the active filter set, and two filters of one name cannot be told apart. 'mailctl filter list' lists the names in use.
 
 --- sieve calls
 ('connect',)

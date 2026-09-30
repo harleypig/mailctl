@@ -1,4 +1,4 @@
-$ mailctl filter add --like 2 --subject Issue --match all --fileinto Lists --dry-run
+$ mailctl filter add --like 2 --subject Issue --match all --move-to Lists --dry-run
 exit: 0
 --- stdout
 Message uid 2 in 'INBOX':
@@ -9,13 +9,13 @@ Message uid 2 in 'INBOX':
 
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'from-noreply-github-com' on script 'managesieve':
+Filter 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com' AND Subject contains 'Issue'
-  then:  fileinto INBOX.Lists; stop
+  then:  files the message into 'INBOX.Lists'; stops
 
-Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -11,3 +11,8 @@
@@ -30,7 +30,7 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 
 --- end diff ---
 
-[dry-run] the script was NOT uploaded.
+[dry-run] the filter set was NOT uploaded.
 
 --- stderr
 

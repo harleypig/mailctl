@@ -3,7 +3,7 @@ exit: 0
 --- stdout
 {
   "version": 2,
-  "scripts": [
+  "filtersets": [
     {
       "name": "managesieve",
       "active": true

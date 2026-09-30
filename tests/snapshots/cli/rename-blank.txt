@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: a rule's new name cannot be empty
+mailctl: a filter's new name cannot be empty
 
 --- sieve calls
 --- imap calls

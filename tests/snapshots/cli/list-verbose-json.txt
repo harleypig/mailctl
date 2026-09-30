@@ -3,7 +3,7 @@ exit: 0
 --- stdout
 {
   "version": 2,
-  "scripts": [
+  "filtersets": [
     {
       "name": "managesieve",
       "active": true
@@ -12,8 +12,8 @@ exit: 0
 }
 
 --- stderr
-[sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
-[sieve] authenticated
+[filter] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
+[filter] authenticated
 
 --- sieve calls
 ('connect',)

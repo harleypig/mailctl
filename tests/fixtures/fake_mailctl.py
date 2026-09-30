@@ -112,7 +112,7 @@ FLAGGED = Path(os.environ["STUB_LOG"]).with_suffix(".flagged")
 UIDVALIDITY = 1727000000
 
 SCRIPT = """\
-# ---- managesieve ----
+--- filter set 'managesieve' ---
 require ["fileinto"];
 # rule:[keep boss]
 if header :contains "from" "boss@example.com"
@@ -126,13 +126,13 @@ if header :contains "subject" "newsletter"
 \tfileinto "INBOX.Noise";
 \tstop;
 }
-# ---- 2 rule(s): keep boss, bin-the-noise
+--- 2 filter(s): keep boss, bin-the-noise ---
 """
 
 RULES = """\
 Script 'managesieve':
 
-2 rule(s), in evaluation order:
+2 filter(s), in evaluation order:
 
   1. keep boss  [stop]
        when:  From contains 'boss@example.com'
@@ -162,14 +162,14 @@ IMAP: connected
 )
 
 DIFF = """\
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,3 +1,8 @@
 +# rule:[x]
 --- end diff ---
 
-[dry-run] the script was NOT uploaded.
+[dry-run] the filter set was NOT uploaded.
 """
 
 
@@ -382,21 +382,21 @@ def backup() -> str:
         target.parent.mkdir(parents=True, exist_ok=True)
         (target.parent / "managesieve-2.sieve").write_text("require [];\n")
 
-    return f"[dry-run] would write 2 rule(s) to {target}\n"
+    return f"[dry-run] would write 2 filter(s) to {target}\n"
 
 
 # ----------------------------------------------------------------------------
 def add() -> str:
-    folder = option("--fileinto")
+    folder = option("--move-to")
     out = ""
 
     if "--create-folder" in ARGV:
-        out += f"[dry-run] would create IMAP folder '{folder}'\n"
+        out += f"[dry-run] would create folder '{folder}'\n"
 
     subject = option("--subject")
     name = f"subject-{subject.lower()}" if subject else "from-probe"
 
-    return out + f"\nRule '{name}' on script 'managesieve':\n\n" + DIFF
+    return out + f"\nFilter '{name}' in filter set 'managesieve':\n\n" + DIFF
 
 
 # ----------------------------------------------------------------------------
@@ -484,7 +484,7 @@ def document(command: str) -> str:
         body = {"delimiter": ".", "prefix": None, "folders": []}
 
     else:
-        body = {"script": "managesieve", "rules": [], "findings": []}
+        body = {"filterset": "managesieve", "filters": [], "findings": []}
 
     out = json.dumps({"version": 2, **body}, indent=2) + "\n"
 
@@ -568,7 +568,7 @@ def optimize() -> str:
             }
         ],
         "uncertain": [],
-        "script": "managesieve",
+        "filterset": "managesieve",
         "active": "managesieve",
         "activate": True,
     }
@@ -701,7 +701,7 @@ def main() -> int:
             out += "Uploaded and activated script 'managesieve'\n"
 
     elif command == "enable-rule":
-        out = "Rule 'keep boss' is already enabled in 'managesieve'; "
+        out = "Filter 'keep boss' is already enabled in 'managesieve'; "
         out += "nothing to change.\n"
 
     elif command == "subscribe":
@@ -709,7 +709,7 @@ def main() -> int:
 
     elif command == "create-folder":
         out = (
-            f"[dry-run] would create IMAP folder 'INBOX.{ARGV[-1]}' and "
+            f"[dry-run] would create folder 'INBOX.{ARGV[-1]}' and "
             f"subscribe to it\n"
         )
 
@@ -718,13 +718,13 @@ def main() -> int:
 
     elif command == "rename-folder":
         out = (
-            f"Rename IMAP folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}' "
+            f"Rename folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}' "
             f"(3 messages)\n\n[dry-run] nothing was renamed, and the script "
             f"was NOT uploaded.\n"
         )
 
         if "rename-renames" in BREAK:
-            out += f"Renamed IMAP folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}'\n"
+            out += f"Renamed folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}'\n"
 
     else:
         print(f"fake mailctl: no canned output for {command}", file=sys.stderr)

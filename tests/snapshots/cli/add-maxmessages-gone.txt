@@ -1,4 +1,4 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists --max-messages 1
+$ mailctl filter add --from noreply@github.com --move-to Lists --max-messages 1
 exit: SystemExit(2)
 --- stdout
 

@@ -1,9 +1,9 @@
 $ mailctl filter rename keep-boss The boss
 exit: 1
 --- stdout
-Rename rule 'keep-boss' to 'The boss' in script 'managesieve':
+Rename filter 'keep-boss' to 'The boss' in filter set 'managesieve':
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,5 +1,5 @@
@@ -17,7 +17,7 @@ Rename rule 'keep-boss' to 'The boss' in script 'managesieve':
 --- end diff ---
 
 --- stderr
-mailctl: Rename rule 'keep-boss' to 'The boss' in 'managesieve'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+mailctl: Rename filter 'keep-boss' to 'The boss' in 'managesieve'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
 
 --- sieve calls
 ('connect',)

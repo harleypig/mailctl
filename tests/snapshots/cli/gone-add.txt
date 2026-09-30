@@ -1,4 +1,4 @@
-$ mailctl add --from a@b.c --fileinto X
+$ mailctl add --from a@b.c --move-to X
 exit: SystemExit(2)
 --- stdout
 

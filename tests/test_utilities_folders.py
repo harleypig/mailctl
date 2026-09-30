@@ -74,7 +74,7 @@ def test_with_mailbox_and_imap_the_folder_is_made_both_ways(
 
 # ----------------------------------------------------------------------------
 def test_without_imap_only_sieve_creates_the_folder(fake_sieve, imap_config):
-    """--no-imap: nothing can create or subscribe it now (#40)."""
+    """--no-mail: nothing can create or subscribe it now (#40)."""
     live = mxroute(sieve=fake_sieve, imap=None)
 
     plan = utilities.folders.plan_folder(live, imap_config, "New", create=True)
@@ -435,7 +435,7 @@ def test_subscribing_a_case_variant_names_the_real_folder(sessions):
 def test_the_source_folder_is_normalized_like_the_destination(
     sessions, fake_imap
 ):
-    """--folder Lists and --fileinto Lists name the same folder."""
+    """--folder Lists and --move-to Lists name the same folder."""
     fake_imap.listing.append(((), b".", b"INBOX.Lists.X"))
     sessions.transport.imap._read_folders()
 

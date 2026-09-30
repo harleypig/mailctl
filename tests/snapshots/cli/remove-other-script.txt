@@ -1,10 +1,10 @@
-$ mailctl filter remove keep-boss --script spare --yes
+$ mailctl filter remove keep-boss --filterset spare --yes
 exit: 0
 --- stdout
 
-Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
---- sieve diff ---
+--- diff ---
 --- spare (current)
 +++ spare (proposed)
 @@ -1,8 +1,2 @@
@@ -19,9 +19,9 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 
 --- end diff ---
 
-Script 'spare' is not the active script ('managesieve' is), so it is stored but not run. Pass --activate to make it the active script.
-Backed up current script to <TMP>/config/mailctl/backups/spare-<STAMP>.sieve
-Uploaded script 'spare'; it was not activated
+Filter set 'spare' is not the active one ('managesieve' is), so it is stored but not run. Pass --activate to make it the active filter set.
+Backed up the current filter set to <TMP>/config/mailctl/backups/spare-<STAMP>.sieve
+Uploaded filter set 'spare'; it was not activated
 
 --- stderr
 

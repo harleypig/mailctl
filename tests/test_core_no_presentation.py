@@ -386,7 +386,7 @@ def test_the_flag_guard_would_actually_catch_a_violation():
     tree = ast.parse(
         "def f(where, n):\n"
         '    """Takes --where, as the CLI spells it."""\n'
-        '    a = "nothing to do -- use --fileinto"\n'
+        '    a = "nothing to do -- use --move-to"\n'
         '    b = f"--{where} names the rule"\n'
         '    c = f"over the cap; pass --max-messages {n}"\n'
         '    d = "a -- b"\n'
@@ -395,7 +395,7 @@ def test_the_flag_guard_would_actually_catch_a_violation():
     assert [text for _, text in built_strings(tree) if FLAG.search(text)] == [
         "--{} names the rule",
         "over the cap; pass --max-messages {}",
-        "nothing to do -- use --fileinto",
+        "nothing to do -- use --move-to",
     ]
 
 

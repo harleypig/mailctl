@@ -93,10 +93,10 @@ exit: 0
 }
 
 --- stderr
-[sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
-[sieve] authenticated
-[imap] connecting to mail.example.com:993 (ssl=True) as user@example.com
-[imap] connected; delimiter '.', 3 folders, 2 subscribed
+[filter] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
+[filter] authenticated
+[mail] connecting to mail.example.com:993 (ssl=True) as user@example.com
+[mail] connected; delimiter '.', 3 folders, 2 subscribed
 
 --- sieve calls
 ('connect',)

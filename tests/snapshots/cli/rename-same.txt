@@ -1,7 +1,7 @@
 $ mailctl filter rename keep-boss keep-boss --yes
 exit: 0
 --- stdout
-Rule 'keep-boss' already has that name in 'managesieve'; nothing to change.
+Filter 'keep-boss' already has that name in 'managesieve'; nothing to change.
 
 --- stderr
 

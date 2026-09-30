@@ -6,16 +6,19 @@ without the utilities writing anything themselves.
 
 ``ServerAlert`` is the other thing a front-end is told as it happens: an
 alert or a warning the server sent, which arrives as a message on the session's
-``progress`` callback rather than here, since any command can meet one.
+``progress`` callback rather than here, since any command can meet one. The
+callback's channel is ``RULES`` or ``MAIL``, the half the message came from.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..providers.base import FolderCreation, ServerAlert
+from ..providers.base import MAIL, RULES, FolderCreation, ServerAlert
 
 __all__ = [
+    "MAIL",
+    "RULES",
     "EventSink",
     "FolderCreated",
     "FolderRenamed",

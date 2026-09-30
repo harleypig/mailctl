@@ -12,9 +12,9 @@ exit: 0
       "reformats": false
     },
     "source": "<TMP>/restore.sieve",
-    "rules_before": 2,
-    "rules_after": 1,
-    "script": "managesieve",
+    "filters_before": 2,
+    "filters_after": 1,
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

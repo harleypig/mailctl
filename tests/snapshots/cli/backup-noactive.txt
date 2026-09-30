@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: no active script on the server, so there is nothing to back up. 'mailctl filterset list' shows what the account has.
+mailctl: no active filter set on the server, so there is nothing to back up. 'mailctl filterset list' shows what the account has.
 
 --- sieve calls
 ('connect',)

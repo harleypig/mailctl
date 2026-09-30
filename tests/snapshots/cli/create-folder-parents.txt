@@ -2,8 +2,8 @@ $ mailctl folder create Work/2026/Q3 --dry-run
 exit: 0
 --- stdout
 Folder 'Work/2026/Q3' resolves to 'INBOX.Work.2026.Q3' (delimiter '.')
-Parent folders 'INBOX.Work', 'INBOX.Work.2026' do not exist either; the IMAP server is expected to create them along with 'INBOX.Work.2026.Q3', and only 'INBOX.Work.2026.Q3' is subscribed.
-[dry-run] would create IMAP folder 'INBOX.Work.2026.Q3' and subscribe to it
+Parent folders 'INBOX.Work', 'INBOX.Work.2026' do not exist either; the server is expected to create them along with 'INBOX.Work.2026.Q3', and only 'INBOX.Work.2026.Q3' is subscribed.
+[dry-run] would create folder 'INBOX.Work.2026.Q3' and subscribe to it
 
 --- stderr
 

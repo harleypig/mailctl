@@ -43,5 +43,5 @@ def test_reading_with_no_active_script_says_so():
     with pytest.raises(MailctlError, match="name one explicitly"):
         utilities.scripts.read_script(empty)
 
-    with pytest.raises(MailctlError, match="no rules to show"):
+    with pytest.raises(MailctlError, match="no filters to show"):
         utilities.rules.read_rules(empty)

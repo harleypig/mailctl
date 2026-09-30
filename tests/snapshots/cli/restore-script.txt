@@ -1,9 +1,9 @@
-$ mailctl filterset restore <TMP>/restore.sieve --script spare --yes
+$ mailctl filterset restore <TMP>/restore.sieve --filterset spare --yes
 exit: 0
 --- stdout
-Restore <TMP>/restore.sieve (1 rule(s)) over script 'spare' (0 rule(s)):
+Restore <TMP>/restore.sieve (1 filter(s)) over filter set 'spare' (0 filter(s)):
 
---- sieve diff ---
+--- diff ---
 --- spare (current)
 +++ spare (proposed)
 @@ -1 +1,8 @@
@@ -19,9 +19,9 @@ Restore <TMP>/restore.sieve (1 rule(s)) over script 'spare' (0 rule(s)):
 
 --- end diff ---
 
-Script 'spare' is not the active script ('managesieve' is), so it is stored but not run. Pass --activate to make it the active script.
-Backed up current script to <TMP>/config/mailctl/backups/spare-<STAMP>.sieve
-Uploaded script 'spare'; it was not activated
+Filter set 'spare' is not the active one ('managesieve' is), so it is stored but not run. Pass --activate to make it the active filter set.
+Backed up the current filter set to <TMP>/config/mailctl/backups/spare-<STAMP>.sieve
+Uploaded filter set 'spare'; it was not activated
 
 --- stderr
 

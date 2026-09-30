@@ -3,16 +3,16 @@ exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 Folder 'Archive' resolves to 'INBOX.Archive' (delimiter '.')
-Rename IMAP folder 'INBOX.Lists' to 'INBOX.Archive' (360 messages)
+Rename folder 'INBOX.Lists' to 'INBOX.Archive' (360 messages)
   The 1 folder under it moves with it:
     'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
   Subscribed after the rename, as before: 'INBOX.Archive', 'INBOX.Archive.GitHub'
 
-Rules in 'managesieve' that file into it:
+Filters in 'managesieve' that file into it:
   lists: 'INBOX.Lists' -> 'INBOX.Archive'
   github: 'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -2,7 +2,7 @@
@@ -34,7 +34,7 @@ Rules in 'managesieve' that file into it:
 
 --- end diff ---
 
-[dry-run] nothing was renamed, and the script was NOT uploaded.
+[dry-run] nothing was renamed, and the filter set was NOT uploaded.
 
 --- stderr
 

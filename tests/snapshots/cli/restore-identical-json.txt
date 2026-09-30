@@ -8,9 +8,9 @@ exit: 0
     "changes": false,
     "diff": null,
     "source": "<TMP>/restore.sieve",
-    "rules_before": 2,
-    "rules_after": 2,
-    "script": "managesieve",
+    "filters_before": 2,
+    "filters_after": 2,
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

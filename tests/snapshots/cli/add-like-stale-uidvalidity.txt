@@ -1,4 +1,4 @@
-$ mailctl filter add --like 3 --fileinto Lists --uidvalidity 1726999999 --dry-run
+$ mailctl filter add --like 3 --move-to Lists --uidvalidity 1726999999 --dry-run
 exit: 1
 --- stdout
 

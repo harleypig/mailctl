@@ -1,10 +1,10 @@
-$ mailctl filter add --from noreply@github.com --mark-read --fileinto Lists --disable-extension imap4flags
+$ mailctl filter add --from noreply@github.com --mark-read --move-to Lists --disable-extension imap4flags
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 --- stderr
-mailctl: the Sieve extension 'imap4flags' is disabled by mailctl (disabled_extensions, from flag --disable-extension), and this rule needs it. Drop the action that needs it, or take it out of disabled_extensions.
+mailctl: the Sieve extension 'imap4flags' is disabled by mailctl (disabled_extensions, from flag --disable-extension), and this filter needs it. Drop the action that needs it, or take it out of disabled_extensions.
 
 --- sieve calls
 ('connect',)

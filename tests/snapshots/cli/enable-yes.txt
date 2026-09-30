@@ -1,11 +1,11 @@
 $ mailctl filter enable keep-boss --yes
 exit: 0
 --- stdout
-Enable rule 'keep-boss' in script 'managesieve':
+Enable filter 'keep-boss' in filter set 'managesieve':
 
-Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,8 +1,7 @@
@@ -20,8 +20,8 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
      stop;
 
 --- end diff ---
-Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
-Uploaded and activated script 'managesieve'
+Backed up the current filter set to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Uploaded and activated filter set 'managesieve'
 
 --- stderr
 

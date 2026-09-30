@@ -13,7 +13,7 @@ pytestmark = pytest.mark.container
 
 # Pigeonhole's wording, naming the stored script and a line of it.
 WARNING = re.compile(
-    r"mailctl: warning from the sieve server: mailctl: line \d+: warning: "
+    r"mailctl: warning from the filter server: mailctl: line \d+: warning: "
     r"IMAP flag '\\Bogus' specified for the addflag command is invalid and "
     r"will be ignored \(only first invalid is reported\)\.\n"
 )
@@ -41,7 +41,7 @@ def test_verbose_also_shows_the_checkscript_warning_quoted(account):
     assert result.code == 0, result.err
     assert WARNING.fullmatch(result.err), result.err
     assert re.search(
-        r"^\[sieve\] CHECKSCRIPT warned: [\"'].*: line \d+: warning: "
+        r"^\[filter\] CHECKSCRIPT warned: [\"'].*: line \d+: warning: "
         r"IMAP flag",
         result.out,
         re.MULTILINE,

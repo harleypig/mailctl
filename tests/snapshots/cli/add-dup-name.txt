@@ -1,10 +1,10 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists --name keep-boss
+$ mailctl filter add --from noreply@github.com --move-to Lists --name keep-boss
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 --- stderr
-mailctl: a rule named 'keep-boss' already exists in the active script. Use --replace to overwrite it, or --name to pick another.
+mailctl: a filter named 'keep-boss' already exists in the active filter set. Use --replace to overwrite it, or --name to pick another.
 
 --- sieve calls
 ('connect',)

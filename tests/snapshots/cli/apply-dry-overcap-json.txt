@@ -1,4 +1,4 @@
-$ mailctl filter apply --from noreply@github.com --fileinto Lists --max-messages 1 --dry-run --json
+$ mailctl filter apply --from noreply@github.com --move-to Lists --max-messages 1 --dry-run --json
 exit: 0
 --- stdout
 {

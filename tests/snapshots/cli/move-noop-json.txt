@@ -7,7 +7,7 @@ exit: 0
     "command": "filter move",
     "changes": false,
     "diff": null,
-    "rule": "keep-boss",
+    "filter": "keep-boss",
     "from_position": 1,
     "to_position": 1,
     "count": 2,
@@ -15,7 +15,7 @@ exit: 0
       "dead_on_arrival": [],
       "starves": []
     },
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

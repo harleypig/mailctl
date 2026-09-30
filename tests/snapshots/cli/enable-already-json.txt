@@ -7,9 +7,9 @@ exit: 0
     "command": "filter enable",
     "changes": false,
     "diff": null,
-    "rule": "keep-boss",
+    "filter": "keep-boss",
     "enable": true,
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

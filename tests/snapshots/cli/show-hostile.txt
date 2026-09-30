@@ -1,7 +1,7 @@
 $ mailctl filterset show
 exit: 0
 --- stdout
-# ---- managesieve ----
+--- filter set 'managesieve' ---
 require ["fileinto"];
 # rule:[bad\x1b[31mname]
 if header :contains "subject" "x\x1b]0;pwn\x07y"
@@ -9,7 +9,7 @@ if header :contains "subject" "x\x1b]0;pwn\x07y"
 	fileinto "INBOX.\x1b[32mZ";
 	stop;
 }
-# ---- 1 rule(s): bad\x1b[31mname
+--- 1 filter(s): bad\x1b[31mname ---
 
 --- stderr
 

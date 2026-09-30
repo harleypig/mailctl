@@ -22,10 +22,17 @@ from .events import EventSink, FolderCreated
 FOLDER_NONE = "none"
 FOLDER_EXISTS = "exists"
 FOLDER_MISSING = "missing"
-FOLDER_SIEVE_CREATES = "sieve-creates"
-FOLDER_IMAP_CREATE = "imap-create"
-FOLDER_BOTH_CREATE = "imap-and-sieve-create"
+# The values are in a --json plan's folder "status", so they are worded the
+# same for every provider: mailctl creates it ("create"), the filter does
+# as mail arrives ("created-on-delivery"), or both.
+FOLDER_SIEVE_CREATES = "created-on-delivery"
+FOLDER_IMAP_CREATE = "create"
+FOLDER_BOTH_CREATE = "create-and-on-delivery"
 FOLDER_UNCREATABLE = "uncreatable"
+
+# What lets a rule make its own folder as mail arrives, in words that fit
+# every provider.
+DELIVERY_CREATE = "folder creation on delivery"
 
 
 # ############################################################################
@@ -83,7 +90,7 @@ def list_folder_counts(session: Session) -> FolderCounts:
         raise refuse(
             session.name,
             CAPABILITY_CONSTRUCTS["folder_counts"],
-            f"the {session.wording.mail_service} server does not advertise "
+            f"the mail server does not advertise "
             f"{support.missing}, and without it every folder would be a "
             f"request of its own",
         )
@@ -342,20 +349,18 @@ def check_folder(session: Session, plan: FolderPlan) -> None:
     if plan.status != FOLDER_UNCREATABLE:
         return
 
-    words = session.wording
-
     if plan.mailbox_disabled_by is not None:
         reason = (
-            f"{words.delivery_create} is disabled by mailctl "
+            f"{DELIVERY_CREATE} is disabled by mailctl "
             f"(disabled_extensions, from "
             f"{plan.mailbox_disabled_by.describe()})"
         )
 
     else:
-        reason = f"the server does not advertise {words.delivery_create}"
+        reason = f"the server does not advertise {DELIVERY_CREATE}"
 
     raise MailctlError(
-        f"{reason}, and without the {words.mail_service} connection "
+        f"{reason}, and without the mail connection "
         f"{plan.folder!r} cannot be created",
         code="needs_mail",
         fields={"reason": reason, "folder": plan.folder},

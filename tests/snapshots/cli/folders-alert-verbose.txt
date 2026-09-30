@@ -1,8 +1,8 @@
 $ mailctl folder list -v
 exit: 0
 --- stdout
-[imap] connecting to mail.example.com:993 (ssl=True) as user@example.com
-[imap] connected; delimiter '.', 3 folders, 2 subscribed
+[mail] connecting to mail.example.com:993 (ssl=True) as user@example.com
+[mail] connected; delimiter '.', 3 folders, 2 subscribed
 Hierarchy delimiter: '.'
 3 folder(s), 2 subscribed (webmail shows only subscribed folders):
   INBOX
@@ -10,8 +10,8 @@ Hierarchy delimiter: '.'
   INBOX.spam   (not subscribed)
 
 --- stderr
-mailctl: alert from the imap server: Maintenance tonight at 22:00 UTC
-mailctl: alert from the imap server: Mailbox is 95% full
+mailctl: alert from the mail server: Maintenance tonight at 22:00 UTC
+mailctl: alert from the mail server: Mailbox is 95% full
 
 --- sieve calls
 --- imap calls

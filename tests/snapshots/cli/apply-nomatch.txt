@@ -1,4 +1,4 @@
-$ mailctl filter apply --from nobody@x.y --fileinto Lists --yes
+$ mailctl filter apply --from nobody@x.y --move-to Lists --yes
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

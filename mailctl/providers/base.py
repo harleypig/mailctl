@@ -46,6 +46,7 @@ from .model import (
     FLAG,
     KEEP,
     NAMESPACE_KINDS,
+    OTHER,
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
@@ -54,7 +55,10 @@ from .model import (
     SORT_RECEIVED,
     SORT_SENT,
     SORT_SIZE,
+    STOP,
+    UNFLAG,
     ActionSpec,
+    ActionStep,
     Capability,
     CountSupport,
     DeliveryCreate,
@@ -92,6 +96,7 @@ __all__ = [
     "MAIL",
     "NAMESPACE_KINDS",
     "OPERATIONS",
+    "OTHER",
     "PLACE_AFTER",
     "PLACE_BEFORE",
     "PLACE_FIRST",
@@ -102,10 +107,13 @@ __all__ = [
     "SORT_RECEIVED",
     "SORT_SENT",
     "SORT_SIZE",
+    "STOP",
     "TRANSPORT_KINDS",
     "TRANSPORT_OPERATIONS",
+    "UNFLAG",
     "WRITE",
     "ActionSpec",
+    "ActionStep",
     "Capability",
     "CountSupport",
     "DeliveryCreate",
@@ -144,8 +152,9 @@ __all__ = [
     "validate_specifics",
 ]
 
-# (channel, message) -- the channel names which of a provider's sessions
-# the message came from. A message is step-by-step progress, or a
+# (channel, message) -- the channel is the half the message came from,
+# RULES or MAIL, so a front-end names it the same for every provider. A
+# message is step-by-step progress, or a
 # ServerAlert -- an alert or a warning -- which a front-end shows even
 # when it shows no progress.
 Progress = Callable[[str, str | ServerAlert], None]
@@ -298,7 +307,7 @@ class Dialect(ABC):
     Every operation is a classmethod and none touches the network: a
     dialect translates actions, parses and renders the host's stored rule
     set, edits it, holds the host's refusals and required features as
-    checks, and words the host for a person. A utility asks it for the
+    checks, and names the host in its reports. A utility asks it for the
     host-specific part of a piece of work, and hands what it builds to the
     transport to save.
     """
@@ -375,9 +384,10 @@ class Dialect(ABC):
 
     @classmethod
     @abstractmethod
-    def describe_actions(cls, actions: list) -> str:
-        """Translated actions as one line a person reads, host escaping
-        undone: the plan's summary, beside the diff that shows the source.
+    def describe_actions(cls, actions: Iterable) -> tuple[ActionStep, ...]:
+        """What actions do, as neutral steps a front-end words: translated
+        actions, or a rule's ``actions`` as :meth:`read_rules` gave them,
+        with host escaping undone. The diff shows the source beside them.
         """
 
     @classmethod

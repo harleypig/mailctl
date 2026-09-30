@@ -1,9 +1,9 @@
 $ mailctl filter rename keep-boss The boss --yes
 exit: 0
 --- stdout
-Rename rule 'keep-boss' to 'The boss' in script 'managesieve':
+Rename filter 'keep-boss' to 'The boss' in filter set 'managesieve':
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,5 +1,5 @@
@@ -15,8 +15,8 @@ Rename rule 'keep-boss' to 'The boss' in script 'managesieve':
  	fileinto "INBOX.Boss";
 
 --- end diff ---
-Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
-Uploaded and activated script 'managesieve'
+Backed up the current filter set to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Uploaded and activated filter set 'managesieve'
 
 --- stderr
 

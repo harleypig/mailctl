@@ -1,15 +1,15 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists --first
+$ mailctl filter add --from noreply@github.com --move-to Lists --first
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'from-noreply-github-com' on script 'managesieve':
+Filter 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com'
-  then:  fileinto INBOX.Lists; stop
+  then:  files the message into 'INBOX.Lists'; stops
 
-Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,5 +1,10 @@
@@ -25,8 +25,8 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
      fileinto "INBOX.Boss";
 
 --- end diff ---
-Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
-Uploaded and activated script 'managesieve'
+Backed up the current filter set to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Uploaded and activated filter set 'managesieve'
 
 Mail already delivered was not touched; to act on it, run 'mailctl filter apply' with the same criteria and actions.
 

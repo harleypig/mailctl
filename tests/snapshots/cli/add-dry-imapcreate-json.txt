@@ -1,4 +1,4 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --mark-read --dry-run --json
+$ mailctl filter add --from noreply@github.com --move-to Lists/GitHub --create-folder --mark-read --dry-run --json
 exit: 0
 --- stdout
 {
@@ -11,7 +11,7 @@ exit: 0
       "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -1,4 +1,4 @@\n-require [\"fileinto\", \"imap4flags\"];\n+require [\"fileinto\", \"imap4flags\", \"mailbox\"];\n \n # rule:[keep-boss]\n if header :contains \"from\" \"boss@example.com\" {\n@@ -11,3 +11,9 @@\n     fileinto \"INBOX.Noise\";\n     stop;\n }\n+# rule:[from-noreply-github-com]\n+if anyof (header :contains \"From\" \"noreply@github.com\") {\n+    addflag \"\\\\Seen\";\n+    fileinto :create \"INBOX.Lists.GitHub\";\n+    stop;\n+}\n",
       "reformats": true
     },
-    "rule": "from-noreply-github-com",
+    "filter": "from-noreply-github-com",
     "criteria": {
       "match": "any",
       "compare": "contains",
@@ -36,7 +36,7 @@ exit: 0
       "folder": "INBOX.Lists.GitHub",
       "delimiter": ".",
       "delimiter_assumed": false,
-      "status": "imap-and-sieve-create",
+      "status": "create-and-on-delivery",
       "subscribe": true,
       "case_variants": [],
       "mailbox_disabled_by": null
@@ -46,7 +46,7 @@ exit: 0
       "dead_on_arrival": [],
       "starves": []
     },
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }
@@ -54,8 +54,8 @@ exit: 0
 
 --- stderr
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-[dry-run] would create IMAP folder 'INBOX.Lists.GitHub' and subscribe to it
-  The rule also says 'fileinto :create', so Sieve recreates the folder if it is ever deleted.
+[dry-run] would create folder 'INBOX.Lists.GitHub' and subscribe to it
+  The filter also creates the folder as mail arrives, so it is made again if it is ever deleted.
 
 --- sieve calls
 ('connect',)

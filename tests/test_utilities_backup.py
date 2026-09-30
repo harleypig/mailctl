@@ -140,7 +140,7 @@ def test_with_nothing_active_a_restore_asks_for_script(tmp_path):
     backup.write_text("x")
     live = mxroute(sieve=FakeSieveSession(active=None))
 
-    with pytest.raises(MailctlError, match=r"no active script.*Name the"):
+    with pytest.raises(MailctlError, match=r"no active filter set.*Name the"):
         utilities.backup.plan_restore(
             live, utilities.backup.read_backup_file(backup)
         )
@@ -219,7 +219,7 @@ def test_an_empty_backup_is_refused_unless_allowed(content, tmp_path):
     backup.write_bytes(content.encode())
     live = mxroute(sieve=FakeSieveSession(script="old\n"))
 
-    with pytest.raises(MailctlError, match="would remove every rule"):
+    with pytest.raises(MailctlError, match="would remove every filter"):
         utilities.backup.read_backup_file(backup)
 
     plan = utilities.backup.plan_restore(

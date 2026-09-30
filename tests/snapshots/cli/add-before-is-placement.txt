@@ -1,10 +1,10 @@
-$ mailctl filter add --from noreply@github.com --before 2026-09-01 --fileinto Lists
+$ mailctl filter add --from noreply@github.com --before 2026-09-01 --move-to Lists
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 --- stderr
-mailctl: no rule named '2026-09-01' in the active script, so --before has nothing to place this rule against. Known rules: keep-boss, bin-the-noise
+mailctl: no filter named '2026-09-01' in the active filter set, so --before has nothing to place this filter against. Known filters: keep-boss, bin-the-noise
 
 --- sieve calls
 ('connect',)

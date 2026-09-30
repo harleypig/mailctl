@@ -218,7 +218,7 @@ def identified(sender: str, subject: str, message_id: str) -> bytes:
 # ----------------------------------------------------------------------------
 @pytest.fixture
 def rerun(fake_imap):
-    """The inbox a second ``apply --fileinto Lists --keep`` finds: the
+    """The inbox a second ``apply --move-to Lists --keep`` finds: the
     Lists folder already holds a copy of the first match."""
     fake_imap.messages = {
         1: identified("noreply@github.com", "PR opened", "1@gh"),

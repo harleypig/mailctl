@@ -132,9 +132,9 @@ def _check_names(
 
     if same_folder(old, "INBOX"):
         raise MailctlError(
-            "INBOX cannot be renamed: IMAP moves its messages into the new "
-            "folder and leaves an empty INBOX behind (RFC 3501 section "
-            "6.3.5), which is not a rename.",
+            "INBOX cannot be renamed: the server moves its messages into "
+            "the new folder and leaves an empty INBOX behind (RFC 3501 "
+            "section 6.3.5), which is not a rename.",
             code="rename_inbox",
             fields={"operation": "filter apply"},
         )
@@ -301,7 +301,7 @@ class FolderRenameResult:
 def _rules_left(plan: FolderRenamePlan) -> str:
     count = len({retarget.rule for retarget in plan.retargets})
 
-    return f"{count} rule{'s' if count != 1 else ''}"
+    return f"{count} filter{'s' if count != 1 else ''}"
 
 
 # ----------------------------------------------------------------------------
@@ -314,11 +314,11 @@ def _interrupted(
 ) -> MailctlError:
     """The error for a rename stopped part-way: what failed, what state the
     account is in, and how to finish or undo it. Nothing is retried."""
-    saved = f" The script was backed up to {backup}." if backup else ""
+    saved = f" The filter set was backed up to {backup}." if backup else ""
 
     if not renamed:
         return MailctlError(
-            f"{error}\nNothing was renamed, and the script on the server "
+            f"{error}\nNothing was renamed, and the filter set on the server "
             f"is as it was.{saved}"
         )
 
@@ -331,8 +331,8 @@ def _interrupted(
     if stored:
         before = (
             f"{error}\n{plan.old!r} was renamed to {plan.new!r} and the "
-            f"rewritten script was stored as {plan.script!r}, but it could "
-            f"not be activated."
+            f"rewritten filter set was stored as {plan.script!r}, but it "
+            f"could not be activated."
         )
 
         return MailctlError(
@@ -352,9 +352,9 @@ def _interrupted(
     )
 
     before = (
-        f"{error}\n{plan.old!r} was renamed to {plan.new!r}, but the script "
-        f"{plan.script!r} {state}: {_rules_left(plan)} still file into the "
-        f"old name, so mail they match cannot be filed there.{saved}"
+        f"{error}\n{plan.old!r} was renamed to {plan.new!r}, but the filter "
+        f"set {plan.script!r} {state}: {_rules_left(plan)} still file into "
+        f"the old name, so mail they match cannot be filed there.{saved}"
     )
 
     return MailctlError(
@@ -578,7 +578,7 @@ def verify_folder_rename(
 
         checks.append(
             PostCondition(
-                f"no rule in {plan.script!r} files into {old!r} or a folder "
+                f"no filter in {plan.script!r} files into {old!r} or a folder "
                 f"under it",
                 not left,
                 ", ".join(f"{rule!r} still does" for rule in left),
@@ -588,7 +588,9 @@ def verify_folder_rename(
     except MailctlError as exc:
         checks.append(
             PostCondition(
-                f"the rules in {plan.script!r} could be read", False, str(exc)
+                f"the filters in {plan.script!r} could be read",
+                False,
+                str(exc),
             )
         )
 

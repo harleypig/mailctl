@@ -1,9 +1,9 @@
 $ mailctl filterset restore <TMP>/restore.sieve --allow-empty --dry-run
 exit: 0
 --- stdout
-Restore <TMP>/restore.sieve (0 rule(s)) over script 'managesieve' (2 rule(s)):
+Restore <TMP>/restore.sieve (0 filter(s)) over filter set 'managesieve' (2 filter(s)):
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,14 +0,0 @@
@@ -24,7 +24,7 @@ Restore <TMP>/restore.sieve (0 rule(s)) over script 'managesieve' (2 rule(s)):
 
 --- end diff ---
 
-[dry-run] the script was NOT uploaded.
+[dry-run] the filter set was NOT uploaded.
 
 --- stderr
 
