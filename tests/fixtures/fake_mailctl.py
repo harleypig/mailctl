@@ -162,7 +162,7 @@ IMAP: connected
 )
 
 DIFF = """\
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,3 +1,8 @@

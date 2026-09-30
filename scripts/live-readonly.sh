@@ -1058,7 +1058,7 @@ t_remove_rule() {
   expect_ok 'filter remove --dry-run' || return 1
   expect_nothing_changed || return 1
 
-  expect_line '^--- sieve diff ---$' || return 1
+  expect_line '^--- diff ---$' || return 1
   expect_line '^\[dry-run\] the filter set was NOT uploaded\.$'
 }
 
