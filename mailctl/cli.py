@@ -3043,6 +3043,65 @@ def cmd_switch_rule(args) -> int:
 
 
 # ----------------------------------------------------------------------------
+def cmd_rename_rule(args) -> int:
+    """Give a named rule a new name, leaving the rule otherwise unchanged."""
+    config = configure(args)
+    utilities.rules.check_rename(config, args.new_name)
+
+    with connect(config, args) as sessions:
+        plan = utilities.rules.plan_rename(
+            sessions, args.rule_name, args.new_name, args.script, args.activate
+        )
+
+        if args.json:
+            return emit_json(
+                args,
+                json_output.plan(
+                    "rename-rule",
+                    **json_output.change(plan.changes, plan.diff),
+                    rule=plan.rule,
+                    new_name=plan.new_name,
+                    **json_output.activation(plan),
+                ),
+            )
+
+        if not plan.changes:
+            print(
+                f"Rule {plan.rule!r} already has that name in "
+                f"{plan.script!r}; nothing to change."
+            )
+
+            return 0
+
+        print(
+            f"Rename rule {plan.rule!r} to {plan.new_name!r} in script "
+            f"{plan.script!r}:"
+        )
+        print_script_diff(plan.diff)
+        print_activation(plan)
+
+        if args.dry_run:
+            print("\n[dry-run] the script was NOT uploaded.")
+
+            return 0
+
+        if not confirm(
+            f"Rename rule {plan.rule!r} to {plan.new_name!r} in "
+            f"{plan.script!r}?",
+            args.yes,
+        ):
+            print("Aborted; nothing was changed.")
+
+            return 0
+
+        utilities.rules.execute_script_change(
+            sessions, config, plan, render_event
+        )
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
 def print_message(message, uid: int, folder: str, file=None) -> None:
     """Show the message a rule is about to be derived from.
 
@@ -4579,6 +4638,23 @@ def build_parser(
         )
         switch.set_defaults(handler=cmd_switch_rule, enable=enable)
 
+    rename = command(
+        "rename-rule",
+        offer.rename,
+        parents=[common, connection, safety],
+        help="give a named rule a new name, unchanged otherwise",
+        description="Change one rule's name and nothing else: its "
+        "conditions, its actions, its position, and whether it is "
+        "disabled stay as they are, and so does every other rule. NEW "
+        "must not be empty or already another rule's name. The script "
+        "is backed up first and you are asked to confirm.",
+    )
+    rename.add_argument("rule_name", metavar="OLD")
+    rename.add_argument("new_name", metavar="NEW")
+    rename.add_argument("--script", help="script name; default active")
+    rename.add_argument("--activate", action="store_true", help=activate_help)
+    rename.set_defaults(handler=cmd_rename_rule)
+
     migrate = command(
         "migrate-config",
         parents=[common],
@@ -4955,6 +5031,10 @@ ERROR_TEXT = {
         "activated. 'mailctl list' shows what the account has."
     ),
     "no_host": lambda message, _: f"{message}; set --host or MAILCTL_HOST",
+    "rule_name_taken": lambda message, fields: (
+        f"{message} '{command_for(fields['operation'])}' lists the names in "
+        f"use."
+    ),
     "rule_exists": lambda message, _: (
         f"{message} Use --replace to overwrite it, or --name to pick another."
     ),

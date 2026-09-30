@@ -218,6 +218,11 @@ class MxrouteDialect(Dialect):
 
     # ------------------------------------------------------------------------
     @classmethod
+    def rename_rule(cls, source: str, old: str, new: str) -> str:
+        return mxroute_sieve.rename_rule(source, old, new)
+
+    # ------------------------------------------------------------------------
+    @classmethod
     def disable_rule(cls, source: str, name: str) -> str:
         return mxroute_sieve.disable_rule(source, name)
 

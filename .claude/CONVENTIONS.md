@@ -157,7 +157,8 @@ layer may call.
   per subject. The safety policy lives here.
   - `rules.py` — checking a rule against what the provider declares
     (`check_rule`, `resolve_stop`), reading the rules in a script, planning
-    a rule into it, and uploading it.
+    a rule into it or a change to one (removed, moved, switched, renamed),
+    and uploading it.
   - `scripts.py` — rule sets as the server stores them: read, chosen, and
     uploaded. `upload_script` is the one upload path, and takes the backup
     first.
@@ -254,8 +255,9 @@ layer may call.
   - `managesieve/responses.py` — `ServerWarning`, and the `WARNINGS` a
     status response carries; offline.
   - `managesieve/script.py` — the offline script handling (parse / merge /
-    move / remove / rearrange / render / diff), rule names through a
-    `NameDialect`, and `UNIMPLEMENTED_ACTIONS`.
+    move / remove / rename / rearrange / render / diff), rule names through
+    a `NameDialect`, and `UNIMPLEMENTED_ACTIONS`. A rename rewrites the
+    name marker in place, as a folder rename rewrites a `fileinto`.
   - `managesieve/emit.py` — `EMIT_TABLE`, every command, test, and tag
     mailctl can put in a rule and the Sieve extension each needs; offline.
   - `managesieve/backup.py` — where a backup of a script goes; writing it
@@ -508,6 +510,14 @@ keeps the two in step.
   language. Each provider declares it, and it is offered only where
   declared, like every other capability-gated option (*Providers*).
 
+**`rename-rule OLD NEW` changes a rule's name and no other byte**
+([#216][i216]). The dialect rewrites the name marker where it sits and
+reads the result back, so the rule's body, position, and disabled state,
+and every other rule and comment, are kept exactly, and the diff is of the
+script's own bytes. An unknown OLD, an empty or taken NEW (coded
+`rule_name_taken`), and a NEW the dialect cannot read back as itself are
+refused before any upload.
+
 **`view` stays read-only; `mark` is its write twin.** `mark UID...` takes
 `--read`, `--unread`, `--flag`, `--unflag`, `--keyword K`, and
 `--no-keyword K`, several at once, over separate add-flag and remove-flag
@@ -595,11 +605,12 @@ fails before any login or password prompt (decided on [#137][i137]).
   transport class — listed in `providers/registry.py`. There are no entry
   points; ADR 0006 defers them.
 - **Differences are data, never a branch.** A provider declares
-  `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, `disable`, its
-  `actions`, `extensions`, `raw_query`, `mark`, `folder_counts`,
-  `uidvalidity`, its namespaced `specifics` with their schema, the
-  connection `settings` it reads, and the operations it `declined`. The
-  utilities read those and never ask which provider they have.
+  `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, `disable`,
+  `rename`, its `actions`, `extensions`, `raw_query`, `mark`,
+  `folder_counts`, `uidvalidity`, its namespaced `specifics` with their
+  schema, the connection `settings` it reads, and the operations it
+  `declined`. The utilities read those and never ask which provider they
+  have.
 - **Refused before any network work.** `utilities.rules.check_rule`
   refuses a rule the provider cannot express, through one error naming the
   provider, the construct, and why.
@@ -633,12 +644,12 @@ fails before any login or password prompt (decided on [#137][i137]).
   `ordering`, the placement flags, `move-rule`, and `optimize-rules` are not
   offered; without `stop`, `--no-stop`; without `rule_sets`, `add`'s
   `--script` and `--activate`; without `disable`, `disable-rule` and
-  `enable-rule`; without `extensions`, `--disable-extension`; without
-  `raw_query`, `search`'s `--raw`; without `mark`, `mark`; without
-  `folder_counts`, `folders`'s `--counts`; without `uidvalidity`,
-  `--uidvalidity`. The connection flags (`--host`, `--imap-*`, `--sieve-*`)
-  are offered only where `ProviderCapabilities.settings` names them, with
-  the help it gives — they keep their names and their `MAILCTL_*`
+  `enable-rule`; without `rename`, `rename-rule`; without `extensions`,
+  `--disable-extension`; without `raw_query`, `search`'s `--raw`; without
+  `mark`, `mark`; without `folder_counts`, `folders`'s `--counts`; without
+  `uidvalidity`, `--uidvalidity`. The connection flags (`--host`, `--imap-*`,
+  `--sieve-*`) are offered only where `ProviderCapabilities.settings` names
+  them, with the help it gives — they keep their names and their `MAILCTL_*`
   variables, being `mxroute`'s connection options. An unoffered option is
   **hidden, not removed**: given anyway it still parses and meets the
   refusal below the front-end naming the provider, which stays the
@@ -1258,6 +1269,7 @@ will read it.
 [i39]: https://github.com/harleypig/mailctl/issues/39
 [i183]: https://github.com/harleypig/mailctl/issues/183
 [i204]: https://github.com/harleypig/mailctl/issues/204
+[i216]: https://github.com/harleypig/mailctl/issues/216
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147

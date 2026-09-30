@@ -36,6 +36,10 @@ where every write path is proved first.
      test with a hand-written Roundcube-shaped script as its fixture.
    - `sieve` — a refused action (`redirect`, `notify`, `vacation`) raises with
      the pointer message rather than emitting the action.
+   - `sieve` — a rule renamed in place ([#216][i216]): the script's bytes
+     change only in the name marker, CRLF, comments, and a disabled rule
+     included; the marker sievelib reads as the name is the one rewritten;
+     and each name the marker cannot carry is refused.
    - `imap` (`test_imap.py`) — folder-name normalization across both
      separators (`Lists/GitHub` ≡ `INBOX.Lists.GitHub`) against a reported
      delimiter, and the session over the `fake_imap` double built from
@@ -195,6 +199,7 @@ where every write path is proved first.
      refused; without `raw_query` `search --raw` is not offered in help and is
      refused by name, by the CLI and by the utility alike; without `disable`
      `disable-rule` and `enable-rule` are not listed and a switch is refused;
+     without `rename` `rename-rule` is not listed and a rename is refused;
      without `mark` `mark` is not listed and is refused; without
      `folder_counts` `folders --counts` is not offered and is refused;
      without `uidvalidity` `--uidvalidity` is not offered and a pin is
@@ -267,6 +272,10 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   baselines: one saved from the server checks clean against it, saving
   writes nothing there, and drift made by editing the saved file exits 3 or
   4 as documented.
+  `rename-rule` in `test_rename_rule.py` ([#216][i216]): the script's bytes
+  changed only in the two name markers, a disabled rule's included, the
+  renamed rule still filing new mail and the disabled one still not, and a
+  taken name refused with the script untouched.
   `rename-folder` in `test_rename_folder.py` ([#5][i5]): the folder and its
   subfolder moved, both subscribed under the new names and gone from `LSUB`
   under the old, the message count kept, and the script's bytes changed only
@@ -440,3 +449,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i205]: https://github.com/harleypig/mailctl/issues/205
 [i208]: https://github.com/harleypig/mailctl/issues/208
 [i160]: https://github.com/harleypig/mailctl/issues/160
+[i216]: https://github.com/harleypig/mailctl/issues/216

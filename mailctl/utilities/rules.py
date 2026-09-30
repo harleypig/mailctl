@@ -104,6 +104,25 @@ def check_switch(config: Config) -> None:
 
 
 # ----------------------------------------------------------------------------
+def check_rename(config: Config, new_name: str) -> None:
+    """Refuse renaming a rule under a provider without ``rename``, or to
+    an empty name.
+
+    Needs no connection, so a front-end calls it before connecting;
+    :func:`plan_rename` holds the same lines for any other caller.
+    """
+    require_capability(provider_for(config), "rename")
+    _require_name(new_name)
+
+
+# ----------------------------------------------------------------------------
+def _require_name(name: str) -> None:
+    """Refuse an empty or blank rule name."""
+    if not name.strip():
+        raise MailctlError("a rule's new name cannot be empty")
+
+
+# ----------------------------------------------------------------------------
 def require_capability(provider: Provider | Session, name: str) -> None:
     """Refuse work needing a capability the provider does not declare."""
     if getattr(provider.capabilities, name):
@@ -123,6 +142,7 @@ CAPABILITY_CONSTRUCTS = {
     "mark": "set or clear a message's flags",
     "ordering": "place a rule at a position in evaluation order",
     "raw_query": "search with a query in its own search language",
+    "rename": "change a rule's name",
     "rule_sets": "name or activate one of several rule sets",
     "stop": "end evaluation after a rule",
     "uidvalidity": "check a message UID against the numbering it came from",
@@ -338,6 +358,29 @@ class SwitchPlan:
 
     rule: str
     enable: bool
+    script: str
+    before: str
+    after: str
+    diff: DisplayDiff
+    active: str | None
+    activate: bool
+
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        return self.after != self.before
+
+
+@dataclass(frozen=True)
+class RenamePlan:
+    """A rule given a new name, not yet uploaded.
+
+    ``new_name`` the same as ``rule`` leaves the script as it was, and
+    ``changes`` is False.
+    """
+
+    rule: str
+    new_name: str
     script: str
     before: str
     after: str
@@ -584,10 +627,49 @@ def plan_switch(
 
 
 # ----------------------------------------------------------------------------
+def plan_rename(
+    session: Session,
+    rule: str,
+    new_name: str,
+    script: str | None = None,
+    activate: bool = False,
+) -> RenamePlan:
+    """Give a named rule a new name without uploading the result.
+
+    Only the name changes: the dialect edits it in place, so the diff is
+    of the script's own bytes. Refused, before the script is read, by a
+    provider that does not declare ``rename`` and for an empty name; the
+    dialect refuses an unknown rule, a name already taken, and one the
+    host cannot store.
+    """
+    require_capability(session, "rename")
+    _require_name(new_name)
+
+    name, before, active = fetch_active(session, script)
+
+    if not before.strip():
+        raise MailctlError(f"script {name!r} is empty")
+
+    dialect = session.dialect
+    after = dialect.rename_rule(before, rule, new_name)
+
+    return RenamePlan(
+        rule=rule,
+        new_name=new_name,
+        script=name,
+        before=before,
+        after=after,
+        diff=dialect.raw_diff(before, after, name),
+        active=active,
+        activate=activates(name, active, activate),
+    )
+
+
+# ----------------------------------------------------------------------------
 def execute_script_change(
     session: Session,
     config: Config,
-    plan: RulePlan | RemovalPlan | MovePlan | SwitchPlan,
+    plan: RulePlan | RemovalPlan | MovePlan | SwitchPlan | RenamePlan,
     on_event: EventSink | None = None,
 ) -> Path:
     """Upload a planned rule change; return the backup's path.

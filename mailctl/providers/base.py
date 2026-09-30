@@ -178,6 +178,8 @@ class ProviderCapabilities:
     * ``rule_sets`` -- the host stores several named rule sets, one active.
     * ``disable`` -- a rule can be switched off and back on without being
       removed.
+    * ``rename`` -- a rule's name can be changed, leaving the rule as it
+      was.
     * ``actions`` -- the neutral action names (``ActionSpec``) it can emit.
     * ``extensions`` -- it reports rule-language extensions by name.
     * ``raw_query`` -- a message search may be given as a query in the
@@ -203,6 +205,7 @@ class ProviderCapabilities:
     stop: bool
     rule_sets: bool
     disable: bool
+    rename: bool
     actions: frozenset[str]
     extensions: bool
     raw_query: bool
@@ -429,6 +432,17 @@ class Dialect(ABC):
     @abstractmethod
     def move_rule(cls, source: str, name: str, placement: Placement) -> str:
         """Move a named rule within a stored rule set."""
+
+    @classmethod
+    @abstractmethod
+    def rename_rule(cls, source: str, old: str, new: str) -> str:
+        """Give the named rule ``old`` the name ``new``, changing nothing
+        else in the stored rule set.
+
+        Refused when ``old`` is not a rule, or ``new`` is empty, taken, or
+        not a name the host can store. Returns ``source`` unchanged when
+        the two names are the same.
+        """
 
     @classmethod
     @abstractmethod

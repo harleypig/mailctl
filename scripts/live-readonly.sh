@@ -75,6 +75,7 @@ readonly MUTATING=(
   optimize-rules
   remove-rule
   rename-folder
+  rename-rule
   restore
   save-baseline
   subscribe

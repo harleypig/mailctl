@@ -1,0 +1,14 @@
+$ mailctl rename-rule keep-boss bin-the-noise --yes
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: a rule named 'bin-the-noise' already exists in the active script, and two rules of one name cannot be told apart. 'mailctl rules' lists the names in use.
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

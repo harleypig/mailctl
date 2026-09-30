@@ -1,0 +1,14 @@
+$ mailctl rename-rule keep-boss bin-the-noise --dry-run --json
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 1, "error": {"message": "a rule named 'bin-the-noise' already exists in the active script, and two rules of one name cannot be told apart. 'mailctl rules' lists the names in use.", "code": "rule_name_taken"}}
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

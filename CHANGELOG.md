@@ -4,6 +4,23 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **`mailctl rename-rule OLD NEW` changes a rule's name, and nothing else**
+  ([#216]). Only the rule's name line in the script is rewritten: its
+  conditions, actions, position, and disabled state, every other rule, and
+  every comment stay byte for byte as they were, and the diff shown first
+  is the whole change. It works like the other rule commands: the diff,
+  then a confirmation (`--yes` skips it, `--dry-run` stops before it, and
+  `--dry-run --json` prints the plan), and a backup of the script before
+  the upload. It is refused before anything is uploaded when OLD is not a
+  rule, when NEW is empty or already another rule's name (under `--json`
+  the error's `code` is `rule_name_taken`), and when NEW cannot be written
+  as a rule name — a line break or other control character, spaces at the
+  end, or a name marker inside it. A rule with no name written in the
+  script cannot be renamed. It is offered only where the provider can
+  rename a rule; `mxroute` can.
+
 ## 0.9.1
 
 BUG FIXES:
@@ -1320,6 +1337,7 @@ NOTES:
 [#192]: https://github.com/harleypig/mailctl/issues/192
 [#196]: https://github.com/harleypig/mailctl/issues/196
 [#10]: https://github.com/harleypig/mailctl/issues/10
+[#216]: https://github.com/harleypig/mailctl/issues/216
 [#205]: https://github.com/harleypig/mailctl/issues/205
 [#208]: https://github.com/harleypig/mailctl/issues/208
 [#212]: https://github.com/harleypig/mailctl/issues/212

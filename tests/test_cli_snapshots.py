@@ -834,6 +834,14 @@ JSON_SCENARIOS = {
         ["enable-rule", "keep-boss", "--dry-run", "--json"],
         {},
     ),
+    "rename-dry-json": (
+        ["rename-rule", "keep-boss", "The boss", "--dry-run", "--json"],
+        {},
+    ),
+    "rename-taken-json": (
+        ["rename-rule", "keep-boss", "bin-the-noise", "--dry-run", "--json"],
+        {},
+    ),
     "create-folder-dry-json": (
         ["create-folder", "Lists/GitHub/New", "--dry-run", "--json"],
         {},
@@ -1688,6 +1696,29 @@ SCENARIOS = {
         {"script": BARE_FALSE},
     ),
     "rules-disabled": (["rules"], {"script": DISABLED_BOSS}),
+    # #216: only the name marker changes, disabled or not.
+    "rename-yes": (["rename-rule", "keep-boss", "The boss", "--yes"], {}),
+    "rename-dry": (["rename-rule", "keep-boss", "The boss", "--dry-run"], {}),
+    "rename-notty": (["rename-rule", "keep-boss", "The boss"], {}),
+    "rename-disabled": (
+        ["rename-rule", "keep-boss", "The boss", "--yes"],
+        {"script": DISABLED_BOSS},
+    ),
+    "rename-same": (["rename-rule", "keep-boss", "keep-boss", "--yes"], {}),
+    "rename-unknown": (["rename-rule", "phantom", "The boss", "--yes"], {}),
+    "rename-taken": (
+        ["rename-rule", "keep-boss", "bin-the-noise", "--yes"],
+        {},
+    ),
+    "rename-blank": (["rename-rule", "keep-boss", " ", "--yes"], {}),
+    "rename-unwritable": (
+        ["rename-rule", "keep-boss", "two\nlines", "--yes"],
+        {},
+    ),
+    "rename-empty-script": (
+        ["rename-rule", "keep-boss", "The boss", "--yes"],
+        {"script": ""},
+    ),
     "remove-yes": (["remove-rule", "keep-boss", "--yes"], {}),
     "remove-dry": (["remove-rule", "keep-boss", "--dry-run"], {}),
     "remove-unknown": (["remove-rule", "phantom", "--yes"], {}),

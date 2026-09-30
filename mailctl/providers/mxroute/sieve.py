@@ -63,6 +63,7 @@ __all__ = [
     "parse_script",
     "reject_actions",
     "remove_rule",
+    "rename_rule",
     "render_script",
     "report_extensions",
     "required_extensions",
@@ -452,6 +453,12 @@ def merge_rule(
 def remove_rule(existing: str, name: str) -> str:
     """``managesieve.remove_rule``, with Roundcube's rule names."""
     return _script.remove_rule(existing, name, ROUNDCUBE_DIALECT)
+
+
+# ----------------------------------------------------------------------------
+def rename_rule(existing: str, old: str, new: str) -> str:
+    """``managesieve.rename_rule``, with Roundcube's rule names."""
+    return _script.rename_rule(existing, old, new, ROUNDCUBE_DIALECT)
 
 
 # ----------------------------------------------------------------------------
