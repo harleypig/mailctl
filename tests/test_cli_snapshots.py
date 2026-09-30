@@ -730,6 +730,8 @@ JSON_SCENARIOS = {
         ["filter", "list", "--json"],
         {"script": BROAD_THEN_NARROW},
     ),
+    # The same findings as a person reads them, under their heading.
+    "rules-findings": (["filter", "list"], {"script": BROAD_THEN_NARROW}),
     "rules-disabled-json": (
         ["filter", "list", "--json"],
         {"script": DISABLED_BOSS},

@@ -11,7 +11,7 @@ exit: 0
       "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -1,11 +1,5 @@\n require [\"fileinto\", \"imap4flags\"];\n \n-# rule:[keep-boss]\n-if header :contains \"from\" \"boss@example.com\" {\n-    fileinto \"INBOX.Boss\";\n-    setflag \"\\\\Flagged\";\n-    stop;\n-}\n # rule:[bin-the-noise]\n if header :contains \"subject\" \"newsletter\" {\n     fileinto \"INBOX.Noise\";\n",
       "reformats": true
     },
-    "rule": "keep-boss",
+    "filter": "keep-boss",
     "filterset": "managesieve",
     "active": "managesieve",
     "activate": true

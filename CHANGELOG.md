@@ -100,8 +100,12 @@ BREAKING CHANGES:
   or `create-and-on-delivery` where it was `imap-create`, `sieve-creates`,
   or `imap-and-sieve-create`; `none`, `exists`, `missing`, and
   `uncreatable` are unchanged. `diff.label` stays, naming the language of
-  the diff's text (`sieve`). The `rule`, `rules`, `rules_before`, and
-  `rules_after` keys are unchanged.
+  the diff's text (`sieve`). A filter is `filter` too: `rules`,
+  `rule`, `rules_before`, and `rules_after` are now `filters`, `filter`,
+  `filters_before`, and `filters_after`, in `filter list`, every plan for
+  one filter, `filterset restore`, `folder rename`, and `filter optimize`.
+  The probe, a saved baseline, and the drift report keep their `rules`
+  half, being the server's own report.
 
 BUG FIXES:
 

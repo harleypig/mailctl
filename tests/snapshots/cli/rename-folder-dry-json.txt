@@ -32,14 +32,14 @@ exit: 0
       }
     ],
     "missing_parents": [],
-    "rules": [
+    "filters": [
       {
-        "rule": "lists",
+        "filter": "lists",
         "old": "INBOX.Lists",
         "new": "INBOX.Archive"
       },
       {
-        "rule": "github",
+        "filter": "github",
         "old": "INBOX.Lists.GitHub",
         "new": "INBOX.Archive.GitHub"
       }

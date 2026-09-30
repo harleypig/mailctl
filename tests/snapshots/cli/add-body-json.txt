@@ -11,7 +11,7 @@ exit: 0
       "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -1,4 +1,4 @@\n-require [\"fileinto\", \"imap4flags\"];\n+require [\"fileinto\", \"imap4flags\", \"body\"];\n \n # rule:[keep-boss]\n if header :contains \"from\" \"boss@example.com\" {\n@@ -11,3 +11,8 @@\n     fileinto \"INBOX.Noise\";\n     stop;\n }\n+# rule:[from-noreply-github-com]\n+if anyof (header :contains \"From\" \"noreply@github.com\", body :contains :text [\"merged\"]) {\n+    fileinto \"INBOX.Lists\";\n+    stop;\n+}\n",
       "reformats": true
     },
-    "rule": "from-noreply-github-com",
+    "filter": "from-noreply-github-com",
     "criteria": {
       "match": "any",
       "compare": "contains",

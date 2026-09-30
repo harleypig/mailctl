@@ -18,13 +18,13 @@ exit: 0
     ],
     "removals": [
       {
-        "rule": "Github again",
+        "filter": "Github again",
         "covered_by": "Github catchall"
       }
     ],
     "reorders": [
       {
-        "rule": "Github billing",
+        "filter": "Github billing",
         "before": "Github catchall"
       }
     ],
@@ -47,7 +47,7 @@ exit: 0
     "uncertain": [
       {
         "kind": "reorder",
-        "rules": [
+        "filters": [
           "Github billing",
           "Any shop"
         ],
@@ -55,7 +55,7 @@ exit: 0
       },
       {
         "kind": "reorder",
-        "rules": [
+        "filters": [
           "Any shop",
           "Bike shop"
         ],

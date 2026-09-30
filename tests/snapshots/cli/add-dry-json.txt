@@ -11,7 +11,7 @@ exit: 0
       "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -11,3 +11,8 @@\n     fileinto \"INBOX.Noise\";\n     stop;\n }\n+# rule:[from-noreply-github-com]\n+if anyof (header :contains \"From\" \"noreply@github.com\") {\n+    fileinto \"INBOX.Lists\";\n+    stop;\n+}\n",
       "reformats": true
     },
-    "rule": "from-noreply-github-com",
+    "filter": "from-noreply-github-com",
     "criteria": {
       "match": "any",
       "compare": "contains",

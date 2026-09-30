@@ -882,7 +882,7 @@ t_json() {
 
   run_mailctl filter list --json
   expect_ok 'filter list --json' || return 1
-  expect_document rules
+  expect_document filters
 }
 
 #-----------------------------------------------------------------------------

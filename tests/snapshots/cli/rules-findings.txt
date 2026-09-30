@@ -1,0 +1,27 @@
+$ mailctl filter list
+exit: 0
+--- stdout
+Filter set 'managesieve':
+
+2 filter(s), in evaluation order:
+
+  1. all-lists  [stop]
+       when:  To contains '@lists.example.com'
+       then:  files the message into a folder; stops
+
+  2. announce  [stop]
+       when:  To contains 'announce@lists.example.com'
+       then:  files the message into a folder; stops
+
+Filters that cannot fire where they are:
+  ! 'announce' never runs -- 'all-lists' carries stop and its conditions cover every case 'announce' tests for
+
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

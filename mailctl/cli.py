@@ -1350,8 +1350,8 @@ def cmd_restore(args) -> int:
                     "filterset restore",
                     **json_output.change(plan.changes, plan.diff),
                     source=str(plan.source),
-                    rules_before=count(sessions, plan.before),
-                    rules_after=count(sessions, plan.after),
+                    filters_before=count(sessions, plan.before),
+                    filters_after=count(sessions, plan.after),
                     **json_output.activation(plan),
                 ),
             )
@@ -2698,7 +2698,7 @@ def cmd_add(args) -> int:
                 json_output.plan(
                     "filter add",
                     **json_output.change(plan.before != plan.after, plan.diff),
-                    rule=plan.name,
+                    filter=plan.name,
                     criteria=criteria.to_dict(),
                     actions=json_output.actions(spec),
                     folder=json_output.folder_plan(folder),
@@ -2808,7 +2808,7 @@ def cmd_remove_rule(args) -> int:
                 json_output.plan(
                     "filter remove",
                     **json_output.change(plan.before != plan.after, plan.diff),
-                    rule=plan.rule,
+                    filter=plan.rule,
                     **json_output.activation(plan),
                 ),
             )
@@ -2862,7 +2862,7 @@ def cmd_move_rule(args) -> int:
                 json_output.plan(
                     "filter move",
                     **json_output.change(plan.changes, plan.diff),
-                    rule=plan.rule,
+                    filter=plan.rule,
                     from_position=plan.from_index + 1,
                     to_position=plan.to_index + 1,
                     count=plan.count,
@@ -3056,7 +3056,7 @@ def cmd_switch_rule(args) -> int:
                 json_output.plan(
                     args.command,
                     **json_output.change(plan.changes, plan.diff),
-                    rule=plan.rule,
+                    filter=plan.rule,
                     enable=plan.enable,
                     **json_output.activation(plan),
                 ),
@@ -3110,7 +3110,7 @@ def cmd_rename_rule(args) -> int:
                 json_output.plan(
                     "filter rename",
                     **json_output.change(plan.changes, plan.diff),
-                    rule=plan.rule,
+                    filter=plan.rule,
                     new_name=plan.new_name,
                     **json_output.activation(plan),
                 ),

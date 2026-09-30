@@ -218,7 +218,7 @@ def rules_report(report) -> dict:
     """``rules``: the rules in evaluation order, and which cannot fire."""
     return _document(
         filterset=report.script,
-        rules=[_rule(rule) for rule in report.rules],
+        filters=[_rule(rule) for rule in report.rules],
         findings=[_shadow(finding) for finding in report.findings],
     )
 
@@ -368,8 +368,8 @@ def folder_rename_plan(record) -> dict:
             for move in record.moves
         ],
         missing_parents=list(record.missing_parents),
-        rules=[
-            {"rule": item.rule, "old": item.old, "new": item.new}
+        filters=[
+            {"filter": item.rule, "old": item.old, "new": item.new}
             for item in record.retargets
         ],
         **activation(record),
@@ -388,11 +388,11 @@ def optimize_plan(record) -> dict:
         **change(record.changes, record.diff),
         considered=list(record.kinds),
         removals=[
-            {"rule": item.rule, "covered_by": item.covered_by}
+            {"filter": item.rule, "covered_by": item.covered_by}
             for item in proposals.removals
         ],
         reorders=[
-            {"rule": item.rule, "before": item.before}
+            {"filter": item.rule, "before": item.before}
             for item in proposals.reorders
         ],
         merges=[
@@ -408,7 +408,7 @@ def optimize_plan(record) -> dict:
         uncertain=[
             {
                 "kind": item.kind,
-                "rules": list(item.rules),
+                "filters": list(item.rules),
                 "reason": item.reason,
             }
             for item in proposals.uncertain

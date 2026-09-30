@@ -87,7 +87,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 # --provider override it.
 #provider = "mxroute"
 
-# Where script backups are written -- both the automatic pre-upload copy
+# Where filter set backups are written -- both the automatic pre-upload copy
 # and 'mailctl filterset backup'.
 #
 # Default: $XDG_CONFIG_HOME/mailctl/backups, beside this file. XDG would
@@ -100,18 +100,19 @@ password_cmd = "pass show email/you@yourdomain.com"
 # --backup-dir.
 #backup_dir = "~/mail-backups"
 
-# The folder `add` and `apply` file into when you give no --move-to.
+# The folder `filter add` and `filter apply` file into when you give no
+# --move-to.
 # There is no flag or environment variable for this one; it lives only
 # here. Either separator works -- "Lists/GitHub" and "INBOX.Lists.GitHub"
 # name the same folder, since the delimiter is read from the server.
 # Default: none.
 #default_folder = "Lists"
 
-# Sieve extensions mailctl must never write a rule that needs, even if the
+# Sieve extensions mailctl must never write a filter that needs, even if the
 # server advertises them. This only narrows what mailctl writes -- it cannot
 # turn on anything the server lacks. With "mailbox" off, a new folder is
-# created over IMAP and the rule says plain `fileinto`; with "fileinto" or
-# "imap4flags" off, a rule that needs it is refused. Names are
+# created over IMAP and the filter says plain `fileinto`; with "fileinto" or
+# "imap4flags" off, a filter that needs it is refused. Names are
 # case-insensitive; an unknown one is an error. MAILCTL_DISABLED_EXTENSIONS
 # and --disable-extension REPLACE this list rather than adding to it; set
 # either to "none" to clear it for one run.
@@ -119,8 +120,8 @@ password_cmd = "pass show email/you@yourdomain.com"
 #disabled_extensions = ["mailbox"]
 
 # The folder mail is read from when you give no --folder: the one
-# `apply`, `search`, `senders`, and `--like` read, and the one `view` and
-# `mark` open. MAILCTL_SOURCE_FOLDER and --folder override it. Either
-# separator works, as for default_folder.
+# `filter apply`, `mail search`, `mail senders`, and `--like` read, and the
+# one `mail view` and `mail mark` open. MAILCTL_SOURCE_FOLDER and --folder
+# override it. Either separator works, as for default_folder.
 # Default: INBOX.
 #source_folder = "INBOX"

@@ -11,7 +11,7 @@ exit: 0
       "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -1,8 +1,7 @@\n require [\"fileinto\", \"imap4flags\"];\n \n # rule:[keep-boss]\n-if false # allof (header :contains \"from\" \"boss@example.com\")\n-{\n+if allof (header :contains \"from\" \"boss@example.com\") {\n     fileinto \"INBOX.Boss\";\n     setflag \"\\\\Flagged\";\n     stop;\n",
       "reformats": true
     },
-    "rule": "keep-boss",
+    "filter": "keep-boss",
     "enable": true,
     "filterset": "managesieve",
     "active": "managesieve",

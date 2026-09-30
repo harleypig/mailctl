@@ -663,9 +663,10 @@ fails before any login or password prompt (decided on [#137][i137]).
   `--fileinto`), `--filterset` (was `--script`), and `--no-mail` (was
   `--no-imap`), each old name refused naming the new one
   (`cli.GONE_OPTIONS`, beside `cli.GONE_COMMANDS`); and a `--json`
-  document's `filterset` / `filtersets` keys and its folder `status` values
-  (`create`, `created-on-delivery`, `create-and-on-delivery`). A provider's
-  own words reach the user in three places only:
+  document's `filter` / `filters` / `filterset` / `filtersets` keys and its
+  folder `status` values (`create`, `created-on-delivery`,
+  `create-and-on-delivery`). A provider's own words reach the user in three
+  places only:
   1. documentation about the provider, such as its `RECORD.md`;
   2. the help of an option only it has — `--disable-extension`, and the
      connection settings it declares (`--host`, `--imap-*`, `--sieve-*`,

@@ -889,7 +889,7 @@ exit status. `server probe --json` prints its own versioned document (see
 | `mail search` | `{"version", "folder", "uidvalidity", "more", "sort", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
 | `mail senders` | `{"version", "folder", "by", "messages", "unread", "groups", "senders": [{"key", "name", "total", "unread", "unread_percent"}]}` — busiest first; `messages`, `unread`, and `groups` count everything matched, rows `--top` and `--min` left out included; `key` is `null` for mail with no address or no List-Id |
 | `mail view` | `{"version", "message": {"uid", "folder", "uidvalidity", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
-| `filter list` | `{"version", "filterset", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
+| `filter list` | `{"version", "filterset", "filters": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — `command` is the command's path, such as `"filter add"`; what else a plan holds depends on the command |
 | `server baseline check` | `{"version", "host", "baseline", "baseline_taken", "taken", "account_recorded", "requires_known", "serious", "informational", "drift": [{"severity", "kind", "half", "name", "before", "after"}]}` |
 | `server baseline show` | the saved file as stored (see *Watch the servers for change*) |
@@ -906,14 +906,17 @@ exit status. `server probe --json` prints its own versioned document (see
   always changes something; its `diff` is `null` when no filter files into
   the folder, and the filter set is then left alone.
 * A plan that uploads a filter set names it as `filterset`, beside `active`
-  and `activate`. A plan's folder `status` is `none`, `exists`, `missing`,
+  and `activate`, and a plan for one filter names it as `filter`. A
+  `filterset restore` plan counts `filters_before` and `filters_after`; a
+  `folder rename` plan lists the filters it repoints as `filters`
+  (`{"filter", "old", "new"}`). A plan's folder `status` is `none`, `exists`, `missing`,
   `create` (mailctl creates it), `created-on-delivery` (the filter creates
   it as mail arrives), `create-and-on-delivery` (both), or
   `uncreatable`. `diff.label` names the language the diff's text is in
   (`sieve` on MXRoute).
-* A `filter optimize` plan lists `removals` (`{"rule", "covered_by"}`),
-  `reorders` (`{"rule", "before"}`), `merges` (`{"into", "absorbed",
-  "header", "match_type", "keys"}`), and `uncertain` (`{"kind", "rules",
+* A `filter optimize` plan lists `removals` (`{"filter", "covered_by"}`),
+  `reorders` (`{"filter", "before"}`), `merges` (`{"into", "absorbed",
+  "header", "match_type", "keys"}`), and `uncertain` (`{"kind", "filters",
   "reason"}`), what was left alone for want of certainty; `considered`
   names the kinds of change looked for.
 * An `apply` plan's `mail` is `null` where the actions leave delivered mail

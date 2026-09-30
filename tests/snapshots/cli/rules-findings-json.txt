@@ -4,7 +4,7 @@ exit: 0
 {
   "version": 2,
   "filterset": "managesieve",
-  "rules": [
+  "filters": [
     {
       "position": 1,
       "name": "all-lists",

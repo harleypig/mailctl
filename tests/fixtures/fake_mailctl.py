@@ -484,7 +484,7 @@ def document(command: str) -> str:
         body = {"delimiter": ".", "prefix": None, "folders": []}
 
     else:
-        body = {"filterset": "managesieve", "rules": [], "findings": []}
+        body = {"filterset": "managesieve", "filters": [], "findings": []}
 
     out = json.dumps({"version": 2, **body}, indent=2) + "\n"
 
