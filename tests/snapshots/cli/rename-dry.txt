@@ -1,0 +1,29 @@
+$ mailctl rename-rule keep-boss The boss --dry-run
+exit: 0
+--- stdout
+Rename rule 'keep-boss' to 'The boss' in script 'managesieve':
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,5 +1,5 @@
+ require ["fileinto","imap4flags"];
+-# rule:[keep-boss]
++# rule:[The boss]
+ if header :contains "from" "boss@example.com"
+ {
+ 	fileinto "INBOX.Boss";
+
+--- end diff ---
+
+[dry-run] the script was NOT uploaded.
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

@@ -30,6 +30,8 @@ MXROUTE = Provider(
         rule_sets=True,
         # Roundcube's form, `if false # <test>` (RECORD.md).
         disable=True,
+        # The name in Roundcube's `# rule:[NAME]` marker (RECORD.md).
+        rename=True,
         actions=frozenset((FILEINTO, DISCARD, FLAG, KEEP)),
         extensions=True,
         # The query is IMAP SEARCH syntax (RFC 3501 section 6.4.4).

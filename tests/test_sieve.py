@@ -2108,3 +2108,148 @@ def test_a_merge_that_would_change_what_is_filed_is_refused(second):
 
     with pytest.raises(MailctlError, match="cannot be merged"):
         script_module.rearrange_rules(source, [(0, [1])])
+
+
+# ############################################################################
+# Rules renamed in place (#216)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def rename(script: str, old: str, new: str) -> str:
+    """``MxrouteDialect.rename_rule``, Roundcube's names and all."""
+    return MxrouteDialect.rename_rule(script, old, new)
+
+
+# ----------------------------------------------------------------------------
+def test_a_rename_rewrites_the_name_line_and_no_other_byte():
+    """The comments, the body comment, and Roundcube's layout all
+    survive, which a parse and re-render would not keep."""
+    after = rename(COMMENTED_SCRIPT, "keep-boss", "The boss")
+
+    assert after == COMMENTED_SCRIPT.replace(
+        "# rule:[keep-boss]", "# rule:[The boss]"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_renamed_disabled_rule_stays_disabled_where_roundcube_reads_it():
+    after = rename(DISABLED_SCRIPT, "paused", "Invoices, paused")
+
+    assert after == DISABLED_SCRIPT.replace(
+        "# rule:[paused]", "# rule:[Invoices, paused]"
+    )
+    assert [
+        (rule.name, rule.disabled) for rule in MxrouteDialect.read_rules(after)
+    ] == [("Invoices, paused", True), ("bin-the-noise", False)]
+
+
+# ----------------------------------------------------------------------------
+def test_a_rename_keeps_a_crlf_script_crlf(roundcube_script):
+    crlf = roundcube_script.replace("\n", "\r\n")
+
+    after = rename(crlf, "bin-the-noise", "Newsletters")
+
+    assert after == crlf.replace(
+        "# rule:[bin-the-noise]", "# rule:[Newsletters]"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_sievelib_named_rule_is_renamed_into_roundcubes_form():
+    script = 'require ["fileinto"];\n# Filter: old\nkeep;\n'
+
+    assert rename(script, "old", "new") == (
+        'require ["fileinto"];\n# rule:[new]\nkeep;\n'
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_of_two_rules_with_one_name_the_first_is_renamed():
+    """The first is the one every other command names, too."""
+    script = "# rule:[dup]\nkeep;\n# rule:[dup]\ndiscard;\n"
+
+    assert rename(script, "dup", "one") == (
+        "# rule:[one]\nkeep;\n# rule:[dup]\ndiscard;\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_stale_marker_above_another_rules_name_is_left_alone():
+    """sievelib names a rule by the last marker above it, so the first
+    comment reading 'old' names rule 'x', not rule 'old'."""
+    script = "# rule:[old]\n# rule:[x]\nkeep;\n# rule:[old]\ndiscard;\n"
+
+    after = rename(script, "old", "new")
+
+    assert after == "# rule:[old]\n# rule:[x]\nkeep;\n# rule:[new]\ndiscard;\n"
+    assert MxrouteDialect.rule_names(after) == ["x", "new"]
+
+
+# ----------------------------------------------------------------------------
+def test_renaming_to_the_same_name_returns_the_script_as_it_was():
+    assert rename(COMMENTED_SCRIPT, "keep-boss", "keep-boss") == (
+        COMMENTED_SCRIPT
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("old", "new", "refusal"),
+    [
+        ("phantom", "x", "no rule named 'phantom'"),
+        ("keep-boss", "bin-the-noise", "already exists"),
+        ("keep-boss", "", "cannot be empty"),
+        ("keep-boss", "  ", "cannot be empty"),
+        ("keep-boss", "a\nb", "control character"),
+        ("keep-boss", "a\rb", "control character"),
+        ("keep-boss", "tab\there", "control character"),
+        ("keep-boss", "trailing ", "would not read back"),
+        ("keep-boss", "# Filter: x", "would not read back"),
+    ],
+    ids=[
+        "unknown",
+        "taken",
+        "empty",
+        "blank",
+        "newline",
+        "carriage-return",
+        "tab",
+        "trailing-space",
+        "marker-inside",
+    ],
+)
+def test_a_rename_that_cannot_land_is_refused(old, new, refusal):
+    with pytest.raises(MailctlError, match=refusal):
+        rename(COMMENTED_SCRIPT, old, new)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("new", ["a]b", "ends]", "[boxed]", "Café", " lead"])
+def test_a_name_the_marker_can_carry_is_written_and_read_back(new):
+    after = rename(COMMENTED_SCRIPT, "keep-boss", new)
+
+    assert MxrouteDialect.rule_names(after) == [new, "bin-the-noise"]
+    assert after == COMMENTED_SCRIPT.replace(
+        "# rule:[keep-boss]", f"# rule:[{new}]"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_rule_with_no_name_marker_is_refused():
+    with pytest.raises(MailctlError, match="no name written in the script"):
+        rename("keep;\n", "Unnamed rule 1", "named")
+
+
+# ----------------------------------------------------------------------------
+def test_a_rewrite_that_does_not_read_back_as_asked_is_refused(monkeypatch):
+    """The read-back is what stands behind the splice; seen to fire here
+    by making the splice leave the name as it was."""
+    monkeypatch.setattr(
+        script_module,
+        "_rewrite_marker",
+        lambda text, name, marker, which, dialect: text,
+    )
+
+    with pytest.raises(MailctlError, match="no name written in the script"):
+        rename(COMMENTED_SCRIPT, "keep-boss", "The boss")

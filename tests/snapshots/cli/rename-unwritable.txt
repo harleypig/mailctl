@@ -1,0 +1,15 @@
+$ mailctl rename-rule keep-boss two
+lines --yes
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: 'two\nlines' cannot be written as a rule name: it holds a control character, and a name is one line of the script
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

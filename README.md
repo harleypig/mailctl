@@ -596,11 +596,26 @@ mailctl optimize-rules --skip merge
 mailctl disable-rule from-newsletter-example-com --dry-run
 mailctl disable-rule from-newsletter-example-com
 mailctl enable-rule from-newsletter-example-com
+
+# Give a rule a better name. Only the name changes: the rule's conditions,
+# actions, position, and disabled state, and every other rule, stay as
+# they were.
+mailctl rename-rule "Herrschners Spam" "Yarn shops" --dry-run
+mailctl rename-rule "Herrschners Spam" "Yarn shops"
 ```
 
 `optimize-rules` never moves, merges, or removes a disabled rule, and the
 script stays a flat list of rules. `--skip` takes `redundant`, `reorder`,
 or `merge`, and is repeatable.
+
+`rename-rule` edits the rule's name line in place, so the diff it shows is
+the whole change. It refuses, before anything is uploaded, a rule that is
+not there, a new name that is empty or already another rule's, and one the
+script cannot hold as a name: a line break or other control character,
+spaces at the end, or a name marker inside it. A rule with no name written
+in the script (`rules` lists it as `Unnamed rule N`) cannot be renamed. A
+merged rule keeps the first rule's name, so `rename-rule` after
+`optimize-rules` gives it one that fits.
 
 ### Back up and restore
 
@@ -668,11 +683,12 @@ and save again.
 
 * `--dry-run` changes nothing, on every mutating command. It prints whatever
   that command would have changed: the Sieve diff for `add`,
-  `remove-rule`, `move-rule`, `disable-rule`, and `enable-rule`; the list of
-  matching messages for `apply`; each message's flags and what would change
-  for `mark`; the file that would have been written for `backup`; the
-  folders that would move, and the Sieve diff, for `rename-folder`; each
-  proposed change, and the Sieve diff, for `optimize-rules`.
+  `remove-rule`, `move-rule`, `disable-rule`, `enable-rule`, and
+  `rename-rule`; the list of matching messages for `apply`; each message's
+  flags and what would change for `mark`; the file that would have been
+  written for `backup`; the folders that would move, and the Sieve diff,
+  for `rename-folder`; each proposed change, and the Sieve diff, for
+  `optimize-rules`.
 * `add` **never touches mail already delivered**; `apply` is the only
   command that does. After saving a rule, `add` says so and points at
   `apply`.

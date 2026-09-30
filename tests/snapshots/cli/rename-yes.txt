@@ -1,0 +1,32 @@
+$ mailctl rename-rule keep-boss The boss --yes
+exit: 0
+--- stdout
+Rename rule 'keep-boss' to 'The boss' in script 'managesieve':
+
+--- sieve diff ---
+--- managesieve (current)
++++ managesieve (proposed)
+@@ -1,5 +1,5 @@
+ require ["fileinto","imap4flags"];
+-# rule:[keep-boss]
++# rule:[The boss]
+ if header :contains "from" "boss@example.com"
+ {
+ 	fileinto "INBOX.Boss";
+
+--- end diff ---
+Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Uploaded and activated script 'managesieve'
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('checkscript',)
+('putscript', 'managesieve', 'require ["fileinto","imap4flags"];\n# rule:[The boss]\nif header :contains "from" "boss@example.com"\n{\n\tfileinto "INBOX.Boss";\n\tsetflag "\\\\Flagged";\n\tstop;\n}\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter"\n{\n\tfileinto "INBOX.Noise";\n\tstop;\n}\n')
+('setactive', 'managesieve')
+('logout',)
+--- imap calls

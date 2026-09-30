@@ -98,6 +98,7 @@ FULL = ProviderCapabilities(
     stop=True,
     rule_sets=True,
     disable=True,
+    rename=True,
     actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
     extensions=True,
     raw_query=True,
@@ -257,6 +258,18 @@ class FakeDialect(Dialect):
         entries = json.loads(source)
 
         return json.dumps([e for e in entries if e["name"] != name])
+
+    @classmethod
+    def rename_rule(cls, source, old, new):
+        entries = json.loads(source)
+        entry = next((e for e in entries if e["name"] == old), None)
+
+        if entry is None:
+            raise MailctlError(f"no rule named {old!r}")
+
+        entry["name"] = new
+
+        return json.dumps(entries)
 
     @classmethod
     def disable_rule(cls, source, name):
@@ -617,6 +630,7 @@ UNORDERED = Provider(
         stop=True,
         rule_sets=True,
         disable=True,
+        rename=True,
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
@@ -648,6 +662,7 @@ STOPLESS = Provider(
         stop=False,
         rule_sets=True,
         disable=True,
+        rename=True,
         actions=frozenset((FILEINTO, DISCARD, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
@@ -810,6 +825,9 @@ def drive(session: Session, config: Config) -> None:
 
     switch = utilities.rules.plan_switch(session, "github", enable=False)
     utilities.rules.execute_script_change(session, config, switch)
+
+    rename = utilities.rules.plan_rename(session, "github", "GitHub mail")
+    utilities.rules.execute_script_change(session, config, rename)
 
     utilities.scripts.list_scripts(session)
     utilities.rules.read_rules(session)
@@ -1090,7 +1108,7 @@ def test_the_fake_really_stored_the_rule_and_moved_the_mail(
 
     assert [(rule.name, rule.disabled) for rule in stored] == [
         ("keep-boss", False),
-        ("github", True),
+        ("GitHub mail", True),
     ]
 
 
@@ -1396,8 +1414,9 @@ def test_mxroute_capabilities_are_what_sieve_over_managesieve_offers():
         caps.stop,
         caps.rule_sets,
         caps.disable,
+        caps.rename,
         caps.extensions,
-    ) == (True, True, True, True, True)
+    ) == (True, True, True, True, True, True)
     assert caps.actions == {FILEINTO, DISCARD, FLAG_ACTION, KEEP}
     assert caps.declined == frozenset()
     assert dict(caps.specifics) == {}
@@ -1670,6 +1689,11 @@ class BareDialect(UnorderedDialect):
 
     @classmethod
     @declined
+    def rename_rule(cls, source, old, new):
+        """No rule's name can be changed."""
+
+    @classmethod
+    @declined
     def count_support(cls, capabilities):
         """No folder counts to read."""
 
@@ -1707,6 +1731,7 @@ BARE = Provider(
         stop=False,
         rule_sets=True,
         disable=False,
+        rename=False,
         actions=frozenset((FILEINTO, FLAG_ACTION, KEEP)),
         extensions=False,
         raw_query=False,
@@ -1721,6 +1746,7 @@ BARE = Provider(
                 "rearrange_rules",
                 "disable_rule",
                 "enable_rule",
+                "rename_rule",
                 "add_flags",
                 "remove_flags",
                 "count_support",
@@ -1820,6 +1846,28 @@ def test_disable_and_enable_are_not_listed_without_disable(
 
     assert "disable-rule" not in text
     assert "enable-rule" not in text
+
+
+# ----------------------------------------------------------------------------
+def test_rename_rule_is_not_listed_without_rename(bare, capsys, monkeypatch):
+    assert re.search(r"(?<![\w-])rename-rule", help_text(capsys))
+
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+    text = help_text(capsys)
+
+    assert not re.search(r"(?<![\w-])rename-rule", text)
+    assert "rename-folder" in text
+
+
+# ----------------------------------------------------------------------------
+def test_a_rename_is_refused_by_a_host_without_rename(bare):
+    """The utility holds the line for any front-end, not only the CLI."""
+    session = fake_session(BARE)
+
+    with pytest.raises(MailctlError, match="'rename' capability"):
+        utilities.rules.plan_rename(session, "keep-boss", "The boss")
+
+    assert session.opened == ()
 
 
 # ----------------------------------------------------------------------------
@@ -2042,6 +2090,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         (["move-rule", "x", "--first"], "'ordering'"),
         (["disable-rule", "x", "--yes"], "'disable'"),
         (["enable-rule", "x", "--yes"], "'disable'"),
+        (["rename-rule", "x", "y", "--yes"], "'rename'"),
         (["list", "--sieve-port", "4190"], "flag --sieve-port"),
         (["list", "--disable-extension", "mailbox"], "disabled_extensions"),
         (["search", "--raw", "ALL"], "'raw_query'"),
@@ -2054,6 +2103,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         "move-rule",
         "disable-rule",
         "enable-rule",
+        "rename-rule",
         "connection-flag",
         "disable-extension",
         "raw-query",

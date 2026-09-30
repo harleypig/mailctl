@@ -700,3 +700,122 @@ def test_switching_an_unknown_rule_or_an_empty_script_is_refused(
 
     with pytest.raises(MailctlError, match="is empty"):
         utilities.rules.plan_switch(empty, "keep-boss", enable=enable)
+
+
+# ############################################################################
+# Renaming a rule (#216)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_rename_changes_the_name_line_and_nothing_else(sessions, fake_sieve):
+    plan = utilities.rules.plan_rename(sessions, "keep-boss", "The boss")
+
+    assert plan.changes
+    assert plan.after == plan.before.replace(
+        "# rule:[keep-boss]", "# rule:[The boss]"
+    )
+    assert rule_names(parse_script(plan.after)) == [
+        "The boss",
+        "bin-the-noise",
+    ]
+    assert plan.diff.reformats is False
+    assert "-# rule:[keep-boss]" in plan.diff.text
+    assert "put_script" not in fake_sieve.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_renamed_disabled_rule_stays_disabled(sessions):
+    source = sessions.transport.read_rule_set("managesieve")
+    off = MxrouteDialect.disable_rule(source, "keep-boss")
+    live = mxroute(sieve=FakeSieveSession(script=off))
+
+    plan = utilities.rules.plan_rename(live, "keep-boss", "The boss")
+
+    assert [
+        (rule.name, rule.disabled)
+        for rule in MxrouteDialect.read_rules(plan.after)
+    ] == [("The boss", True), ("bin-the-noise", False)]
+    assert plan.after == off.replace("# rule:[keep-boss]", "# rule:[The boss]")
+
+
+# ----------------------------------------------------------------------------
+def test_an_executed_rename_is_backed_up_then_uploaded(
+    sessions, imap_config, fake_sieve, tmp_path
+):
+    imap_config.backup_dir = tmp_path / "backups"
+    plan = utilities.rules.plan_rename(sessions, "keep-boss", "The boss")
+
+    path = utilities.rules.execute_script_change(sessions, imap_config, plan)
+
+    assert path.read_bytes() == plan.before.encode()
+    assert fake_sieve.calls[-2][:3] == (
+        "put_script",
+        "managesieve",
+        plan.after,
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_renaming_a_rule_to_its_own_name_changes_nothing(sessions):
+    plan = utilities.rules.plan_rename(sessions, "keep-boss", "keep-boss")
+
+    assert not plan.changes
+    assert plan.after == plan.before
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("old", "new", "refusal"),
+    [
+        ("phantom", "The boss", "no rule named 'phantom'"),
+        ("keep-boss", "bin-the-noise", "already exists"),
+        ("keep-boss", "two\nlines", "cannot be written as a rule name"),
+        ("keep-boss", "trailing ", "cannot be written as a rule name"),
+    ],
+    ids=["unknown", "taken", "line-break", "trailing-space"],
+)
+def test_a_rename_the_script_cannot_take_is_refused(
+    sessions, fake_sieve, old, new, refusal
+):
+    with pytest.raises(MailctlError, match=refusal):
+        utilities.rules.plan_rename(sessions, old, new)
+
+    assert "put_script" not in fake_sieve.names()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("new", ["", "   "])
+def test_an_empty_new_name_is_refused_before_the_script_is_read(
+    sessions, fake_sieve, new
+):
+    with pytest.raises(MailctlError, match="cannot be empty"):
+        utilities.rules.plan_rename(sessions, "keep-boss", new)
+
+    with pytest.raises(MailctlError, match="cannot be empty"):
+        utilities.rules.check_rename(Config(), new)
+
+    assert fake_sieve.names() == []
+
+
+# ----------------------------------------------------------------------------
+def test_a_taken_name_points_at_the_rules_listing():
+    with pytest.raises(MailctlError) as refused:
+        MxrouteDialect.rename_rule(
+            'require ["fileinto"];\n# rule:[a]\nkeep;\n# rule:[b]\nkeep;\n',
+            "a",
+            "b",
+        )
+
+    assert refused.value.code == "rule_name_taken"
+    assert error_text(refused.value).endswith(
+        "'mailctl rules' lists the names in use."
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_renaming_in_an_empty_script_is_refused():
+    empty = mxroute(sieve=FakeSieveSession(script=""))
+
+    with pytest.raises(MailctlError, match="is empty"):
+        utilities.rules.plan_rename(empty, "keep-boss", "The boss")

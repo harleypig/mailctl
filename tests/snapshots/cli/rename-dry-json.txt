@@ -1,0 +1,30 @@
+$ mailctl rename-rule keep-boss The boss --dry-run --json
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "plan": {
+    "command": "rename-rule",
+    "changes": true,
+    "diff": {
+      "label": "sieve",
+      "text": "--- managesieve (current)\n+++ managesieve (proposed)\n@@ -1,5 +1,5 @@\n require [\"fileinto\",\"imap4flags\"];\n-# rule:[keep-boss]\n+# rule:[The boss]\n if header :contains \"from\" \"boss@example.com\"\n {\n \tfileinto \"INBOX.Boss\";\n",
+      "reformats": false
+    },
+    "rule": "keep-boss",
+    "new_name": "The boss",
+    "script": "managesieve",
+    "active": "managesieve",
+    "activate": true
+  }
+}
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

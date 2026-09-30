@@ -1,0 +1,14 @@
+$ mailctl rename-rule keep-boss The boss --yes
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: script 'managesieve' is empty
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

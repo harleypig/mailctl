@@ -16,6 +16,7 @@ import difflib
 import io
 import re
 import sys
+import unicodedata
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, TextIO, cast
@@ -45,6 +46,7 @@ __all__ = [
     "parse_script",
     "rearrange_rules",
     "remove_rule",
+    "rename_rule",
     "render_script",
     "resolve_position",
     "retarget_fileinto",
@@ -608,6 +610,147 @@ def enable_rule(
     entry.pop("disabled_condition", None)
 
     return render_script(filters, dialect)
+
+
+# ----------------------------------------------------------------------------
+def rename_rule(
+    existing: str,
+    old: str,
+    new: str,
+    dialect: NameDialect = SIEVELIB_DIALECT,
+) -> str:
+    """Give the first rule called ``old`` the name ``new``; return the
+    new source.
+
+    Only the rule's name marker is rewritten, where it sits in
+    ``existing``; every other byte is kept, so the rule's body, its
+    position, whether it is disabled, and every other rule and comment
+    survive exactly -- which a parse and re-render would not. The marker
+    is written in ``dialect``'s form.
+
+    Refused when ``old`` is not a rule, when ``new`` is empty, is already
+    a rule's name, or would not read back as ``new`` in ``dialect``, and
+    when ``old`` has no name marker in the script to rewrite. ``new`` the
+    same as ``old`` returns ``existing`` unchanged.
+    """
+    if not new.strip():
+        raise MailctlError("a rule's new name cannot be empty")
+
+    filters = parse_script(existing, dialect)
+    names = rule_names(filters)
+
+    if old not in names:
+        known = ", ".join(names) or "(none)"
+
+        raise MailctlError(
+            f"no rule named {old!r} in the active script. Known rules: {known}"
+        )
+
+    if new == old:
+        return existing
+
+    if new in names:
+        raise MailctlError(
+            f"a rule named {new!r} already exists in the active script, and "
+            f"two rules of one name cannot be told apart.",
+            code="rule_name_taken",
+            fields={"operation": "rules"},
+        )
+
+    _check_rule_name(new, dialect)
+
+    expected = list(names)
+    expected[names.index(old)] = new
+    marker = dialect.write(f"{SIEVELIB_NAME_MARKER}{new}")
+
+    # Which comment names the rule is sievelib's call -- the last name
+    # marker above a command wins, and a duplicated name belongs to the
+    # first rule -- so each comment reading as ``old`` is tried in turn,
+    # and the first whose rewrite reads back as exactly the one rename is
+    # the one.
+    for candidate in range(_count_markers(existing, old, dialect)):
+        after = _rewrite_marker(existing, old, marker, candidate, dialect)
+
+        if rule_names(parse_script(after, dialect)) == expected:
+            return after
+
+    # ICEBOX: 2026-09-29 -- naming an unnamed rule ("Unnamed rule N"):
+    # give, add, set, or write a name on a rule with no name marker. It
+    # needs a marker line inserted above the rule's first byte, and
+    # sievelib records no command offsets to find it by. Revisit if a
+    # script with unnamed rules turns up on a real account.
+    raise MailctlError(
+        f"rule {old!r} has no name written in the script to change, so it "
+        f"cannot be renamed in place"
+    )
+
+
+# ----------------------------------------------------------------------------
+def _check_rule_name(name: str, dialect: NameDialect) -> None:
+    """Refuse a name that would not read back as itself in ``dialect``."""
+    if any(unicodedata.category(char) == "Cc" for char in name):
+        raise MailctlError(
+            f"{name!r} cannot be written as a rule name: it holds a control "
+            f"character, and a name is one line of the script"
+        )
+
+    probe = dialect.write(f"{SIEVELIB_NAME_MARKER}{name}\nkeep;\n")
+
+    if rule_names(parse_script(probe, dialect)) != [name]:
+        raise MailctlError(
+            f"{name!r} cannot be written as a rule name: it would not read "
+            f"back as the same name. Leading or trailing spaces, or a name "
+            f"marker inside it, are the usual cause"
+        )
+
+
+# ----------------------------------------------------------------------------
+def _marker_name(comment: str, dialect: NameDialect) -> str | None:
+    """The rule name a hash comment carries in ``dialect``, or None."""
+    read = dialect.read(comment)
+
+    if not read.startswith(SIEVELIB_NAME_MARKER):
+        return None
+
+    # sievelib's own reading, in FiltersSet.from_parser_result.
+    return read.replace(SIEVELIB_NAME_MARKER, "")
+
+
+# ----------------------------------------------------------------------------
+def _count_markers(text: str, name: str, dialect: NameDialect) -> int:
+    """How many hash comments in ``text`` read as the name ``name``."""
+    found = 0
+
+    def count(comment: str) -> None:
+        nonlocal found
+
+        if _marker_name(comment, dialect) == name:
+            found += 1
+
+    rewrite_hash_comments(text, count)
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def _rewrite_marker(
+    text: str, name: str, marker: str, which: int, dialect: NameDialect
+) -> str:
+    """``text`` with the ``which``-th comment naming ``name`` replaced by
+    ``marker``, every other byte kept."""
+    seen = -1
+
+    def translate(comment: str) -> str | None:
+        nonlocal seen
+
+        if _marker_name(comment, dialect) != name:
+            return None
+
+        seen += 1
+
+        return marker if seen == which else None
+
+    return rewrite_hash_comments(text, translate)
 
 
 # ----------------------------------------------------------------------------
