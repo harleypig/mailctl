@@ -1319,7 +1319,7 @@ def test_a_non_ascii_raw_expression_is_refused_before_sorting(
 def test_a_refused_sort_names_the_folder(imap_session, fake_imap):
     """A server without SORT is not meant to be asked; if it is, the
     library's refusal comes back as mailctl's error, naming the folder."""
-    with pytest.raises(MailctlError, match="IMAP sort in 'INBOX' failed"):
+    with pytest.raises(MailctlError, match="sort in 'INBOX' failed"):
         imap_session.sort_uids("INBOX", ["SIZE"])
 
 

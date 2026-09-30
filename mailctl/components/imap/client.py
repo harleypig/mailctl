@@ -220,7 +220,7 @@ class ImapSession:
             ) from exc
 
         except IMAPClientError as exc:
-            raise MailctlError(f"IMAP error -- {exc}") from exc
+            raise MailctlError(f"mail server error -- {exc}") from exc
 
         self.client = client
         self._selected = None
@@ -703,7 +703,7 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"IMAP search in {folder!r} failed -- {exc}"
+                f"search in {folder!r} failed -- {exc}"
             ) from exc
 
     # ------------------------------------------------------------------------
@@ -732,7 +732,7 @@ class ImapSession:
                 )
 
         except IMAPClientError as exc:
-            raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
+            raise MailctlError(f"fetch failed -- {exc}") from exc
 
         return [
             _fetched(uid, data, folder)
@@ -756,7 +756,7 @@ class ImapSession:
             fetched = client.fetch(uids, SUMMARY_ITEMS)
 
         except IMAPClientError as exc:
-            raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
+            raise MailctlError(f"fetch failed -- {exc}") from exc
 
         return [
             _fetched(uid, fetched[uid], folder)
@@ -1077,7 +1077,7 @@ class ImapSession:
             fetched = client.fetch([uid], items)
 
         except IMAPClientError as exc:
-            raise MailctlError(f"IMAP fetch failed -- {exc}") from exc
+            raise MailctlError(f"fetch failed -- {exc}") from exc
 
         data = fetched.get(uid)
 
@@ -1144,9 +1144,7 @@ class ImapSession:
             )
 
         except IMAPClientError as exc:
-            raise MailctlError(
-                f"IMAP sort in {folder!r} failed -- {exc}"
-            ) from exc
+            raise MailctlError(f"sort in {folder!r} failed -- {exc}") from exc
 
 
 # ----------------------------------------------------------------------------

@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: no active script on the server to restore over. Name the script to restore with --script NAME; with nothing active it is activated. 'mailctl filterset list' shows what the account has.
+mailctl: no active filter set on the server to restore over. Name the filter set to restore with --script NAME; with nothing active it is activated. 'mailctl filterset list' shows what the account has.
 
 --- sieve calls
 ('connect',)

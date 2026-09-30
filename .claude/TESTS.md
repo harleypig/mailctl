@@ -187,6 +187,18 @@ where every write path is proved first.
      The component, session-and-utilities, neutral-model, half, and
      read/write guards each carry a case built to break them, so each is
      seen to fail as well as pass.
+   - **Neutral wording** (`test_neutral_wording.py`, [#219][i219]) —
+     under `mxroute`, no provider word (Sieve, IMAP, MXroute, Roundcube,
+     CHECKSCRIPT, fileinto, Exim, DirectAdmin, script) in any help page
+     read off the parser, outside the `server` commands, the
+     `--disable-extension` help, and the connection settings the provider
+     declares; and none in what any snapshot's command prints, outside the
+     server reports, the filter set's own text (a diff, `filterset show`),
+     `--verbose`'s protocol log, a server's alert or warning, a JSON
+     document's keys, and a refusal about an extension or a forbidden
+     action. Option names and metavars are taken out first. Each walk is
+     seen to reach what it allows, each exception to be needed, and a
+     planted word, and each line printed before #219, to turn it red.
    - **Providers** (`test_providers.py`) — each half of every registered
      provider implements or explicitly declines every operation of its
      interface (`Dialect`, `Transport`), and the two decline exactly what
@@ -212,8 +224,9 @@ where every write path is proved first.
      a pin is refused, while listing and reading still work; without
      `rule_sets` the `filterset` group is not listed, and its commands still
      parse and run; a connection flag the provider does not read is hidden and
-     refused; and `filter add` and `server test` under a fake carry its own
-     wording, with nothing about Sieve or MXroute. `mxroute`'s help hides
+     refused; a `filterset` command is refused by the utility, naming the
+     provider, before anything is read; and `filter add` and `server test`
+     under a fake say nothing about Sieve or MXroute. `mxroute`'s help hides
      nothing but the always-hidden flags.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real

@@ -9,8 +9,8 @@ Password:  set  (MAILCTL_PASSWORD, environment)
 IMAP:      mail.example.com:993  (host: same as host, port: default)
 Sieve:     mail.example.com:4190 (tls=starttls)  (default)
 Folder:    INBOX  (default)  -- read by apply, search, view, mark, senders, and --like
-[sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
-[sieve] authenticated
+[filter] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
+[filter] authenticated
 
 ManageSieve: connected
   Sieve extensions (* = mailctl's own rules can need it):
@@ -29,8 +29,8 @@ ManageSieve: connected
   active script: managesieve
   other scripts: (none)
   (mailctl always edits the ACTIVE script under its own name; it never guesses one.)
-[imap] connecting to mail.example.com:993 (ssl=True) as user@example.com
-[imap] connected; delimiter '.', 3 folders, 2 subscribed
+[mail] connecting to mail.example.com:993 (ssl=True) as user@example.com
+[mail] connected; delimiter '.', 3 folders, 2 subscribed
 
 IMAP: connected
   delimiter: '.'

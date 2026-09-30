@@ -1,21 +1,23 @@
 # mailctl
 
-Manage MXRoute email filters from the command line, end to end: build a
-Sieve rule from criteria flags, merge it into the account's **active**
-script without disturbing the rules already there, and apply the same
-criteria to the mail that has already been delivered. It also finds,
-counts, reads, and marks that mail, and manages the folders it is filed
-into.
+Read, sort, and filter the mail on your account from the command line: build
+a filter from criteria flags, merge it into the account's **active** filter
+set without disturbing the rules already there, and apply the same criteria
+to the mail that has already been delivered. It also finds, counts, reads,
+and marks that mail, and manages the folders it is filed into. MXRoute is
+the provider it speaks to today (see *MXRoute specifics*); what it shows you
+is the same whichever provider it is.
 
 ## What it is for
 
-A Sieve filter only ever sees **new** mail. Write a rule in webmail and
+A server-side filter only ever sees **new** mail. Write a rule in webmail and
 every message already in the mailbox stays exactly where it was. mailctl
 does both halves, as two commands that take the same criteria: `add` saves
 the rule, and `apply` acts on the mail already there.
 
 It exists for a second reason too: the filter and search screens in
-Roundcube, the webmail MXRoute ships, are too restricted. mailctl's
+Roundcube, the webmail MXRoute ships, are too restricted, and mailctl is
+replacing them rather than working within them. mailctl's
 criteria go further — any header, text in the body, whole-value and
 wildcard comparisons, and, for mail already delivered, dates and read or
 flagged state — and it can list, count, sort, and read the mail, so the
@@ -237,13 +239,13 @@ the same as `mailctl filter add --help` for the provider configured, without
 contacting a server. Every command that changes something shows what it
 would change first, and `--dry-run` stops there (see *Safety*).
 
-A message the IMAP server marks as an **alert** — a mailbox nearly full,
+A message the mail server marks as an **alert** — a mailbox nearly full,
 maintenance tonight — is printed on stderr, on any command that connects to
-IMAP, with or without `--verbose`, and once per run however often the
-server repeats it:
+it, with or without `--verbose`, and once per run however often the server
+repeats it:
 
 ```text
-mailctl: alert from the imap server: <text>
+mailctl: alert from the mail server: <text>
 ```
 
 One sent before the connection is encrypted is ignored, since anyone on the
@@ -587,7 +589,7 @@ folder only in case is refused by `create-folder` and `rename-folder`.
 ### Manage the rules
 
 ```bash
-# The scripts on the server, and one script's text (the active one by
+# The filter sets on the server, and one set's text (the active one by
 # default).
 mailctl filterset list
 mailctl filterset show
@@ -609,8 +611,8 @@ mailctl filter move from-newsletter-example-com --after keep-boss
 mailctl filter optimize --dry-run
 mailctl filter optimize --skip merge
 
-# Switch a rule off without deleting it, and back on. Written the way
-# Roundcube writes it, so webmail shows it as disabled too.
+# Switch a rule off without deleting it, and back on. On MXRoute it is
+# written the way Roundcube writes one, so webmail shows it disabled too.
 mailctl filter disable from-newsletter-example-com --dry-run
 mailctl filter disable from-newsletter-example-com
 mailctl filter enable from-newsletter-example-com
@@ -622,27 +624,27 @@ mailctl filter rename "Herrschners Spam" "Yarn shops" --dry-run
 mailctl filter rename "Herrschners Spam" "Yarn shops"
 ```
 
-`optimize-rules` never moves, merges, or removes a disabled rule, and the
-script stays a flat list of rules. `--skip` takes `redundant`, `reorder`,
+`filter optimize` never moves, merges, or removes a disabled rule, and the
+filter set stays a flat list of rules. `--skip` takes `redundant`, `reorder`,
 or `merge`, and is repeatable.
 
-`rename-rule` edits the rule's name line in place, so the diff it shows is
-the whole change. It refuses, before anything is uploaded, a rule that is
-not there, a new name that is empty or already another rule's, and one the
-script cannot hold as a name: a line break or other control character,
-spaces at the end, or a name marker inside it. A rule with no name written
-in the script (`rules` lists it as `Unnamed rule N`) cannot be renamed. A
-merged rule keeps the first rule's name, so `rename-rule` after
-`optimize-rules` gives it one that fits.
+`filter rename` edits the rule's name line in place, so the diff it shows
+is the whole change. It refuses, before anything is uploaded, a rule that
+is not there, a new name that is empty or already another rule's, and one
+the filter set cannot hold as a name: a line break or other control
+character, spaces at the end, or a name marker inside it. A rule with no
+name written in the filter set (`filter list` shows it as `Unnamed rule N`)
+cannot be renamed. A merged rule keeps the first rule's name, so `filter
+rename` after `filter optimize` gives it one that fits.
 
 ### Back up and restore
 
 ```bash
-# Save the active script, byte for byte, before you touch anything.
+# Save the active filter set, byte for byte, before you touch anything.
 mailctl filterset backup
 mailctl filterset backup --output ~/mailctl-before-first-run.sieve
 
-# Put a backup back over the active script: diff, back up, confirm.
+# Put a backup back over the active filter set: diff, back up, confirm.
 mailctl filterset restore ~/mailctl-before-first-run.sieve --dry-run
 mailctl filterset restore ~/mailctl-before-first-run.sieve
 ```
@@ -700,13 +702,13 @@ and save again.
 ## Safety
 
 * `--dry-run` changes nothing, on every mutating command. It prints whatever
-  that command would have changed: the Sieve diff for `add`,
-  `remove-rule`, `move-rule`, `disable-rule`, `enable-rule`, and
-  `rename-rule`; the list of matching messages for `apply`; each message's
-  flags and what would change for `mark`; the file that would have been
-  written for `backup`; the folders that would move, and the Sieve diff,
-  for `rename-folder`; each proposed change, and the Sieve diff, for
-  `optimize-rules`.
+  that command would have changed: the diff for `filter add`,
+  `filter remove`, `filter move`, `filter disable`, `filter enable`, and
+  `filter rename`; the list of matching messages for `filter apply`; each
+  message's flags and what would change for `mail mark`; the file that
+  would have been written for `filterset backup`; the folders that would
+  move, and the diff, for `folder rename`; each proposed change, and the
+  diff, for `filter optimize`.
 * `add` **never touches mail already delivered**; `apply` is the only
   command that does. After saving a rule, `add` says so and points at
   `apply`.
@@ -718,11 +720,11 @@ and save again.
   them, so the headers are the only thing that catches a mistyped digit
   before mail starts moving. `--uidvalidity` catches a UID that has gone
   stale (see *Mark messages*).
-* `rename-folder` **validates the rewritten script before it touches the
-  folder**, then renames, fixes the subscriptions, and stores the script
-  straight after, so a rule points at a missing folder for as short a
+* `folder rename` **has the server check the rewritten filter set before
+  it touches the folder**, then renames, fixes the subscriptions, and
+  stores the filter set straight after, so a rule points at a missing folder for as short a
   time as possible. It edits only the folder names in the rules; every
-  other byte of the script is kept. It does not report success on the
+  other byte of the filter set is kept. It does not report success on the
   folder list alone: it reads the account back and checks the new name is
   subscribed where the old one was, holds at least the messages the old
   one did, and that no rule still files into an old name, exiting
@@ -764,43 +766,48 @@ and save again.
   shown as a rough text conversion, and says so above the body; `--raw`
   shows the original. Attachments are listed by name, type, and size, and
   never written anywhere.
-* The Sieve diff is shown with **both sides in mailctl's own formatting**.
-  A merge re-renders the whole script, so a diff against the server's raw
-  copy would report every re-indented line as a change — on a hand-written
-  script that is most of the file, and it reads exactly like something
+* The diff is shown with **both sides in mailctl's own formatting**.
+  A merge re-renders the whole filter set, so a diff against the server's
+  raw copy would report every re-indented line as a change — on a
+  hand-written filter set that is most of the file, and it reads exactly like something
   having gone wrong. The reformat is real, so mailctl says so on a line
   above the diff, and only while the server's copy is still in some other
   formatting. What gets uploaded and what gets backed up are unaffected.
-* The current active script is backed up to a timestamped file before any
+* The current active filter set is backed up to a timestamped file before any
   upload, and the path is printed. `mailctl filterset backup` takes the same
   copy on demand, without changing anything on the server.
 * Backups land in `$XDG_CONFIG_HOME/mailctl/backups` (usually
   `~/.config/mailctl/backups`) — beside your `config.toml`, one file per
-  backup, named `<script>-<UTC timestamp>.sieve`. XDG would call a backup
+  backup, named after the filter set and the UTC time (on MXRoute,
+  `<name>-<UTC timestamp>.sieve`). XDG would call a backup
   *state* rather than config; keeping it here is a deliberate departure from
   that, not something XDG endorses, because a backup you cannot find is not a
   backup. `--backup-dir`, `MAILCTL_BACKUP_DIR`, and `backup_dir` in
   `config.toml` move it, with `~` and `$VAR` expanded in each. The file is
-  written mode `0600` in a directory created `0700`: a Sieve script is not a
+  written mode `0600` in a directory created `0700`: a filter set is not a
   password, but it does say who you correspond with and how you sort it.
 * **`mailctl filterset restore FILE` puts a backup back.** The backup is the
   server's exact bytes — no banner lines, nothing reformatted — and restore
-  uploads them exactly, over the active script — or over the one `--script
-  NAME` names, which stays inactive unless `--activate` is given. No other
-  stored script is touched. It shows the raw diff against what the server has
-  now, backs the current script up first, lets the server validate the file,
+  uploads them exactly, over the active filter set — or over the one
+  `--script NAME` names, which stays inactive unless `--activate` is given.
+  No other stored filter set is touched. It shows the raw diff against what
+  the server has now, backs the current one up first, lets the server check
+  the file,
   and asks before it replaces anything. It is the one command that
   **replaces** rather than merges: a rule added since the backup was taken is
-  removed, and the diff shows it. It works even over a script mailctl cannot
+  removed, and the diff shows it. It works even over a filter set mailctl
+  cannot
   parse ([ADR 0005][adr5]). An empty FILE would remove every rule, so it is
   refused unless `--allow-empty` is given. FILE is read and checked before
   mailctl connects, and `~` and `$VAR` in it are expanded. If the account has
-  no active script, restore refuses rather than guess, and `--script NAME` is
+  no active filter set, restore refuses rather than guess, and `--script
+  NAME` is
   the way back: NAME is restored and made active.
-* Rules are merged into the parsed existing script, never appended blindly,
-  so other rules survive. If the existing script cannot be parsed, mailctl
-  stops rather than overwrite it.
-* `checkscript` runs on the server before `putscript`.
+* Rules are merged into the parsed existing filter set, never appended
+  blindly, so other rules survive. If the existing filter set cannot be
+  parsed, mailctl stops rather than overwrite it.
+* The server checks every filter set before it is stored (on MXRoute,
+  ManageSieve's `CHECKSCRIPT` before `PUTSCRIPT`).
 * `apply` **always previews and always confirms** before it
   touches anything — `--dry-run` shortens that path, it is not what creates
   it. `--yes` skips the prompts. Deletion says in as many words that it
@@ -854,9 +861,10 @@ and save again.
   is the only thing that can create the folder, and mailctl says it may
   not appear in webmail until you run `mailctl folder subscribe` on it.
 * The folder is **announced when the change is shown and created only when
-  it is applied** — for `add`, once the server has accepted the new script
-  and just before it is stored; for `apply`, after you confirm the move. A
-  dry run, an abort, or a rejected script leaves no stray folder, and an
+  it is applied** — for `add`, once the server has accepted the new filter
+  set and just before it is stored; for `apply`, after you confirm the
+  move. A dry run, an abort, or a rejected filter set leaves no stray
+  folder, and an
   `apply` that matches nothing creates nothing and says so.
 
 ## Output for scripts

@@ -477,7 +477,7 @@ def plan_optimize(
     name, before, active = fetch_active(session, script)
 
     if not before.strip():
-        raise MailctlError(f"script {name!r} is empty")
+        raise MailctlError(f"filter set {name!r} is empty")
 
     dialect = session.dialect
     rules = dialect.read_rules(before)
@@ -490,9 +490,9 @@ def plan_optimize(
 
         if landed != expected_rules(rules, proposals):
             raise MailctlError(
-                f"the rearranged script {name!r} does not read back as the "
-                f"rules proposed, so nothing is offered; this is a mailctl "
-                f"defect, not a problem with your script"
+                f"the rearranged filter set {name!r} does not read back as "
+                f"the rules proposed, so nothing is offered; this is a "
+                f"mailctl defect, not a problem with your filter set"
             )
 
     return OptimizePlan(

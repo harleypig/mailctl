@@ -112,7 +112,7 @@ FLAGGED = Path(os.environ["STUB_LOG"]).with_suffix(".flagged")
 UIDVALIDITY = 1727000000
 
 SCRIPT = """\
-# ---- managesieve ----
+--- filter set 'managesieve' ---
 require ["fileinto"];
 # rule:[keep boss]
 if header :contains "from" "boss@example.com"
@@ -126,7 +126,7 @@ if header :contains "subject" "newsletter"
 \tfileinto "INBOX.Noise";
 \tstop;
 }
-# ---- 2 rule(s): keep boss, bin-the-noise
+--- 2 rule(s): keep boss, bin-the-noise ---
 """
 
 RULES = """\
@@ -169,7 +169,7 @@ DIFF = """\
 +# rule:[x]
 --- end diff ---
 
-[dry-run] the script was NOT uploaded.
+[dry-run] the filter set was NOT uploaded.
 """
 
 
@@ -391,7 +391,7 @@ def add() -> str:
     out = ""
 
     if "--create-folder" in ARGV:
-        out += f"[dry-run] would create IMAP folder '{folder}'\n"
+        out += f"[dry-run] would create folder '{folder}'\n"
 
     subject = option("--subject")
     name = f"subject-{subject.lower()}" if subject else "from-probe"
@@ -709,7 +709,7 @@ def main() -> int:
 
     elif command == "create-folder":
         out = (
-            f"[dry-run] would create IMAP folder 'INBOX.{ARGV[-1]}' and "
+            f"[dry-run] would create folder 'INBOX.{ARGV[-1]}' and "
             f"subscribe to it\n"
         )
 
@@ -718,13 +718,13 @@ def main() -> int:
 
     elif command == "rename-folder":
         out = (
-            f"Rename IMAP folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}' "
+            f"Rename folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}' "
             f"(3 messages)\n\n[dry-run] nothing was renamed, and the script "
             f"was NOT uploaded.\n"
         )
 
         if "rename-renames" in BREAK:
-            out += f"Renamed IMAP folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}'\n"
+            out += f"Renamed folder '{ARGV[-2]}' to 'INBOX.{ARGV[-1]}'\n"
 
     else:
         print(f"fake mailctl: no canned output for {command}", file=sys.stderr)

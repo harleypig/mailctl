@@ -146,7 +146,8 @@ cat "$(ls -t ~/.config/mailctl/backups/*.sieve | head -1)"
 **You should see** your existing filters as Sieve source and nothing else.
 
 **Use `backup`, not `mailctl filterset show > file`.** `show` wraps its output
-in two banner lines — `# ---- <name> ----` and `# ---- N rule(s): ...` — so a
+in two banner lines — `--- filter set '<name>' ---` and `--- N rule(s): ...
+---` — so a
 redirected `show` is a file that looks like a backup and is not one. `backup`
 exists for exactly this.
 
@@ -174,8 +175,8 @@ mailctl filter add --from newsletter@example.com --fileinto Lists/News --dry-run
 
 **You should see**, in this order: a folder-resolution line if the name you
 typed had to be respelled, a plain-English summary of the rule (`when:` /
-`then:`), a unified diff of the script, and the line `[dry-run] the script
-was NOT uploaded.` `add` never touches mail already delivered — that is
+`then:`), a unified diff of the filter set, and the line `[dry-run] the
+filter set was NOT uploaded.` `add` never touches mail already delivered — that is
 step 6's `apply` — so there is no message list here.
 
 **Scrutinize the diff, line by line. This is the important part.**
@@ -215,8 +216,8 @@ messages that arrive from now on.
 
 **You should see** the same summary and diff as step 4, then three new lines:
 
-* `Backed up current script to <path>` — note the path.
-* `Uploaded and activated script '<name>'`.
+* `Backed up the current filter set to <path>` — note the path.
+* `Uploaded and activated filter set '<name>'`.
 * `Mail already delivered was not touched; to act on it, run 'mailctl
   apply' with the same criteria and actions.`
 
@@ -238,7 +239,7 @@ messages that arrive from now on.
    mailctl filterset show
    ```
 
-   The last line reads `# ---- N rule(s): <names>`. **Your new rule name must
+   The last line reads `--- N rule(s): <names> ---`. **Your new rule name must
    appear there, and so must every name that was in the file you saved in
    step 3.**
 
@@ -301,7 +302,7 @@ means the criteria were broader than you thought.
 
 **You should see:**
 
-* `Created IMAP folder 'INBOX.Scratch' and subscribed to it` (spelled per
+* `Created folder 'INBOX.Scratch' and subscribed to it` (spelled per
   your server's delimiter). Subscribing is the half that makes the folder
   appear in webmail: a folder that was created but not subscribed to
   receives mail and stays invisible. If instead you see a warning that

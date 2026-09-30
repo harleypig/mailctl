@@ -36,7 +36,15 @@ from ...config import DEFAULT, Config, Source
 from ...criteria import Criteria, escape_sieve_string
 from ...rules import Rule, Slot, rule_from_criteria
 from ..base import (
+    DISCARD,
+    FILEINTO,
+    FLAG,
+    KEEP,
+    OTHER,
+    STOP,
+    UNFLAG,
     ActionSpec,
+    ActionStep,
     DisplayDiff,
     ExtensionState,
     FolderReference,
@@ -71,7 +79,8 @@ __all__ = [
     "sieve_actions",
 ]
 
-# What a diff of this host's rule set is called: a Sieve script.
+# The language a diff of this host's rule set is written in, as a JSON
+# plan labels it.
 DIFF_LABEL = "sieve"
 
 # Confirmed disabled by MXRoute, from MXroute's own blog (2024-03-22):
@@ -199,18 +208,47 @@ def _action_tuples(spec: ActionSpec, folder: str, use_create: bool) -> list:
 
 
 # ----------------------------------------------------------------------------
-def describe_actions(actions: list) -> str:
-    """Render action tuples as a readable summary line.
+def describe_actions(actions: Iterable) -> tuple[ActionStep, ...]:
+    """Sieve actions as the neutral steps a person is told they take.
 
-    Sieve escaping is undone for display: the summary should say
-    ``addflag \\Seen``, which is the flag the user asked for, rather than
-    the ``\\\\Seen`` that has to appear in the script source. The diff
-    printed underneath shows the real source, so nothing is hidden.
+    ``actions`` are action tuples as :func:`sieve_actions` makes them, or a
+    rule's action names alone, as ``Rule.actions`` holds them. Sieve
+    escaping is undone: the step says ``\\Seen``, the flag the user asked
+    for, not the ``\\\\Seen`` the source has to hold. An action with no
+    neutral kind is named in Sieve's own word.
     """
-    return "; ".join(
-        " ".join(_unescape_sieve_string(str(part)) for part in action)
-        for action in actions
-    )
+    steps = []
+
+    for action in actions:
+        name, *arguments = action if isinstance(action, tuple) else (action,)
+        creates = ":create" in arguments
+        values = [
+            _unescape_sieve_string(str(part))
+            for part in arguments
+            if not str(part).startswith(":")
+        ]
+        argument = values[-1] if values else None
+        kind = _ACTION_KINDS.get(name)
+
+        if kind is None:
+            steps.append(ActionStep(OTHER, name))
+
+        else:
+            steps.append(ActionStep(kind, argument, creates))
+
+    return tuple(steps)
+
+
+# Each Sieve action with a neutral kind (RFC 5228 section 4, RFC 5232).
+_ACTION_KINDS = {
+    "fileinto": FILEINTO,
+    "discard": DISCARD,
+    "keep": KEEP,
+    "stop": STOP,
+    "addflag": FLAG,
+    "setflag": FLAG,
+    "removeflag": UNFLAG,
+}
 
 
 # ----------------------------------------------------------------------------

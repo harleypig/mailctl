@@ -163,7 +163,7 @@ def test_a_half_opens_the_first_time_it_is_used_and_only_that_half(
 
     assert fake_imap.names().count("login") == 1
     assert fake_imap.names()[-1] == "logout"
-    assert seen and set(seen) == {"imap"}
+    assert seen and set(seen) == {"mail"}
 
 
 # ----------------------------------------------------------------------------

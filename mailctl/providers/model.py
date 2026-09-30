@@ -26,6 +26,7 @@ __all__ = [
     "FLAG",
     "KEEP",
     "NAMESPACE_KINDS",
+    "OTHER",
     "PLACE_AFTER",
     "PLACE_BEFORE",
     "PLACE_FIRST",
@@ -34,7 +35,10 @@ __all__ = [
     "SORT_RECEIVED",
     "SORT_SENT",
     "SORT_SIZE",
+    "STOP",
+    "UNFLAG",
     "ActionSpec",
+    "ActionStep",
     "Capability",
     "CountSupport",
     "DeliveryCreate",
@@ -67,6 +71,13 @@ FILEINTO = "fileinto"
 DISCARD = "discard"
 FLAG = "flag"
 KEEP = "keep"
+
+# What a stored rule can do besides those, as ActionStep reports it:
+# ending the run, taking a flag off, and anything else the host's rule
+# language has, which is named in its own words.
+STOP = "stop"
+UNFLAG = "unflag"
+OTHER = "other"
 
 # Where a rule goes in evaluation order, for a provider that declares
 # ``ordering``. Position is part of what a rule means there, so appending
@@ -180,6 +191,22 @@ class ActionSpec:
     stop: bool | None = None
 
 
+@dataclass(frozen=True)
+class ActionStep:
+    """One thing a rule does, in neutral terms, for a person to read.
+
+    ``kind`` is one of FILEINTO, DISCARD, FLAG, UNFLAG, KEEP, STOP, or
+    OTHER. ``argument`` is the folder or flag it acts with, where the
+    provider knows it, else None; for OTHER it is the action's name as the
+    host writes it, since there is no neutral word for it. ``creates`` is
+    true for a FILEINTO that also creates its folder as mail arrives.
+    """
+
+    kind: str
+    argument: str | None = None
+    creates: bool = False
+
+
 # ----------------------------------------------------------------------------
 def action_names(spec: ActionSpec, folder: str) -> frozenset[str]:
     """The neutral actions a spec asks for, given its resolved folder."""
@@ -221,8 +248,9 @@ class DisplayDiff:
     ``reformats`` is true when the rule set the host holds is not already
     in the formatting the provider writes, so the upload rewrites more than
     ``text`` shows; carrying the flag beside the diff is what lets the
-    front-end say so. ``label`` names what was diffed in the host's own
-    word -- ``sieve`` for a Sieve script -- for the heading above it.
+    front-end say so. ``label`` names the language ``text`` is written
+    in, in the host's own word (``sieve``): data for a script reading the
+    JSON plan, never a heading, which is the same for every provider.
     """
 
     text: str
@@ -583,33 +611,19 @@ class Fact:
 class Wording:
     """The words a provider's host is described in, as data.
 
-    A front-end lays out the same report for every provider and fills it
-    from here, so nothing about one host is written into the front-end.
+    Only where mailctl describes the host itself: the server reports
+    (``server test``, ``server probe``, the baselines, the unrecognised-
+    server report) and the help of an option only this host has. Every
+    other line a front-end shows is its own, the same for every provider.
 
     * ``rules_service`` / ``mail_service`` -- what each half connects to,
       as a person would name it (``ManageSieve``, ``IMAP``).
     * ``extensions`` / ``extension`` -- what the rule language calls its
       extensions, plural and singular, for a provider that declares
       ``extensions``.
-    * ``host`` -- the host's own name (``MXRoute``).
-    * ``filters`` -- what its rules are called, as in "manage *filters*"
-      (``Sieve filters``).
-    * ``rule_language`` -- the name of the language rules are written in,
-      a proper noun that reads at the start of a sentence and before
-      "rule" (``Sieve``).
     * ``rule_set`` / ``rule_sets`` -- one stored rule set and several, as
-      a noun (``Sieve script``, ``Sieve scripts``).
-    * ``validation`` -- how the server checks a rule set before storing
-      it, as a noun (``CHECKSCRIPT``).
-    * ``disabled_form`` -- how a disabled rule is kept, and why, as a
-      clause following "a disabled rule stays in the script, ...".
-    * ``backup_file`` -- the name a backup is written under, with its
-      placeholders (``<script>-<UTC timestamp>.sieve``).
-    * ``delivery_create`` -- what lets a rule create its target folder as
-      mail arrives, as a noun (``the Sieve 'mailbox' extension``).
-    * ``file_action`` / ``create_action`` -- the action that files a
-      message, without and with creating the folder (``fileinto``,
-      ``fileinto :create``).
+      the host names them (``Sieve script``, ``Sieve scripts``), for the
+      unrecognised-server report.
     * ``notes`` -- what a report about the host should end by saying: the
       host's policies and the limits of what mailctl can see there.
     """
@@ -618,17 +632,8 @@ class Wording:
     mail_service: str
     extensions: str
     extension: str
-    host: str
-    filters: str
-    rule_language: str
     rule_set: str
     rule_sets: str
-    validation: str
-    disabled_form: str
-    backup_file: str
-    delivery_create: str
-    file_action: str
-    create_action: str
     notes: tuple[str, ...] = ()
 
 

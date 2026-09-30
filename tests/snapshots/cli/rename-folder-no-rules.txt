@@ -3,11 +3,11 @@ exit: 0
 --- stdout
 Folder 'spam' resolves to 'INBOX.spam' (delimiter '.')
 Folder 'Junk' resolves to 'INBOX.Junk' (delimiter '.')
-Rename IMAP folder 'INBOX.spam' to 'INBOX.Junk' (12 messages)
+Rename folder 'INBOX.spam' to 'INBOX.Junk' (12 messages)
   Left unsubscribed, as before: 'INBOX.Junk'
 
-No rule in 'managesieve' files into 'INBOX.spam' or a folder under it; the script is left alone.
-Renamed IMAP folder 'INBOX.spam' to 'INBOX.Junk'
+No rule in 'managesieve' files into 'INBOX.spam' or a folder under it; the filter set is left alone.
+Renamed folder 'INBOX.spam' to 'INBOX.Junk'
 
 Checked after the rename:
   ok    'INBOX.spam' is gone

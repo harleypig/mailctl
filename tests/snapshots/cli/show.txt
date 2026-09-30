@@ -1,7 +1,7 @@
 $ mailctl filterset show
 exit: 0
 --- stdout
-# ---- managesieve ----
+--- filter set 'managesieve' ---
 require ["fileinto","imap4flags"];
 # rule:[keep-boss]
 if header :contains "from" "boss@example.com"
@@ -16,7 +16,7 @@ if header :contains "subject" "newsletter"
 	fileinto "INBOX.Noise";
 	stop;
 }
-# ---- 2 rule(s): keep-boss, bin-the-noise
+--- 2 rule(s): keep-boss, bin-the-noise ---
 
 --- stderr
 

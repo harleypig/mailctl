@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: script 'managesieve' is empty
+mailctl: filter set 'managesieve' is empty
 
 --- sieve calls
 ('connect',)

@@ -140,7 +140,7 @@ def test_with_nothing_active_a_restore_asks_for_script(tmp_path):
     backup.write_text("x")
     live = mxroute(sieve=FakeSieveSession(active=None))
 
-    with pytest.raises(MailctlError, match=r"no active script.*Name the"):
+    with pytest.raises(MailctlError, match=r"no active filter set.*Name the"):
         utilities.backup.plan_restore(
             live, utilities.backup.read_backup_file(backup)
         )

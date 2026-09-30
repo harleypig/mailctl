@@ -27,6 +27,7 @@ import inspect
 import json
 import re
 from dataclasses import replace
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -57,6 +58,7 @@ from mailctl.providers.base import (
     KEEP,
     OPERATIONS,
     TRANSPORT_OPERATIONS,
+    ActionStep,
     Capability,
     CountSupport,
     DeliveryCreate,
@@ -122,17 +124,8 @@ class FakeDialect(Dialect):
         mail_service="Fake mail",
         extensions="Fake extensions",
         extension="Fake extension",
-        host="Fakehost",
-        filters="Fakescript filters",
-        rule_language="Fakescript",
         rule_set="Fakescript rule set",
         rule_sets="Fakescript rule sets",
-        validation="a JSON parse",
-        disabled_form="marked off in its JSON",
-        backup_file="<script>.json",
-        delivery_create="folder creation on delivery",
-        file_action="file",
-        create_action="file and create",
         notes=("the fake host keeps its rules as JSON.",),
     )
 
@@ -182,7 +175,14 @@ class FakeDialect(Dialect):
 
     @classmethod
     def describe_actions(cls, actions):
-        return ", ".join(actions)
+        kinds: dict[str, str] = {"file": FILEINTO, "flag": FLAG_ACTION}
+        steps = []
+
+        for action in actions:
+            name, _, argument = str(action).partition(":")
+            steps.append(ActionStep(kinds.get(name, name), argument or None))
+
+        return tuple(steps)
 
     @classmethod
     def candidate_rule(cls, name, criteria, actions):
@@ -1556,10 +1556,9 @@ def test_the_cli_adds_a_default_rule_on_a_host_without_stop(fakes, capsys):
 
 
 # ----------------------------------------------------------------------------
-def test_a_diff_and_its_actions_are_shown_in_the_hosts_own_words(
-    fakes, capsys
-):
-    """No Sieve heading and no Sieve tuple rendering on a JSON host."""
+def test_a_diff_and_its_actions_are_shown_in_generic_words(fakes, capsys):
+    """No Sieve heading and no Sieve tuple rendering on a JSON host: the
+    fake's steps worded by the front-end, as mxroute's are (#219)."""
     code = cli.main(
         [
             "filter",
@@ -1577,8 +1576,8 @@ def test_a_diff_and_its_actions_are_shown_in_the_hosts_own_words(
     out = capsys.readouterr().out
 
     assert code == 0
-    assert "  then:  file:INBOX.Lists, stop\n" in out
-    assert "\n--- json diff ---\n" in out
+    assert "  then:  files the message into 'INBOX.Lists'; stops\n" in out
+    assert "\n--- diff ---\n" in out
     assert "sieve" not in out.lower()
 
 
@@ -1891,6 +1890,44 @@ def test_filterset_is_listed_only_where_rule_sets_are(capsys, monkeypatch):
     assert "usage: mailctl filterset list" in help_text(
         capsys, "filterset", "list"
     )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "work",
+    [
+        pytest.param(utilities.scripts.list_scripts, id="list"),
+        pytest.param(utilities.scripts.read_script, id="show"),
+        pytest.param(
+            lambda session: utilities.backup.plan_backup(session, Config()),
+            id="backup",
+        ),
+        pytest.param(
+            lambda session: utilities.backup.plan_restore(
+                session, utilities.backup.BackupFile(Path("b"), "[]")
+            ),
+            id="restore",
+        ),
+    ],
+)
+def test_filterset_work_is_refused_where_rule_sets_are_not(work):
+    """#219: hiding the filterset group is the CLI's; the refusal is the
+    utility's, so every front-end meets it, before anything is read."""
+    single = replace(
+        FAKE,
+        name="single",
+        capabilities=replace(FAKE.capabilities, rule_sets=False),
+    )
+    session = Session(single, FakeTransport())
+
+    with pytest.raises(MailctlError) as refused:
+        work(session)
+
+    assert str(refused.value) == (
+        "the single provider cannot list, show, back up, or restore one of "
+        "several filter sets: it does not declare the 'rule_sets' capability"
+    )
+    assert session.opened == ()
 
 
 # ----------------------------------------------------------------------------
@@ -2454,8 +2491,11 @@ def test_no_help_page_leaves_a_placeholder_unfilled(
 
 # ----------------------------------------------------------------------------
 def test_the_placeholder_check_sees_an_unfilled_template():
-    """The check above, pointed at a template it should catch."""
-    assert PLACEHOLDER.findall(cli.ACTIVATE_HELP) == ["{rule_language}"]
+    """The check above, pointed at a template it should catch: the one
+    --activate's help was, when the provider named the rule language."""
+    template = "make the script the active one, the one {rule_language} runs"
+
+    assert PLACEHOLDER.findall(template) == ["{rule_language}"]
     assert not PLACEHOLDER.search("--sieve-tls {starttls,ssl,none}")
 
 
@@ -2539,7 +2579,7 @@ def test_another_hosts_output_and_errors_are_in_its_own_words(
 
 
 # ----------------------------------------------------------------------------
-def test_the_fake_says_it_has_no_rule_sets_in_its_own_words(
+def test_the_fake_says_it_has_no_rule_sets_in_generic_words(
     fakes, capsys, monkeypatch
 ):
     monkeypatch.setattr(FakeTransport, "list_rule_sets", lambda _: ("", []))
@@ -2547,7 +2587,7 @@ def test_the_fake_says_it_has_no_rule_sets_in_its_own_words(
     code, text = run_fake(capsys, "filterset", "list")
 
     assert code == 0
-    assert text == "No Fakescript rule sets on the server.\n"
+    assert text == "No filter sets on the server.\n"
 
 
 # ----------------------------------------------------------------------------

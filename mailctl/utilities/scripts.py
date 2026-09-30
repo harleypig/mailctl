@@ -24,6 +24,9 @@ DEFAULT_SCRIPT_NAME = "mailctl"
 # second script created beside it.
 LEGACY_SCRIPT_NAME = "mxfilter"
 
+# What the filterset commands need, in words, when a provider cannot.
+FILTER_SETS = "list, show, back up, or restore one of several filter sets"
+
 
 # ############################################################################
 # Reading scripts
@@ -48,18 +51,37 @@ class ScriptText:
 
 
 # ----------------------------------------------------------------------------
+def require_filter_sets(session: Session) -> None:
+    """Refuse working with filter sets by name on a provider that does not
+    declare ``rule_sets``: listing, showing, backing up, or restoring one.
+
+    Held here rather than by the front-end hiding the commands, so every
+    front-end meets the same refusal (#219).
+    """
+    # ``rules`` imports this module at its top, so the import waits until
+    # both are loaded, whichever loads first.
+    from .rules import require_capability
+
+    require_capability(session, "rule_sets", FILTER_SETS)
+
+
+# ----------------------------------------------------------------------------
 def list_scripts(session: Session) -> tuple[str | None, list[str]]:
     """Return ``(active, others)``."""
+    require_filter_sets(session)
+
     return session.transport.list_rule_sets()
 
 
 # ----------------------------------------------------------------------------
 def read_script(session: Session, name: str | None = None) -> ScriptText:
     """Return a named script, or the active one."""
+    require_filter_sets(session)
+
     name = name or session.transport.active_rule_set()
 
     if not name:
-        raise MailctlError("no active script; name one explicitly")
+        raise MailctlError("no active filter set; name one explicitly")
 
     return ScriptText(name, session.transport.read_rule_set(name), session)
 

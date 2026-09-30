@@ -99,10 +99,13 @@ interface* below.
 
 **Roundcube's filter and search UI is not a limit on what mailctl writes or
 offers.** The operator, 2026-09-29: *"one of the reasons I'm writing this
-app is because the search and filter functions are so restricted."* So a
-rule mailctl writes need not be one Roundcube's UI can edit. The merge still
-holds ([ADR 0002][adr2]): Roundcube writes the same script, so the rules it
-wrote are kept. Rules also stay a flat list of `# rule:[NAME]` blocks, on
+app is because the search and filter functions are so restricted."* And
+the same day, on [#219][i219]: *"we aren't using roundcube, we're replacing
+it and taking ideas for functionality from it."* So a rule mailctl writes
+need not be one Roundcube's UI can edit, and nothing mailctl shows the user
+is worded the way Roundcube words it (*What the user sees is the same for
+every provider*, below). The merge still holds ([ADR 0002][adr2]): Roundcube
+may still write the same script, so the rules it wrote are kept. Rules also stay a flat list of `# rule:[NAME]` blocks, on
 grounds of their own: the name is how every command finds a rule, and
 `mailctl/rules.py` reads the rules as one ordered list, so it cannot judge a
 nested rule.
@@ -186,8 +189,8 @@ layer may call.
   - `senders.py` — a folder's mail counted by sender, read-only.
   - `migration.py` — what the rename from `mxfilter` left behind.
   - `reports.py` — the probes behind `mailctl server test`, the provider's
-    wording
-    and connection facts, and each extension's state.
+    own words for its reports and its connection facts, and each
+    extension's state.
   - `server_report.py` — which servers no module recognised, and the
     redacted issue body `server probe --report` prints for them ([#39][i39]).
   - `events.py` — the steps of a change, as a front-end is told of them,
@@ -213,7 +216,8 @@ layer may call.
     both.
   - `model.py` — the provider-neutral model the utilities speak:
     `ActionSpec`, `Placement`, `DisplayDiff`, the folder and message
-    records, the host's own words as data (`Wording`, `Fact`), and an
+    records, the neutral steps a rule's actions take (`ActionStep`), the
+    host's own words for its reports as data (`Wording`, `Fact`), and an
     alert or warning the server sent (`ServerAlert`, by `kind`). It and
     `base.py` import nothing from layer 1 (`tests/test_layer_purity.py`).
   - `registry.py` — `PROVIDERS`, every provider by name, and
@@ -222,7 +226,7 @@ layer may call.
     capabilities, `MxrouteDialect`, and `MxrouteTransport`.
   - `mxroute/dialect.py` — `MxrouteDialect`, offline: a neutral rule into
     Sieve merged into the account's script and read back out, MXroute's
-    refusals and wording, backup paths, folder names normalized against the
+    refusals and its words for the server reports, backup paths, folder names normalized against the
     server's list, and what `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean as
     the facts `mailctl server test` shows.
   - `mxroute/sieve.py` — the dialect's Sieve side, offline:
@@ -579,7 +583,8 @@ parsed script becomes `Rule` values.
 
 - **The dialect is offline and host-specific.** It translates, parses, and
   edits (for `mxroute`, Sieve in Roundcube's `# rule:[NAME]` form), holds
-  the host's refusals and wording as data, and never touches the network.
+  the host's refusals and its words for the server reports as data, and
+  never touches the network.
   `tests/test_layer_purity.py` holds a dialect's modules — derived by
   following its imports, not listed — to opening no connection.
 - **The transport is communication only.** Each operation is one exchange
@@ -650,13 +655,38 @@ fails before any login or password prompt (decided on [#137][i137]).
   own records, and the provider translates (`mxroute/records.py`,
   `mxroute/sieve.py`), so a provider with no Sieve never imports the Sieve
   component ([#99][i99]).
-- **The host's words are the dialect's data.** A front-end lays out one
-  report for every provider and fills it from `Provider.wording` (service
-  names, what extensions are called, closing notes such as MXroute's
-  redirect and Exim/DirectAdmin notes), `connection_facts` and
-  `mail_facts` (labelled lines), `DisplayDiff.label` (the diff heading),
-  and `describe_actions` (a rule's actions in words) — each reached through
-  a utility. Nothing about one host is written into `cli.py`.
+- **What the user sees is the same for every provider** (operator,
+  2026-09-29, [#219][i219]). The user-facing nouns are *filter* and *filter
+  set*, whatever the host calls them; code names such as `Rule`,
+  `rules.py`, and `script` may stay. A provider's own words reach the user
+  in three places only:
+  1. documentation about the provider, such as its `RECORD.md`;
+  2. the help of an option only it has — `--disable-extension`, and the
+     connection settings it declares (`--host`, `--imap-*`, `--sieve-*`,
+     which keep their names) — and a refusal of a provider-only function,
+     such as an extension it lacks or an action it forbids;
+  3. `server test`, `server probe`, and the baselines, whose job is to
+     describe the servers.
+
+  Everywhere else — every other help page, prompt, progress and event
+  line, error, the diff's heading, a rule's actions, and the frame
+  `filterset show` puts round the source — is fixed text in the front-end.
+  The filter set's own text, in a diff or `filterset show`, is the host's
+  language and is shown as it is; so is a server's alert or warning, and
+  `--verbose`'s record of the exchange. `tests/test_neutral_wording.py`
+  holds this under `mxroute`, over every help page read off the parser and
+  every snapshot but the server reports'.
+- **The host's words for its reports are the dialect's data.** A
+  front-end lays out one report for every provider and fills it from
+  `Provider.wording` — its service names, what its extensions are called,
+  what it calls a rule set (for the unrecognised-server report), and its
+  closing notes such as MXroute's redirect and Exim/DirectAdmin notes —
+  and from `connection_facts` and `mail_facts` (labelled lines), each
+  reached through a utility; `Wording` holds nothing else. What a rule's
+  actions do comes back from `describe_actions` as neutral `ActionStep`
+  records the front-end words. `DisplayDiff.label` names the diff's
+  language for a `--json` plan, and is never a heading. Nothing about one
+  host is written into `cli.py`.
 - **A default comes from the capabilities.** `ActionSpec.stop` None is the
   provider's default, which `utilities.rules.resolve_stop` settles from the
   `stop` capability: a host that cannot stop is never asked to, so its

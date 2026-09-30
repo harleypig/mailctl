@@ -14,7 +14,7 @@ from mailctl import json_output
 pytestmark = pytest.mark.container
 
 SHOWN = (
-    "mailctl: alert from the imap server: Maintenance tonight at 22:00 UTC\n"
+    "mailctl: alert from the mail server: Maintenance tonight at 22:00 UTC\n"
 )
 
 

@@ -1,9 +1,9 @@
 $ mailctl filterset restore <TMP>/restore.sieve --yes
 exit: 0
 --- stdout
-Restore <TMP>/restore.sieve (2 rule(s)) over script 'managesieve' (2 rule(s)):
+Restore <TMP>/restore.sieve (2 rule(s)) over filter set 'managesieve' (2 rule(s)):
 
-The file is identical to the script on the server; nothing to restore.
+The file is identical to the filter set on the server; nothing to restore.
 
 --- stderr
 

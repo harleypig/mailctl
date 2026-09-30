@@ -1,9 +1,9 @@
 $ mailctl filterset restore <TMP>/restore.sieve --script managesieve --yes
 exit: 0
 --- stdout
-Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mailctl could not parse):
+Restore <TMP>/restore.sieve (1 rule(s)) over filter set 'managesieve' (a filter set mailctl could not parse):
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1 +1,8 @@
@@ -19,9 +19,9 @@ Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mail
 
 --- end diff ---
 
-The account has no active script; 'managesieve' will become the active script.
-Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
-Uploaded and activated script 'managesieve'
+The account has no active filter set; 'managesieve' will become the active filter set.
+Backed up the current filter set to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Uploaded and activated filter set 'managesieve'
 
 --- stderr
 

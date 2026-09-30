@@ -14,7 +14,12 @@ from ..engine import Session
 from ..providers.base import DisplayDiff, Provider
 from .backup_files import write_backup
 from .events import EventSink
-from .scripts import activates, fetch_active, upload_script
+from .scripts import (
+    activates,
+    fetch_active,
+    require_filter_sets,
+    upload_script,
+)
 
 # ############################################################################
 # Backups
@@ -35,11 +40,14 @@ def plan_backup(
     session: Session, config: Config, output: str | None = None
 ) -> BackupPlan:
     """Fetch the active script and resolve where its copy goes."""
+    require_filter_sets(session)
+
     name = session.transport.active_rule_set()
 
     if not name:
         raise MailctlError(
-            "no active script on the server, so there is nothing to back up.",
+            "no active filter set on the server, so there is nothing to "
+            "back up.",
             code="no_active_script",
             fields={"operation": "filterset list"},
         )
@@ -133,7 +141,7 @@ def read_backup_file(
     if not text.strip() and not allow_empty:
         raise MailctlError(
             f"backup {source} is empty; restoring it would remove every "
-            f"rule from the script.",
+            f"rule from the filter set.",
             code="empty_backup",
         )
 
@@ -156,6 +164,8 @@ def plan_restore(
     merge, and the current bytes are backed up before anything is sent,
     so overwriting it loses nothing (ADR 0005).
     """
+    require_filter_sets(session)
+
     source, after = backup.path, backup.text
     name, before, active = fetch_active(session, script)
 
@@ -164,8 +174,8 @@ def plan_restore(
     # then activated because nothing else runs.
     if script is None and active is None:
         raise MailctlError(
-            "no active script on the server to restore over. Name the "
-            "script to restore; with nothing active it is activated.",
+            "no active filter set on the server to restore over. Name the "
+            "filter set to restore; with nothing active it is activated.",
             code="restore_needs_script",
         )
 

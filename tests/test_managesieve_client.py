@@ -252,7 +252,9 @@ def test_a_merge_still_works_on_the_exact_text():
 def test_a_no_answer_is_a_readable_failure_with_the_reason_kept():
     session = open_session(b'NO (NONEXISTENT) "There is no such script"\r\n')
 
-    with pytest.raises(MailctlError, match="could not download script 'x'"):
+    with pytest.raises(
+        MailctlError, match="could not download filter set 'x'"
+    ):
         session.get_script_bytes("x")
 
     assert session.client is not None
@@ -615,13 +617,13 @@ def test_hostile_warning_text_is_neutralised_wherever_it_is_shown(capsys):
 
     for message in received:
         if isinstance(message, ServerWarning):
-            emit("sieve", records.server_warning(message))
+            emit("rules", records.server_warning(message))
 
     captured = capsys.readouterr()
 
     assert captured.out == ""
     assert captured.err == (
-        "mailctl: warning from the sieve server: "
+        "mailctl: warning from the filter server: "
         "line 1: \\x1b]0;pwned\\x07\\x1b[31mred\n"
     )
 

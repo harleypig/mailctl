@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: --like reads the message over IMAP, so it cannot be combined with --no-imap
+mailctl: --like reads the message over the mail connection, so it cannot be combined with --no-imap
 
 --- sieve calls
 --- imap calls

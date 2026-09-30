@@ -2,16 +2,16 @@ $ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-Folder 'INBOX.Lists.GitHub' does not exist; it will be created over IMAP and subscribed to when the change is applied
-  The rule says plain 'fileinto', not 'fileinto :create': the Sieve 'mailbox' extension is disabled by mailctl (flag --disable-extension).
+Folder 'INBOX.Lists.GitHub' does not exist; it will be created and subscribed to when the change is applied
+  The filter files into the folder without creating it: folder creation on delivery is disabled by mailctl (flag --disable-extension).
 
-Rule 'from-noreply-github-com' on script 'managesieve':
+Rule 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com'
-  then:  fileinto INBOX.Lists.GitHub; stop
+  then:  files the message into 'INBOX.Lists.GitHub'; stops
 
-Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -11,3 +11,8 @@
@@ -25,9 +25,9 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 +}
 
 --- end diff ---
-Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
-Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
-Uploaded and activated script 'managesieve'
+Backed up the current filter set to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Created folder 'INBOX.Lists.GitHub' and subscribed to it
+Uploaded and activated filter set 'managesieve'
 
 Mail already delivered was not touched; to act on it, run 'mailctl filter apply' with the same criteria and actions.
 

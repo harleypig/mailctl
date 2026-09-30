@@ -168,10 +168,10 @@ def rewrite_hash_comments(
 
             if raw[start : start + len(value)] != value:
                 raise MailctlError(
-                    "cannot locate a comment in the Sieve script safely, so "
+                    "cannot locate a comment in the filter set safely, so "
                     "rule names cannot be translated without risking the "
-                    "script's contents; this is an mailctl/sievelib "
-                    "version mismatch, not a problem with your script"
+                    "filter set's contents; this is an mailctl/sievelib "
+                    "version mismatch, not a problem with your filter set"
                 )
 
             comment = value.decode("utf-8")
@@ -476,8 +476,8 @@ def _parse_test(comment: str, requires: list[str]) -> commands.Command:
             return result[0]["test"]
 
     raise MailctlError(
-        f"the test kept in the comment ({text!r}) is not a Sieve test "
-        f"mailctl can read"
+        f"the test kept in the comment ({text!r}) is not a test mailctl "
+        f"can read"
     )
 
 
@@ -522,7 +522,8 @@ def _named_entry(filters: factory.FiltersSet, name: str) -> dict[str, Any]:
     known = ", ".join(rule_names(filters)) or "(none)"
 
     raise MailctlError(
-        f"no rule named {name!r} in the active script. Known rules: {known}"
+        f"no rule named {name!r} in the active filter set. Known rules: "
+        f"{known}"
     )
 
 
@@ -554,8 +555,7 @@ def disable_rule(
     if line is None:
         raise MailctlError(
             f"rule {name!r} cannot be disabled: its test spans more than "
-            f"one line, and a disabled rule keeps its test in a comment on "
-            f"the 'if false' line, where Roundcube looks for it"
+            f"one line, and a disabled rule keeps its test on one line"
         )
 
     _switch_off(entry, line)
@@ -643,7 +643,8 @@ def rename_rule(
         known = ", ".join(names) or "(none)"
 
         raise MailctlError(
-            f"no rule named {old!r} in the active script. Known rules: {known}"
+            f"no rule named {old!r} in the active filter set. Known rules: "
+            f"{known}"
         )
 
     if new == old:
@@ -651,8 +652,8 @@ def rename_rule(
 
     if new in names:
         raise MailctlError(
-            f"a rule named {new!r} already exists in the active script, and "
-            f"two rules of one name cannot be told apart.",
+            f"a rule named {new!r} already exists in the active filter set, "
+            f"and two rules of one name cannot be told apart.",
             code="rule_name_taken",
             fields={"operation": "filter list"},
         )
@@ -680,8 +681,8 @@ def rename_rule(
     # sievelib records no command offsets to find it by. Revisit if a
     # script with unnamed rules turns up on a real account.
     raise MailctlError(
-        f"rule {old!r} has no name written in the script to change, so it "
-        f"cannot be renamed in place"
+        f"rule {old!r} has no name written in the filter set to change, so "
+        f"it cannot be renamed in place"
     )
 
 
@@ -691,7 +692,7 @@ def _check_rule_name(name: str, dialect: NameDialect) -> None:
     if any(unicodedata.category(char) == "Cc" for char in name):
         raise MailctlError(
             f"{name!r} cannot be written as a rule name: it holds a control "
-            f"character, and a name is one line of the script"
+            f"character, and a name is one line of the filter set"
         )
 
     probe = dialect.write(f"{SIEVELIB_NAME_MARKER}{name}\nkeep;\n")
@@ -780,7 +781,7 @@ def parse_script(
 
     if not script_parser.parse(source.encode("utf-8")):
         raise MailctlError(
-            "the existing Sieve script could not be parsed, so merging into "
+            "the existing filter set could not be parsed, so merging into "
             "it would risk losing rules: "
             f"{getattr(script_parser, 'error', 'unknown parse error')}"
         )
@@ -879,7 +880,7 @@ def resolve_position(
         known = ", ".join(names) or "(none)"
 
         raise MailctlError(
-            f"no rule named {placement.anchor!r} in the active script to "
+            f"no rule named {placement.anchor!r} in the active filter set to "
             f"place this rule {placement.where}. Known rules: {known}",
             code="unknown_anchor",
             fields={
@@ -1044,7 +1045,7 @@ def merge_rule(
 
     if exists and not replace:
         raise MailctlError(
-            f"a rule named {name!r} already exists in the active script.",
+            f"a rule named {name!r} already exists in the active filter set.",
             code="rule_exists",
         )
 
@@ -1130,7 +1131,7 @@ def remove_rule(
         known = ", ".join(rule_names(filters)) or "(none)"
 
         raise MailctlError(
-            f"no rule named {name!r} in the active script. Known rules: "
+            f"no rule named {name!r} in the active filter set. Known rules: "
             f"{known}"
         )
 
@@ -1157,7 +1158,7 @@ def move_rule(
         known = ", ".join(rule_names(filters)) or "(none)"
 
         raise MailctlError(
-            f"no rule named {name!r} in the active script. Known rules: "
+            f"no rule named {name!r} in the active filter set. Known rules: "
             f"{known}"
         )
 
@@ -1202,7 +1203,8 @@ def rearrange_rules(
         0 <= index < len(entries) for index in named
     ):
         raise MailctlError(
-            "a rearrangement must name each rule in the script at most once"
+            "a rearrangement must name each rule in the filter set at most "
+            "once"
         )
 
     arranged = []
@@ -1491,7 +1493,7 @@ def retarget_fileinto(text: str, renames: Mapping[str, str]) -> str:
 
     except parser.ParseError as error:
         raise MailctlError(
-            f"cannot scan the Sieve script to rewrite its folders -- {error}"
+            f"cannot scan the filter set to rewrite its folders -- {error}"
         ) from error
 
     pieces = []
@@ -1512,7 +1514,7 @@ def retarget_fileinto(text: str, renames: Mapping[str, str]) -> str:
     ):
         raise MailctlError(
             "a rule's folder could not be rewritten in place, so the "
-            "script is left as it is"
+            "filter set is left as it is"
         )
 
     return after
@@ -1530,9 +1532,9 @@ def _retarget_edit(
     # would rewrite some other part of the user's script.
     if raw[start : start + len(value)] != value:
         raise MailctlError(
-            "cannot locate a folder in the Sieve script safely; this is a "
+            "cannot locate a folder in the filter set safely; this is a "
             "mailctl/sievelib version mismatch, not a problem with your "
-            "script"
+            "filter set"
         )
 
     new = renames.get(_unquote(value.decode("utf-8")))

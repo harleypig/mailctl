@@ -434,7 +434,7 @@ def test_planning_a_real_run_creates_nothing_before_the_decision(
     prepare_folder(live, imap_config, add_args())
 
     assert "create_folder" not in fake_imap.names()
-    assert "will be created over IMAP" in capsys.readouterr().out
+    assert "will be created and subscribed to" in capsys.readouterr().out
 
 
 # ----------------------------------------------------------------------------

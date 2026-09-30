@@ -1,7 +1,7 @@
 $ mailctl filter optimize --yes
 exit: 0
 --- stdout
-Script 'managesieve': 2 rules read.
+Filter set 'managesieve': 2 rules read.
 
 Nothing to change in 'managesieve'.
 

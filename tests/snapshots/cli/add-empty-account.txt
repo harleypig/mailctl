@@ -3,11 +3,11 @@ exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'from-noreply-github-com' on script 'mailctl':
+Rule 'from-noreply-github-com' in filter set 'mailctl':
   when:  From contains 'noreply@github.com'
-  then:  fileinto INBOX.Lists; stop
+  then:  files the message into 'INBOX.Lists'; stops
 
---- sieve diff ---
+--- diff ---
 --- mailctl (current)
 +++ mailctl (proposed)
 @@ -0,0 +1,7 @@
@@ -21,9 +21,9 @@ Rule 'from-noreply-github-com' on script 'mailctl':
 
 --- end diff ---
 
-The account has no active script; 'mailctl' will become the active script.
-Backed up current script to <TMP>/config/mailctl/backups/mailctl-<STAMP>.sieve
-Uploaded and activated script 'mailctl'
+The account has no active filter set; 'mailctl' will become the active filter set.
+Backed up the current filter set to <TMP>/config/mailctl/backups/mailctl-<STAMP>.sieve
+Uploaded and activated filter set 'mailctl'
 
 Mail already delivered was not touched; to act on it, run 'mailctl filter apply' with the same criteria and actions.
 

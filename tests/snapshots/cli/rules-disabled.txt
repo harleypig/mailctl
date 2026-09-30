@@ -1,17 +1,17 @@
 $ mailctl filter list
 exit: 0
 --- stdout
-Script 'managesieve':
+Filter set 'managesieve':
 
 2 rule(s), in evaluation order:
 
   1. keep-boss  [disabled]  [stop]
        when:  From contains 'boss@example.com'
-       then:  fileinto, setflag, stop
+       then:  files the message into a folder; adds a flag; stops
 
   2. bin-the-noise  [stop]
        when:  Subject contains 'newsletter'
-       then:  fileinto, stop
+       then:  files the message into a folder; stops
 
 No rule is shadowed by an earlier one.
 

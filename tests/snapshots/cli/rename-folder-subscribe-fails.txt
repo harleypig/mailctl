@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 Folder 'Archive' resolves to 'INBOX.Archive' (delimiter '.')
-Rename IMAP folder 'INBOX.Lists' to 'INBOX.Archive' (360 messages)
+Rename folder 'INBOX.Lists' to 'INBOX.Archive' (360 messages)
   The 1 folder under it moves with it:
     'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
   Subscribed after the rename, as before: 'INBOX.Archive', 'INBOX.Archive.GitHub'
@@ -12,7 +12,7 @@ Rules in 'managesieve' that file into it:
   lists: 'INBOX.Lists' -> 'INBOX.Archive'
   github: 'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -2,7 +2,7 @@
@@ -33,11 +33,11 @@ Rules in 'managesieve' that file into it:
  }
 
 --- end diff ---
-Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
-Renamed IMAP folder 'INBOX.Lists' to 'INBOX.Archive', with the 1 folder under it
+Backed up the current filter set to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+Renamed folder 'INBOX.Lists' to 'INBOX.Archive', with the 1 folder under it
 Removed 'INBOX.Lists' from the subscription list
 Removed 'INBOX.Lists.GitHub' from the subscription list
-Uploaded and activated script 'managesieve'
+Uploaded and activated filter set 'managesieve'
 
 Checked after the rename:
   ok    'INBOX.Lists' is gone

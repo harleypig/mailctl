@@ -56,6 +56,35 @@ BREAKING CHANGES:
   | `check-baseline` | `server baseline check` |
   | `migrate-config` | `config migrate` |
 
+* **What mailctl prints is worded the same for every provider** ([#219]).
+  Every command's help and output but the server reports now speaks of
+  filters and filter sets, not Sieve scripts, ManageSieve, or IMAP: the
+  diff's heading is `--- diff ---` rather than `--- sieve diff ---`; a
+  rule's actions read `files the message into 'INBOX.Lists'; stops`
+  rather than `fileinto INBOX.Lists; stop`, in a plan and in `filter
+  list`; `filterset show` frames the source as `--- filter set 'NAME'
+  ---` and `--- N rule(s): ... ---` rather than `# ---- NAME ----`; and
+  `Rule 'x' on script 'y'`, `Backed up current script`, `Created IMAP
+  folder`, and the rest now say `filter set` and `folder`. A server's
+  alert or warning is introduced as `mailctl: alert from the mail server:`
+  or `mailctl: warning from the filter server:` rather than naming `imap`
+  or `sieve`, and `--verbose` lines are tagged `[mail]` and `[filter]`.
+  The server's own words stay where they belong: `server test`, `server
+  probe`, and the baselines, the help of `--disable-extension` and of the
+  connection settings (`--host`, `--imap-*`, `--sieve-*`, which keep their
+  names), a refusal about an extension or an action MXRoute does not
+  allow, and the filter set's own text in a diff or `filterset show`.
+  Option names, including `--fileinto` and `--script`, and every `--json`
+  key are unchanged; a JSON error's `message` carries the new wording. A
+  script that matches on a line of mailctl's output needs the new text.
+
+BUG FIXES:
+
+* **A `filterset` command is refused by a provider that keeps one filter
+  set, whichever front-end asks** ([#219]). Hiding the group from help was
+  the CLI's; listing, showing, backing up, or restoring a filter set is
+  now refused below it too, naming the provider, before anything is read.
+
 ## 0.10.0
 
 FEATURES:

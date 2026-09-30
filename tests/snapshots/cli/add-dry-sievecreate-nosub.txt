@@ -2,16 +2,16 @@ $ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-[dry-run] would create IMAP folder 'INBOX.Lists.GitHub', not subscribed (--no-subscribe)
-  The rule also says 'fileinto :create', so Sieve recreates the folder if it is ever deleted.
+[dry-run] would create folder 'INBOX.Lists.GitHub', not subscribed (--no-subscribe)
+  The filter also creates the folder as mail arrives, so it is made again if it is ever deleted.
 
-Rule 'from-noreply-github-com' on script 'managesieve':
+Rule 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com'
-  then:  fileinto :create INBOX.Lists.GitHub; stop
+  then:  files the message into 'INBOX.Lists.GitHub', creating it if it is missing; stops
 
-Note: the script on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
 
---- sieve diff ---
+--- diff ---
 --- managesieve (current)
 +++ managesieve (proposed)
 @@ -1,4 +1,4 @@
@@ -32,7 +32,7 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 
 --- end diff ---
 
-[dry-run] the script was NOT uploaded.
+[dry-run] the filter set was NOT uploaded.
 
 --- stderr
 

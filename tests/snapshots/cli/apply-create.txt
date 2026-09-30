@@ -2,14 +2,14 @@ $ mailctl filter apply --from noreply@github.com --fileinto Lists/GitHub --creat
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
-Folder 'INBOX.Lists.GitHub' does not exist; it will be created over IMAP and subscribed to when the change is applied
+Folder 'INBOX.Lists.GitHub' does not exist; it will be created and subscribed to when the change is applied
 Criteria: From contains 'noreply@github.com'
 
 Searching 'INBOX' for existing matches...
 2 message(s) match:
   uid 1        2026-02-03 04:05:06  Someone <noreply@github.com>   PR opened
   uid 2        2026-02-03 04:05:06  Someone <noreply@github.com>   Issue closed
-Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
+Created folder 'INBOX.Lists.GitHub' and subscribed to it
 Moved 2 message(s) from 'INBOX' to 'INBOX.Lists.GitHub'
 
 --- stderr

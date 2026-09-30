@@ -1636,10 +1636,16 @@ def test_switching_an_unknown_rule_names_the_real_ones(switch):
     ("kept", "reason"),
     [
         ("", "nothing to restore"),
-        ("# was a subject test", "not a Sieve test"),
-        ('# anyof (header :contains "subject"', "not a Sieve test"),
-        ('# header :contains "a" "b" {} if true', "not a Sieve test"),
-        ('# body :contains "invoice"', "not a Sieve test"),
+        ("# was a subject test", "is not a test mailctl can read"),
+        (
+            '# anyof (header :contains "subject"',
+            "is not a test mailctl can read",
+        ),
+        (
+            '# header :contains "a" "b" {} if true',
+            "is not a test mailctl can read",
+        ),
+        ('# body :contains "invoice"', "is not a test mailctl can read"),
     ],
     ids=["nothing", "prose", "truncated", "trailing-block", "not-required"],
 )
@@ -2240,7 +2246,9 @@ def test_a_name_the_marker_can_carry_is_written_and_read_back(new):
 
 # ----------------------------------------------------------------------------
 def test_a_rule_with_no_name_marker_is_refused():
-    with pytest.raises(MailctlError, match="no name written in the script"):
+    with pytest.raises(
+        MailctlError, match="no name written in the filter set"
+    ):
         rename("keep;\n", "Unnamed rule 1", "named")
 
 
@@ -2254,5 +2262,7 @@ def test_a_rewrite_that_does_not_read_back_as_asked_is_refused(monkeypatch):
         lambda text, name, marker, which, dialect: text,
     )
 
-    with pytest.raises(MailctlError, match="no name written in the script"):
+    with pytest.raises(
+        MailctlError, match="no name written in the filter set"
+    ):
         rename(COMMENTED_SCRIPT, "keep-boss", "The boss")

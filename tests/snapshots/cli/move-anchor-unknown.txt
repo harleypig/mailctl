@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: no rule named 'phantom' in the active script, so --after has nothing to place this rule against. Known rules: keep-boss, bin-the-noise
+mailctl: no rule named 'phantom' in the active filter set, so --after has nothing to place this rule against. Known rules: keep-boss, bin-the-noise
 
 --- sieve calls
 ('connect',)

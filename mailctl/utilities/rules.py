@@ -17,9 +17,24 @@ from ..config import Config
 from ..criteria import Criteria
 from ..engine import Session
 
-# The PLACE_* names are re-exported (``X as X``): a front-end builds and
-# renders the neutral model through the utilities alone, never importing a
-# provider or a component.
+# The PLACE_* names and the step kinds are re-exported (``X as X``): a
+# front-end builds and renders the neutral model through the utilities
+# alone, never importing a provider or a component.
+from ..providers.base import (
+    DISCARD as DISCARD,
+)
+from ..providers.base import (
+    FILEINTO as FILEINTO,
+)
+from ..providers.base import (
+    FLAG as FLAG,
+)
+from ..providers.base import (
+    KEEP as KEEP,
+)
+from ..providers.base import (
+    OTHER as OTHER,
+)
 from ..providers.base import (
     PLACE_AFTER as PLACE_AFTER,
 )
@@ -33,7 +48,14 @@ from ..providers.base import (
     PLACE_LAST as PLACE_LAST,
 )
 from ..providers.base import (
+    STOP as STOP,
+)
+from ..providers.base import (
+    UNFLAG as UNFLAG,
+)
+from ..providers.base import (
     ActionSpec,
+    ActionStep,
     DisplayDiff,
     Placement,
     Provider,
@@ -123,14 +145,20 @@ def _require_name(name: str) -> None:
 
 
 # ----------------------------------------------------------------------------
-def require_capability(provider: Provider | Session, name: str) -> None:
-    """Refuse work needing a capability the provider does not declare."""
+def require_capability(
+    provider: Provider | Session, name: str, construct: str | None = None
+) -> None:
+    """Refuse work needing a capability the provider does not declare.
+
+    ``construct`` says what was asked for, where the capability's usual
+    words (:data:`CAPABILITY_CONSTRUCTS`) do not fit the request.
+    """
     if getattr(provider.capabilities, name):
         return
 
     raise refuse(
         provider.name,
-        CAPABILITY_CONSTRUCTS[name],
+        construct or CAPABILITY_CONSTRUCTS[name],
         f"it does not declare the {name!r} capability",
     )
 
@@ -174,7 +202,8 @@ def read_rules(session: Session, script: str | None = None) -> RulesReport:
 
     if not name:
         raise MailctlError(
-            "no active script on the server, so there are no rules to show.",
+            "no active filter set on the server, so there are no rules to "
+            "show.",
             code="no_active_script",
             fields={"operation": "filterset list"},
         )
@@ -183,6 +212,15 @@ def read_rules(session: Session, script: str | None = None) -> RulesReport:
     findings = audit(rules) if session.capabilities.ordering else []
 
     return RulesReport(name, rules, findings)
+
+
+# ----------------------------------------------------------------------------
+def describe_actions(
+    session: Session, actions: Iterable
+) -> tuple[ActionStep, ...]:
+    """What a rule's actions do, in neutral terms, for a front-end to word:
+    a plan's translated actions, or a read rule's ``actions``."""
+    return session.dialect.describe_actions(actions)
 
 
 # ############################################################################
@@ -290,8 +328,8 @@ def default_rule_name(criteria: Criteria) -> str:
 class RulePlan:
     """A rule merged into the script, not yet uploaded.
 
-    ``actions`` are the provider's own and opaque here; ``summary`` is the
-    provider's rendering of them for a person to read.
+    ``actions`` are the provider's own and opaque here; ``steps`` are what
+    they do, in neutral terms, for a front-end to word.
     """
 
     name: str
@@ -300,7 +338,7 @@ class RulePlan:
     after: str
     criteria: Criteria
     actions: list
-    summary: str
+    steps: tuple[ActionStep, ...]
     placement: Analysis
     diff: DisplayDiff
     folder: FolderPlan
@@ -501,7 +539,7 @@ def plan_rule(
         after=after,
         criteria=request.criteria,
         actions=actions,
-        summary=dialect.describe_actions(actions),
+        steps=dialect.describe_actions(actions),
         placement=placement_analysis(
             session,
             before,
@@ -528,7 +566,7 @@ def plan_removal(
     name, before, active = fetch_active(session, script)
 
     if not before.strip():
-        raise MailctlError(f"script {name!r} is empty")
+        raise MailctlError(f"filter set {name!r} is empty")
 
     after = session.dialect.remove_rule(before, rule)
 
@@ -561,7 +599,7 @@ def plan_move(
     name, before, active = fetch_active(session, script)
 
     if not before.strip():
-        raise MailctlError(f"script {name!r} is empty")
+        raise MailctlError(f"filter set {name!r} is empty")
 
     dialect = session.dialect
     after = dialect.move_rule(before, rule, placement)
@@ -608,7 +646,7 @@ def plan_switch(
     name, before, active = fetch_active(session, script)
 
     if not before.strip():
-        raise MailctlError(f"script {name!r} is empty")
+        raise MailctlError(f"filter set {name!r} is empty")
 
     dialect = session.dialect
     switch = dialect.enable_rule if enable else dialect.disable_rule
@@ -648,7 +686,7 @@ def plan_rename(
     name, before, active = fetch_active(session, script)
 
     if not before.strip():
-        raise MailctlError(f"script {name!r} is empty")
+        raise MailctlError(f"filter set {name!r} is empty")
 
     dialect = session.dialect
     after = dialect.rename_rule(before, rule, new_name)

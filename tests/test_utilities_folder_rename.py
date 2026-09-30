@@ -311,7 +311,10 @@ def test_a_rename_refused_by_the_server_uploads_nothing(
     message = str(caught.value)
 
     assert "could not rename folder 'INBOX.Lists'" in message
-    assert "Nothing was renamed, and the script on the server is as" in message
+    assert (
+        "Nothing was renamed, and the filter set on the server is as"
+        in message
+    )
     assert "backed up to" in message
     assert "put_script" not in sieve.names()
     assert sieve.names().count("check_script") == 1

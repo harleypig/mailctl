@@ -28,6 +28,7 @@ from ...criteria import Criteria
 from ...rules import Rule, Slot, read_rules
 from ..base import (
     ActionSpec,
+    ActionStep,
     CountSupport,
     DeliveryCreate,
     Dialect,
@@ -55,23 +56,15 @@ class MxrouteDialect(Dialect):
 
     name = "mxroute"
 
+    # Only the server reports and the help of an option only MXroute has
+    # are written in these; every other line is the front-end's own.
     wording = Wording(
         rules_service="ManageSieve",
         mail_service="IMAP",
         extensions="Sieve extensions",
         extension="Sieve extension",
-        host="MXRoute",
-        filters="Sieve filters",
-        rule_language="Sieve",
         rule_set="Sieve script",
         rule_sets="Sieve scripts",
-        validation="CHECKSCRIPT",
-        disabled_form="written the way Roundcube writes one -- 'if false "
-        "# <its test>' -- so the webmail shows it as disabled too",
-        backup_file="<script>-<UTC timestamp>.sieve",
-        delivery_create="the Sieve 'mailbox' extension",
-        file_action="fileinto",
-        create_action="fileinto :create",
         notes=(
             "MXRoute disables the Sieve 'redirect' action as a matter of "
             "policy (2024-03-22) -- use a panel forwarder, which handles "
@@ -154,7 +147,7 @@ class MxrouteDialect(Dialect):
 
     # ------------------------------------------------------------------------
     @classmethod
-    def describe_actions(cls, actions: list) -> str:
+    def describe_actions(cls, actions: Iterable) -> tuple[ActionStep, ...]:
         return mxroute_sieve.describe_actions(actions)
 
     # ------------------------------------------------------------------------
