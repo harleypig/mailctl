@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --before 2026-09-01 --fileinto Lists
+$ mailctl filter add --from noreply@github.com --before 2026-09-01 --fileinto Lists
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

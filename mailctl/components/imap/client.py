@@ -852,7 +852,7 @@ class ImapSession:
                     f"{case_variant_hint(folder, self._folders)}"
                 ).rstrip(),
                 code="folder_unopenable",
-                fields={"operation": "folders"},
+                fields={"operation": "folder list"},
             ) from exc
 
         self._selected = folder

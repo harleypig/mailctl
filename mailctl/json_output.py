@@ -37,7 +37,7 @@ __all__ = [
     "sender_report",
 ]
 
-JSON_VERSION = 1
+JSON_VERSION = 2
 
 # How the IMAP component writes a message's INTERNALDATE: local time, the
 # zone already dropped, so the ISO form carries no offset either.
@@ -330,7 +330,7 @@ def mark_plan(record) -> dict:
     lose -- only what would really change, so both are empty for a message
     that already looks as asked."""
     return plan(
-        "mark",
+        "mail mark",
         changes=not record.is_empty,
         folder=record.folder,
         uidvalidity=record.uidvalidity,
@@ -355,7 +355,7 @@ def folder_rename_plan(record) -> dict:
     action that would be repointed. A rename always changes something;
     ``diff`` is null where no rule does, and the script is left alone."""
     return plan(
-        "rename-folder",
+        "folder rename",
         changes=True,
         diff=change(record.rules_change, record.diff)["diff"],
         requested={"old": record.requested_old, "new": record.requested_new},
@@ -384,7 +384,7 @@ def optimize_plan(record) -> dict:
     proposals = record.proposals
 
     return plan(
-        "optimize-rules",
+        "filter optimize",
         **change(record.changes, record.diff),
         considered=list(record.kinds),
         removals=[

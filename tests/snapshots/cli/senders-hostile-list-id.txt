@@ -1,4 +1,4 @@
-$ mailctl senders --by list-id
+$ mailctl mail senders --by list-id
 exit: 0
 --- stdout
 4 message(s) in 'INBOX', 4 unread; 3 group(s) by list-id, busiest first:
@@ -6,7 +6,7 @@ exit: 0
       2        2     100%  (no list-id)
       1        1     100%  dev.lists.example.com (Some list)
       1        1     100%  l.example.com (L\x1b[31m)
-To build a filter for a row: mailctl search --list-id dev.lists.example.com --build-filter
+To build a filter for a row: mailctl mail search --list-id dev.lists.example.com --build-filter
 
 --- stderr
 

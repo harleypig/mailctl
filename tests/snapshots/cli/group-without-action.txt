@@ -1,0 +1,12 @@
+$ mailctl filter
+exit: SystemExit(2)
+--- stdout
+
+--- stderr
+usage: mailctl filter [-h] [--verbose] [--debug]
+                      {list,add,apply,remove,move,rename,enable,disable,optimize}
+                      ...
+mailctl filter: error: the following arguments are required: {list,add,apply,remove,move,rename,enable,disable,optimize}
+
+--- sieve calls
+--- imap calls

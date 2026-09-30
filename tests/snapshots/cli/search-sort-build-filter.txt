@@ -1,4 +1,4 @@
-$ mailctl search --sort size --build-filter --from noreply@github.com
+$ mailctl mail search --sort size --build-filter --from noreply@github.com
 exit: 1
 --- stdout
 

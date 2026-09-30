@@ -1,4 +1,4 @@
-$ mailctl search --build-filter --json --from noreply@github.com --body merged --before 2026-09-28 --older-than 30d --flagged
+$ mailctl mail search --build-filter --json --from noreply@github.com --body merged --before 2026-09-28 --older-than 30d --flagged
 exit: 0
 --- stdout
 {

@@ -8,7 +8,7 @@ whole point of these tests:
   works -- a forwarder.
 * ``notify`` and ``vacation`` are simply **not implemented here**. No
   MXroute source says either way, so the message must not claim they are
-  unavailable; it points at the control panel and at ``mailctl test``,
+  unavailable; it points at the control panel and at ``mailctl server test``,
   which reads the answer off the server.
 
 Collapsing those two into one "unsupported" message would state as fact
@@ -46,7 +46,15 @@ from mailctl.providers.mxroute.sieve import (
 def parse_add(*extra: str):
     """Parse a valid ``add`` invocation plus whatever ``extra`` adds."""
     return build_parser().parse_args(
-        ["add", "--from", "boss@example.com", "--fileinto", "Lists", *extra]
+        [
+            "filter",
+            "add",
+            "--from",
+            "boss@example.com",
+            "--fileinto",
+            "Lists",
+            *extra,
+        ]
     )
 
 
@@ -104,7 +112,7 @@ def test_an_unimplemented_action_is_refused_without_claiming_it_is_disabled(
     with pytest.raises(MailctlError) as caught:
         reject_forbidden(Config(), parse_add(flag, value))
 
-    assert "mailctl test" not in str(caught.value)
+    assert "mailctl server test" not in str(caught.value)
     assert caught.value.code == "unimplemented_action"
 
     message = error_text(caught.value)
@@ -112,7 +120,7 @@ def test_an_unimplemented_action_is_refused_without_claiming_it_is_disabled(
     assert f"does not generate the Sieve '{label}' action" in message
     assert "conservative choice of ours" in message
     assert "not a documented" in message
-    assert message.endswith("at all, run 'mailctl test'.")
+    assert message.endswith("at all, run 'mailctl server test'.")
 
 
 # ----------------------------------------------------------------------------
@@ -183,7 +191,9 @@ def test_the_generated_actions_never_contain_a_refused_verb(extra):
 # ----------------------------------------------------------------------------
 def test_an_add_with_no_action_at_all_is_refused():
     """A rule that tests but does nothing is never what someone meant."""
-    args = build_parser().parse_args(["add", "--from", "boss@example.com"])
+    args = build_parser().parse_args(
+        ["filter", "add", "--from", "boss@example.com"]
+    )
 
     with pytest.raises(MailctlError, match="no action requested"):
         sieve_actions(actions_from_args(args), "", False)

@@ -332,7 +332,7 @@ class ScriptGuard:
             f"the Sieve scripts of {self.mailbox.user!r} could not be "
             f"confirmed restored: {'; '.join(problems)}. The captured copy "
             f"is in {self.saved} (active: {self.active!r}); put it back with "
-            f"'mailctl restore FILE' before doing anything else."
+            f"'mailctl filterset restore FILE' before doing anything else."
         )
 
     # ------------------------------------------------------------------------

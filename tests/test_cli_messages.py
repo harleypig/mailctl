@@ -192,16 +192,20 @@ def assert_terminal_safe(output: str) -> None:
 @pytest.mark.parametrize(
     "argv",
     [
-        pytest.param(("view", "1"), id="view"),
-        pytest.param(("view", "1", "--headers-only"), id="headers-only"),
-        pytest.param(("view", "1", "--raw"), id="raw"),
-        pytest.param(("view", "2"), id="view-8bit"),
-        pytest.param(("view", "2", "--raw"), id="raw-8bit"),
-        pytest.param(("view", "3"), id="view-bidi"),
-        pytest.param(("view", "3", "--headers-only"), id="headers-bidi"),
-        pytest.param(("view", "3", "--raw"), id="raw-bidi"),
-        pytest.param(("search",), id="search"),
-        pytest.param(("senders",), id="senders"),
+        pytest.param(("mail", "view", "1"), id="view"),
+        pytest.param(
+            ("mail", "view", "1", "--headers-only"), id="headers-only"
+        ),
+        pytest.param(("mail", "view", "1", "--raw"), id="raw"),
+        pytest.param(("mail", "view", "2"), id="view-8bit"),
+        pytest.param(("mail", "view", "2", "--raw"), id="raw-8bit"),
+        pytest.param(("mail", "view", "3"), id="view-bidi"),
+        pytest.param(
+            ("mail", "view", "3", "--headers-only"), id="headers-bidi"
+        ),
+        pytest.param(("mail", "view", "3", "--raw"), id="raw-bidi"),
+        pytest.param(("mail", "search"), id="search"),
+        pytest.param(("mail", "senders"), id="senders"),
     ],
 )
 def test_hostile_content_never_reaches_the_terminal_raw(run, argv):
@@ -210,7 +214,7 @@ def test_hostile_content_never_reaches_the_terminal_raw(run, argv):
 
 # ----------------------------------------------------------------------------
 def test_view_shows_the_escapes_and_keeps_the_text(run):
-    output = run("view", "1")
+    output = run("mail", "view", "1")
 
     assert "Click here" in output
     assert "\\x1b]8;;http://evil.example/\\x07" in output
@@ -221,7 +225,7 @@ def test_view_shows_the_escapes_and_keeps_the_text(run):
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "argv", [("view", "5"), ("search",)], ids=["view", "search"]
+    "argv", [("mail", "view", "5"), ("mail", "search")], ids=["view", "search"]
 )
 def test_a_raw_utf8_header_is_shown_decoded_and_still_escaped(run, argv):
     """Decoding raw UTF-8 (#97) turns bytes into a real C1 control too."""
@@ -234,7 +238,7 @@ def test_a_raw_utf8_header_is_shown_decoded_and_still_escaped(run, argv):
 
 # ----------------------------------------------------------------------------
 def test_a_decoded_newline_cannot_forge_a_header_line(run):
-    lines = run("view", "1").splitlines()
+    lines = run("mail", "view", "1").splitlines()
 
     assert not [line for line in lines if line.startswith("From: forged")]
     assert "  Subject: Invoice\\x1b[31m red From: forged" in lines
@@ -242,7 +246,7 @@ def test_a_decoded_newline_cannot_forge_a_header_line(run):
 
 # ----------------------------------------------------------------------------
 def test_raw_keeps_safe_characters_as_they_are(run):
-    output = run("view", "1", "--raw")
+    output = run("mail", "view", "1", "--raw")
 
     assert "Content-Transfer-Encoding: quoted-printable\r\n" in output
     assert "=1B[2J" in output
@@ -250,7 +254,7 @@ def test_raw_keeps_safe_characters_as_they_are(run):
 
 # ----------------------------------------------------------------------------
 def test_a_bidi_override_cannot_disguise_an_attachment(run):
-    output = run("view", "3")
+    output = run("mail", "view", "3")
 
     assert "invoice_\\u202efdp.exe" in output
     assert "Subject: Pay \\u202etoday now" in output
@@ -272,14 +276,14 @@ def test_a_bidi_override_cannot_disguise_an_attachment(run):
     ],
 )
 def test_raw_into_a_pipe_is_the_exact_message(run_piped, uid, source):
-    """'mailctl view N --raw > msg.eml' saves the message itself: no
+    """'mailctl mail view N --raw > msg.eml' saves the message itself: no
     decoding, no escaping, no newline added or translated."""
-    assert run_piped("view", str(uid), "--raw") == source
+    assert run_piped("mail", "view", str(uid), "--raw") == source
 
 
 # ----------------------------------------------------------------------------
 def test_raw_on_a_terminal_is_still_escaped(run):
-    output = run("view", "4", "--raw")
+    output = run("mail", "view", "4", "--raw")
 
     assert "caf\ufffd" in output
     assert output.endswith("no final newline\n")
@@ -289,10 +293,12 @@ def test_raw_on_a_terminal_is_still_escaped(run):
 @pytest.mark.parametrize(
     "argv",
     [
-        pytest.param(("view", "2"), id="view"),
-        pytest.param(("view", "2", "--headers-only"), id="headers-only"),
-        pytest.param(("search",), id="search"),
-        pytest.param(("senders",), id="senders"),
+        pytest.param(("mail", "view", "2"), id="view"),
+        pytest.param(
+            ("mail", "view", "2", "--headers-only"), id="headers-only"
+        ),
+        pytest.param(("mail", "search"), id="search"),
+        pytest.param(("mail", "senders"), id="senders"),
     ],
 )
 def test_only_raw_skips_escaping_into_a_pipe(run_piped, argv):

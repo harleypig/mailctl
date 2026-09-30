@@ -1,4 +1,4 @@
-$ mailctl save-baseline --dry-run
+$ mailctl server baseline save --dry-run
 exit: 0
 --- stdout
 [dry-run] would save the baseline for mail.example.com, taken <STAMP>, to <TMP>/config/mailctl/baselines/mail.example.com.json; nothing was written.

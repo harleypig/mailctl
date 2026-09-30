@@ -1,10 +1,10 @@
-$ mailctl enable-rule keep-boss --dry-run --json
+$ mailctl filter enable keep-boss --dry-run --json
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "plan": {
-    "command": "enable-rule",
+    "command": "filter enable",
     "changes": false,
     "diff": null,
     "rule": "keep-boss",

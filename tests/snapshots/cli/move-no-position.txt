@@ -1,20 +1,20 @@
-$ mailctl move-rule keep-boss
+$ mailctl filter move keep-boss
 exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mailctl move-rule [-h] [--verbose] [--debug] [--provider PROVIDER]
-                         [--host HOST] [--user USER]
-                         [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
-                         [--env-file [PATH]] [--imap-host IMAP_HOST]
-                         [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
-                         [--sieve-tls {starttls,ssl,none}]
-                         [--backup-dir BACKUP_DIR] [--disable-extension NAME]
-                         [--dry-run] [--yes] [--json] [--script SCRIPT]
-                         [--activate]
-                         (--first | --last | --before OTHER | --after OTHER)
-                         NAME
-mailctl move-rule: error: one of the arguments --first --last --before --after is required
+usage: mailctl filter move [-h] [--verbose] [--debug] [--provider PROVIDER]
+                           [--host HOST] [--user USER]
+                           [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
+                           [--env-file [PATH]] [--imap-host IMAP_HOST]
+                           [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
+                           [--sieve-tls {starttls,ssl,none}]
+                           [--backup-dir BACKUP_DIR]
+                           [--disable-extension NAME] [--dry-run] [--yes]
+                           [--json] [--script SCRIPT] [--activate]
+                           (--first | --last | --before OTHER | --after OTHER)
+                           NAME
+mailctl filter move: error: one of the arguments --first --last --before --after is required
 
 --- sieve calls
 --- imap calls

@@ -1,0 +1,11 @@
+$ mailctl messages --folder INBOX
+exit: SystemExit(2)
+--- stdout
+
+--- stderr
+usage: mailctl [-h] [--version] [--verbose] [--debug]
+               {mail,folder,filter,filterset,server,config,help} ...
+mailctl: error: 'messages' is now 'mailctl mail search'; the commands are grouped (see 'mailctl help')
+
+--- sieve calls
+--- imap calls

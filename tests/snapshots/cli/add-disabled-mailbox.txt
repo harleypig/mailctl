@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --disable-extension mailbox
+$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --disable-extension mailbox
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
@@ -29,7 +29,7 @@ Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sie
 Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
 Uploaded and activated script 'managesieve'
 
-Mail already delivered was not touched; to act on it, run 'mailctl apply' with the same criteria and actions.
+Mail already delivered was not touched; to act on it, run 'mailctl filter apply' with the same criteria and actions.
 
 --- stderr
 

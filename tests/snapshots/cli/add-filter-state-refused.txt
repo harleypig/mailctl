@@ -1,9 +1,9 @@
-$ mailctl add --filter <TMP>/restore.sieve --fileinto Lists
+$ mailctl filter add --filter <TMP>/restore.sieve --fileinto Lists
 exit: 1
 --- stdout
 
 --- stderr
-mailctl: a saved rule cannot test a message's date or read or flagged state (given: since): a rule runs as mail is delivered, when every message is new, unread, and unflagged. They select mail already delivered: use them with 'mailctl search' to list it, or 'mailctl apply' to act on it.
+mailctl: a saved rule cannot test a message's date or read or flagged state (given: since): a rule runs as mail is delivered, when every message is new, unread, and unflagged. They select mail already delivered: use them with 'mailctl mail search' to list it, or 'mailctl filter apply' to act on it.
 
 --- sieve calls
 --- imap calls

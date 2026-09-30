@@ -1,4 +1,4 @@
-$ mailctl create-folder lists --yes
+$ mailctl folder create lists --yes
 exit: 1
 --- stdout
 

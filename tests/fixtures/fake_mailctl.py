@@ -53,7 +53,57 @@ import os
 import sys
 from pathlib import Path
 
-ARGV = sys.argv[1:]
+# The real CLI's commands, grouped noun first (#219), and the name each had
+# before, which the canned output below is keyed by. A command line starting
+# with neither is refused, as the real CLI refuses an old name, so a check
+# still calling one goes red.
+GROUPED = {
+    "mail search": "search",
+    "mail view": "view",
+    "mail mark": "mark",
+    "mail senders": "senders",
+    "folder list": "folders",
+    "folder create": "create-folder",
+    "folder rename": "rename-folder",
+    "folder subscribe": "subscribe",
+    "folder unsubscribe": "unsubscribe",
+    "filter list": "rules",
+    "filter add": "add",
+    "filter apply": "apply",
+    "filter remove": "remove-rule",
+    "filter move": "move-rule",
+    "filter rename": "rename-rule",
+    "filter enable": "enable-rule",
+    "filter disable": "disable-rule",
+    "filter optimize": "optimize-rules",
+    "filterset list": "list",
+    "filterset show": "show",
+    "filterset backup": "backup",
+    "filterset restore": "restore",
+    "server test": "test",
+    "server probe": "probe",
+    "server baseline save": "save-baseline",
+    "server baseline show": "show-baseline",
+    "server baseline check": "check-baseline",
+    "config migrate": "migrate-config",
+}
+
+
+# ----------------------------------------------------------------------------
+def ungrouped(argv: list[str]) -> list[str] | None:
+    """``argv`` with its command's path swapped for its old name; None
+    where it names no command."""
+    for size in (3, 2):
+        path = " ".join(argv[:size])
+
+        if path in GROUPED:
+            return [GROUPED[path], *argv[size:]]
+
+    return None
+
+
+GIVEN = sys.argv[1:]
+ARGV = ungrouped(GIVEN) or []
 BREAK = set(filter(None, os.environ.get("STUB_BREAK", "").split(",")))
 STATE = Path(os.environ["STUB_LOG"]).with_suffix(".state")
 FLAGGED = Path(os.environ["STUB_LOG"]).with_suffix(".flagged")
@@ -123,8 +173,8 @@ DIFF = """\
 """
 
 
-# The shape of 'mailctl probe --json' (tests/snapshots/cli/probe-json.txt),
-# cut down.
+# The shape of 'mailctl server probe --json'
+# (tests/snapshots/cli/probe-json.txt), cut down.
 PROBE = {
     "version": 1,
     "taken": "2026-09-29T14:30:05Z",
@@ -436,7 +486,7 @@ def document(command: str) -> str:
     else:
         body = {"script": "managesieve", "rules": [], "findings": []}
 
-    out = json.dumps({"version": 1, **body}, indent=2) + "\n"
+    out = json.dumps({"version": 2, **body}, indent=2) + "\n"
 
     if command == "folders" and "json-noise" in BREAK:
         out = "Hierarchy delimiter: '.'\n" + out
@@ -452,13 +502,13 @@ def baseline(command: str) -> int:
     if "no-baseline" in BREAK:
         message = (
             f"no baseline has been saved for mail.example.com (looked for "
-            f"{where}); 'mailctl save-baseline' records one"
+            f"{where}); 'mailctl server baseline save' records one"
         )
 
         # Under --json a failure is one JSON line on stderr (#151).
         if "--json" in ARGV:
             error = {
-                "version": 1,
+                "version": 2,
                 "error": {"message": message, "code": "no_baseline"},
             }
             print(json.dumps(error), file=sys.stderr)
@@ -498,7 +548,7 @@ def baseline(command: str) -> int:
 def optimize() -> str:
     """'optimize-rules --dry-run --json': a merge of two Trash rules."""
     plan = {
-        "command": "optimize-rules",
+        "command": "filter optimize",
         "changes": True,
         "diff": {
             "label": "sieve",
@@ -526,7 +576,7 @@ def optimize() -> str:
     if "optimize-no-diff" in BREAK:
         plan["diff"] = None
 
-    out = json.dumps({"version": 1, "plan": plan}, indent=2) + "\n"
+    out = json.dumps({"version": 2, "plan": plan}, indent=2) + "\n"
 
     if "optimize-uploads" in BREAK:
         out += "Uploaded and activated script 'managesieve'\n"
@@ -537,7 +587,12 @@ def optimize() -> str:
 # ----------------------------------------------------------------------------
 def main() -> int:
     with open(os.environ["STUB_LOG"], "a", encoding="utf-8") as log:
-        log.write(json.dumps(ARGV) + "\n")
+        log.write(json.dumps(GIVEN) + "\n")
+
+    if not ARGV:
+        print(f"fake mailctl: no command in {GIVEN}", file=sys.stderr)
+
+        return 2
 
     command = ARGV[0]
 

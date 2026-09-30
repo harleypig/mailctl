@@ -21,7 +21,7 @@ def test_a_multi_line_error_is_indented_under_the_prefix(monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "cmd_test", fail)
 
-    assert cli.main(["test"]) == 1
+    assert cli.main(["server", "test"]) == 1
 
     assert capsys.readouterr().err == (
         "mailctl: first line;\n  second line.\n  third line\n"
@@ -35,7 +35,7 @@ def test_a_single_line_error_is_printed_unchanged(monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "cmd_test", fail)
 
-    assert cli.main(["test"]) == 1
+    assert cli.main(["server", "test"]) == 1
 
     assert capsys.readouterr().err == "mailctl: one line only\n"
 
@@ -67,11 +67,13 @@ def test_an_unusable_password_is_reported_and_handed_back():
     "argv",
     [
         pytest.param(
-            ["search", "--from", "a@b.c", "--raw", "ALL"],
+            ["mail", "search", "--from", "a@b.c", "--raw", "ALL"],
             id="search-criteria-and-raw",
         ),
-        pytest.param(["apply", "--from", "a@b.c"], id="apply-no-action"),
-        pytest.param(["add", "--from", "a@b.c"], id="add-no-action"),
+        pytest.param(
+            ["filter", "apply", "--from", "a@b.c"], id="apply-no-action"
+        ),
+        pytest.param(["filter", "add", "--from", "a@b.c"], id="add-no-action"),
     ],
 )
 def test_bad_input_fails_before_any_login(argv, fake_imap, monkeypatch):
@@ -104,10 +106,12 @@ def test_bad_input_fails_before_any_login(argv, fake_imap, monkeypatch):
     ("argv", "error"),
     [
         pytest.param(
-            ["messages"], "invalid choice: 'messages'", id="messages"
+            ["messages"],
+            "'messages' is now 'mailctl mail search'",
+            id="messages",
         ),
         pytest.param(
-            ["search", "--search", "ALL"],
+            ["mail", "search", "--search", "ALL"],
             "unrecognized arguments: --search",
             id="search-flag",
         ),
@@ -129,6 +133,7 @@ def test_build_filter_json_is_what_the_filter_loader_reads(capsys):
     --filter' will read (#149), and building it needs no server."""
     code = cli.main(
         [
+            "mail",
             "search",
             "--build-filter",
             "--json",

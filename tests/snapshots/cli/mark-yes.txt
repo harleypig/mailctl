@@ -1,4 +1,4 @@
-$ mailctl mark 1 2 --read --flag --yes
+$ mailctl mail mark 1 2 --read --flag --yes
 exit: 0
 --- stdout
 Marking in 'INBOX': set \Seen, \Flagged

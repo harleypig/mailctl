@@ -1,4 +1,4 @@
-$ mailctl mark 1
+$ mailctl mail mark 1
 exit: 1
 --- stdout
 

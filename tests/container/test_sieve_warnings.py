@@ -24,7 +24,7 @@ def test_the_putscript_warning_is_shown_once_on_stderr(account):
     """Red if an OK's WARNINGS text is dropped, or shown only under
     --verbose, or anywhere but stderr, or CHECKSCRIPT's is shown too."""
     result = account.run(
-        "add", "--from", "x@example.test", "--flag", "\\Bogus"
+        "filter", "add", "--from", "x@example.test", "--flag", "\\Bogus"
     )
 
     assert result.code == 0, result.err
@@ -35,7 +35,7 @@ def test_the_putscript_warning_is_shown_once_on_stderr(account):
 # ----------------------------------------------------------------------------
 def test_verbose_also_shows_the_checkscript_warning_quoted(account):
     result = account.run(
-        "add", "--from", "x@example.test", "--flag", "\\Bogus", "-v"
+        "filter", "add", "--from", "x@example.test", "--flag", "\\Bogus", "-v"
     )
 
     assert result.code == 0, result.err
@@ -52,7 +52,7 @@ def test_verbose_also_shows_the_checkscript_warning_quoted(account):
 def test_a_script_the_server_does_not_warn_about_shows_nothing(account):
     """The control: a warning shown for every upload would pass above."""
     result = account.run(
-        "add", "--from", "x@example.test", "--flag", "\\Flagged"
+        "filter", "add", "--from", "x@example.test", "--flag", "\\Flagged"
     )
 
     assert result.code == 0, result.err

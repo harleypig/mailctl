@@ -1,4 +1,4 @@
-$ mailctl search --uids-only --build-filter --from noreply@github.com
+$ mailctl mail search --uids-only --build-filter --from noreply@github.com
 exit: 1
 --- stdout
 

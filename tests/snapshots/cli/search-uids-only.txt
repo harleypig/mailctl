@@ -1,4 +1,4 @@
-$ mailctl search --uids-only
+$ mailctl mail search --uids-only
 exit: 0
 --- stdout
 5

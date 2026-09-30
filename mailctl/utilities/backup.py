@@ -41,7 +41,7 @@ def plan_backup(
         raise MailctlError(
             "no active script on the server, so there is nothing to back up.",
             code="no_active_script",
-            fields={"operation": "list"},
+            fields={"operation": "filterset list"},
         )
 
     source = session.transport.read_rule_set(name)

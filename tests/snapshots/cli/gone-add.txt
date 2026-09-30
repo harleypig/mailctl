@@ -1,0 +1,11 @@
+$ mailctl add --from a@b.c --fileinto X
+exit: SystemExit(2)
+--- stdout
+
+--- stderr
+usage: mailctl [-h] [--version] [--verbose] [--debug]
+               {mail,folder,filter,filterset,server,config,help} ...
+mailctl: error: 'add' is now 'mailctl filter add'; the commands are grouped (see 'mailctl help')
+
+--- sieve calls
+--- imap calls

@@ -440,7 +440,9 @@ def test_none_clears_a_lower_list_at_every_rung(tmp_path, monkeypatch):
 def test_none_through_the_real_parser_clears_the_config_file():
     write_config_file('disabled_extensions = ["copy"]\n')
 
-    args = build_parser().parse_args(["test", "--disable-extension", "none"])
+    args = build_parser().parse_args(
+        ["server", "test", "--disable-extension", "none"]
+    )
 
     config = load_config(args)
 
@@ -484,6 +486,7 @@ def test_none_mixed_with_a_name_is_refused(rung, tmp_path, monkeypatch):
 def test_the_disable_flag_is_repeatable_through_the_real_parser():
     args = build_parser().parse_args(
         [
+            "server",
             "test",
             "--disable-extension",
             "mailbox",
@@ -512,11 +515,11 @@ def test_the_built_in_defaults_apply_when_nothing_is_configured():
 @pytest.mark.parametrize(
     "argv",
     [
-        pytest.param(["apply", "--from", "x"], id="apply"),
-        pytest.param(["add", "--from", "x"], id="add"),
-        pytest.param(["add", "--like", "1"], id="add-like"),
-        pytest.param(["search"], id="search"),
-        pytest.param(["view", "1"], id="view"),
+        pytest.param(["filter", "apply", "--from", "x"], id="apply"),
+        pytest.param(["filter", "add", "--from", "x"], id="add"),
+        pytest.param(["filter", "add", "--like", "1"], id="add-like"),
+        pytest.param(["mail", "search"], id="search"),
+        pytest.param(["mail", "view", "1"], id="view"),
     ],
 )
 def test_the_source_folder_resolves_like_every_other_setting(
@@ -1122,7 +1125,7 @@ def test_two_credential_flags_are_refused_by_argparse(capsys, argv):
     user has to have memorised to predict what just authenticated.
     """
     with pytest.raises(SystemExit) as caught:
-        build_parser().parse_args(["test", *argv])
+        build_parser().parse_args(["server", "test", *argv])
 
     assert caught.value.code == 2
     assert "not allowed with argument" in capsys.readouterr().err
@@ -1146,7 +1149,7 @@ def test_only_the_inline_password_flag_warns(capsys, argv, warns):
     mailctl started. The warning names neither the value nor a fragment
     of it.
     """
-    configure(build_parser().parse_args(["test", *argv]))
+    configure(build_parser().parse_args(["server", "test", *argv]))
 
     captured = capsys.readouterr().err
 
@@ -1434,10 +1437,14 @@ def test_an_explicit_environ_mapping_replaces_os_environ(monkeypatch):
 @pytest.mark.parametrize(
     ("argv", "expected"),
     [
-        pytest.param(["test"], None, id="absent"),
-        pytest.param(["test", "--env-file"], ".env", id="bare"),
-        pytest.param(["test", "--env-file", "x.env"], "x.env", id="named"),
-        pytest.param(["test", "--env-file=x.env"], "x.env", id="equals"),
+        pytest.param(["server", "test"], None, id="absent"),
+        pytest.param(["server", "test", "--env-file"], ".env", id="bare"),
+        pytest.param(
+            ["server", "test", "--env-file", "x.env"], "x.env", id="named"
+        ),
+        pytest.param(
+            ["server", "test", "--env-file=x.env"], "x.env", id="equals"
+        ),
     ],
 )
 def test_the_env_file_flag_defaults_to_dot_env(argv, expected):
@@ -1451,7 +1458,9 @@ def test_a_bare_env_file_flag_reads_dot_env_in_the_current_directory(
     write_env_file(tmp_path / ".env", "MAILCTL_HOST=from-cwd\n")
     monkeypatch.chdir(tmp_path)
 
-    config = configure(build_parser().parse_args(["test", "--env-file"]))
+    config = configure(
+        build_parser().parse_args(["server", "test", "--env-file"])
+    )
 
     assert config.host == "from-cwd"
 
@@ -1463,7 +1472,7 @@ def test_a_missing_env_file_named_by_the_flag_is_an_error(
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(MailctlError, match=r"env file \.env: cannot read"):
-        configure(build_parser().parse_args(["test", "--env-file"]))
+        configure(build_parser().parse_args(["server", "test", "--env-file"]))
 
 
 # ----------------------------------------------------------------------------

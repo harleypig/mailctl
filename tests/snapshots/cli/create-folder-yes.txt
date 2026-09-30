@@ -1,4 +1,4 @@
-$ mailctl create-folder Lists/GitHub --yes
+$ mailctl folder create Lists/GitHub --yes
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')

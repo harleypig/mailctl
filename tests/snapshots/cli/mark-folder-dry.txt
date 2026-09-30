@@ -1,4 +1,4 @@
-$ mailctl mark 1 --folder Lists --keyword $Todo --dry-run
+$ mailctl mail mark 1 --folder Lists --keyword $Todo --dry-run
 exit: 0
 --- stdout
 Marking in 'INBOX.Lists': set $Todo

@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --dry-run
+$ mailctl filter add --from noreply@github.com --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

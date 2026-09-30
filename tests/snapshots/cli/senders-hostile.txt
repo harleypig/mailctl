@@ -1,4 +1,4 @@
-$ mailctl senders
+$ mailctl mail senders
 exit: 0
 --- stdout
 4 message(s) in 'INBOX', 4 unread; 3 group(s) by address, busiest first:
@@ -6,7 +6,7 @@ exit: 0
       2        2     100%  noreply@github.com (Someone)
       1        1     100%  evil@example.com (Evil\x1b]0;pwn\x07)
       1        1     100%  list@lists.example.com (Someone)
-To build a filter for a row: mailctl search --from noreply@github.com --build-filter
+To build a filter for a row: mailctl mail search --from noreply@github.com --build-filter
 
 --- stderr
 

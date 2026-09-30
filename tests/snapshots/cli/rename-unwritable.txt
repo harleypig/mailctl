@@ -1,4 +1,4 @@
-$ mailctl rename-rule keep-boss two
+$ mailctl filter rename keep-boss two
 lines --yes
 exit: 1
 --- stdout

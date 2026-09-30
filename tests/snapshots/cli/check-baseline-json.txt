@@ -1,4 +1,4 @@
-$ mailctl check-baseline --json
+$ mailctl server baseline check --json
 exit: 0
 --- stdout
 {

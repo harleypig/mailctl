@@ -1,4 +1,4 @@
-$ mailctl add --subject newsletter --fileinto Lists --name keep-boss --replace --first --dry-run
+$ mailctl filter add --subject newsletter --fileinto Lists --name keep-boss --replace --first --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

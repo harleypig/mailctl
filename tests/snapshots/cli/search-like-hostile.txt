@@ -1,4 +1,4 @@
-$ mailctl search --like 9 --derive subject --build-filter
+$ mailctl mail search --like 9 --derive subject --build-filter
 exit: 0
 --- stdout
 Message uid 9 in 'INBOX':

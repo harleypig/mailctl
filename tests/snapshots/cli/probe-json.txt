@@ -1,4 +1,4 @@
-$ mailctl probe --json
+$ mailctl server probe --json
 exit: 0
 --- stdout
 {

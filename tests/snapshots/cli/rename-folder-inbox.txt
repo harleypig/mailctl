@@ -1,9 +1,9 @@
-$ mailctl rename-folder INBOX Archive
+$ mailctl folder rename INBOX Archive
 exit: 1
 --- stdout
 
 --- stderr
-mailctl: INBOX cannot be renamed: IMAP moves its messages into the new folder and leaves an empty INBOX behind (RFC 3501 section 6.3.5), which is not a rename. 'mailctl apply' moves mail out of INBOX by criteria.
+mailctl: INBOX cannot be renamed: IMAP moves its messages into the new folder and leaves an empty INBOX behind (RFC 3501 section 6.3.5), which is not a rename. 'mailctl filter apply' moves mail out of INBOX by criteria.
 
 --- sieve calls
 --- imap calls

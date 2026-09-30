@@ -1,4 +1,4 @@
-$ mailctl add --body merged --disable-extension body --fileinto Lists --dry-run
+$ mailctl filter add --body merged --disable-extension body --fileinto Lists --dry-run
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

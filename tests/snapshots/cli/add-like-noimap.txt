@@ -1,4 +1,4 @@
-$ mailctl add --like 2 --fileinto Lists --no-imap
+$ mailctl filter add --like 2 --fileinto Lists --no-imap
 exit: 1
 --- stdout
 

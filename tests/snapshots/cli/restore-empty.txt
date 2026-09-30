@@ -1,4 +1,4 @@
-$ mailctl restore <TMP>/restore.sieve --yes
+$ mailctl filterset restore <TMP>/restore.sieve --yes
 exit: 1
 --- stdout
 

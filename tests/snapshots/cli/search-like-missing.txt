@@ -1,4 +1,4 @@
-$ mailctl search --like 99
+$ mailctl mail search --like 99
 exit: 1
 --- stdout
 

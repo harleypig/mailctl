@@ -1,4 +1,4 @@
-$ mailctl create-folder Lists/GitHub --dry-run
+$ mailctl folder create Lists/GitHub --dry-run
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')

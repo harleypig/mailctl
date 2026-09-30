@@ -1,4 +1,4 @@
-$ mailctl search --folder Lists
+$ mailctl mail search --folder Lists
 exit: 0
 --- stdout
 5 message(s) in 'INBOX.Lists' (UIDVALIDITY 1727000000), newest first:

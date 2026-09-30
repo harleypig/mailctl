@@ -1,4 +1,4 @@
-$ mailctl create-folder New
+$ mailctl folder create New
 exit: 1
 --- stdout
 Folder 'New' resolves to 'INBOX.New' (delimiter '.')

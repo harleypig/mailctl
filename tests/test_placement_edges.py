@@ -333,8 +333,9 @@ def test_a_reorder_neither_drops_nor_duplicates_a_requirement(placement):
 def test_a_reordered_script_re_renders_to_itself(reparse):
     """Parse, render, parse, render -- the second pass must change nothing.
 
-    The next ``mailctl add`` parses whatever this one wrote, so instability
-    here would mean a script that drifts on every run, and a diff that shows
+    The next ``mailctl filter add`` parses whatever this one wrote, so
+    instability here would mean a script that drifts on every run, and a diff
+    that shows
     changes nobody asked for. The reorder is the new thing that could
     introduce it, because it is the only step that rewrites the rule list.
     """
@@ -844,7 +845,7 @@ def test_no_two_placement_flags_are_accepted_together(argv):
     when a fifth flag is added.
     """
     with pytest.raises(SystemExit):
-        build_parser().parse_args(["add", "--to", "x", *argv])
+        build_parser().parse_args(["filter", "add", "--to", "x", *argv])
 
 
 # ############################################################################

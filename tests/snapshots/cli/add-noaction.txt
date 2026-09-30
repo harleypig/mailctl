@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com
+$ mailctl filter add --from noreply@github.com
 exit: 1
 --- stdout
 

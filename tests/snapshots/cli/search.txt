@@ -1,4 +1,4 @@
-$ mailctl search
+$ mailctl mail search
 exit: 0
 --- stdout
 5 message(s) in 'INBOX' (UIDVALIDITY 1727000000), newest first:

@@ -1,4 +1,4 @@
-$ mailctl apply --from noreply@github.com --fileinto Lists --max-messages 1 --yes
+$ mailctl filter apply --from noreply@github.com --fileinto Lists --max-messages 1 --yes
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

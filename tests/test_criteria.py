@@ -2,7 +2,7 @@
 
 One ``Criteria`` object produces the Sieve conditions for mail that has not
 arrived and the IMAP SEARCH key for mail that already has. If those two
-drift, ``mailctl add`` files new mail one way and old mail another, and
+drift, ``mailctl filter add`` files new mail one way and old mail another, and
 nothing in the output says so -- which is why the agreement tests below
 assert both renderings of the *same* object rather than testing each side
 on its own.
@@ -912,14 +912,14 @@ def test_a_saved_rule_refuses_every_date_and_state_filter(given):
         criteria.sieve_conditions()
 
     # The core names the operations; the CLI renders the commands (#183).
-    assert "mailctl search" not in str(caught.value)
+    assert "mailctl mail search" not in str(caught.value)
     assert caught.value.code == "state_in_rule"
-    assert caught.value.fields["operations"] == ("search", "apply")
+    assert caught.value.fields["operations"] == ("mail search", "filter apply")
 
     message = error_text(caught.value)
 
-    assert "'mailctl search' to list it" in message
-    assert "'mailctl apply' to act on it" in message
+    assert "'mailctl mail search' to list it" in message
+    assert "'mailctl filter apply' to act on it" in message
 
     with pytest.raises(MailctlError, match="cannot test"):
         criteria.check_deliverable()

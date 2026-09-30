@@ -1,4 +1,4 @@
-$ mailctl show
+$ mailctl filterset show
 exit: 0
 --- stdout
 # ---- managesieve ----

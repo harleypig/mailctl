@@ -1,4 +1,4 @@
-"""``mailctl rename-rule`` against a real Dovecot + Pigeonhole (#216).
+"""``mailctl filter rename`` against a real Dovecot + Pigeonhole (#216).
 
 A rename is only the name. So the script is read back twice, never with
 mailctl: its exact bytes from the file Pigeonhole wrote, and its text
@@ -77,9 +77,11 @@ def test_rename_rule_changes_the_name_and_no_other_byte(account):
     before = account.script_bytes("managesieve")
 
     first = account.run(
-        "rename-rule", "Herrschners Spam", "Yarn shops", "--yes"
+        "filter", "rename", "Herrschners Spam", "Yarn shops", "--yes"
     )
-    second = account.run("rename-rule", "paused", "Invoices (off)", "--yes")
+    second = account.run(
+        "filter", "rename", "paused", "Invoices (off)", "--yes"
+    )
 
     assert first.code == 0, first.err + first.out
     assert second.code == 0, second.err + second.out
@@ -108,7 +110,9 @@ def test_rename_rule_refuses_a_taken_name_and_changes_nothing(account):
     account.seed_script("managesieve", SCRIPT)
     before = account.script_bytes("managesieve")
 
-    result = account.run("rename-rule", "paused", "Herrschners Spam", "--yes")
+    result = account.run(
+        "filter", "rename", "paused", "Herrschners Spam", "--yes"
+    )
 
     assert result.code == 1
     assert "already exists" in result.err

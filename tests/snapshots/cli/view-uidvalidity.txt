@@ -1,4 +1,4 @@
-$ mailctl view 4 --uidvalidity 1727000000
+$ mailctl mail view 4 --uidvalidity 1727000000
 exit: 0
 --- stdout
 Message uid 4 in 'INBOX' (591B; no flags):

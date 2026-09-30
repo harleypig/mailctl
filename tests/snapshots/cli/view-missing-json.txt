@@ -1,9 +1,9 @@
-$ mailctl view 99 --json
+$ mailctl mail view 99 --json
 exit: 1
 --- stdout
 
 --- stderr
-{"version": 1, "error": {"message": "no message with uid 99 in 'INBOX'"}}
+{"version": 2, "error": {"message": "no message with uid 99 in 'INBOX'"}}
 
 --- sieve calls
 --- imap calls

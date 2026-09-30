@@ -1,4 +1,4 @@
-$ mailctl rename-folder spam Junk --yes
+$ mailctl folder rename spam Junk --yes
 exit: 0
 --- stdout
 Folder 'spam' resolves to 'INBOX.spam' (delimiter '.')

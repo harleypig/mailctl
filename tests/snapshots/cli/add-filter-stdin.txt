@@ -1,4 +1,4 @@
-$ mailctl add --filter - --fileinto Lists --dry-run
+$ mailctl filter add --filter - --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

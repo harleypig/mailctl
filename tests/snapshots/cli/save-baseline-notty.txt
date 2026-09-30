@@ -1,4 +1,4 @@
-$ mailctl save-baseline
+$ mailctl server baseline save
 exit: 1
 --- stdout
 The baseline for mail.example.com (<TMP>/config/mailctl/baselines/mail.example.com.json) was taken <STAMP>.

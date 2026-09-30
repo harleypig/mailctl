@@ -1,4 +1,4 @@
-$ mailctl disable-rule keep-boss --dry-run
+$ mailctl filter disable keep-boss --dry-run
 exit: 0
 --- stdout
 Disable rule 'keep-boss' in script 'managesieve':

@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto X --no-imap --create-folder
+$ mailctl filter add --from noreply@github.com --fileinto X --no-imap --create-folder
 exit: 1
 --- stdout
 

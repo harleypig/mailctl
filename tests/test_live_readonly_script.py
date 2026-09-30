@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from cli_support import command_parsers
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "live-readonly.sh"
@@ -54,24 +55,25 @@ ALL_TESTS = [
     "unchanged",
 ]
 
+# Every command that changes something, by its path (#219).
 MUTATING = [
-    "add",
-    "apply",
-    "backup",
-    "create-folder",
-    "disable-rule",
-    "enable-rule",
-    "mark",
-    "migrate-config",
-    "move-rule",
-    "optimize-rules",
-    "remove-rule",
-    "rename-folder",
-    "rename-rule",
-    "restore",
-    "save-baseline",
-    "subscribe",
-    "unsubscribe",
+    "config migrate",
+    "filter add",
+    "filter apply",
+    "filter disable",
+    "filter enable",
+    "filter move",
+    "filter optimize",
+    "filter remove",
+    "filter rename",
+    "filterset backup",
+    "filterset restore",
+    "folder create",
+    "folder rename",
+    "folder subscribe",
+    "folder unsubscribe",
+    "mail mark",
+    "server baseline save",
 ]
 
 # Stands in for a real password; it must never reach the script's output.
@@ -165,7 +167,7 @@ def test_one_name_runs_only_that_test(tmp_path):
 
     assert proc.returncode == 0
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - list"]
-    assert calls == [["list"]]
+    assert calls == [["filterset", "list"]]
 
 
 # ----------------------------------------------------------------------------
@@ -285,15 +287,15 @@ def test_probe_makes_one_call_and_passes_on_a_probe_document(tmp_path):
     proc, calls = run(tmp_path, "probe")
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - probe"]
-    assert calls == [["probe", "--json"]]
+    assert calls == [["server", "probe", "--json"]]
 
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
     ("fault", "reason"),
     [
-        ("probe-not-json", "# probe --json: not JSON: "),
-        ("probe-no-mail", "# probe --json: no mail section"),
+        ("probe-not-json", "# server probe --json: not JSON: "),
+        ("probe-no-mail", "# server probe --json: no mail section"),
     ],
 )
 def test_probe_names_what_is_wrong_with_the_document(tmp_path, fault, reason):
@@ -308,7 +310,7 @@ def test_folder_counts_makes_one_call_and_passes_on_whole_counts(tmp_path):
     proc, calls = run(tmp_path, "folder-counts")
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - folder-counts"]
-    assert calls == [["folders", "--counts", "--json"]]
+    assert calls == [["folder", "list", "--counts", "--json"]]
 
 
 # ----------------------------------------------------------------------------
@@ -316,7 +318,7 @@ def test_folder_counts_names_the_folder_without_a_count(tmp_path):
     proc, _ = run(tmp_path, "folder-counts", breaks=["counts-missing"])
 
     assert proc.stdout.splitlines()[2] == (
-        "# folders --counts --json: 'INBOX.Lists' has no integer unseen"
+        "# folder list --counts --json: 'INBOX.Lists' has no integer unseen"
     )
 
 
@@ -327,9 +329,9 @@ def test_senders_makes_one_call_over_thirty_days_and_passes(tmp_path):
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - senders"]
     assert len(calls) == 1
-    assert calls[0][:2] == ["senders", "--since"]
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", calls[0][2])
-    assert calls[0][3:] == ["--top", "5", "--json"]
+    assert calls[0][:3] == ["mail", "senders", "--since"]
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", calls[0][3])
+    assert calls[0][4:] == ["--top", "5", "--json"]
 
 
 # ----------------------------------------------------------------------------
@@ -337,7 +339,7 @@ def test_senders_names_the_row_out_of_order(tmp_path):
     proc, _ = run(tmp_path, "senders", breaks=["senders-unsorted"])
 
     assert proc.stdout.splitlines()[2] == (
-        "# senders --json: the rows are not busiest first"
+        "# mail senders --json: the rows are not busiest first"
     )
 
 
@@ -362,7 +364,7 @@ def test_a_server_without_list_status_skips_folder_counts(tmp_path):
         "ok 1 - folder-counts # SKIP the server does not advertise "
         "LIST-STATUS",
     ]
-    assert calls == [["folders", "--counts", "--json"]]
+    assert calls == [["folder", "list", "--counts", "--json"]]
 
 
 # ----------------------------------------------------------------------------
@@ -372,9 +374,9 @@ def test_json_parses_three_documents_in_three_calls(tmp_path):
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - json"]
     assert calls == [
-        ["search", "--json", "--limit", "3"],
-        ["folders", "--json"],
-        ["rules", "--json"],
+        ["mail", "search", "--json", "--limit", "3"],
+        ["folder", "list", "--json"],
+        ["filter", "list", "--json"],
     ]
 
 
@@ -383,7 +385,10 @@ def test_check_baseline_reads_first_then_checks_and_never_saves(tmp_path):
     proc, calls = run(tmp_path, "check-baseline")
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - check-baseline"]
-    assert calls == [["show-baseline", "--json"], ["check-baseline"]]
+    assert calls == [
+        ["server", "baseline", "show", "--json"],
+        ["server", "baseline", "check"],
+    ]
 
 
 # ----------------------------------------------------------------------------
@@ -394,10 +399,10 @@ def test_check_baseline_skips_where_none_was_saved(tmp_path):
     assert proc.returncode == 0
     assert proc.stdout.splitlines() == [
         "1..1",
-        "ok 1 - check-baseline # SKIP no baseline saved ('mailctl "
-        "save-baseline' records one)",
+        "ok 1 - check-baseline # SKIP no baseline saved ('mailctl server "
+        "baseline save' records one)",
     ]
-    assert calls == [["show-baseline", "--json"]]
+    assert calls == [["server", "baseline", "show", "--json"]]
 
 
 # ----------------------------------------------------------------------------
@@ -416,7 +421,7 @@ def test_remove_rule_reads_names_from_a_crlf_script(tmp_path):
     proc, calls = run(tmp_path, "remove-rule")
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - remove-rule"]
-    assert ["remove-rule", "--dry-run", "keep boss"] in calls
+    assert ["filter", "remove", "--dry-run", "keep boss"] in calls
 
 
 # ----------------------------------------------------------------------------
@@ -433,8 +438,8 @@ def test_disable_rule_plans_both_switches_on_a_real_rule_name(tmp_path):
     proc, calls = run(tmp_path, "disable-rule")
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - disable-rule"]
-    assert ["disable-rule", "--dry-run", "keep boss"] in calls
-    assert ["enable-rule", "--dry-run", "keep boss"] in calls
+    assert ["filter", "disable", "--dry-run", "keep boss"] in calls
+    assert ["filter", "enable", "--dry-run", "keep boss"] in calls
 
 
 # ----------------------------------------------------------------------------
@@ -451,9 +456,9 @@ def test_mark_reuses_the_uid_search_found_and_only_dry_runs(tmp_path):
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - mark"]
     assert calls == [
-        ["search", "--limit", "1"],
-        ["mark", "--dry-run", "5", "--flag"],
-        ["search", "--limit", "20"],
+        ["mail", "search", "--limit", "1"],
+        ["mail", "mark", "--dry-run", "5", "--flag"],
+        ["mail", "search", "--limit", "20"],
     ]
 
 
@@ -472,7 +477,7 @@ def test_every_mutating_call_carries_dry_run_and_none_carries_yes(tmp_path):
     for call in calls:
         assert "--yes" not in call
 
-        if call[0] in MUTATING:
+        if " ".join(call[:2]) in MUTATING or " ".join(call[:3]) in MUTATING:
             assert "--dry-run" in call, call
 
 
@@ -480,13 +485,38 @@ def test_every_mutating_call_carries_dry_run_and_none_carries_yes(tmp_path):
 def test_the_baseline_is_taken_only_when_unchanged_is_selected(tmp_path):
     _, without = run(tmp_path, "subscribe")
 
-    assert without == [["subscribe", "--dry-run", "INBOX"]]
+    assert without == [["folder", "subscribe", "--dry-run", "INBOX"]]
+
+
+# ----------------------------------------------------------------------------
+def test_the_guard_list_is_every_command_that_can_change_something():
+    """Derived from the parser: every write offers --dry-run, so a write
+    added later and left off the guard list goes red here."""
+    writes = {
+        path
+        for path, parser in command_parsers().items()
+        if "dry_run" in {action.dest for action in parser._actions}
+    }
+
+    assert writes == set(MUTATING)
+
+
+# ----------------------------------------------------------------------------
+def test_the_scripts_guard_list_is_this_one():
+    """The list above is what the script refuses; a copy that drifted
+    would test a guard nobody runs."""
+    listed = re.search(
+        r"^readonly MUTATING=\(\n(.*?)^\)", SCRIPT.read_text(), re.S | re.M
+    )
+
+    assert listed
+    assert re.findall(r"'([^']+)'", listed.group(1)) == MUTATING
 
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize("command", MUTATING)
 def test_the_guard_refuses_a_mutating_call_without_dry_run(tmp_path, command):
-    proc, calls = run(tmp_path, "--selftest-guard", command, "x")
+    proc, calls = run(tmp_path, "--selftest-guard", *command.split(), "x")
 
     assert (proc.returncode, proc.stdout) == (3, "refused\n")
     assert calls == []
@@ -495,7 +525,9 @@ def test_the_guard_refuses_a_mutating_call_without_dry_run(tmp_path, command):
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize("command", MUTATING)
 def test_the_guard_allows_a_mutating_call_with_dry_run(tmp_path, command):
-    proc, _ = run(tmp_path, "--selftest-guard", command, "--dry-run", "x")
+    proc, _ = run(
+        tmp_path, "--selftest-guard", *command.split(), "--dry-run", "x"
+    )
 
     assert (proc.returncode, proc.stdout) == (0, "allowed\n")
 
@@ -504,8 +536,8 @@ def test_the_guard_allows_a_mutating_call_with_dry_run(tmp_path, command):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["add", "--dry-run", "--yes"],
-        ["list", "--yes"],
+        ["filter", "add", "--dry-run", "--yes"],
+        ["filterset", "list", "--yes"],
     ],
 )
 def test_the_guard_refuses_yes_whatever_else_is_given(tmp_path, argv):
@@ -518,11 +550,11 @@ def test_the_guard_refuses_yes_whatever_else_is_given(tmp_path, argv):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["list"],
-        ["show"],
-        ["probe", "--json"],
-        ["search", "--limit", "5"],
-        ["view", "4"],
+        ["filterset", "list"],
+        ["filterset", "show"],
+        ["server", "probe", "--json"],
+        ["mail", "search", "--limit", "5"],
+        ["mail", "view", "4"],
     ],
 )
 def test_the_guard_allows_read_only_calls(tmp_path, argv):
@@ -549,10 +581,10 @@ def test_search_unread_is_one_call_with_the_state_and_date_filters(tmp_path):
 
     (argv,) = calls
 
-    assert argv[:2] == ["search", "--unread"]
-    assert argv[2] == "--since"
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", argv[3])
-    assert argv[4:] == ["--limit", "5"]
+    assert argv[:3] == ["mail", "search", "--unread"]
+    assert argv[3] == "--since"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", argv[4])
+    assert argv[5:] == ["--limit", "5"]
 
 
 # ----------------------------------------------------------------------------
@@ -563,9 +595,9 @@ def test_uidvalidity_pins_the_listed_uid_then_a_stale_one(tmp_path):
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - uidvalidity"]
     assert calls == [
-        ["search", "--limit", "1", "--json"],
-        ["view", "5", "--uidvalidity", "1727000000"],
-        ["view", "5", "--uidvalidity", "1726999999"],
+        ["mail", "search", "--limit", "1", "--json"],
+        ["mail", "view", "5", "--uidvalidity", "1727000000"],
+        ["mail", "view", "5", "--uidvalidity", "1726999999"],
     ]
 
 
@@ -592,7 +624,16 @@ def test_search_sort_is_one_call_and_checks_the_order(tmp_path):
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - search-sort"]
     assert calls == [
-        ["search", "--sort", "size", "--reverse", "--limit", "3", "--json"]
+        [
+            "mail",
+            "search",
+            "--sort",
+            "size",
+            "--reverse",
+            "--limit",
+            "3",
+            "--json",
+        ]
     ]
 
 
@@ -601,7 +642,7 @@ def test_search_sort_names_sizes_out_of_order(tmp_path):
     proc, _ = run(tmp_path, "search-sort", breaks=["sort-unordered"])
 
     assert proc.stdout.splitlines()[2] == (
-        "# search --sort: sizes are not largest first: [100, 5000, 800]"
+        "# mail search --sort: sizes are not largest first: [100, 5000, 800]"
     )
 
 
@@ -613,10 +654,10 @@ def test_rename_folder_plans_one_rename_of_a_real_folder(tmp_path):
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - rename-folder"]
 
-    (rename,) = [call for call in calls if call[0] == "rename-folder"]
+    (rename,) = [call for call in calls if call[:2] == ["folder", "rename"]]
 
-    assert rename[:3] == ["rename-folder", "--dry-run", "INBOX.Lists"]
-    assert rename[3].startswith("MailctlReadonlyProbe-")
+    assert rename[:4] == ["folder", "rename", "--dry-run", "INBOX.Lists"]
+    assert rename[4].startswith("MailctlReadonlyProbe-")
 
 
 # ----------------------------------------------------------------------------
@@ -635,7 +676,7 @@ def test_optimize_rules_plans_once_and_never_applies(tmp_path):
     proc, calls = run(tmp_path, "optimize-rules")
 
     assert proc.stdout.splitlines() == ["1..1", "ok 1 - optimize-rules"]
-    assert calls == [["optimize-rules", "--dry-run", "--json"]]
+    assert calls == [["filter", "optimize", "--dry-run", "--json"]]
 
 
 # ----------------------------------------------------------------------------
@@ -651,5 +692,5 @@ def test_optimize_rules_names_a_plan_without_its_diff(tmp_path):
     proc, _ = run(tmp_path, "optimize-rules", breaks=["optimize-no-diff"])
 
     assert proc.stdout.splitlines()[2] == (
-        "# optimize-rules --json: changes but no diff"
+        "# filter optimize --json: changes but no diff"
     )

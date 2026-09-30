@@ -1,4 +1,4 @@
-$ mailctl rename-folder Lists spam
+$ mailctl folder rename Lists spam
 exit: 1
 --- stdout
 

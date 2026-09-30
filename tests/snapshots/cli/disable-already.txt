@@ -1,4 +1,4 @@
-$ mailctl disable-rule keep-boss --yes
+$ mailctl filter disable keep-boss --yes
 exit: 0
 --- stdout
 Rule 'keep-boss' is already disabled in 'managesieve'; nothing to change.

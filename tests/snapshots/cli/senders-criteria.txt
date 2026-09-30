@@ -1,4 +1,4 @@
-$ mailctl senders --from example.com --since 2026-01-01
+$ mailctl mail senders --from example.com --since 2026-01-01
 exit: 0
 --- stdout
 4 message(s) in 'INBOX', 2 unread; 3 group(s) by address, busiest first:
@@ -6,7 +6,7 @@ exit: 0
       2        1      50%  boss@example.com (Boss Über)
       1        1     100%  list@lists.example.com (Someone)
       1        0       0%  news@example.com (News)
-To build a filter for a row: mailctl search --from boss@example.com --build-filter
+To build a filter for a row: mailctl mail search --from boss@example.com --build-filter
 
 --- stderr
 

@@ -49,18 +49,18 @@ def test_a_fresh_baseline_checks_clean_and_saving_touches_no_server(account):
     account.seed_script("managesieve", SCRIPT)
     before = account.script("managesieve"), account.active_script()
 
-    saved = account.run("save-baseline")
+    saved = account.run("server", "baseline", "save")
 
     assert saved.code == 0, saved.err
     assert stat.S_IMODE(baseline_file().stat().st_mode) == 0o600
     assert (account.script("managesieve"), account.active_script()) == before
 
-    checked = account.run("check-baseline")
+    checked = account.run("server", "baseline", "check")
 
     assert checked.code == 0, checked.out + checked.err
     assert "No drift" in checked.out
 
-    document = account.run("check-baseline", "--json")
+    document = account.run("server", "baseline", "check", "--json")
 
     assert document.code == 0
     assert json.loads(document.out)["drift"] == []
@@ -72,13 +72,13 @@ def test_serious_drift_exits_4_and_informational_drift_exits_3(account):
     extension that appeared is not merely informational, or if either exit
     status moves -- a scheduled run keys on them."""
     account.seed_script("managesieve", SCRIPT)
-    assert account.run("save-baseline").code == 0
+    assert account.run("server", "baseline", "save").code == 0
 
     def added(document):
         document["server"]["rules"]["extensions"].remove("fileinto")
 
     edit(added)
-    informational = account.run("check-baseline")
+    informational = account.run("server", "baseline", "check")
 
     assert informational.code == 3, informational.out + informational.err
     assert "'fileinto' is new" in informational.out
@@ -88,7 +88,7 @@ def test_serious_drift_exits_4_and_informational_drift_exits_3(account):
         document["accounts"][account.user]["active_rule_set"] = "other"
 
     edit(moved)
-    serious = account.run("check-baseline", "--json")
+    serious = account.run("server", "baseline", "check", "--json")
     report = json.loads(serious.out)
 
     assert serious.code == 4, serious.err
@@ -109,13 +109,13 @@ def test_a_lost_extension_the_script_does_not_require_is_informational(
     refuses a script requiring what it lacks -- so that case is the
     offline tier's.)"""
     account.seed_script("managesieve", SCRIPT)
-    assert account.run("save-baseline").code == 0
+    assert account.run("server", "baseline", "save").code == 0
 
     def invented(document):
         document["server"]["rules"]["extensions"].append("vnd.invented")
 
     edit(invented)
-    result = account.run("check-baseline", "--json")
+    result = account.run("server", "baseline", "check", "--json")
     drift = json.loads(result.out)["drift"]
 
     assert result.code == 3, result.err
@@ -135,10 +135,10 @@ def test_a_lost_extension_the_script_does_not_require_is_informational(
 def test_test_reports_drift_in_one_line_and_still_passes(account):
     """Red if 'test' fails over drift, or says nothing about it."""
     account.seed_script("managesieve", SCRIPT)
-    assert account.run("save-baseline").code == 0
+    assert account.run("server", "baseline", "save").code == 0
 
     edit(lambda document: document["server"]["mail"].update(delimiter="\\"))
-    result = account.run("test")
+    result = account.run("server", "test")
 
     lines = [
         line for line in result.out.splitlines() if line.startswith("Baseline")

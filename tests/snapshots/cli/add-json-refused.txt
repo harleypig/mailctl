@@ -1,9 +1,9 @@
-$ mailctl add --from noreply@github.com --redirect a@b.c --dry-run --json
+$ mailctl filter add --from noreply@github.com --redirect a@b.c --dry-run --json
 exit: 1
 --- stdout
 
 --- stderr
-{"version": 1, "error": {"message": "MXRoute disables the Sieve 'redirect' action server-side (their 2024-03-22 announcement). Their own forwarders are built to handle SRS correctly, which a Sieve redirect does not -- so set up a forwarder in the control panel, or with the 'mxroute_forwarder' Terraform resource, instead."}}
+{"version": 2, "error": {"message": "MXRoute disables the Sieve 'redirect' action server-side (their 2024-03-22 announcement). Their own forwarders are built to handle SRS correctly, which a Sieve redirect does not -- so set up a forwarder in the control panel, or with the 'mxroute_forwarder' Terraform resource, instead."}}
 
 --- sieve calls
 --- imap calls

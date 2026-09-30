@@ -1,4 +1,4 @@
-$ mailctl search --like 3 --list-id other.example.com
+$ mailctl mail search --like 3 --list-id other.example.com
 exit: 0
 --- stdout
 Message uid 3 in 'INBOX':

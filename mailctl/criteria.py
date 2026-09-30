@@ -3,7 +3,7 @@
 One set of user-supplied criteria has to be expressed twice: as Sieve
 conditions for mail that has not arrived yet, and as IMAP SEARCH keys for
 mail that already has. Keeping both derivations in one place is what stops
-the two halves of ``mailctl add`` from drifting apart.
+the two halves of ``mailctl filter add`` from drifting apart.
 
 The two languages are not equally expressive, and the gap is handled
 explicitly rather than papered over:
@@ -404,7 +404,10 @@ class Criteria:
             raise MailctlError(
                 f"{before}, for a search to list or an apply to act on.",
                 code="state_in_rule",
-                fields={"before": before, "operations": ("search", "apply")},
+                fields={
+                    "before": before,
+                    "operations": ("mail search", "filter apply"),
+                },
             )
 
     # ------------------------------------------------------------------------

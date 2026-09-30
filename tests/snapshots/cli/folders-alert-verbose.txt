@@ -1,4 +1,4 @@
-$ mailctl folders -v
+$ mailctl folder list -v
 exit: 0
 --- stdout
 [imap] connecting to mail.example.com:993 (ssl=True) as user@example.com

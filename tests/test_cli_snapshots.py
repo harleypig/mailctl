@@ -28,9 +28,10 @@ import pytest
 from imapclient.exceptions import IMAPClientError
 from utilities_support import DEFAULT_UIDVALIDITY
 
-from mailctl import __version__, cli
+from mailctl import __version__, cli, criteria, json_output
 from mailctl.components.managesieve import client as sieve_client
 from mailctl.components.managesieve.responses import ServerWarning
+from mailctl.utilities import baseline, reports
 
 SNAPSHOTS = Path(__file__).parent / "snapshots" / "cli"
 
@@ -554,6 +555,7 @@ SIEVE_WARNINGS = {
 HOSTILE = {
     "add-like-hostile": (
         [
+            "filter",
             "add",
             "--like",
             "9",
@@ -566,11 +568,20 @@ HOSTILE = {
         {"mail": {9: HOSTILE_SUBJECT}},
     ),
     "search-like-hostile": (
-        ["search", "--like", "9", "--derive", "subject", "--build-filter"],
+        [
+            "mail",
+            "search",
+            "--like",
+            "9",
+            "--derive",
+            "subject",
+            "--build-filter",
+        ],
         {"mail": {9: HOSTILE_SUBJECT}},
     ),
     "search-like-hostile-json": (
         [
+            "mail",
             "search",
             "--like",
             "9",
@@ -583,51 +594,54 @@ HOSTILE = {
     ),
     # #205: a server's alert is its own text, escaped like mail's.
     "folders-alert-hostile": (
-        ["folders"],
+        ["folder", "list"],
         {"imap_welcome": b"* OK [ALERT] \x1b]0;pwned\x07\x1b[31mred"},
     ),
     # #208: a server's warning is its own text too.
     "add-warnings-hostile": (
-        ["add", *GITHUB, "--flag", "\\Bogus"],
+        ["filter", "add", *GITHUB, "--flag", "\\Bogus"],
         {
             "sieve_warnings": {
                 "putscript": "line 1: \x1b]0;pwned\x07\x1b[31mred\r\nnext"
             }
         },
     ),
-    "show-hostile": (["show"], {"script": HOSTILE_SCRIPT}),
-    "rules-hostile": (["rules"], {"script": HOSTILE_SCRIPT}),
+    "show-hostile": (["filterset", "show"], {"script": HOSTILE_SCRIPT}),
+    "rules-hostile": (["filter", "list"], {"script": HOSTILE_SCRIPT}),
     # #101: every line of both CAPABILITY answers, the identities, and the
     # namespaces, sorted -- a server's own text escaped like mail's.
-    "probe": (["probe"], PROBE),
-    "probe-json": (["probe", "--json"], PROBE),
+    "probe": (["server", "probe"], PROBE),
+    "probe-json": (["server", "probe", "--json"], PROBE),
     # --verbose's chatter goes to stderr, so stdout stays one document.
-    "probe-json-verbose": (["probe", "--json", "-v"], PROBE),
+    "probe-json-verbose": (["server", "probe", "--json", "-v"], PROBE),
     # #39: a server with no module is named, and --report prints a body
     # with the account, host, folders, and script left out; a known one
     # has nothing to report, and --report is not a JSON document.
-    "probe-unknown": (["probe"], UNKNOWN),
-    "probe-report": (["probe", "--report"], UNKNOWN),
-    "probe-report-known": (["probe", "--report"], PROBE),
-    "probe-report-json": (["probe", "--report", "--json"], UNKNOWN),
+    "probe-unknown": (["server", "probe"], UNKNOWN),
+    "probe-report": (["server", "probe", "--report"], UNKNOWN),
+    "probe-report-known": (["server", "probe", "--report"], PROBE),
+    "probe-report-json": (["server", "probe", "--report", "--json"], UNKNOWN),
     # #151: a document escapes what a sender or a script wrote, as the
     # filter document does, rather than carrying it raw.
-    "rules-hostile-json": (["rules", "--json"], {"script": HOSTILE_SCRIPT}),
+    "rules-hostile-json": (
+        ["filter", "list", "--json"],
+        {"script": HOSTILE_SCRIPT},
+    ),
     "search-hostile-json": (
-        ["search", "--json"],
+        ["mail", "search", "--json"],
         {"mail": {9: HOSTILE_SUBJECT}},
     ),
     "view-hostile-json": (
-        ["view", "9", "--json"],
+        ["mail", "view", "9", "--json"],
         {"mail": {9: HOSTILE_SUBJECT}},
     ),
     # #160: a sender's name and a list's description are escaped too.
-    "senders-hostile": (["senders"], HOSTILE_SENDER),
+    "senders-hostile": (["mail", "senders"], HOSTILE_SENDER),
     "senders-hostile-list-id": (
-        ["senders", "--by", "list-id"],
+        ["mail", "senders", "--by", "list-id"],
         HOSTILE_SENDER,
     ),
-    "senders-hostile-json": (["senders", "--json"], HOSTILE_SENDER),
+    "senders-hostile-json": (["mail", "senders", "--json"], HOSTILE_SENDER),
 }
 
 # A broad rule ahead of a narrow one it covers, so the narrow one never
@@ -664,75 +678,117 @@ STALE = str(DEFAULT_UIDVALIDITY - 1)
 
 JSON_SCENARIOS = {
     "mark-dry-json": (
-        ["mark", "1", "2", "--read", "--flag", "--dry-run", "--json"],
+        ["mail", "mark", "1", "2", "--read", "--flag", "--dry-run", "--json"],
         MARKED,
     ),
     "mark-already-json": (
-        ["mark", "1", "--read", "--dry-run", "--json"],
+        ["mail", "mark", "1", "--read", "--dry-run", "--json"],
         MARKED,
     ),
     "mark-missing-json": (
-        ["mark", "1", "98", "99", "--flag", "--dry-run", "--json"],
+        ["mail", "mark", "1", "98", "99", "--flag", "--dry-run", "--json"],
         MARKED,
     ),
-    "mark-json-nodry": (["mark", "2", "--flag", "--yes", "--json"], MARKED),
+    "mark-json-nodry": (
+        ["mail", "mark", "2", "--flag", "--yes", "--json"],
+        MARKED,
+    ),
     # #204: a stale pin fails as one JSON line, coded.
     "mark-stale-uidvalidity-json": (
-        ["mark", "1", "--read", "--uidvalidity", STALE, "--dry-run", "--json"],
+        [
+            "mail",
+            "mark",
+            "1",
+            "--read",
+            "--uidvalidity",
+            STALE,
+            "--dry-run",
+            "--json",
+        ],
         MARKED,
     ),
-    "list-json": (["list", "--json"], {"others": {"spare": ONE_RULE}}),
-    "list-empty-json": (["list", "--json"], {"active": None}),
+    "list-json": (
+        ["filterset", "list", "--json"],
+        {"others": {"spare": ONE_RULE}},
+    ),
+    "list-empty-json": (["filterset", "list", "--json"], {"active": None}),
     # Progress is said on the way, so it goes to stderr with the rest.
-    "list-verbose-json": (["list", "--verbose", "--json"], {}),
-    "folders-json": (["folders", "--json"], {}),
+    "list-verbose-json": (["filterset", "list", "--verbose", "--json"], {}),
+    "folders-json": (["folder", "list", "--json"], {}),
     # #157: one LIST-STATUS; size only where STATUS=SIZE is advertised.
-    "folders-counts-json": (["folders", "--counts", "--json"], COUNTED),
+    "folders-counts-json": (["folder", "list", "--counts", "--json"], COUNTED),
     "folders-counts-nosize-json": (
-        ["folders", "--counts", "--json"],
+        ["folder", "list", "--counts", "--json"],
         COUNTED_NO_SIZE,
     ),
-    "folders-counts-refused-json": (["folders", "--counts", "--json"], {}),
-    "rules-json": (["rules", "--json"], {}),
+    "folders-counts-refused-json": (
+        ["folder", "list", "--counts", "--json"],
+        {},
+    ),
+    "rules-json": (["filter", "list", "--json"], {}),
     "rules-findings-json": (
-        ["rules", "--json"],
+        ["filter", "list", "--json"],
         {"script": BROAD_THEN_NARROW},
     ),
-    "rules-disabled-json": (["rules", "--json"], {"script": DISABLED_BOSS}),
-    "search-json": (["search", "--json"], MAIL),
-    "search-limit-json": (["search", "--json", "--limit", "2"], MAIL),
-    "search-none-json": (["search", "--json", "--from", "nobody@x.y"], {}),
-    "search-like-json": (["search", "--like", "3", "--json"], {}),
-    "search-uids-only": (["search", "--uids-only"], MAIL),
-    "search-uids-only-from": (["search", "--uids-only", *GITHUB], {}),
+    "rules-disabled-json": (
+        ["filter", "list", "--json"],
+        {"script": DISABLED_BOSS},
+    ),
+    "search-json": (["mail", "search", "--json"], MAIL),
+    "search-limit-json": (["mail", "search", "--json", "--limit", "2"], MAIL),
+    "search-none-json": (
+        ["mail", "search", "--json", "--from", "nobody@x.y"],
+        {},
+    ),
+    "search-like-json": (["mail", "search", "--like", "3", "--json"], {}),
+    "search-uids-only": (["mail", "search", "--uids-only"], MAIL),
+    "search-uids-only-from": (["mail", "search", "--uids-only", *GITHUB], {}),
     "search-uids-only-none": (
-        ["search", "--uids-only", "--from", "nobody@x.y"],
+        ["mail", "search", "--uids-only", "--from", "nobody@x.y"],
         {},
     ),
-    "search-uids-only-json": (["search", "--uids-only", "--json"], {}),
+    "search-uids-only-json": (["mail", "search", "--uids-only", "--json"], {}),
     "search-uids-only-build-filter": (
-        ["search", "--uids-only", "--build-filter", *GITHUB],
+        ["mail", "search", "--uids-only", "--build-filter", *GITHUB],
         {},
     ),
-    "search-like-uids-only": (["search", "--like", "3", "--uids-only"], {}),
+    "search-like-uids-only": (
+        ["mail", "search", "--like", "3", "--uids-only"],
+        {},
+    ),
     # #160: the sender report as a document, and its ceiling as an error.
-    "senders-json": (["senders", "--json"], SENDERS),
-    "senders-domain-json": (["senders", "--by", "domain", "--json"], SENDERS),
-    "senders-overcap-json": (
-        ["senders", "--json", "--max-messages", "2"],
+    "senders-json": (["mail", "senders", "--json"], SENDERS),
+    "senders-domain-json": (
+        ["mail", "senders", "--by", "domain", "--json"],
         SENDERS,
     ),
-    "view-json": (["view", "4", "--json"], MAIL),
-    "view-html-json": (["view", "5", "--json"], MAIL),
-    "view-attachment-json": (["view", "6", "--json"], {"mail": {6: SPOOFED}}),
-    "view-missing-json": (["view", "99", "--json"], MAIL),
-    "view-json-raw": (["view", "4", "--json", "--raw"], MAIL),
+    "senders-overcap-json": (
+        ["mail", "senders", "--json", "--max-messages", "2"],
+        SENDERS,
+    ),
+    "view-json": (["mail", "view", "4", "--json"], MAIL),
+    "view-html-json": (["mail", "view", "5", "--json"], MAIL),
+    "view-attachment-json": (
+        ["mail", "view", "6", "--json"],
+        {"mail": {6: SPOOFED}},
+    ),
+    "view-missing-json": (["mail", "view", "99", "--json"], MAIL),
+    "view-json-raw": (["mail", "view", "4", "--json", "--raw"], MAIL),
     "add-dry-json": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--dry-run", "--json"],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--json",
+        ],
         {},
     ),
     "add-dry-imapcreate-json": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -745,20 +801,49 @@ JSON_SCENARIOS = {
         {},
     ),
     "add-like-json": (
-        ["add", "--like", "2", "--fileinto", "Lists", "--dry-run", "--json"],
+        [
+            "filter",
+            "add",
+            "--like",
+            "2",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--json",
+        ],
         {},
     ),
-    "add-json-nodry": (["add", *GITHUB, "--fileinto", "Lists", "--json"], {}),
+    "add-json-nodry": (
+        ["filter", "add", *GITHUB, "--fileinto", "Lists", "--json"],
+        {},
+    ),
     "add-json-refused": (
-        ["add", *GITHUB, "--redirect", "a@b.c", "--dry-run", "--json"],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--redirect",
+            "a@b.c",
+            "--dry-run",
+            "--json",
+        ],
         {},
     ),
     "apply-dry-json": (
-        ["apply", *GITHUB, "--fileinto", "Lists", "--dry-run", "--json"],
+        [
+            "filter",
+            "apply",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+            "--json",
+        ],
         {},
     ),
     "apply-dry-overcap-json": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--fileinto",
@@ -772,6 +857,7 @@ JSON_SCENARIOS = {
     ),
     "apply-nomatch-json": (
         [
+            "filter",
             "apply",
             "--from",
             "nobody@x.y",
@@ -783,11 +869,12 @@ JSON_SCENARIOS = {
         {},
     ),
     "apply-keep-only-json": (
-        ["apply", *GITHUB, "--keep", "--dry-run", "--json"],
+        ["filter", "apply", *GITHUB, "--keep", "--dry-run", "--json"],
         {},
     ),
     "apply-keep-copy-json": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--fileinto",
@@ -799,79 +886,86 @@ JSON_SCENARIOS = {
         {},
     ),
     "apply-json-nodry": (
-        ["apply", *GITHUB, "--fileinto", "Lists", "--yes", "--json"],
+        ["filter", "apply", *GITHUB, "--fileinto", "Lists", "--yes", "--json"],
         {},
     ),
     "remove-dry-json": (
-        ["remove-rule", "keep-boss", "--dry-run", "--json"],
+        ["filter", "remove", "keep-boss", "--dry-run", "--json"],
         {},
     ),
     "remove-unknown-json": (
-        ["remove-rule", "phantom", "--dry-run", "--json"],
+        ["filter", "remove", "phantom", "--dry-run", "--json"],
         {},
     ),
     "move-dry-json": (
-        ["move-rule", "bin-the-noise", "--first", "--dry-run", "--json"],
+        ["filter", "move", "bin-the-noise", "--first", "--dry-run", "--json"],
         {},
     ),
     "move-noop-json": (
-        ["move-rule", "keep-boss", "--first", "--dry-run", "--json"],
+        ["filter", "move", "keep-boss", "--first", "--dry-run", "--json"],
         {},
     ),
     "move-starves-json": (
-        ["move-rule", "all-lists", "--first", "--dry-run", "--json"],
+        ["filter", "move", "all-lists", "--first", "--dry-run", "--json"],
         {"script": NARROW_THEN_BROAD},
     ),
     "disable-dry-json": (
-        ["disable-rule", "keep-boss", "--dry-run", "--json"],
+        ["filter", "disable", "keep-boss", "--dry-run", "--json"],
         {},
     ),
     "enable-dry-json": (
-        ["enable-rule", "keep-boss", "--dry-run", "--json"],
+        ["filter", "enable", "keep-boss", "--dry-run", "--json"],
         {"script": DISABLED_BOSS},
     ),
     "enable-already-json": (
-        ["enable-rule", "keep-boss", "--dry-run", "--json"],
+        ["filter", "enable", "keep-boss", "--dry-run", "--json"],
         {},
     ),
     "rename-dry-json": (
-        ["rename-rule", "keep-boss", "The boss", "--dry-run", "--json"],
+        ["filter", "rename", "keep-boss", "The boss", "--dry-run", "--json"],
         {},
     ),
     "rename-taken-json": (
-        ["rename-rule", "keep-boss", "bin-the-noise", "--dry-run", "--json"],
+        [
+            "filter",
+            "rename",
+            "keep-boss",
+            "bin-the-noise",
+            "--dry-run",
+            "--json",
+        ],
         {},
     ),
     "create-folder-dry-json": (
-        ["create-folder", "Lists/GitHub/New", "--dry-run", "--json"],
+        ["folder", "create", "Lists/GitHub/New", "--dry-run", "--json"],
         {},
     ),
     "create-folder-exists-json": (
-        ["create-folder", "Lists", "--dry-run", "--json"],
+        ["folder", "create", "Lists", "--dry-run", "--json"],
         {},
     ),
     "subscribe-dry-json": (
-        ["subscribe", "INBOX.spam", "--dry-run", "--json"],
+        ["folder", "subscribe", "INBOX.spam", "--dry-run", "--json"],
         {},
     ),
     "subscribe-already-json": (
-        ["subscribe", "Lists", "--dry-run", "--json"],
+        ["folder", "subscribe", "Lists", "--dry-run", "--json"],
         {},
     ),
     "unsubscribe-dry-json": (
-        ["unsubscribe", "Lists", "--dry-run", "--json"],
+        ["folder", "unsubscribe", "Lists", "--dry-run", "--json"],
         {},
     ),
     "restore-dry-json": (
-        ["restore", "<FILE>", "--dry-run", "--json"],
+        ["filterset", "restore", "<FILE>", "--dry-run", "--json"],
         {"file": ONE_RULE},
     ),
     "restore-identical-json": (
-        ["restore", "<FILE>", "--dry-run", "--json"],
+        ["filterset", "restore", "<FILE>", "--dry-run", "--json"],
         {"file": "SAME"},
     ),
     "restore-json-nodry": (
-        ["restore", "<FILE>", "--yes", "--json"],
+        ["filterset", "restore", "<FILE>", "--yes", "--json"],
         {"file": ONE_RULE},
     ),
 }
@@ -905,7 +999,7 @@ RENAME = {
     "counts": {"INBOX.Lists": (360, 0, 0)},
 }
 
-RENAME_ARGS = ["rename-folder", "Lists", "Archive"]
+RENAME_ARGS = ["folder", "rename", "Lists", "Archive"]
 
 # For 'optimize-rules' (#21): a catch-all starving a specific rule, a rule
 # repeating the catch-all, three Trash rules to merge around a disabled
@@ -974,50 +1068,62 @@ SCENARIOS = {
     **JSON_SCENARIOS,
     # #18: a baseline saved, shown, and replaced; only a local file is
     # written, so no scenario here has a write among its server calls.
-    "save-baseline": (["save-baseline"], PROBE),
-    "save-baseline-dry": (["save-baseline", "--dry-run"], PROBE),
-    "save-baseline-unchanged": (["save-baseline", "--yes"], BASELINE),
-    "save-baseline-notty": (["save-baseline"], DRIFTED),
-    "save-baseline-yes": (["save-baseline", "--yes"], DRIFTED),
+    "save-baseline": (["server", "baseline", "save"], PROBE),
+    "save-baseline-dry": (["server", "baseline", "save", "--dry-run"], PROBE),
+    "save-baseline-unchanged": (
+        ["server", "baseline", "save", "--yes"],
+        BASELINE,
+    ),
+    "save-baseline-notty": (["server", "baseline", "save"], DRIFTED),
+    "save-baseline-yes": (["server", "baseline", "save", "--yes"], DRIFTED),
     "save-baseline-other-account": (
-        ["save-baseline", "--yes"],
+        ["server", "baseline", "save", "--yes"],
         {**BASELINE, "baseline_edit": other_account},
     ),
     "save-baseline-corrupt": (
-        ["save-baseline", "--yes"],
+        ["server", "baseline", "save", "--yes"],
         {**BASELINE, "baseline_edit": lambda document: "{not json\n"},
     ),
-    "show-baseline": (["show-baseline"], BASELINE),
-    "show-baseline-json": (["show-baseline", "--json"], BASELINE),
-    "show-baseline-none": (["show-baseline"], PROBE),
+    "show-baseline": (["server", "baseline", "show"], BASELINE),
+    "show-baseline-json": (["server", "baseline", "show", "--json"], BASELINE),
+    "show-baseline-none": (["server", "baseline", "show"], PROBE),
     # #151: a failure under --json is one JSON line on stderr.
-    "show-baseline-none-json": (["show-baseline", "--json"], PROBE),
+    "show-baseline-none-json": (
+        ["server", "baseline", "show", "--json"],
+        PROBE,
+    ),
     "show-baseline-other-account": (
-        ["show-baseline"],
+        ["server", "baseline", "show"],
         {**BASELINE, "baseline_edit": other_account},
     ),
     # #19: drift, in the terms of what it means for this account.
-    "check-baseline": (["check-baseline"], BASELINE),
-    "check-baseline-json": (["check-baseline", "--json"], BASELINE),
-    "check-baseline-none": (["check-baseline"], PROBE),
-    "check-baseline-none-json": (["check-baseline", "--json"], PROBE),
+    "check-baseline": (["server", "baseline", "check"], BASELINE),
+    "check-baseline-json": (
+        ["server", "baseline", "check", "--json"],
+        BASELINE,
+    ),
+    "check-baseline-none": (["server", "baseline", "check"], PROBE),
+    "check-baseline-none-json": (
+        ["server", "baseline", "check", "--json"],
+        PROBE,
+    ),
     "check-baseline-info": (
-        ["check-baseline"],
+        ["server", "baseline", "check"],
         {**BASELINE, "baseline_edit": only_added},
     ),
     "check-baseline-other-account": (
-        ["check-baseline"],
+        ["server", "baseline", "check"],
         {**DRIFTED, "baseline_edit": other_account},
     ),
     "check-baseline-version": (
-        ["check-baseline"],
+        ["server", "baseline", "check"],
         {
             **BASELINE,
             "baseline_edit": lambda document: document.update(version=2),
         },
     ),
     "check-baseline-probe-version": (
-        ["check-baseline"],
+        ["server", "baseline", "check"],
         {
             **BASELINE,
             "baseline_edit": lambda document: document["server"].update(
@@ -1026,93 +1132,112 @@ SCENARIOS = {
         },
     ),
     "check-baseline-missing-key": (
-        ["check-baseline", "--json"],
+        ["server", "baseline", "check", "--json"],
         {
             **BASELINE,
             "baseline_edit": lambda document: document.__delitem__("accounts"),
         },
     ),
     "check-baseline-unparseable-script": (
-        ["check-baseline"],
+        ["server", "baseline", "check"],
         {**DRIFTED, "script": "this is not sieve {"},
     ),
-    "test-baseline": (["test"], BASELINE),
-    "test-baseline-drift": (["test"], DRIFTED),
+    "test-baseline": (["server", "test"], BASELINE),
+    "test-baseline-drift": (["server", "test"], DRIFTED),
     "test-baseline-corrupt": (
-        ["test"],
+        ["server", "test"],
         {**BASELINE, "baseline_edit": lambda document: "[]\n"},
     ),
-    "senders": (["senders"], SENDERS),
-    "senders-domain": (["senders", "--by", "domain"], SENDERS),
-    "senders-list-id": (["senders", "--by", "list-id"], SENDERS),
-    "senders-top-min": (["senders", "--top", "1", "--min", "2"], SENDERS),
-    "senders-criteria": (
-        ["senders", "--from", "example.com", "--since", "2026-01-01"],
+    "senders": (["mail", "senders"], SENDERS),
+    "senders-domain": (["mail", "senders", "--by", "domain"], SENDERS),
+    "senders-list-id": (["mail", "senders", "--by", "list-id"], SENDERS),
+    "senders-top-min": (
+        ["mail", "senders", "--top", "1", "--min", "2"],
         SENDERS,
     ),
-    "senders-empty": (["senders", "--from", "nobody@x.y"], {}),
-    "senders-overcap": (["senders", "--max-messages", "2"], SENDERS),
-    "senders-bad-top": (["senders", "--top", "-1"], {}),
-    "search": (["search"], MAIL),
-    "search-from": (["search", *GITHUB], MAIL),
-    "search-limit": (["search", "--limit", "2"], MAIL),
-    "search-raw": (["search", "--raw", "UNSEEN"], MAIL),
-    "search-both": (["search", *GITHUB, "--raw", "ALL"], MAIL),
-    "search-none": (["search", "--from", "nobody@x.y"], MAIL),
-    "search-folder": (["search", "--folder", "Lists"], MAIL),
+    "senders-criteria": (
+        ["mail", "senders", "--from", "example.com", "--since", "2026-01-01"],
+        SENDERS,
+    ),
+    "senders-empty": (["mail", "senders", "--from", "nobody@x.y"], {}),
+    "senders-overcap": (["mail", "senders", "--max-messages", "2"], SENDERS),
+    "senders-bad-top": (["mail", "senders", "--top", "-1"], {}),
+    "search": (["mail", "search"], MAIL),
+    "search-from": (["mail", "search", *GITHUB], MAIL),
+    "search-limit": (["mail", "search", "--limit", "2"], MAIL),
+    "search-raw": (["mail", "search", "--raw", "UNSEEN"], MAIL),
+    "search-both": (["mail", "search", *GITHUB, "--raw", "ALL"], MAIL),
+    "search-none": (["mail", "search", "--from", "nobody@x.y"], MAIL),
+    "search-folder": (["mail", "search", "--folder", "Lists"], MAIL),
     # #148: --like pre-fills the criteria from a message; a flag replaces
     # what was derived for its header, and --build-filter saves nothing.
-    "search-like": (["search", "--like", "3"], {}),
+    "search-like": (["mail", "search", "--like", "3"], {}),
     "search-like-combined": (
-        ["search", "--like", "2", "--subject", "Issue", "--match", "all"],
+        [
+            "mail",
+            "search",
+            "--like",
+            "2",
+            "--subject",
+            "Issue",
+            "--match",
+            "all",
+        ],
         {},
     ),
     "search-like-override": (
-        ["search", "--like", "3", "--list-id", "other.example.com"],
+        ["mail", "search", "--like", "3", "--list-id", "other.example.com"],
         {},
     ),
-    "search-like-missing": (["search", "--like", "99"], {}),
+    "search-like-missing": (["mail", "search", "--like", "99"], {}),
     "search-like-derive-missing": (
-        ["search", "--like", "2", "--derive", "cc"],
+        ["mail", "search", "--like", "2", "--derive", "cc"],
         {},
     ),
-    "search-like-raw": (["search", "--like", "3", "--raw", "ALL"], {}),
-    "search-derive-alone": (["search", "--derive", "from"], {}),
-    "search-build-filter": (["search", "--build-filter", *GITHUB], {}),
+    "search-like-raw": (["mail", "search", "--like", "3", "--raw", "ALL"], {}),
+    "search-derive-alone": (["mail", "search", "--derive", "from"], {}),
+    "search-build-filter": (["mail", "search", "--build-filter", *GITHUB], {}),
     "search-build-filter-json": (
-        ["search", "--build-filter", "--json", *GITHUB],
+        ["mail", "search", "--build-filter", "--json", *GITHUB],
         {},
     ),
     "search-like-build-filter-json": (
-        ["search", "--like", "3", "--build-filter", "--json"],
+        ["mail", "search", "--like", "3", "--build-filter", "--json"],
         {},
     ),
-    "search-build-filter-nothing": (["search", "--build-filter"], {}),
-    "search-json-alone": (["search", "--json", *GITHUB], {}),
+    "search-build-filter-nothing": (["mail", "search", "--build-filter"], {}),
+    "search-json-alone": (["mail", "search", "--json", *GITHUB], {}),
     # #63: source_folder in the config file is where --folder defaults to.
     "search-config-folder": (
-        ["search"],
+        ["mail", "search"],
         {**MAIL, "config": 'source_folder = "Lists"\n'},
     ),
     "apply-config-folder": (
-        ["apply", *GITHUB, "--fileinto", "spam", "--dry-run"],
+        ["filter", "apply", *GITHUB, "--fileinto", "spam", "--dry-run"],
         {"config": 'source_folder = "Lists"\n'},
     ),
     "test-config-folder": (
-        ["test"],
+        ["server", "test"],
         {"config": 'source_folder = "Lists"\n'},
     ),
-    "view": (["view", "4"], MAIL),
-    "view-html": (["view", "5"], MAIL),
-    "view-headers": (["view", "4", "--headers-only"], MAIL),
-    "view-raw": (["view", "5", "--raw"], {**MAIL, "tty": True}),
-    "view-raw-pipe": (["view", "5", "--raw"], MAIL),
-    "view-bidi": (["view", "6"], {"mail": {6: SPOOFED}}),
-    "view-missing": (["view", "99"], MAIL),
-    "mark-dry": (["mark", "1", "2", "--read", "--flag", "--dry-run"], MARKED),
-    "mark-yes": (["mark", "1", "2", "--read", "--flag", "--yes"], MARKED),
+    "view": (["mail", "view", "4"], MAIL),
+    "view-html": (["mail", "view", "5"], MAIL),
+    "view-headers": (["mail", "view", "4", "--headers-only"], MAIL),
+    "view-raw": (["mail", "view", "5", "--raw"], {**MAIL, "tty": True}),
+    "view-raw-pipe": (["mail", "view", "5", "--raw"], MAIL),
+    "view-bidi": (["mail", "view", "6"], {"mail": {6: SPOOFED}}),
+    "view-missing": (["mail", "view", "99"], MAIL),
+    "mark-dry": (
+        ["mail", "mark", "1", "2", "--read", "--flag", "--dry-run"],
+        MARKED,
+    ),
+    "mark-yes": (
+        ["mail", "mark", "1", "2", "--read", "--flag", "--yes"],
+        MARKED,
+    ),
     "mark-clear-yes": (
         [
+            "mail",
             "mark",
             "3",
             "--unread",
@@ -1124,35 +1249,63 @@ SCENARIOS = {
         MARKED,
     ),
     "mark-folder-dry": (
-        ["mark", "1", "--folder", "Lists", "--keyword", "$Todo", "--dry-run"],
+        [
+            "mail",
+            "mark",
+            "1",
+            "--folder",
+            "Lists",
+            "--keyword",
+            "$Todo",
+            "--dry-run",
+        ],
         MARKED,
     ),
-    "mark-already": (["mark", "1", "--read"], MARKED),
-    "mark-notty": (["mark", "2", "--flag"], MARKED),
-    "mark-missing": (["mark", "1", "98", "99", "--flag"], MARKED),
+    "mark-already": (["mail", "mark", "1", "--read"], MARKED),
+    "mark-notty": (["mail", "mark", "2", "--flag"], MARKED),
+    "mark-missing": (["mail", "mark", "1", "98", "99", "--flag"], MARKED),
     # #204: UIDs pinned to the folder's UIDVALIDITY. A stale pin refuses
     # the whole command with no STORE; a current one marks as before.
     "mark-stale-uidvalidity": (
-        ["mark", "1", "2", "--read", "--uidvalidity", STALE, "--yes"],
+        ["mail", "mark", "1", "2", "--read", "--uidvalidity", STALE, "--yes"],
         MARKED,
     ),
     "mark-uidvalidity-yes": (
-        ["mark", "1", "2", "--read", "--uidvalidity", CURRENT, "--yes"],
+        [
+            "mail",
+            "mark",
+            "1",
+            "2",
+            "--read",
+            "--uidvalidity",
+            CURRENT,
+            "--yes",
+        ],
         MARKED,
     ),
     "mark-uidvalidity-range": (
-        ["mark", "1", "--read", "--uidvalidity", "0", "--yes"],
+        ["mail", "mark", "1", "--read", "--uidvalidity", "0", "--yes"],
         MARKED,
     ),
-    "view-stale-uidvalidity": (["view", "4", "--uidvalidity", STALE], MAIL),
-    "view-uidvalidity": (["view", "4", "--uidvalidity", CURRENT], MAIL),
+    "view-stale-uidvalidity": (
+        ["mail", "view", "4", "--uidvalidity", STALE],
+        MAIL,
+    ),
+    "view-uidvalidity": (
+        ["mail", "view", "4", "--uidvalidity", CURRENT],
+        MAIL,
+    ),
     "search-like-stale-uidvalidity": (
-        ["search", "--like", "3", "--uidvalidity", STALE],
+        ["mail", "search", "--like", "3", "--uidvalidity", STALE],
         {},
     ),
-    "search-uidvalidity-no-like": (["search", "--uidvalidity", CURRENT], {}),
+    "search-uidvalidity-no-like": (
+        ["mail", "search", "--uidvalidity", CURRENT],
+        {},
+    ),
     "add-like-stale-uidvalidity": (
         [
+            "filter",
             "add",
             "--like",
             "3",
@@ -1165,11 +1318,20 @@ SCENARIOS = {
         {},
     ),
     "add-uidvalidity-no-like": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--uidvalidity", CURRENT],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--uidvalidity",
+            CURRENT,
+        ],
         {},
     ),
     "apply-like-stale-uidvalidity": (
         [
+            "filter",
             "apply",
             "--like",
             "2",
@@ -1181,30 +1343,36 @@ SCENARIOS = {
         ],
         {},
     ),
-    "mark-read-unread": (["mark", "1", "--read", "--unread"], MARKED),
-    "mark-nothing": (["mark", "1"], MARKED),
-    "mark-bad-keyword": (["mark", "1", "--keyword", "two words"], MARKED),
-    "mark-system-keyword": (["mark", "1", "--keyword", "\\Deleted"], MARKED),
-    "mark-keyword-both": (
-        ["mark", "1", "--keyword", "$Todo", "--no-keyword", "$todo"],
+    "mark-read-unread": (["mail", "mark", "1", "--read", "--unread"], MARKED),
+    "mark-nothing": (["mail", "mark", "1"], MARKED),
+    "mark-bad-keyword": (
+        ["mail", "mark", "1", "--keyword", "two words"],
         MARKED,
     ),
-    "list": (["list"], {}),
-    "list-verbose": (["list", "--verbose"], {}),
+    "mark-system-keyword": (
+        ["mail", "mark", "1", "--keyword", "\\Deleted"],
+        MARKED,
+    ),
+    "mark-keyword-both": (
+        ["mail", "mark", "1", "--keyword", "$Todo", "--no-keyword", "$todo"],
+        MARKED,
+    ),
+    "list": (["filterset", "list"], {}),
+    "list-verbose": (["filterset", "list", "--verbose"], {}),
     # One script, and a listing sievelib read an empty name out of (#119).
-    "list-stray-line": (["list"], {"stray": 1}),
-    "test-stray-line": (["test"], {"stray": 1}),
-    "show": (["show"], {}),
-    "rules": (["rules"], {}),
-    "folders": (["folders"], {}),
+    "list-stray-line": (["filterset", "list"], {"stray": 1}),
+    "test-stray-line": (["server", "test"], {"stray": 1}),
+    "show": (["filterset", "show"], {}),
+    "rules": (["filter", "list"], {}),
+    "folders": (["folder", "list"], {}),
     # #205: an ALERT is shown on stderr without --verbose, once however
     # often it is sent -- in the greeting and again as the login runs --
     # and one on a refused login is shown before the failure.
-    "folders-alert": (["folders"], ALERTS),
-    "folders-alert-json": (["folders", "--json"], ALERTS),
-    "folders-alert-verbose": (["folders", "-v"], ALERTS),
+    "folders-alert": (["folder", "list"], ALERTS),
+    "folders-alert-json": (["folder", "list", "--json"], ALERTS),
+    "folders-alert-verbose": (["folder", "list", "-v"], ALERTS),
     "folders-alert-login-refused": (
-        ["folders"],
+        ["folder", "list"],
         {
             "imap_responses": {
                 "login": [b"a1 NO [ALERT] Account suspended; call support"]
@@ -1212,129 +1380,154 @@ SCENARIOS = {
             "imap_failures": {"login": "Account suspended; call support"},
         },
     ),
-    "folders-counts": (["folders", "--counts"], COUNTED),
-    "folders-counts-nosize": (["folders", "--counts"], COUNTED_NO_SIZE),
+    "folders-counts": (["folder", "list", "--counts"], COUNTED),
+    "folders-counts-nosize": (["folder", "list", "--counts"], COUNTED_NO_SIZE),
     # A server without LIST-STATUS: refused, naming it, rather than a
     # STATUS per folder.
-    "folders-counts-refused": (["folders", "--counts"], {}),
-    "test": (["test"], {}),
+    "folders-counts-refused": (["folder", "list", "--counts"], {}),
+    "test": (["server", "test"], {}),
     # A server that advertises neither ID nor NAMESPACE, and sends only
     # the SIEVE line: the report says so rather than leaving gaps.
-    "probe-bare": (["probe"], {}),
-    "test-verbose": (["test", "-v"], {}),
+    "probe-bare": (["server", "probe"], {}),
+    "test-verbose": (["server", "test", "-v"], {}),
     "test-env-file": (
-        ["test", "--env-file", "--sieve-port", "4192"],
+        ["server", "test", "--env-file", "--sieve-port", "4192"],
         {"env": ENV_FILE, "config": 'sieve_tls = "ssl"\n'},
     ),
-    "test-env-file-missing": (["test", "--env-file", "nowhere.env"], {}),
+    "test-env-file-missing": (
+        ["server", "test", "--env-file", "nowhere.env"],
+        {},
+    ),
     # #61: the Password line reports the outcome of reading it, so a
     # refused file is not shown as "set" above its own refusal.
     "test-password-refused": (
-        ["test", "--password-file", "<FILE>"],
+        ["server", "test", "--password-file", "<FILE>"],
         {"file": "not-a-real-password\n", "file_mode": 0o644},
     ),
     "test-password-file": (
-        ["test", "--password-file", "<FILE>"],
+        ["server", "test", "--password-file", "<FILE>"],
         {"file": "not-a-real-password\n"},
     ),
     # #50: backup_dir expands $VAR / ${VAR} and ~, like any path setting.
     "backup-dir-expanded": (
-        ["backup"],
+        ["filterset", "backup"],
         {"config": 'backup_dir = "${XDG_CONFIG_HOME}/elsewhere"\n'},
     ),
-    "backup-dry": (["backup", "--dry-run"], {}),
-    "backup-noactive": (["backup"], {"active": None}),
-    "subscribe": (["subscribe", "spam"], {}),
-    "subscribe-dry": (["subscribe", "INBOX.spam", "--dry-run"], {}),
-    "subscribe-already": (["subscribe", "Lists"], {}),
-    "subscribe-missing": (["subscribe", "Nowhere"], {}),
-    "unsubscribe": (["unsubscribe", "Lists"], {}),
-    "unsubscribe-already": (["unsubscribe", "spam"], {}),
-    "unsubscribe-missing": (["unsubscribe", "Nowhere"], {}),
+    "backup-dry": (["filterset", "backup", "--dry-run"], {}),
+    "backup-noactive": (["filterset", "backup"], {"active": None}),
+    "subscribe": (["folder", "subscribe", "spam"], {}),
+    "subscribe-dry": (["folder", "subscribe", "INBOX.spam", "--dry-run"], {}),
+    "subscribe-already": (["folder", "subscribe", "Lists"], {}),
+    "subscribe-missing": (["folder", "subscribe", "Nowhere"], {}),
+    "unsubscribe": (["folder", "unsubscribe", "Lists"], {}),
+    "unsubscribe-already": (["folder", "unsubscribe", "spam"], {}),
+    "unsubscribe-missing": (["folder", "unsubscribe", "Nowhere"], {}),
     # #155: a folder made on its own, not only by --create-folder.
-    "create-folder-dry": (["create-folder", "Lists/GitHub", "--dry-run"], {}),
-    "create-folder-yes": (["create-folder", "Lists/GitHub", "--yes"], {}),
-    "create-folder-nosub": (
-        ["create-folder", "New", "--no-subscribe", "--yes"],
+    "create-folder-dry": (
+        ["folder", "create", "Lists/GitHub", "--dry-run"],
         {},
     ),
-    "create-folder-notty": (["create-folder", "New"], {}),
+    "create-folder-yes": (["folder", "create", "Lists/GitHub", "--yes"], {}),
+    "create-folder-nosub": (
+        ["folder", "create", "New", "--no-subscribe", "--yes"],
+        {},
+    ),
+    "create-folder-notty": (["folder", "create", "New"], {}),
     "create-folder-parents": (
-        ["create-folder", "Work/2026/Q3", "--dry-run"],
+        ["folder", "create", "Work/2026/Q3", "--dry-run"],
         {},
     ),
     "create-folder-parent-nosub": (
-        ["create-folder", "Work/2026", "--no-subscribe", "--dry-run"],
+        ["folder", "create", "Work/2026", "--no-subscribe", "--dry-run"],
         {},
     ),
-    "create-folder-exists": (["create-folder", "Lists"], {}),
+    "create-folder-exists": (["folder", "create", "Lists"], {}),
     "create-folder-exists-nosub": (
-        ["create-folder", "Lists", "--no-subscribe"],
+        ["folder", "create", "Lists", "--no-subscribe"],
         {},
     ),
-    "create-folder-unsubscribed": (["create-folder", "spam"], {}),
-    "create-folder-case-variant": (["create-folder", "lists", "--yes"], {}),
+    "create-folder-unsubscribed": (["folder", "create", "spam"], {}),
+    "create-folder-case-variant": (["folder", "create", "lists", "--yes"], {}),
     "add-nosubscribe-alone": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--no-subscribe"],
+        ["filter", "add", *GITHUB, "--fileinto", "Lists", "--no-subscribe"],
         {},
     ),
-    "move-dry": (["move-rule", "bin-the-noise", "--first", "--dry-run"], {}),
-    "move-yes": (["move-rule", "bin-the-noise", "--first", "--yes"], {}),
-    "move-notty": (["move-rule", "keep-boss", "--last"], {}),
-    "move-noop": (["move-rule", "keep-boss", "--first"], {}),
-    "move-unknown": (["move-rule", "phantom", "--first"], {}),
+    "move-dry": (
+        ["filter", "move", "bin-the-noise", "--first", "--dry-run"],
+        {},
+    ),
+    "move-yes": (["filter", "move", "bin-the-noise", "--first", "--yes"], {}),
+    "move-notty": (["filter", "move", "keep-boss", "--last"], {}),
+    "move-noop": (["filter", "move", "keep-boss", "--first"], {}),
+    "move-unknown": (["filter", "move", "phantom", "--first"], {}),
     "move-anchor-unknown": (
-        ["move-rule", "keep-boss", "--after", "phantom"],
+        ["filter", "move", "keep-boss", "--after", "phantom"],
         {},
     ),
     "move-self-anchor": (
-        ["move-rule", "keep-boss", "--before", "keep-boss"],
+        ["filter", "move", "keep-boss", "--before", "keep-boss"],
         {},
     ),
-    "move-no-position": (["move-rule", "keep-boss"], {}),
+    "move-no-position": (["filter", "move", "keep-boss"], {}),
     "move-starves": (
-        ["move-rule", "all-lists", "--first", "--dry-run"],
+        ["filter", "move", "all-lists", "--first", "--dry-run"],
         {"script": NARROW_THEN_BROAD},
     ),
-    "restore-dry": (["restore", "<FILE>", "--dry-run"], {"file": ONE_RULE}),
-    "restore-yes": (["restore", "<FILE>", "--yes"], {"file": ONE_RULE}),
-    "restore-notty": (["restore", "<FILE>"], {"file": ONE_RULE}),
-    "restore-identical": (["restore", "<FILE>", "--yes"], {"file": "SAME"}),
+    "restore-dry": (
+        ["filterset", "restore", "<FILE>", "--dry-run"],
+        {"file": ONE_RULE},
+    ),
+    "restore-yes": (
+        ["filterset", "restore", "<FILE>", "--yes"],
+        {"file": ONE_RULE},
+    ),
+    "restore-notty": (["filterset", "restore", "<FILE>"], {"file": ONE_RULE}),
+    "restore-identical": (
+        ["filterset", "restore", "<FILE>", "--yes"],
+        {"file": "SAME"},
+    ),
     "restore-over-unparseable": (
-        ["restore", "<FILE>", "--yes"],
+        ["filterset", "restore", "<FILE>", "--yes"],
         {"file": ONE_RULE, "script": "if {{{ broken\n"},
     ),
     "restore-rejected": (
-        ["restore", "<FILE>", "--yes"],
+        ["filterset", "restore", "<FILE>", "--yes"],
         {"file": ONE_RULE, "reject": True},
     ),
-    "restore-missing-file": (["restore", "/nonexistent/x.sieve"], {}),
+    "restore-missing-file": (
+        ["filterset", "restore", "/nonexistent/x.sieve"],
+        {},
+    ),
     # #52: a named target, and an empty file refused unless asked for.
     "restore-script": (
-        ["restore", "<FILE>", "--script", "spare", "--yes"],
+        ["filterset", "restore", "<FILE>", "--script", "spare", "--yes"],
         {"file": ONE_RULE, "others": {"spare": "# nothing yet\n"}},
     ),
     # #54: with nothing active a bare restore names --script; naming the
     # deactivated script is the recovery, and activates it.
     "restore-noactive": (
-        ["restore", "<FILE>", "--yes"],
+        ["filterset", "restore", "<FILE>", "--yes"],
         {"file": ONE_RULE, "active": None, "others": {"managesieve": "x\n"}},
     ),
     "restore-noactive-script": (
-        ["restore", "<FILE>", "--script", "managesieve", "--yes"],
+        ["filterset", "restore", "<FILE>", "--script", "managesieve", "--yes"],
         {"file": ONE_RULE, "active": None, "others": {"managesieve": "x\n"}},
     ),
-    "restore-empty": (["restore", "<FILE>", "--yes"], {"file": "\n"}),
+    "restore-empty": (
+        ["filterset", "restore", "<FILE>", "--yes"],
+        {"file": "\n"},
+    ),
     "restore-empty-allowed": (
-        ["restore", "<FILE>", "--allow-empty", "--dry-run"],
+        ["filterset", "restore", "<FILE>", "--allow-empty", "--dry-run"],
         {"file": ""},
     ),
     "add-dry-missing": (
-        ["add", *GITHUB, "--fileinto", "Lists/GitHub", "--dry-run"],
+        ["filter", "add", *GITHUB, "--fileinto", "Lists/GitHub", "--dry-run"],
         {},
     ),
     "add-dry-sievecreate": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1346,6 +1539,7 @@ SCENARIOS = {
     ),
     "add-dry-sievecreate-nosub": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1358,6 +1552,7 @@ SCENARIOS = {
     ),
     "add-real-sievecreate": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1368,6 +1563,7 @@ SCENARIOS = {
     ),
     "add-noimap-sievecreate": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1379,6 +1575,7 @@ SCENARIOS = {
     ),
     "add-dry-imapcreate": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1390,6 +1587,7 @@ SCENARIOS = {
     ),
     "add-real-imapcreate": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1401,6 +1599,7 @@ SCENARIOS = {
     ),
     "add-real-imapcreate-verbose": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1411,12 +1610,16 @@ SCENARIOS = {
         {"caps": NO_MAILBOX},
     ),
     "add-real-exists": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--first"],
+        ["filter", "add", *GITHUB, "--fileinto", "Lists", "--first"],
         {},
     ),
-    "add-real-noconfirm": (["add", *GITHUB, "--fileinto", "Lists"], {}),
+    "add-real-noconfirm": (
+        ["filter", "add", *GITHUB, "--fileinto", "Lists"],
+        {},
+    ),
     "apply-dry-overcap": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--fileinto",
@@ -1431,16 +1634,36 @@ SCENARIOS = {
     # and from-message, which --like replaced -- are gone rather than
     # ignored.
     "add-noapply-gone": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--no-apply"],
+        ["filter", "add", *GITHUB, "--fileinto", "Lists", "--no-apply"],
         {},
     ),
     "add-maxmessages-gone": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--max-messages", "1"],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--max-messages",
+            "1",
+        ],
         {},
     ),
     "from-message-gone": (["from-message", "--uid", "2"], {}),
+    # #219: the commands are grouped; an old name is refused, naming the
+    # command it is now, and never run.
+    "gone-rules": (["rules"], {}),
+    "gone-messages": (["messages", "--folder", "INBOX"], {}),
+    "gone-add": (["add", "--from", "a@b.c", "--fileinto", "X"], {}),
+    "gone-save-baseline": (["--verbose", "save-baseline"], {}),
+    "gone-help-rules": (["help", "rules"], {}),
+    "help-top": (["--help"], {}),
+    "help-filter": (["help", "filter"], {}),
+    "help-server-baseline": (["server", "baseline", "--help"], {}),
+    "group-without-action": (["filter"], {}),
     "add-noimap": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1451,34 +1674,46 @@ SCENARIOS = {
         {},
     ),
     "add-noimap-create-nomailbox": (
-        ["add", *GITHUB, "--fileinto", "X", "--no-imap", "--create-folder"],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "X",
+            "--no-imap",
+            "--create-folder",
+        ],
         {"caps": NO_MAILBOX},
     ),
-    "add-noaction": (["add", *GITHUB], {}),
-    "add-nocriteria": (["add", "--fileinto", "Lists"], {}),
-    "add-redirect": (["add", *GITHUB, "--redirect", "x@y.z"], {}),
-    "add-vacation": (["add", *GITHUB, "--vacation", "hi"], {}),
-    "add-discard": (["add", *GITHUB, "--discard"], {}),
-    "add-flag-only": (["add", *GITHUB, "--flag", "\\Flagged"], {}),
+    "add-noaction": (["filter", "add", *GITHUB], {}),
+    "add-nocriteria": (["filter", "add", "--fileinto", "Lists"], {}),
+    "add-redirect": (["filter", "add", *GITHUB, "--redirect", "x@y.z"], {}),
+    "add-vacation": (["filter", "add", *GITHUB, "--vacation", "hi"], {}),
+    "add-discard": (["filter", "add", *GITHUB, "--discard"], {}),
+    "add-flag-only": (["filter", "add", *GITHUB, "--flag", "\\Flagged"], {}),
     # #208: PUTSCRIPT's WARNINGS are shown on stderr without --verbose, a
     # line each; CHECKSCRIPT's, the same warnings about a temporary file,
     # only under --verbose. --json is a dry run, which uploads nothing.
-    "add-warnings": (["add", *GITHUB, "--flag", "\\Bogus"], SIEVE_WARNINGS),
+    "add-warnings": (
+        ["filter", "add", *GITHUB, "--flag", "\\Bogus"],
+        SIEVE_WARNINGS,
+    ),
     "add-warnings-verbose": (
-        ["add", *GITHUB, "--flag", "\\Bogus", "-v"],
+        ["filter", "add", *GITHUB, "--flag", "\\Bogus", "-v"],
         SIEVE_WARNINGS,
     ),
     "add-warnings-json": (
-        ["add", *GITHUB, "--flag", "\\Bogus", "--dry-run", "--json"],
+        ["filter", "add", *GITHUB, "--flag", "\\Bogus", "--dry-run", "--json"],
         SIEVE_WARNINGS,
     ),
-    "add-keep-only": (["add", *GITHUB, "--keep"], {}),
+    "add-keep-only": (["filter", "add", *GITHUB, "--keep"], {}),
     "add-default-folder-extmissing": (
-        ["add", *GITHUB, "--dry-run"],
+        ["filter", "add", *GITHUB, "--dry-run"],
         {"caps": ["imap4flags"], "config": 'default_folder = "Lists"\n'},
     ),
     "apply-fileinto-source-normalized": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--folder",
@@ -1490,25 +1725,37 @@ SCENARIOS = {
         {},
     ),
     "apply-fileinto-source": (
-        ["apply", *GITHUB, "--fileinto", "INBOX", "--yes"],
+        ["filter", "apply", *GITHUB, "--fileinto", "INBOX", "--yes"],
         {},
     ),
-    "apply-discard-yes": (["apply", *GITHUB, "--discard", "--yes"], {}),
+    "apply-discard-yes": (
+        ["filter", "apply", *GITHUB, "--discard", "--yes"],
+        {},
+    ),
     "apply-flag-only": (
-        ["apply", *GITHUB, "--flag", "\\Flagged", "--yes"],
+        ["filter", "apply", *GITHUB, "--flag", "\\Flagged", "--yes"],
         {},
     ),
-    "apply-keep-only": (["apply", *GITHUB, "--keep", "--yes"], {}),
+    "apply-keep-only": (["filter", "apply", *GITHUB, "--keep", "--yes"], {}),
     "apply-keep-copy-yes": (
-        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
+        ["filter", "apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
         {},
     ),
     "apply-keep-copy-dry": (
-        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--dry-run"],
+        [
+            "filter",
+            "apply",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--keep",
+            "--dry-run",
+        ],
         {},
     ),
     "apply-keep-copy-flag-yes": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--fileinto",
@@ -1520,19 +1767,28 @@ SCENARIOS = {
         {},
     ),
     "apply-discard-keep": (
-        ["apply", *GITHUB, "--discard", "--keep", "--yes"],
+        ["filter", "apply", *GITHUB, "--discard", "--keep", "--yes"],
         {},
     ),
     "apply-keep-rerun-dry": (
-        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--dry-run"],
+        [
+            "filter",
+            "apply",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--keep",
+            "--dry-run",
+        ],
         KEEP_RERUN,
     ),
     "apply-keep-rerun-yes": (
-        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
+        ["filter", "apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
         KEEP_RERUN,
     ),
     "apply-keep-rerun-json": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--fileinto",
@@ -1544,7 +1800,7 @@ SCENARIOS = {
         KEEP_RERUN,
     ),
     "apply-keep-rerun-all-held": (
-        ["apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
+        ["filter", "apply", *GITHUB, "--fileinto", "Lists", "--keep", "--yes"],
         {
             "mail": {uid: KEEP_RERUN["mail"][uid] for uid in (1, 2)},
             "folder_mail": {
@@ -1556,11 +1812,20 @@ SCENARIOS = {
         },
     ),
     "add-before-unknown": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--before", "phantom"],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--before",
+            "phantom",
+        ],
         {},
     ),
     "add-replace-existing": (
         [
+            "filter",
             "add",
             "--subject",
             "newsletter",
@@ -1575,29 +1840,58 @@ SCENARIOS = {
         {},
     ),
     "add-dup-name": (
-        ["add", *GITHUB, "--fileinto", "Lists", "--name", "keep-boss"],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+            "--name",
+            "keep-boss",
+        ],
         {},
     ),
     "add-rejected": (
-        ["add", *GITHUB, "--fileinto", "Lists"],
+        ["filter", "add", *GITHUB, "--fileinto", "Lists"],
         {"reject": True},
     ),
     "add-empty-account": (
-        ["add", *GITHUB, "--fileinto", "Lists"],
+        ["filter", "add", *GITHUB, "--fileinto", "Lists"],
         {"active": None},
     ),
     "add-extmissing": (
-        ["add", *GITHUB, "--mark-read", "--fileinto", "Lists", "--dry-run"],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--mark-read",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
         {"caps": ["fileinto"]},
     ),
-    "apply-yes": (["apply", *GITHUB, "--fileinto", "Lists", "--yes"], {}),
-    "apply-dry": (["apply", *GITHUB, "--fileinto", "Lists", "--dry-run"], {}),
-    "apply-missing": (["apply", *GITHUB, "--fileinto", "Lists/GitHub"], {}),
+    "apply-yes": (
+        ["filter", "apply", *GITHUB, "--fileinto", "Lists", "--yes"],
+        {},
+    ),
+    "apply-dry": (
+        ["filter", "apply", *GITHUB, "--fileinto", "Lists", "--dry-run"],
+        {},
+    ),
+    "apply-missing": (
+        ["filter", "apply", *GITHUB, "--fileinto", "Lists/GitHub"],
+        {},
+    ),
     # #56: 'lists' is not INBOX.Lists; the near miss is named, missing or
     # about to be created beside it.
-    "apply-case-variant": (["apply", *GITHUB, "--fileinto", "lists"], {}),
+    "apply-case-variant": (
+        ["filter", "apply", *GITHUB, "--fileinto", "lists"],
+        {},
+    ),
     "add-dry-create-case-variant": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1609,6 +1903,7 @@ SCENARIOS = {
     ),
     "apply-create": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--fileinto",
@@ -1620,6 +1915,7 @@ SCENARIOS = {
     ),
     "apply-create-dry": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--fileinto",
@@ -1631,6 +1927,7 @@ SCENARIOS = {
     ),
     "add-imapcreate-rejected": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -1641,6 +1938,7 @@ SCENARIOS = {
     ),
     "apply-create-nomatch": (
         [
+            "filter",
             "apply",
             "--from",
             "nobody@x.y",
@@ -1651,9 +1949,10 @@ SCENARIOS = {
         ],
         {},
     ),
-    "apply-nothing": (["apply", *GITHUB], {}),
+    "apply-nothing": (["filter", "apply", *GITHUB], {}),
     "apply-overcap": (
         [
+            "filter",
             "apply",
             *GITHUB,
             "--fileinto",
@@ -1664,75 +1963,99 @@ SCENARIOS = {
         ],
         {},
     ),
-    "apply-discard-notty": (["apply", *GITHUB, "--discard"], {}),
+    "apply-discard-notty": (["filter", "apply", *GITHUB, "--discard"], {}),
     "apply-nomatch": (
-        ["apply", "--from", "nobody@x.y", "--fileinto", "Lists", "--yes"],
+        [
+            "filter",
+            "apply",
+            "--from",
+            "nobody@x.y",
+            "--fileinto",
+            "Lists",
+            "--yes",
+        ],
         {},
     ),
-    "disable-yes": (["disable-rule", "keep-boss", "--yes"], {}),
-    "disable-dry": (["disable-rule", "keep-boss", "--dry-run"], {}),
-    "disable-notty": (["disable-rule", "keep-boss"], {}),
-    "disable-unknown": (["disable-rule", "phantom", "--yes"], {}),
+    "disable-yes": (["filter", "disable", "keep-boss", "--yes"], {}),
+    "disable-dry": (["filter", "disable", "keep-boss", "--dry-run"], {}),
+    "disable-notty": (["filter", "disable", "keep-boss"], {}),
+    "disable-unknown": (["filter", "disable", "phantom", "--yes"], {}),
     "disable-already": (
-        ["disable-rule", "keep-boss", "--yes"],
+        ["filter", "disable", "keep-boss", "--yes"],
         {"script": DISABLED_BOSS},
     ),
-    "disable-empty": (["disable-rule", "keep-boss", "--yes"], {"script": ""}),
+    "disable-empty": (
+        ["filter", "disable", "keep-boss", "--yes"],
+        {"script": ""},
+    ),
     "enable-yes": (
-        ["enable-rule", "keep-boss", "--yes"],
+        ["filter", "enable", "keep-boss", "--yes"],
         {"script": DISABLED_BOSS},
     ),
     "enable-dry": (
-        ["enable-rule", "keep-boss", "--dry-run"],
+        ["filter", "enable", "keep-boss", "--dry-run"],
         {"script": DISABLED_BOSS},
     ),
-    "enable-already": (["enable-rule", "keep-boss", "--yes"], {}),
+    "enable-already": (["filter", "enable", "keep-boss", "--yes"], {}),
     "enable-unknown": (
-        ["enable-rule", "phantom", "--yes"],
+        ["filter", "enable", "phantom", "--yes"],
         {"script": DISABLED_BOSS},
     ),
     "enable-no-test": (
-        ["enable-rule", "keep-boss", "--yes"],
+        ["filter", "enable", "keep-boss", "--yes"],
         {"script": BARE_FALSE},
     ),
-    "rules-disabled": (["rules"], {"script": DISABLED_BOSS}),
+    "rules-disabled": (["filter", "list"], {"script": DISABLED_BOSS}),
     # #216: only the name marker changes, disabled or not.
-    "rename-yes": (["rename-rule", "keep-boss", "The boss", "--yes"], {}),
-    "rename-dry": (["rename-rule", "keep-boss", "The boss", "--dry-run"], {}),
-    "rename-notty": (["rename-rule", "keep-boss", "The boss"], {}),
-    "rename-disabled": (
-        ["rename-rule", "keep-boss", "The boss", "--yes"],
-        {"script": DISABLED_BOSS},
-    ),
-    "rename-same": (["rename-rule", "keep-boss", "keep-boss", "--yes"], {}),
-    "rename-unknown": (["rename-rule", "phantom", "The boss", "--yes"], {}),
-    "rename-taken": (
-        ["rename-rule", "keep-boss", "bin-the-noise", "--yes"],
+    "rename-yes": (["filter", "rename", "keep-boss", "The boss", "--yes"], {}),
+    "rename-dry": (
+        ["filter", "rename", "keep-boss", "The boss", "--dry-run"],
         {},
     ),
-    "rename-blank": (["rename-rule", "keep-boss", " ", "--yes"], {}),
+    "rename-notty": (["filter", "rename", "keep-boss", "The boss"], {}),
+    "rename-disabled": (
+        ["filter", "rename", "keep-boss", "The boss", "--yes"],
+        {"script": DISABLED_BOSS},
+    ),
+    "rename-same": (
+        ["filter", "rename", "keep-boss", "keep-boss", "--yes"],
+        {},
+    ),
+    "rename-unknown": (
+        ["filter", "rename", "phantom", "The boss", "--yes"],
+        {},
+    ),
+    "rename-taken": (
+        ["filter", "rename", "keep-boss", "bin-the-noise", "--yes"],
+        {},
+    ),
+    "rename-blank": (["filter", "rename", "keep-boss", " ", "--yes"], {}),
     "rename-unwritable": (
-        ["rename-rule", "keep-boss", "two\nlines", "--yes"],
+        ["filter", "rename", "keep-boss", "two\nlines", "--yes"],
         {},
     ),
     "rename-empty-script": (
-        ["rename-rule", "keep-boss", "The boss", "--yes"],
+        ["filter", "rename", "keep-boss", "The boss", "--yes"],
         {"script": ""},
     ),
-    "remove-yes": (["remove-rule", "keep-boss", "--yes"], {}),
-    "remove-dry": (["remove-rule", "keep-boss", "--dry-run"], {}),
-    "remove-unknown": (["remove-rule", "phantom", "--yes"], {}),
-    "remove-notty": (["remove-rule", "keep-boss"], {}),
-    "remove-empty": (["remove-rule", "keep-boss", "--yes"], {"script": ""}),
+    "remove-yes": (["filter", "remove", "keep-boss", "--yes"], {}),
+    "remove-dry": (["filter", "remove", "keep-boss", "--dry-run"], {}),
+    "remove-unknown": (["filter", "remove", "phantom", "--yes"], {}),
+    "remove-notty": (["filter", "remove", "keep-boss"], {}),
+    "remove-empty": (
+        ["filter", "remove", "keep-boss", "--yes"],
+        {"script": ""},
+    ),
     # Editing a stored script that is not the active one must not switch
     # which script the server runs (#53); --activate asks for exactly that.
     "remove-other-script": (
-        ["remove-rule", "keep-boss", "--script", "spare", "--yes"],
+        ["filter", "remove", "keep-boss", "--script", "spare", "--yes"],
         {"others": {"spare": ONE_RULE}},
     ),
     "remove-other-script-activate": (
         [
-            "remove-rule",
+            "filter",
+            "remove",
             "keep-boss",
             "--script",
             "spare",
@@ -1744,16 +2067,20 @@ SCENARIOS = {
     # #149: --like takes the criteria from a message, as 'search --like'
     # does; a criteria flag replaces what was derived for its header.
     "add-like": (
-        ["add", "--like", "2", "--fileinto", "Lists", "--dry-run"],
+        ["filter", "add", "--like", "2", "--fileinto", "Lists", "--dry-run"],
         {},
     ),
     "add-like-listid": (
-        ["add", "--like", "3", "--fileinto", "Lists", "--dry-run"],
+        ["filter", "add", "--like", "3", "--fileinto", "Lists", "--dry-run"],
         {},
     ),
-    "add-like-real": (["add", "--like", "3", "--fileinto", "Lists"], {}),
+    "add-like-real": (
+        ["filter", "add", "--like", "3", "--fileinto", "Lists"],
+        {},
+    ),
     "add-like-combined": (
         [
+            "filter",
             "add",
             "--like",
             "2",
@@ -1769,6 +2096,7 @@ SCENARIOS = {
     ),
     "add-like-folder": (
         [
+            "filter",
             "add",
             "--like",
             "2",
@@ -1782,6 +2110,7 @@ SCENARIOS = {
     ),
     "add-like-derive-missing": (
         [
+            "filter",
             "add",
             "--like",
             "2",
@@ -1794,32 +2123,45 @@ SCENARIOS = {
         {},
     ),
     "add-like-nothing-derived": (
-        ["add", "--like", "2", "--derive", "cc", "--fileinto", "Lists"],
+        [
+            "filter",
+            "add",
+            "--like",
+            "2",
+            "--derive",
+            "cc",
+            "--fileinto",
+            "Lists",
+        ],
         {},
     ),
-    "add-like-missing": (["add", "--like", "99", "--fileinto", "Lists"], {}),
+    "add-like-missing": (
+        ["filter", "add", "--like", "99", "--fileinto", "Lists"],
+        {},
+    ),
     "add-like-noimap": (
-        ["add", "--like", "2", "--fileinto", "Lists", "--no-imap"],
+        ["filter", "add", "--like", "2", "--fileinto", "Lists", "--no-imap"],
         {},
     ),
     "add-folder-alone": (
-        ["add", *GITHUB, "--folder", "Lists", "--fileinto", "Lists"],
+        ["filter", "add", *GITHUB, "--folder", "Lists", "--fileinto", "Lists"],
         {},
     ),
     "add-derive-alone": (
-        ["add", *GITHUB, "--derive", "from", "--fileinto", "Lists"],
+        ["filter", "add", *GITHUB, "--derive", "from", "--fileinto", "Lists"],
         {},
     ),
     "apply-like": (
-        ["apply", "--like", "3", "--fileinto", "Lists", "--dry-run"],
+        ["filter", "apply", "--like", "3", "--fileinto", "Lists", "--dry-run"],
         {},
     ),
     "apply-like-yes": (
-        ["apply", "--like", "2", "--fileinto", "Lists", "--yes"],
+        ["filter", "apply", "--like", "2", "--fileinto", "Lists", "--yes"],
         {},
     ),
     "apply-like-combined": (
         [
+            "filter",
             "apply",
             "--like",
             "2",
@@ -1836,53 +2178,119 @@ SCENARIOS = {
     # #149: --filter reads the document 'search --build-filter --json'
     # prints, from a file or standard input, instead of criteria flags.
     "add-filter": (
-        ["add", "--filter", "<FILE>", "--fileinto", "Lists", "--dry-run"],
+        [
+            "filter",
+            "add",
+            "--filter",
+            "<FILE>",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
         {"file": FILTER_DOC},
     ),
     "add-filter-stdin": (
-        ["add", "--filter", "-", "--fileinto", "Lists", "--dry-run"],
+        ["filter", "add", "--filter", "-", "--fileinto", "Lists", "--dry-run"],
         {"stdin": FILTER_DOC},
     ),
     "add-filter-both": (
-        ["add", "--filter", "<FILE>", *GITHUB, "--fileinto", "Lists"],
+        [
+            "filter",
+            "add",
+            "--filter",
+            "<FILE>",
+            *GITHUB,
+            "--fileinto",
+            "Lists",
+        ],
         {"file": FILTER_DOC},
     ),
     "add-filter-match": (
-        ["add", "--filter", "<FILE>", "--match", "all", "--fileinto", "L"],
+        [
+            "filter",
+            "add",
+            "--filter",
+            "<FILE>",
+            "--match",
+            "all",
+            "--fileinto",
+            "L",
+        ],
         {"file": FILTER_DOC},
     ),
     "add-filter-like": (
-        ["add", "--filter", "<FILE>", "--like", "2", "--fileinto", "Lists"],
+        [
+            "filter",
+            "add",
+            "--filter",
+            "<FILE>",
+            "--like",
+            "2",
+            "--fileinto",
+            "Lists",
+        ],
         {"file": FILTER_DOC},
     ),
     "add-filter-bad": (
-        ["add", "--filter", "<FILE>", "--fileinto", "Lists"],
+        ["filter", "add", "--filter", "<FILE>", "--fileinto", "Lists"],
         {"file": '{"version": 2, "criteria": {}}\n'},
     ),
     "add-filter-missing": (
-        ["add", "--filter", "/nonexistent/f.json", "--fileinto", "Lists"],
+        [
+            "filter",
+            "add",
+            "--filter",
+            "/nonexistent/f.json",
+            "--fileinto",
+            "Lists",
+        ],
         {},
     ),
     "apply-filter": (
-        ["apply", "--filter", "<FILE>", "--fileinto", "Lists", "--yes"],
+        [
+            "filter",
+            "apply",
+            "--filter",
+            "<FILE>",
+            "--fileinto",
+            "Lists",
+            "--yes",
+        ],
         {"file": FILTER_DOC},
     ),
     "apply-filter-stdin": (
-        ["apply", "--filter", "-", "--fileinto", "Lists", "--dry-run"],
+        [
+            "filter",
+            "apply",
+            "--filter",
+            "-",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
         {"stdin": FILTER_DOC},
     ),
     "apply-filter-stdin-bad": (
-        ["apply", "--filter", "-", "--fileinto", "Lists", "--dry-run"],
+        [
+            "filter",
+            "apply",
+            "--filter",
+            "-",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
         {"stdin": "not json\n"},
     ),
     "apply-filter-both": (
-        ["apply", "--filter", "-", *GITHUB, "--fileinto", "Lists"],
+        ["filter", "apply", "--filter", "-", *GITHUB, "--fileinto", "Lists"],
         {"stdin": FILTER_DOC},
     ),
     # #152: body, date, and state criteria. Dates are fixed ones, never
     # --older-than, whose date moves with the day the snapshot is run.
     "search-more": (
         [
+            "mail",
             "search",
             "--body",
             "merged",
@@ -1895,15 +2303,16 @@ SCENARIOS = {
         ],
         MAIL,
     ),
-    "search-body-nonascii": (["search", "--body", "Café"], MAIL),
-    "search-bad-date": (["search", "--since", "1/9/2026"], {}),
-    "search-bad-age": (["search", "--older-than", "0d"], {}),
+    "search-body-nonascii": (["mail", "search", "--body", "Café"], MAIL),
+    "search-bad-date": (["mail", "search", "--since", "1/9/2026"], {}),
+    "search-bad-age": (["mail", "search", "--older-than", "0d"], {}),
     "search-empty-range": (
-        ["search", "--since", "2026-09-28", "--before", "2026-09-01"],
+        ["mail", "search", "--since", "2026-09-28", "--before", "2026-09-01"],
         {},
     ),
     "search-build-filter-more": (
         [
+            "mail",
             "search",
             "--build-filter",
             *GITHUB,
@@ -1920,46 +2329,65 @@ SCENARIOS = {
     # #159: --sort, by the server where it advertises SORT (SORTED) and
     # client-side where it does not; --limit is taken after sorting.
     "search-sort-size": (
-        ["search", "--sort", "size", "--reverse", "--limit", "2"],
+        ["mail", "search", "--sort", "size", "--reverse", "--limit", "2"],
         SORTED,
     ),
     "search-sort-size-fallback": (
-        ["search", "--sort", "size", "--reverse", "--limit", "2"],
+        ["mail", "search", "--sort", "size", "--reverse", "--limit", "2"],
         MAIL,
     ),
     "search-sort-size-json": (
-        ["search", "--sort", "size", "--reverse", "--limit", "2", "--json"],
+        [
+            "mail",
+            "search",
+            "--sort",
+            "size",
+            "--reverse",
+            "--limit",
+            "2",
+            "--json",
+        ],
         SORTED,
     ),
-    "search-sort-sent": (["search", "--sort", "sent"], SORTED),
+    "search-sort-sent": (["mail", "search", "--sort", "sent"], SORTED),
     "search-sort-received-fallback": (
-        ["search", "--sort", "received", "--reverse"],
+        ["mail", "search", "--sort", "received", "--reverse"],
         MAIL,
     ),
     "search-sort-uids-only": (
-        ["search", "--sort", "size", "--reverse", "--uids-only"],
+        ["mail", "search", "--sort", "size", "--reverse", "--uids-only"],
         SORTED,
     ),
     "search-sort-from-uids-only": (
-        ["search", "--sort", "size", "--uids-only", *GITHUB],
+        ["mail", "search", "--sort", "size", "--uids-only", *GITHUB],
         {"mail": {6: GITHUB_LONG}, "imap_caps": SORTED["imap_caps"]},
     ),
     "search-sort-raw": (
-        ["search", "--raw", "UNSEEN", "--sort", "size"],
+        ["mail", "search", "--raw", "UNSEEN", "--sort", "size"],
         SORTED,
     ),
     "search-sort-nonascii": (
-        ["search", "--subject", "Café", "--sort", "size", "--limit", "1"],
+        [
+            "mail",
+            "search",
+            "--subject",
+            "Café",
+            "--sort",
+            "size",
+            "--limit",
+            "1",
+        ],
         SORTED,
     ),
-    "search-sort-bad": (["search", "--sort", "from"], {}),
-    "search-reverse-alone": (["search", "--reverse"], {}),
+    "search-sort-bad": (["mail", "search", "--sort", "from"], {}),
+    "search-reverse-alone": (["mail", "search", "--reverse"], {}),
     "search-sort-build-filter": (
-        ["search", "--sort", "size", "--build-filter", *GITHUB],
+        ["mail", "search", "--sort", "size", "--build-filter", *GITHUB],
         {},
     ),
     "search-build-filter-more-json": (
         [
+            "mail",
             "search",
             "--build-filter",
             "--json",
@@ -1976,6 +2404,7 @@ SCENARIOS = {
     ),
     "apply-more": (
         [
+            "filter",
             "apply",
             "--body",
             "merged",
@@ -1990,6 +2419,7 @@ SCENARIOS = {
     ),
     "add-body": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--body",
@@ -2002,6 +2432,7 @@ SCENARIOS = {
     ),
     "add-body-json": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--body",
@@ -2015,6 +2446,7 @@ SCENARIOS = {
     ),
     "apply-more-json": (
         [
+            "filter",
             "apply",
             "--body",
             "merged",
@@ -2032,6 +2464,7 @@ SCENARIOS = {
     ),
     "search-more-json": (
         [
+            "mail",
             "search",
             "--body",
             "merged",
@@ -2043,11 +2476,20 @@ SCENARIOS = {
         MAIL,
     ),
     "add-body-unadvertised": (
-        ["add", "--body", "merged", "--fileinto", "Lists", "--dry-run"],
+        [
+            "filter",
+            "add",
+            "--body",
+            "merged",
+            "--fileinto",
+            "Lists",
+            "--dry-run",
+        ],
         {},
     ),
     "add-body-disabled": (
         [
+            "filter",
             "add",
             "--body",
             "merged",
@@ -2060,24 +2502,41 @@ SCENARIOS = {
         {"caps": [*FULL, "body"]},
     ),
     "add-body-compare-is": (
-        ["add", "--body", "merged", "--compare", "is", "--fileinto", "L"],
+        [
+            "filter",
+            "add",
+            "--body",
+            "merged",
+            "--compare",
+            "is",
+            "--fileinto",
+            "L",
+        ],
         {},
     ),
     "add-state-refused": (
-        ["add", *GITHUB, "--unread", "--fileinto", "Lists"],
+        ["filter", "add", *GITHUB, "--unread", "--fileinto", "Lists"],
         {},
     ),
     "add-before-is-placement": (
-        ["add", *GITHUB, "--before", "2026-09-01", "--fileinto", "Lists"],
+        [
+            "filter",
+            "add",
+            *GITHUB,
+            "--before",
+            "2026-09-01",
+            "--fileinto",
+            "Lists",
+        ],
         {},
     ),
     # #196: an empty anchor is refused before connecting, not appended.
     "add-before-empty": (
-        ["add", *GITHUB, "--before", "", "--fileinto", "Lists"],
+        ["filter", "add", *GITHUB, "--before", "", "--fileinto", "Lists"],
         {},
     ),
     "add-filter-state-refused": (
-        ["add", "--filter", "<FILE>", "--fileinto", "Lists"],
+        ["filter", "add", "--filter", "<FILE>", "--fileinto", "Lists"],
         {
             "file": FILTER_DOC.replace(
                 '"compare"', '"since": "2026-09-01",\n    "compare"'
@@ -2088,6 +2547,7 @@ SCENARIOS = {
     # what 'add' does with it -- refuse, or fall back to IMAP creation.
     "test-disabled": (
         [
+            "server",
             "test",
             "--disable-extension",
             "Mailbox",
@@ -2097,31 +2557,48 @@ SCENARIOS = {
         {},
     ),
     "test-disabled-config": (
-        ["test"],
+        ["server", "test"],
         {"config": 'disabled_extensions = ["imap4flags"]\n'},
     ),
     # #85: 'none' from the flag clears the config file's list, and says so.
     "test-disabled-none": (
-        ["test", "--disable-extension", "none"],
+        ["server", "test", "--disable-extension", "none"],
         {"config": 'disabled_extensions = ["imap4flags"]\n'},
     ),
     "test-disabled-none-mixed": (
-        ["test", "--disable-extension", "none", "--disable-extension", "copy"],
+        [
+            "server",
+            "test",
+            "--disable-extension",
+            "none",
+            "--disable-extension",
+            "copy",
+        ],
         {},
     ),
-    "test-disabled-unknown": (["test", "--disable-extension", "mailbx"], {}),
+    "test-disabled-unknown": (
+        ["server", "test", "--disable-extension", "mailbx"],
+        {},
+    ),
     # A name only the server lists gets a row, folded to lower case once.
     "test-server-only": (
-        ["test"],
+        ["server", "test"],
         {"caps": ["FileInto", "fileinto", "Body", "imap4flags"]},
     ),
-    "test-no-extensions": (["test"], {"caps": []}),
+    "test-no-extensions": (["server", "test"], {"caps": []}),
     # #19: every kind of drift, a hostile capability value among them.
-    "check-baseline-drift": (["check-baseline"], DRIFTED),
-    "check-baseline-drift-json": (["check-baseline", "--json"], DRIFTED),
-    "save-baseline-drift-dry": (["save-baseline", "--dry-run"], DRIFTED),
+    "check-baseline-drift": (["server", "baseline", "check"], DRIFTED),
+    "check-baseline-drift-json": (
+        ["server", "baseline", "check", "--json"],
+        DRIFTED,
+    ),
+    "save-baseline-drift-dry": (
+        ["server", "baseline", "save", "--dry-run"],
+        DRIFTED,
+    ),
     "add-disabled-mailbox": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -2134,6 +2611,7 @@ SCENARIOS = {
     ),
     "add-disabled-mailbox-noimap": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--fileinto",
@@ -2147,6 +2625,7 @@ SCENARIOS = {
     ),
     "add-disabled-imap4flags": (
         [
+            "filter",
             "add",
             *GITHUB,
             "--mark-read",
@@ -2163,11 +2642,14 @@ SCENARIOS = {
     "rename-folder-dry-json": ([*RENAME_ARGS, "--dry-run", "--json"], RENAME),
     "rename-folder-yes": ([*RENAME_ARGS, "--yes"], RENAME),
     "rename-folder-notty": (RENAME_ARGS, RENAME),
-    "rename-folder-no-rules": (["rename-folder", "spam", "Junk", "--yes"], {}),
-    "rename-folder-inbox": (["rename-folder", "INBOX", "Archive"], {}),
-    "rename-folder-missing": (["rename-folder", "lists", "Archive"], {}),
-    "rename-folder-exists": (["rename-folder", "Lists", "spam"], {}),
-    "rename-folder-case-clash": (["rename-folder", "Lists", "Spam"], {}),
+    "rename-folder-no-rules": (
+        ["folder", "rename", "spam", "Junk", "--yes"],
+        {},
+    ),
+    "rename-folder-inbox": (["folder", "rename", "INBOX", "Archive"], {}),
+    "rename-folder-missing": (["folder", "rename", "lists", "Archive"], {}),
+    "rename-folder-exists": (["folder", "rename", "Lists", "spam"], {}),
+    "rename-folder-case-clash": (["folder", "rename", "Lists", "Spam"], {}),
     "rename-folder-rejected": (
         [*RENAME_ARGS, "--yes"],
         {**RENAME, "reject": True},
@@ -2181,17 +2663,21 @@ SCENARIOS = {
         {**RENAME, "imap_failures": {"subscribe_folder": "NO quota"}},
     ),
     # #21: proposals shown, applied, refused, and each kind skipped.
-    "optimize-dry": (["optimize-rules", "--dry-run"], OPTIMIZE),
-    "optimize-dry-json": (["optimize-rules", "--dry-run", "--json"], OPTIMIZE),
-    "optimize-yes": (["optimize-rules", "--yes"], OPTIMIZE),
-    "optimize-notty": (["optimize-rules"], OPTIMIZE),
+    "optimize-dry": (["filter", "optimize", "--dry-run"], OPTIMIZE),
+    "optimize-dry-json": (
+        ["filter", "optimize", "--dry-run", "--json"],
+        OPTIMIZE,
+    ),
+    "optimize-yes": (["filter", "optimize", "--yes"], OPTIMIZE),
+    "optimize-notty": (["filter", "optimize"], OPTIMIZE),
     "optimize-rejected": (
-        ["optimize-rules", "--yes"],
+        ["filter", "optimize", "--yes"],
         {**OPTIMIZE, "reject": True},
     ),
     "optimize-skip": (
         [
-            "optimize-rules",
+            "filter",
+            "optimize",
             "--skip",
             "merge",
             "--skip",
@@ -2201,11 +2687,11 @@ SCENARIOS = {
         OPTIMIZE,
     ),
     "optimize-skip-unknown": (
-        ["optimize-rules", "--skip", "tidy", "--dry-run"],
+        ["filter", "optimize", "--skip", "tidy", "--dry-run"],
         OPTIMIZE,
     ),
-    "optimize-nothing": (["optimize-rules", "--yes"], {}),
-    "optimize-empty": (["optimize-rules", "--dry-run"], {"script": ""}),
+    "optimize-nothing": (["filter", "optimize", "--yes"], {}),
+    "optimize-empty": (["filter", "optimize", "--dry-run"], {"script": ""}),
 }
 
 # ############################################################################
@@ -2241,7 +2727,7 @@ def save_baseline(edit, sieve, imap) -> None:
     quiet = io.StringIO()
 
     with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
-        code = cli.main(["save-baseline", "--yes"])
+        code = cli.main(["server", "baseline", "save", "--yes"])
 
     assert code == 0, quiet.getvalue()
 
@@ -2434,10 +2920,10 @@ def test_hostile_text_reaches_the_terminal_escaped(
 @pytest.mark.parametrize(
     "argv",
     [
-        ["probe"],
-        ["probe", "--json"],
-        ["probe", "-v"],
-        ["probe", "--json", "-v"],
+        ["server", "probe"],
+        ["server", "probe", "--json"],
+        ["server", "probe", "-v"],
+        ["server", "probe", "--json", "-v"],
     ],
     ids=" ".join,
 )
@@ -2497,8 +2983,30 @@ def test_the_machine_output_scenarios_are_found():
 
 
 # Non-zero exits that are a result, not a failure: the document is still
-# printed. check-baseline exits 3 or 4 on drift (#19).
-RESULT_EXITS = {"check-baseline": ("3", "4")}
+# printed. 'server baseline check' exits 3 or 4 on drift (#19).
+RESULT_EXITS = {"server baseline check": ("3", "4")}
+
+
+# Documents with a version of their own; every other --json document, and
+# every failure line, carries json_output.JSON_VERSION.
+OWN_VERSIONS = {
+    "server probe": reports.PROBE_VERSION,
+    "server baseline check": cli.DRIFT_VERSION,
+    "server baseline show": baseline.BASELINE_VERSION,
+}
+
+
+# ----------------------------------------------------------------------------
+def document_version(argv: list[str]) -> int:
+    """The version the document ``argv`` prints on success carries."""
+    if "--build-filter" in argv:
+        return criteria.FILTER_VERSION
+
+    for size in (3, 2):
+        if " ".join(argv[:size]) in OWN_VERSIONS:
+            return OWN_VERSIONS[" ".join(argv[:size])]
+
+    return json_output.JSON_VERSION
 
 
 # ----------------------------------------------------------------------------
@@ -2523,8 +3031,8 @@ def test_stdout_holds_only_the_data(
     elif "--uids-only" in argv and code == "0":
         assert all(line.isdigit() for line in stdout.splitlines()), stdout
 
-    elif code == "0" or code in RESULT_EXITS.get(argv[0], ()):
-        assert json.loads(stdout)["version"] == 1
+    elif code == "0" or code in RESULT_EXITS.get(" ".join(argv[:3]), ()):
+        assert json.loads(stdout)["version"] == document_version(argv)
 
     elif "--json" not in argv:
         # --uids-only is not JSON, so neither is its failure.
@@ -2536,7 +3044,7 @@ def test_stdout_holds_only_the_data(
 
         failure = json.loads(stderr.rstrip("\n").splitlines()[-1])
 
-        assert failure["version"] == 1
+        assert failure["version"] == json_output.JSON_VERSION
         assert set(failure) == {"version", "error"}
         assert failure["error"]["message"]
 
@@ -2567,12 +3075,12 @@ def test_no_output_carries_the_password(
 @pytest.mark.parametrize(
     ("argv", "options"),
     [
-        (["save-baseline"], PROBE),
-        (["save-baseline", "--yes", "-v"], DRIFTED),
-        (["show-baseline"], BASELINE),
-        (["check-baseline", "-v"], DRIFTED),
-        (["check-baseline", "--json", "-v"], DRIFTED),
-        (["test"], DRIFTED),
+        (["server", "baseline", "save"], PROBE),
+        (["server", "baseline", "save", "--yes", "-v"], DRIFTED),
+        (["server", "baseline", "show"], BASELINE),
+        (["server", "baseline", "check", "-v"], DRIFTED),
+        (["server", "baseline", "check", "--json", "-v"], DRIFTED),
+        (["server", "test"], DRIFTED),
     ],
     ids=lambda value: " ".join(value) if isinstance(value, list) else "",
 )
@@ -2615,9 +3123,9 @@ def test_a_baseline_never_holds_or_prints_the_password(
 @pytest.mark.parametrize(
     "argv",
     [
-        ["check-baseline", "--json"],
-        ["check-baseline", "--json", "-v"],
-        ["show-baseline", "--json"],
+        ["server", "baseline", "check", "--json"],
+        ["server", "baseline", "check", "--json", "-v"],
+        ["server", "baseline", "show", "--json"],
     ],
     ids=" ".join,
 )

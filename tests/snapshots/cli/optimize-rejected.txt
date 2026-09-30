@@ -1,4 +1,4 @@
-$ mailctl optimize-rules --yes
+$ mailctl filter optimize --yes
 exit: 1
 --- stdout
 Script 'managesieve': 9 rules read.

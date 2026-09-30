@@ -1,4 +1,4 @@
-$ mailctl mark 1 2 --read --flag --dry-run
+$ mailctl mail mark 1 2 --read --flag --dry-run
 exit: 0
 --- stdout
 Marking in 'INBOX': set \Seen, \Flagged

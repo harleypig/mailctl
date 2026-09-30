@@ -1,9 +1,9 @@
-$ mailctl subscribe Nowhere
+$ mailctl folder subscribe Nowhere
 exit: 1
 --- stdout
 
 --- stderr
-mailctl: no folder named 'INBOX.Nowhere' on the server, so there is nothing to subscribe to. 'mailctl folders' lists what exists.
+mailctl: no folder named 'INBOX.Nowhere' on the server, so there is nothing to subscribe to. 'mailctl folder list' lists what exists.
 
 --- sieve calls
 --- imap calls

@@ -1,4 +1,4 @@
-$ mailctl test
+$ mailctl server test
 exit: 0
 --- stdout
 Sources:   environment

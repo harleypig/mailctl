@@ -5,7 +5,7 @@ The rename was a clean break: the old config directory and the old
 stranding anybody silently, and both are tested here:
 
 * the old directory is reported -- loudly, on every command -- until the
-  new one exists, and ``mailctl migrate-config`` moves its contents across,
+  new one exists, and ``mailctl config migrate`` moves its contents across,
   keeping modes and overwriting nothing;
 * an old setting name present without its new one is reported by name,
   and never by value, since one of them is the password.
@@ -120,10 +120,10 @@ def test_every_command_warns_loudly_about_the_old_directory(
 ):
     monkeypatch.setattr(cli, "cmd_list", lambda args: 0)
 
-    assert cli.main(["list"]) == 0
+    assert cli.main(["filterset", "list"]) == 0
 
     err = capsys.readouterr().err
-    assert "mailctl migrate-config" in err
+    assert "mailctl config migrate" in err
     assert str(old_setup) in err
     assert "NOT read" in err
 
@@ -141,7 +141,7 @@ def test_the_directory_warning_is_silent_otherwise(
 
     monkeypatch.setattr(cli, "cmd_list", lambda args: 0)
 
-    assert cli.main(["list"]) == 0
+    assert cli.main(["filterset", "list"]) == 0
     assert capsys.readouterr().err == ""
 
 
@@ -246,7 +246,7 @@ def test_migrate_points_config_paths_at_the_new_directory(dirs, old_setup):
 
 # ----------------------------------------------------------------------------
 def test_the_cli_dry_run_lists_and_moves_nothing(old_setup, capsys):
-    assert cli.main(["migrate-config", "--dry-run"]) == 0
+    assert cli.main(["config", "migrate", "--dry-run"]) == 0
 
     out = capsys.readouterr().out
     assert "0600  backups/spare.sieve" in out
@@ -258,7 +258,7 @@ def test_the_cli_dry_run_lists_and_moves_nothing(old_setup, capsys):
 def test_the_cli_moves_with_yes(dirs, old_setup, capsys):
     _old, new = dirs
 
-    assert cli.main(["migrate-config", "--yes"]) == 0
+    assert cli.main(["config", "migrate", "--yes"]) == 0
 
     assert (new / "backups" / "spare.sieve").exists()
     assert "Removed the now-empty" in capsys.readouterr().out
@@ -266,7 +266,7 @@ def test_the_cli_moves_with_yes(dirs, old_setup, capsys):
 
 # ----------------------------------------------------------------------------
 def test_the_cli_refuses_without_a_terminal_or_yes(old_setup, capsys):
-    assert cli.main(["migrate-config"]) == 1
+    assert cli.main(["config", "migrate"]) == 1
 
     assert "--yes" in capsys.readouterr().err
     assert (old_setup / "config.toml").exists()
@@ -278,7 +278,7 @@ def test_the_cli_refuses_a_clash_and_names_it(dirs, old_setup, capsys):
     new.mkdir()
     (new / "config.toml").write_text("mine\n")
 
-    assert cli.main(["migrate-config", "--yes"]) == 1
+    assert cli.main(["config", "migrate", "--yes"]) == 1
 
     err = capsys.readouterr().err
     assert str(new / "config.toml") in err
@@ -376,7 +376,7 @@ def test_the_cli_warning_names_old_and_new_and_never_the_value(
 
     monkeypatch.setattr(cli, "connect", stop)
 
-    cli.main(["list", "--env-file", str(env)])
+    cli.main(["filterset", "list", "--env-file", str(env)])
 
     captured = capsys.readouterr()
     output = captured.out + captured.err

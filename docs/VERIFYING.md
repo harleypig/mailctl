@@ -28,8 +28,8 @@ Set `host`, `user`, and a password source, per [Configure][config] in the
 README. Have your webmail open in a browser tab; several steps ask you to
 confirm something there.
 
-**Coming from `mxfilter`?** Run `mailctl migrate-config --dry-run`, then
-`mailctl migrate-config`, and rename any `MXROUTE_*` variable to
+**Coming from `mxfilter`?** Run `mailctl config migrate --dry-run`, then
+`mailctl config migrate`, and rename any `MXROUTE_*` variable to
 `MAILCTL_*` first. The old names are not read, and every command below warns
 until the move is done.
 
@@ -38,10 +38,10 @@ Any one source will do for a first run: `MAILCTL_PASSWORD_CMD`, a
 mount reports `0777` and is refused), `MAILCTL_PASSWORD`, or nothing at all,
 which prompts.
 
-## 1. `mailctl test` — touches nothing
+## 1. `mailctl server test` — touches nothing
 
 ```bash
-mailctl test
+mailctl server test
 ```
 
 This connects to both services, reads what they advertise, and exits. It
@@ -84,17 +84,17 @@ it is worth knowing before step 6.
 * You never reach `ManageSieve: connected`. ManageSieve is tried first, so a
   failure there means IMAP was never tested at all. The error names the port
   and TLS mode it used and says plainly that MXRoute documents neither. Try
-  `mailctl test --sieve-tls ssl`, then `--sieve-port` with something else,
-  then ask MXRoute support.
+  `mailctl server test --sieve-tls ssl`, then `--sieve-port` with something
+  else, then ask MXRoute support.
 * Authentication fails on either service. The username must be the **full
   email address**, not the part before the `@`.
 * `fileinto` says `unavailable`. Do not continue; a rule that files
   mail is the whole point, and the server would reject the script.
 
-## 2. `mailctl folders` — read-only
+## 2. `mailctl folder list` — read-only
 
 ```bash
-mailctl folders
+mailctl folder list
 ```
 
 **You should see** `Hierarchy delimiter: '<char>'`, a folder count, and every
@@ -117,17 +117,17 @@ account. Check both:
 in webmail. Something is wrong with the account or the connection, and every
 later step depends on this list being complete.
 
-## 3. `mailctl list` and `mailctl backup` — read-only, and save a copy
+## 3. `mailctl filterset list` and `mailctl filterset backup` — read-only, and save a copy
 
 **Do this before anything that writes.** Save the current active script:
 
 ```bash
-mailctl list
-mailctl backup
+mailctl filterset list
+mailctl filterset backup
 ```
 
-**You should see** `mailctl list` print one line per script, with `*` and
-`(active)` marking the active one, and then one line from `backup`:
+**You should see** `mailctl filterset list` print one line per script, with
+`*` and `(active)` marking the active one, and then one line from `backup`:
 
 ```text
 wrote 3 rule(s) to /home/you/.config/mailctl/backups/managesieve-20260814T095659Z.sieve
@@ -145,8 +145,8 @@ cat "$(ls -t ~/.config/mailctl/backups/*.sieve | head -1)"
 
 **You should see** your existing filters as Sieve source and nothing else.
 
-**Use `backup`, not `mailctl show > file`.** `show` wraps its output in two
-banner lines — `# ---- <name> ----` and `# ---- N rule(s): ...` — so a
+**Use `backup`, not `mailctl filterset show > file`.** `show` wraps its output
+in two banner lines — `# ---- <name> ----` and `# ---- N rule(s): ...` — so a
 redirected `show` is a file that looks like a backup and is not one. `backup`
 exists for exactly this.
 
@@ -156,9 +156,9 @@ protects them.
 
 **Stop if:**
 
-* `mailctl list` prints `No Sieve scripts on the server.` That is not a
-  failure — it means you have no filters yet, there is nothing to lose, and
-  mailctl will create a script called `mailctl` on first upload. `backup`
+* `mailctl filterset list` prints `No Sieve scripts on the server.` That is
+  not a failure — it means you have no filters yet, there is nothing to lose,
+  and mailctl will create a script called `mailctl` on first upload. `backup`
   will say there is nothing to back up; carry on.
 * The saved file is empty but `list` showed an active script. Do not continue;
   something is wrong with the download and you have no backup.
@@ -169,7 +169,7 @@ Pick a real sender you actually get mail from, and a folder that already
 exists (use the exact spelling from step 2).
 
 ```bash
-mailctl add --from newsletter@example.com --fileinto Lists/News --dry-run
+mailctl filter add --from newsletter@example.com --fileinto Lists/News --dry-run
 ```
 
 **You should see**, in this order: a folder-resolution line if the name you
@@ -207,7 +207,7 @@ step 6's `apply` — so there is no message list here.
 Same command as step 4, without `--dry-run`:
 
 ```bash
-mailctl add --from newsletter@example.com --fileinto Lists/News
+mailctl filter add --from newsletter@example.com --fileinto Lists/News
 ```
 
 This uploads the rule and touches **no existing mail**. Sieve applies only to
@@ -229,13 +229,13 @@ messages that arrive from now on.
    ```
 
    By default backups land in `~/.config/mailctl/backups` — the same place
-   `mailctl backup` writes to in step 3 — one file per upload, named
+   `mailctl filterset backup` writes to in step 3 — one file per upload, named
    `<script>-<UTC timestamp>.sieve`.
 
 2. The server has your rule, and still has the others:
 
    ```bash
-   mailctl show
+   mailctl filterset show
    ```
 
    The last line reads `# ---- N rule(s): <names>`. **Your new rule name must
@@ -255,8 +255,8 @@ folder rather than INBOX.
 * `the server rejected the generated script (CHECKSCRIPT ...)`. Nothing was
   uploaded and nothing was changed — the check runs before the upload. If a
   warning about unadvertised extensions preceded it, that is your cause.
-* `mailctl show` is missing a rule that was in your step 3 file, or Roundcube
-  shows fewer filters than before. Do not run anything else. Go to
+* `mailctl filterset show` is missing a rule that was in your step 3 file, or
+  Roundcube shows fewer filters than before. Do not run anything else. Go to
   [If something looks wrong](#if-something-looks-wrong).
 
 ## 6. Retroactive apply, deliberately narrow, into a scratch folder
@@ -269,7 +269,7 @@ run it. Send them to a scratch folder, never Trash, and never with
 `--discard`.
 
 ```bash
-mailctl apply --subject 'Your invoice for March' --fileinto Scratch \
+mailctl filter apply --subject 'Your invoice for March' --fileinto Scratch \
     --create-folder --max-messages 5 --dry-run
 ```
 
@@ -290,7 +290,7 @@ Run it with `--dry-run` first and **scrutinize the message list**:
 Then run it for real by dropping that flag:
 
 ```bash
-mailctl apply --subject 'Your invoice for March' --fileinto Scratch \
+mailctl filter apply --subject 'Your invoice for March' --fileinto Scratch \
     --create-folder --max-messages 5
 ```
 
@@ -306,7 +306,7 @@ means the criteria were broader than you thought.
   appear in webmail: a folder that was created but not subscribed to
   receives mail and stays invisible. If instead you see a warning that
   subscribing failed, the folder is still real and mail will still arrive
-  there — run `mailctl subscribe Scratch` to make it visible.
+  there — run `mailctl folder subscribe Scratch` to make it visible.
 * `Criteria: Subject contains 'Your invoice for March'`.
 * `Searching 'INBOX' for existing matches...` then `N message(s) match:` and
   the preview.
@@ -323,7 +323,7 @@ just the headers.
 **To reverse it**, move them back from your mail client, or:
 
 ```bash
-mailctl apply --folder INBOX.Scratch --subject 'Your invoice for March' \
+mailctl filter apply --folder INBOX.Scratch --subject 'Your invoice for March' \
     --fileinto INBOX
 ```
 
@@ -354,8 +354,8 @@ Only now. Two habits worth keeping:
 **If you just added a rule you did not want**, remove it by name:
 
 ```bash
-mailctl remove-rule <rule-name> --dry-run
-mailctl remove-rule <rule-name>
+mailctl filter remove <rule-name> --dry-run
+mailctl filter remove <rule-name>
 ```
 
 Read the diff before confirming; the same merge round-trip applies.
@@ -364,14 +364,14 @@ Read the diff before confirming; the same merge round-trip applies.
 mailctl printed in step 5 is the server's exact previous bytes, before that
 upload. So is the copy you saved in step 3.
 
-**To put a backup back**, run `mailctl restore FILE --dry-run` and read the
-diff — it is the raw difference between the file and what the server has
-now, so anything added since the backup shows as removed. Then run it without
-`--dry-run` and confirm. The current script is backed up first, so a restore
-is itself reversible the same way. Once it is restored, run `mailctl backup
---output ./after-restore.sieve` and `diff` it against the file you were
-putting back; `mailctl show` is fine for reading, but its banner lines make
-it the wrong thing to compare.
+**To put a backup back**, run `mailctl filterset restore FILE --dry-run` and
+read the diff — it is the raw difference between the file and what the server
+has now, so anything added since the backup shows as removed. Then run it
+without `--dry-run` and confirm. The current script is backed up first, so a
+restore is itself reversible the same way. Once it is restored, run `mailctl
+filterset backup --output ./after-restore.sieve` and `diff` it against the
+file you were putting back; `mailctl filterset show` is fine for reading, but
+its banner lines make it the wrong thing to compare.
 
 If the backup and the current script differ in ways you did not expect, that
 is worth reporting with both files in hand — they are the whole evidence of

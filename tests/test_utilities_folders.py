@@ -448,7 +448,7 @@ def test_the_source_folder_is_normalized_like_the_destination(
 
 
 # ############################################################################
-# A folder created on its own -- 'mailctl create-folder' (#155)
+# A folder created on its own -- 'mailctl folder create' (#155)
 # ############################################################################
 
 
@@ -510,7 +510,8 @@ def test_an_existing_folder_is_planned_as_nothing_to_create(
     sessions, fake_imap, name, subscribed
 ):
     """Its subscription is reported, not changed: subscribing an existing
-    folder is 'mailctl subscribe', not a side effect of create-folder."""
+    folder is 'mailctl folder subscribe', not a side effect of 'folder
+    create'."""
     plan = utilities.folders.plan_folder_creation(sessions, name)
 
     assert plan.exists

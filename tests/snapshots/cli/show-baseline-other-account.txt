@@ -1,4 +1,4 @@
-$ mailctl show-baseline
+$ mailctl server baseline show
 exit: 0
 --- stdout
 Baseline for mail.example.com: <TMP>/config/mailctl/baselines/mail.example.com.json

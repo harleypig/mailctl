@@ -1,4 +1,4 @@
-$ mailctl senders --max-messages 2
+$ mailctl mail senders --max-messages 2
 exit: 1
 --- stdout
 

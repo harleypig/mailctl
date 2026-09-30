@@ -1,4 +1,4 @@
-$ mailctl senders --top -1
+$ mailctl mail senders --top -1
 exit: 1
 --- stdout
 

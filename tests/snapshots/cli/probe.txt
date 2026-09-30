@@ -1,4 +1,4 @@
-$ mailctl probe
+$ mailctl server probe
 exit: 0
 --- stdout
 Probe of mxroute, taken <STAMP>

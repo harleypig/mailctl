@@ -8,7 +8,7 @@ happens to be added next, and it proves on MXroute what the container tier
 proved on Dovecot: that the guards put the account back.
 
 What it sends, once each, with no loop: a CREATE and an APPEND for the
-scratch folder; ``mailctl add``'s PUTSCRIPT (and a SETACTIVE, on an
+scratch folder; ``mailctl filter add``'s PUTSCRIPT (and a SETACTIVE, on an
 account with no active script); the guard's one restoring command per
 changed script; and the folder's DELETE.
 """
@@ -28,7 +28,7 @@ pytestmark = pytest.mark.live
 def test_a_guarded_write_leaves_the_account_as_it_was(
     scratch_folder, guarded_scripts, tmp_path
 ):
-    """``mailctl add`` writes a rule; the guard takes it out again.
+    """``mailctl filter add`` writes a rule; the guard takes it out again.
 
     ``scratch_folder`` is requested first so it is torn down last: the
     script is restored before the folder goes. The rule is a ``keep`` on a
@@ -53,6 +53,7 @@ def test_a_guarded_write_leaves_the_account_as_it_was(
 
     code = cli.main(
         [
+            "filter",
             "add",
             "--subject",
             marker,

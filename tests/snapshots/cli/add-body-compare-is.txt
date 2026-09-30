@@ -1,4 +1,4 @@
-$ mailctl add --body merged --compare is --fileinto L
+$ mailctl filter add --body merged --compare is --fileinto L
 exit: 1
 --- stdout
 

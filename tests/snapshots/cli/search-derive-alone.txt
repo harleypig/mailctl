@@ -1,4 +1,4 @@
-$ mailctl search --derive from
+$ mailctl mail search --derive from
 exit: 1
 --- stdout
 

@@ -1,4 +1,4 @@
-"""``mailctl optimize-rules`` against a real Dovecot + Pigeonhole (#21).
+"""``mailctl filter optimize`` against a real Dovecot + Pigeonhole (#21).
 
 The claim a merge makes is about behaviour, not bytes: three rules come
 back as one, so the script cannot match what went in. What has to match is
@@ -165,7 +165,7 @@ def test_merging_and_removing_files_the_same_mail_as_before(folders):
     account.seed_script("managesieve", MERGEABLE)
     deliver_all(account, "before")
 
-    result = account.run("optimize-rules", "--yes")
+    result = account.run("filter", "optimize", "--yes")
 
     assert result.code == 0, result.err + result.out
     assert list(account.backup_dir.iterdir())
@@ -207,7 +207,7 @@ def test_a_reorder_gives_the_starved_rule_its_mail_and_nothing_else(folders):
     account.seed_script("managesieve", STARVED)
     deliver_all(account, "before", traffic)
 
-    result = account.run("optimize-rules", "--yes")
+    result = account.run("filter", "optimize", "--yes")
 
     assert result.code == 0, result.err + result.out
     assert rules_in(account.script("managesieve")) == [
@@ -231,7 +231,7 @@ def test_a_dry_run_changes_nothing_on_the_server(folders):
     account.seed_script("managesieve", MERGEABLE)
     before = account.script_bytes("managesieve")
 
-    result = account.run("optimize-rules", "--dry-run")
+    result = account.run("filter", "optimize", "--dry-run")
 
     assert result.code == 0, result.err
     assert "[dry-run]" in result.out

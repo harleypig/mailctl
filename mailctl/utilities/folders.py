@@ -42,7 +42,7 @@ def list_folders(session: Session) -> FolderListing:
 
 
 # ############################################################################
-# Counting folders -- 'mailctl folders --counts'
+# Counting folders -- 'mailctl folder list --counts'
 # ############################################################################
 
 
@@ -177,7 +177,7 @@ def plan_subscription(
                 f"nothing to subscribe to. {hint}"
             ).rstrip(),
             code="no_such_folder",
-            fields={"operation": "folders"},
+            fields={"operation": "folder list"},
         )
 
     if not subscribe and not subscribed_now and not listing.exists(folder):
@@ -187,7 +187,7 @@ def plan_subscription(
                 f"server. {hint}"
             ).rstrip(),
             code="no_such_folder",
-            fields={"operation": "folders"},
+            fields={"operation": "folder list"},
         )
 
     return SubscriptionPlan(
@@ -428,7 +428,7 @@ def realize_folder(
 
 
 # ############################################################################
-# A folder created on its own -- 'mailctl create-folder'
+# A folder created on its own -- 'mailctl folder create'
 # ############################################################################
 
 

@@ -1,4 +1,4 @@
-$ mailctl search --build-filter --from noreply@github.com --body merged --since 2026-09-01 --older-than 3w --unread
+$ mailctl mail search --build-filter --from noreply@github.com --body merged --since 2026-09-01 --older-than 3w --unread
 exit: 0
 --- stdout
 Filter (criteria only; nothing was saved):

@@ -1,4 +1,4 @@
-$ mailctl search --like 3 --build-filter --json
+$ mailctl mail search --like 3 --build-filter --json
 exit: 0
 --- stdout
 {

@@ -1,4 +1,4 @@
-$ mailctl apply --from noreply@github.com --discard
+$ mailctl filter apply --from noreply@github.com --discard
 exit: 1
 --- stdout
 Criteria: From contains 'noreply@github.com'

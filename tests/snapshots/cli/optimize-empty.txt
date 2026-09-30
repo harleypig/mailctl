@@ -1,4 +1,4 @@
-$ mailctl optimize-rules --dry-run
+$ mailctl filter optimize --dry-run
 exit: 1
 --- stdout
 

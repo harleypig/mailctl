@@ -1,4 +1,4 @@
-$ mailctl folders --counts
+$ mailctl folder list --counts
 exit: 0
 --- stdout
 Hierarchy delimiter: '.'

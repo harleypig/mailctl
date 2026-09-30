@@ -1,4 +1,4 @@
-$ mailctl check-baseline
+$ mailctl server baseline check
 exit: 3
 --- stdout
 Baseline for mail.example.com, taken <STAMP>: <TMP>/config/mailctl/baselines/mail.example.com.json
@@ -6,7 +6,7 @@ Baseline for mail.example.com, taken <STAMP>: <TMP>/config/mailctl/baselines/mai
 0 serious, 1 informational change(s):
   - Sieve extensions: 'regex' is new -- possibly something mailctl could use
 
-Nothing was refused: the baseline records, it does not decide. 'mailctl save-baseline' replaces it, after showing what changed.
+Nothing was refused: the baseline records, it does not decide. 'mailctl server baseline save' replaces it, after showing what changed.
 
 --- stderr
 

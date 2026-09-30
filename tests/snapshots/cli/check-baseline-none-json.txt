@@ -1,9 +1,9 @@
-$ mailctl check-baseline --json
+$ mailctl server baseline check --json
 exit: 1
 --- stdout
 
 --- stderr
-{"version": 1, "error": {"message": "no baseline has been saved for mail.example.com (looked for <TMP>/config/mailctl/baselines/mail.example.com.json); 'mailctl save-baseline' records one", "code": "no_baseline"}}
+{"version": 2, "error": {"message": "no baseline has been saved for mail.example.com (looked for <TMP>/config/mailctl/baselines/mail.example.com.json); 'mailctl server baseline save' records one", "code": "no_baseline"}}
 
 --- sieve calls
 --- imap calls

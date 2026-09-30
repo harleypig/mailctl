@@ -1,4 +1,4 @@
-$ mailctl view 99
+$ mailctl mail view 99
 exit: 1
 --- stdout
 

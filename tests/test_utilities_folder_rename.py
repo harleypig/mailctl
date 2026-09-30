@@ -359,7 +359,7 @@ def test_an_upload_failing_after_the_rename_says_how_to_undo(
     assert "'INBOX.Lists' was renamed to 'INBOX.Archive'" in message
     assert "is still the old one" in message
     assert "2 rules still file into the old name" in message
-    assert "'mailctl rename-folder INBOX.Archive INBOX.Lists'" in message
+    assert "'mailctl folder rename INBOX.Archive INBOX.Lists'" in message
     assert sieve.names().count("put_script") == 1
 
 

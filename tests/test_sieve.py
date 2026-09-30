@@ -108,7 +108,7 @@ def test_merged_script_reparses_with_sievelib(roundcube_script, reparse):
     """Emitting text that sievelib cannot read back would strand the user.
 
     The next run parses the active script before merging into it, so an
-    unparseable emission turns every later ``mailctl add`` into a hard
+    unparseable emission turns every later ``mailctl filter add`` into a hard
     stop against a script only mailctl could have written.
     """
     merged = merge_simple(roundcube_script, "new-rule", "INBOX.New")
@@ -212,7 +212,8 @@ def test_names_do_not_drift_over_two_render_cycles(roundcube_script):
 
     Every run re-parses what the previous run rendered, so a name that
     shifts by one cycle -- gaining a bracket, losing a prefix -- diverges a
-    little further on each ``mailctl add`` until identity is lost anyway.
+    little further on each ``mailctl filter add`` until identity is lost
+    anyway.
     """
     first = render_script(parse_script(roundcube_script))
     second = render_script(parse_script(first))
@@ -1146,7 +1147,8 @@ if header :contains "subject" "newsletter" {
 
 # ----------------------------------------------------------------------------
 def test_a_comment_above_a_rule_survives_a_merge(reparse):
-    """The fixture from #7: a person's note must outlive ``mailctl add``."""
+    """The fixture from #7: a person's note must outlive ``mailctl filter
+    add``."""
     merged = merge_simple(COMMENTED_SCRIPT, "new-rule", "INBOX.New")
 
     assert "# this one is for the accountant\n" in merged
@@ -1441,7 +1443,8 @@ def test_a_replaced_disabled_rule_stays_disabled_in_roundcubes_form(
 
 # ----------------------------------------------------------------------------
 def test_a_replaced_disabled_rule_is_read_with_its_new_test():
-    """What ``mailctl rules`` lists: still disabled, with the new test."""
+    """What ``mailctl filter list`` lists: still disabled, with the new
+    test."""
     merged = merge_simple(
         DISABLED_SCRIPT, "paused", "INBOX.Other", replace=True
     )
@@ -1493,10 +1496,10 @@ def test_a_multi_line_replacement_of_a_disabled_rule_is_refused():
             replace=True,
         )
 
-    assert "enable-rule" not in str(error.value)
-    assert error.value.fields["operation"] == "enable-rule"
+    assert "filter enable" not in str(error.value)
+    assert error.value.fields["operation"] == "filter enable"
     assert error_text(error.value).endswith(
-        "Enable it first (mailctl enable-rule paused), then replace it"
+        "Enable it first (mailctl filter enable paused), then replace it"
     )
 
 

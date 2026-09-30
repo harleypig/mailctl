@@ -1,4 +1,4 @@
-$ mailctl search --older-than 0d
+$ mailctl mail search --older-than 0d
 exit: 1
 --- stdout
 

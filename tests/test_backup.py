@@ -3,9 +3,9 @@
 One property carries this file: **a backup is the server's exact bytes**.
 Anything else -- a banner line, a re-render, a newline translated on the way
 out -- produces a file that looks like a backup, is kept like a backup, and
-cannot be put back. ``mailctl show`` decorates its output for a reader;
-``mailctl backup`` must not, and the byte-for-byte assertion below is the
-test that says so.
+cannot be put back. ``mailctl filterset show`` decorates its output for a
+reader; ``mailctl filterset backup`` must not, and the byte-for-byte
+assertion below is the test that says so.
 
 The rest is the handling around it: the file is the owner's to read
 (``0600``, in a ``0700`` directory), it lands in the config directory beside
@@ -213,7 +213,8 @@ def test_backup_dir_expands_home_and_variables(
 
 # ----------------------------------------------------------------------------
 def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
-    """The automatic backup and ``mailctl backup`` agree on one place.
+    """The automatic backup and ``mailctl filterset backup`` agree on one
+    place.
 
     Two defaults for one kind of file is how a user ends up looking in the
     directory that does not have their backup in it.
@@ -378,14 +379,14 @@ def test_backup_writes_the_script_verbatim_and_says_where(
 ):
     """The assertion this whole feature exists for.
 
-    ``mailctl show`` prints the same script wrapped in ``# ---- name ----``
-    and ``# ---- N rule(s): ...``. Those lines are why redirecting ``show``
-    to a file is not a backup, and why this one has to be compared as
-    bytes rather than eyeballed.
+    ``mailctl filterset show`` prints the same script wrapped in
+    ``# ---- name ----`` and ``# ---- N rule(s): ...``. Those lines are why
+    redirecting ``show`` to a file is not a backup, and why this one has to
+    be compared as bytes rather than eyeballed.
     """
     target = tmp_path / "copy.sieve"
 
-    assert cli.main(["backup", "--output", str(target)]) == 0
+    assert cli.main(["filterset", "backup", "--output", str(target)]) == 0
 
     assert target.read_bytes() == CRLF_SCRIPT.encode("utf-8")
 
@@ -401,7 +402,7 @@ def test_backup_defaults_to_the_config_directory(
 ):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
 
-    assert cli.main(["backup"]) == 0
+    assert cli.main(["filterset", "backup"]) == 0
 
     backups = tmp_path / "cfg" / "mailctl" / "backups"
     written = sorted(backups.iterdir())
@@ -419,7 +420,7 @@ def test_backup_into_a_directory_uses_the_default_filename(
     somewhere = tmp_path / "somewhere"
     somewhere.mkdir()
 
-    assert cli.main(["backup", "--output", str(somewhere)]) == 0
+    assert cli.main(["filterset", "backup", "--output", str(somewhere)]) == 0
 
     written = sorted(somewhere.iterdir())
 
@@ -434,7 +435,10 @@ def test_backup_dry_run_writes_nothing(fake_sieve, tmp_path, capsys):
     """It reports the file it would have written, and leaves no file."""
     target = tmp_path / "out" / "copy.sieve"
 
-    assert cli.main(["backup", "--output", str(target), "--dry-run"]) == 0
+    assert (
+        cli.main(["filterset", "backup", "--output", str(target), "--dry-run"])
+        == 0
+    )
 
     assert not target.exists()
     assert not target.parent.exists()
@@ -447,7 +451,12 @@ def test_backup_dry_run_writes_nothing(fake_sieve, tmp_path, capsys):
 # ----------------------------------------------------------------------------
 def test_backup_honours_the_backup_dir_flag(fake_sieve, tmp_path, capsys):
     """``--backup-dir`` and ``MAILCTL_BACKUP_DIR`` steer it as before."""
-    assert cli.main(["backup", "--backup-dir", str(tmp_path / "chosen")]) == 0
+    assert (
+        cli.main(
+            ["filterset", "backup", "--backup-dir", str(tmp_path / "chosen")]
+        )
+        == 0
+    )
 
     written = sorted((tmp_path / "chosen").iterdir())
 
@@ -468,7 +477,7 @@ def test_backup_of_a_script_that_will_not_parse_still_writes_the_file(
 
     target = tmp_path / "copy.sieve"
 
-    assert cli.main(["backup", "--output", str(target)]) == 0
+    assert cli.main(["filterset", "backup", "--output", str(target)]) == 0
 
     assert target.read_bytes() == fake_sieve.script.encode("utf-8")
     assert "could not parse" in capsys.readouterr().out
@@ -479,7 +488,7 @@ def test_backup_with_no_active_script_says_so(fake_sieve, capsys):
     """Failure path: nothing to copy is an explained error, not a traceback."""
     fake_sieve.active = None
 
-    assert cli.main(["backup"]) == 1
+    assert cli.main(["filterset", "backup"]) == 1
 
     assert "nothing to back up" in capsys.readouterr().err
 
@@ -490,7 +499,12 @@ def test_backup_reports_an_unwritable_target(fake_sieve, tmp_path, capsys):
     blocker = tmp_path / "blocker"
     blocker.write_text("not a directory")
 
-    assert cli.main(["backup", "--output", str(blocker / "copy.sieve")]) == 1
+    assert (
+        cli.main(
+            ["filterset", "backup", "--output", str(blocker / "copy.sieve")]
+        )
+        == 1
+    )
 
     assert "could not write backup" in capsys.readouterr().err
 
@@ -498,7 +512,7 @@ def test_backup_reports_an_unwritable_target(fake_sieve, tmp_path, capsys):
 # ----------------------------------------------------------------------------
 def test_backup_leaves_the_server_alone(fake_sieve, tmp_path):
     """Read-only: it lists, downloads, and logs out. Nothing else."""
-    cli.main(["backup", "--output", str(tmp_path / "copy.sieve")])
+    cli.main(["filterset", "backup", "--output", str(tmp_path / "copy.sieve")])
 
     verbs = {call[0] for call in fake_sieve.calls}
 
@@ -509,13 +523,13 @@ def test_backup_leaves_the_server_alone(fake_sieve, tmp_path):
 def test_backup_help_names_the_restore_command(capsys):
     """A backup is only as useful as the way back, so help names it."""
     with pytest.raises(SystemExit):
-        cli.main(["backup", "--help"])
+        cli.main(["filterset", "backup", "--help"])
 
     # argparse re-wraps the description to the terminal width, so the
     # phrase is matched against the text with its line breaks collapsed.
     helped = " ".join(capsys.readouterr().out.split())
 
-    assert "mailctl restore FILE" in helped
+    assert "mailctl filterset restore FILE" in helped
 
 
 # ----------------------------------------------------------------------------

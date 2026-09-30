@@ -1,4 +1,4 @@
-$ mailctl unsubscribe spam
+$ mailctl folder unsubscribe spam
 exit: 0
 --- stdout
 Folder 'spam' resolves to 'INBOX.spam' (delimiter '.')

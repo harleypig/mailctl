@@ -1,4 +1,4 @@
-$ mailctl disable-rule keep-boss --yes
+$ mailctl filter disable keep-boss --yes
 exit: 1
 --- stdout
 

@@ -11,6 +11,7 @@ import argparse
 import json
 
 import pytest
+from cli_support import command_parsers
 
 from mailctl import MailctlError, cli, json_output
 from mailctl.config import Secret
@@ -60,7 +61,10 @@ def test_an_error_line_is_one_line():
     text = json_output.dumps(json_output.error("a\nb"), indent=None)
 
     assert text.count("\n") == 1
-    assert json.loads(text) == {"version": 1, "error": {"message": "a\nb"}}
+    assert json.loads(text) == {
+        "version": json_output.JSON_VERSION,
+        "error": {"message": "a\nb"},
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -88,7 +92,7 @@ def test_an_unexpected_failure_under_json_is_a_json_line(monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "cmd_folders", fail)
 
-    assert cli.main(["folders", "--json"]) == 1
+    assert cli.main(["folder", "list", "--json"]) == 1
 
     captured = capsys.readouterr()
     failure = json.loads(captured.err.splitlines()[-1])
@@ -104,11 +108,14 @@ def test_an_interrupt_under_json_is_a_json_line(monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "cmd_list", interrupted)
 
-    assert cli.main(["list", "--json"]) == 130
+    assert cli.main(["filterset", "list", "--json"]) == 130
 
     failure = json.loads(capsys.readouterr().err.splitlines()[-1])
 
-    assert failure == {"version": 1, "error": {"message": "interrupted"}}
+    assert failure == {
+        "version": json_output.JSON_VERSION,
+        "error": {"message": "interrupted"},
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -120,13 +127,13 @@ def test_a_probe_failure_under_json_is_a_json_line(monkeypatch, capsys):
 
     monkeypatch.setattr(cli.utilities.reports, "probe_servers", fail)
 
-    assert cli.main(["probe", "--json"]) == 1
+    assert cli.main(["server", "probe", "--json"]) == 1
 
     captured = capsys.readouterr()
 
     assert captured.out == ""
     assert json.loads(captured.err.splitlines()[-1]) == {
-        "version": 1,
+        "version": json_output.JSON_VERSION,
         "error": {"message": "probe failed"},
     }
 
@@ -141,7 +148,7 @@ def test_a_coded_failure_under_json_carries_its_code(monkeypatch, capsys):
 
     monkeypatch.setattr(cli.utilities.reports, "probe_servers", fail)
 
-    assert cli.main(["probe", "--json"]) == 1
+    assert cli.main(["server", "probe", "--json"]) == 1
 
     failure = json.loads(capsys.readouterr().err.splitlines()[-1])
 
@@ -163,7 +170,7 @@ def test_what_a_command_prints_on_the_way_goes_to_stderr(monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "cmd_list", chatty)
 
-    assert cli.main(["list", "--json"]) == 0
+    assert cli.main(["filterset", "list", "--json"]) == 0
 
     captured = capsys.readouterr()
 
@@ -179,38 +186,31 @@ def test_what_a_command_prints_on_the_way_goes_to_stderr(monkeypatch, capsys):
 
 
 # ----------------------------------------------------------------------------
-def subcommands() -> dict[str, argparse.ArgumentParser]:
-    parser = cli.build_parser()
-    action = next(
-        item
-        for item in parser._actions
-        if isinstance(item, argparse._SubParsersAction)
-    )
-
-    return dict(action.choices)
-
-
-# ----------------------------------------------------------------------------
 def dests(parser: argparse.ArgumentParser) -> set[str]:
     return {item.dest for item in parser._actions}
 
 
-# Writes whose --dry-run is not a plan against the server: backup and
-# save-baseline write a local file, migrate-config moves local files.
-LOCAL_WRITES = {"backup", "migrate-config", "save-baseline"}
+# Writes whose --dry-run is not a plan against the server: a backup and a
+# saved baseline are local files, and migrating the config moves them.
+LOCAL_WRITES = {"filterset backup", "config migrate", "server baseline save"}
 
 
 # ----------------------------------------------------------------------------
 def test_every_server_write_with_a_dry_run_offers_json():
     """Derived, so a write command added later is held to it on arrival."""
-    commands = subcommands()
+    commands = command_parsers()
     writes = {
         name
         for name, parser in commands.items()
         if "dry_run" in dests(parser) and name not in LOCAL_WRITES
     }
 
-    assert {"add", "apply", "restore", "subscribe"} <= writes
+    assert {
+        "filter add",
+        "filter apply",
+        "filterset restore",
+        "folder subscribe",
+    } <= writes
 
     for name in writes:
         assert "json" in dests(commands[name]), name
@@ -219,18 +219,27 @@ def test_every_server_write_with_a_dry_run_offers_json():
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "name",
-    ["search", "view", "folders", "rules", "list", "probe", "senders"],
+    [
+        "mail search",
+        "mail view",
+        "folder list",
+        "filter list",
+        "filterset list",
+        "server probe",
+        "mail senders",
+    ],
 )
 def test_the_data_commands_offer_json(name):
-    assert "json" in dests(subcommands()[name])
+    assert "json" in dests(command_parsers()[name])
 
 
 # ----------------------------------------------------------------------------
 def test_a_report_for_a_person_offers_none():
-    """'test' is read by a person; its contract is its exit code."""
-    assert "json" not in dests(subcommands()["test"])
+    """'server test' is read by a person; its contract is its exit
+    code."""
+    assert "json" not in dests(command_parsers()["server test"])
 
 
 # ----------------------------------------------------------------------------
 def test_search_offers_uids_only():
-    assert "uids_only" in dests(subcommands()["search"])
+    assert "uids_only" in dests(command_parsers()["mail search"])

@@ -1,8 +1,8 @@
-$ mailctl search --body merged --unread --since 2026-09-01 --json
+$ mailctl mail search --body merged --unread --since 2026-09-01 --json
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "folder": "INBOX",
   "uidvalidity": 1727000000,
   "more": false,

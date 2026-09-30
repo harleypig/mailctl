@@ -1,4 +1,4 @@
-$ mailctl apply --body merged --since 2026-09-01 --flagged --fileinto Lists --dry-run
+$ mailctl filter apply --body merged --since 2026-09-01 --flagged --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

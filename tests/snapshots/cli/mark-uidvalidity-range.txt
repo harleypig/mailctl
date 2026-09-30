@@ -1,4 +1,4 @@
-$ mailctl mark 1 --read --uidvalidity 0 --yes
+$ mailctl mail mark 1 --read --uidvalidity 0 --yes
 exit: 1
 --- stdout
 

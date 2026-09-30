@@ -125,7 +125,13 @@ def test_a_changed_script_is_put_back_byte_for_byte(account, tmp_path):
 
     with guard_scripts(account.mailbox(), tmp_path / "saved") as guard:
         added = account.run(
-            "add", "--subject", "guarded", "--name", "guarded", "--keep"
+            "filter",
+            "add",
+            "--subject",
+            "guarded",
+            "--name",
+            "guarded",
+            "--keep",
         )
 
         assert added.code == 0, added.err
@@ -147,7 +153,13 @@ def test_an_account_with_no_script_is_left_with_none(account, tmp_path):
     """
     with guard_scripts(account.mailbox(), tmp_path / "saved"):
         added = account.run(
-            "add", "--subject", "guarded", "--name", "guarded", "--keep"
+            "filter",
+            "add",
+            "--subject",
+            "guarded",
+            "--name",
+            "guarded",
+            "--keep",
         )
 
         assert added.code == 0, added.err

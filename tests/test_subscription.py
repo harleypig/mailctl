@@ -47,6 +47,7 @@ def add_args(*extra: str):
     """Parse an ``add`` that would create its target folder."""
     return build_parser().parse_args(
         [
+            "filter",
             "add",
             "--from",
             "noreply@github.com",
@@ -362,8 +363,8 @@ def test_the_cli_warns_on_a_failed_subscription_without_calling_it_a_failure(
 @pytest.mark.parametrize(
     "command",
     [
-        pytest.param(["add", "--from", "a@b.c"], id="add"),
-        pytest.param(["apply", "--from", "a@b.c"], id="apply"),
+        pytest.param(["filter", "add", "--from", "a@b.c"], id="add"),
+        pytest.param(["filter", "apply", "--from", "a@b.c"], id="apply"),
     ],
 )
 def test_every_folder_creating_command_takes_the_flag(command):
@@ -445,6 +446,7 @@ def test_no_subscribe_without_create_folder_is_refused(command, capsys):
     with pytest.raises(SystemExit) as exited:
         main(
             [
+                "filter",
                 command,
                 "--from",
                 "a@b.c",

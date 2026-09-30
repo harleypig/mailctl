@@ -1,9 +1,9 @@
-$ mailctl show-baseline
+$ mailctl server baseline show
 exit: 1
 --- stdout
 
 --- stderr
-mailctl: no baseline has been saved for mail.example.com (looked for <TMP>/config/mailctl/baselines/mail.example.com.json); 'mailctl save-baseline' records one
+mailctl: no baseline has been saved for mail.example.com (looked for <TMP>/config/mailctl/baselines/mail.example.com.json); 'mailctl server baseline save' records one
 
 --- sieve calls
 --- imap calls

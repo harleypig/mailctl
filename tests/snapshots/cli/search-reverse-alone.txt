@@ -1,4 +1,4 @@
-$ mailctl search --reverse
+$ mailctl mail search --reverse
 exit: 1
 --- stdout
 

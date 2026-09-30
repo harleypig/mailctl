@@ -1,4 +1,4 @@
-$ mailctl remove-rule keep-boss --dry-run
+$ mailctl filter remove keep-boss --dry-run
 exit: 0
 --- stdout
 

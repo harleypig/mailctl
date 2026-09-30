@@ -1,4 +1,4 @@
-$ mailctl create-folder Work/2026 --no-subscribe --dry-run
+$ mailctl folder create Work/2026 --no-subscribe --dry-run
 exit: 0
 --- stdout
 Folder 'Work/2026' resolves to 'INBOX.Work.2026' (delimiter '.')

@@ -1,11 +1,11 @@
-$ mailctl senders --top 1 --min 2
+$ mailctl mail senders --top 1 --min 2
 exit: 0
 --- stdout
 7 message(s) in 'INBOX', 4 unread; 4 group(s) by address, busiest first:
   Total   Unread  Unread%  Sender
       3        2      67%  noreply@github.com (GitHub)
 Showing 1 of 4; --top N shows more (0 for every one), --min N hides the small ones.
-To build a filter for a row: mailctl search --from noreply@github.com --build-filter
+To build a filter for a row: mailctl mail search --from noreply@github.com --build-filter
 
 --- stderr
 

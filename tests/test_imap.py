@@ -737,8 +737,8 @@ def test_selecting_a_missing_folder_points_at_the_folders_command(
     assert "mailctl" not in str(caught.value)
     assert caught.value.code == "folder_unopenable"
     assert error_text(caught.value).endswith(
-        "no such mailbox. Run 'mailctl folders' to see the exact names this "
-        "server uses."
+        "no such mailbox. Run 'mailctl folder list' to see the exact names "
+        "this server uses."
     )
 
 
