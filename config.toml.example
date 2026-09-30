@@ -100,7 +100,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 # --backup-dir.
 #backup_dir = "~/mail-backups"
 
-# The folder `add` and `apply` file into when you give no --fileinto.
+# The folder `add` and `apply` file into when you give no --move-to.
 # There is no flag or environment variable for this one; it lives only
 # here. Either separator works -- "Lists/GitHub" and "INBOX.Lists.GitHub"
 # name the same folder, since the delimiter is read from the server.

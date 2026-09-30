@@ -1,4 +1,4 @@
-$ mailctl filter add --fileinto Lists
+$ mailctl filter add --move-to Lists
 exit: 1
 --- stdout
 

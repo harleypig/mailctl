@@ -141,7 +141,7 @@ def check_rename(config: Config, new_name: str) -> None:
 def _require_name(name: str) -> None:
     """Refuse an empty or blank rule name."""
     if not name.strip():
-        raise MailctlError("a rule's new name cannot be empty")
+        raise MailctlError("a filter's new name cannot be empty")
 
 
 # ----------------------------------------------------------------------------
@@ -165,14 +165,14 @@ def require_capability(
 
 # What a request asks for, in words, when it needs each capability.
 CAPABILITY_CONSTRUCTS = {
-    "disable": "switch a rule off or on without removing it",
+    "disable": "switch a filter off or on without removing it",
     "folder_counts": "count the messages in every folder in one request",
     "mark": "set or clear a message's flags",
-    "ordering": "place a rule at a position in evaluation order",
+    "ordering": "place a filter at a position in evaluation order",
     "raw_query": "search with a query in its own search language",
-    "rename": "change a rule's name",
-    "rule_sets": "name or activate one of several rule sets",
-    "stop": "end evaluation after a rule",
+    "rename": "change a filter's name",
+    "rule_sets": "name or activate one of several filter sets",
+    "stop": "end evaluation after a filter",
     "uidvalidity": "check a message UID against the numbering it came from",
 }
 
@@ -202,7 +202,7 @@ def read_rules(session: Session, script: str | None = None) -> RulesReport:
 
     if not name:
         raise MailctlError(
-            "no active filter set on the server, so there are no rules to "
+            "no active filter set on the server, so there are no filters to "
             "show.",
             code="no_active_script",
             fields={"operation": "filterset list"},

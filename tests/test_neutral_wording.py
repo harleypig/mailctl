@@ -11,7 +11,9 @@ reach the user in three places only:
   declares (``--host``, ``--imap-*``, ``--sieve-*``);
 * documentation about the provider, which is not the CLI's.
 
-Everywhere else is generic. ``test_providers.py`` holds a second provider
+Everywhere else is generic, and the thing a filter set holds is a
+*filter*, never a *rule*: code names such as ``Rule`` stay, and user text
+does not use them. ``test_providers.py`` holds a second provider
 to that already; this holds **mxroute**, the provider whose words these
 are, which is the case that can fail.
 """
@@ -51,7 +53,25 @@ PROVIDER_OPTIONS = {(None, "disable_extension")}
 # not a word we chose, so it is taken out before the words are looked for.
 INTERFACE = re.compile(r"--[\w-]+|\b[A-Z]+(?:_[A-Z]+)+\b")
 
+# The user-facing noun is "filter" (operator, 2026-09-29, #219). A quoted
+# name -- 'Unnamed rule 1', which the library names a rule with no name --
+# is the filter set's content, so quoted text is taken out first.
+RULE_WORD = re.compile(r"\b[Rr]ules?\b")
+QUOTED = re.compile(r"'[^']*'")
+
 SNAPSHOTS = Path(__file__).parent / "snapshots" / "cli"
+
+
+# ----------------------------------------------------------------------------
+def user_words(text: str) -> list[str]:
+    """The provider words, and the word "rule", in text we wrote, less the
+    command's interface."""
+    text = INTERFACE.sub("", text)
+
+    return [
+        *PROVIDER_WORDS.findall(text),
+        *RULE_WORD.findall(QUOTED.sub("", text)),
+    ]
 
 
 # ----------------------------------------------------------------------------
@@ -126,7 +146,7 @@ def provider_words_in_help(
             {
                 f"{where}: {word}"
                 for where, text in prose(page, path, allowed)
-                for word in PROVIDER_WORDS.findall(INTERFACE.sub("", text))
+                for word in user_words(text)
             }
         )
 
@@ -211,6 +231,14 @@ def test_the_help_check_sees_the_places_it_allows():
                 "list IMAP folders",
             ),
             id="command-line",
+        ),
+        pytest.param(
+            lambda parser: setattr(
+                command_parsers(parser)["filter remove"],
+                "description",
+                "Take a named rule out of the active filter set.",
+            ),
+            id="rule",
         ),
     ],
 )
@@ -339,7 +367,7 @@ def provider_words_in_output(snapshot: str) -> list[str]:
     return [
         line
         for line in shown
-        if PROVIDER_WORDS.search(INTERFACE.sub("", line))
+        if user_words(line)
         and not any(pattern.search(line) for pattern in functions)
     ]
 
@@ -390,6 +418,9 @@ def test_the_output_check_sees_mxroutes_content_and_reports():
         "--- sieve diff ---",
         "Created IMAP folder 'INBOX.X' and subscribed to it",
         "mailctl: the server rejected the generated script (CHECKSCRIPT)",
+        "Rule 'x' in filter set 'managesieve':",
+        "2 rule(s), in evaluation order:",
+        "mailctl: no rule named 'x' in the active filter set.",
     ],
 )
 def test_the_output_check_catches_the_old_wording(line):

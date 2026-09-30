@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: no rule named 'phantom' in the active filter set. Known rules: keep-boss, bin-the-noise
+mailctl: no filter named 'phantom' in the active filter set. Known filters: keep-boss, bin-the-noise
 
 --- sieve calls
 ('connect',)

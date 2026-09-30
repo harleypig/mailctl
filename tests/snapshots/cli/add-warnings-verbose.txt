@@ -4,11 +4,11 @@ exit: 0
 [filter] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
 [filter] authenticated
 
-Rule 'from-noreply-github-com' in filter set 'managesieve':
+Filter 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com'
   then:  adds the flag \Bogus; stops
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

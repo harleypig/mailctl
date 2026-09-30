@@ -2,7 +2,7 @@ $ mailctl filter remove keep-boss
 exit: 1
 --- stdout
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)
@@ -23,7 +23,7 @@ Note: the filter set on the server is not in mailctl's formatting, so uploading 
 --- end diff ---
 
 --- stderr
-mailctl: Remove rule 'keep-boss' from 'managesieve'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
+mailctl: Remove filter 'keep-boss' from 'managesieve'? -- refusing to continue without a terminal to ask. Re-run with --yes to confirm, or --dry-run to preview.
 
 --- sieve calls
 ('connect',)

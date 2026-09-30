@@ -1,4 +1,4 @@
-$ mailctl filter add --like 2 --derive cc --fileinto Lists
+$ mailctl filter add --like 2 --derive cc --move-to Lists
 exit: 1
 --- stdout
 Message uid 2 in 'INBOX':

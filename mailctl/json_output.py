@@ -106,11 +106,11 @@ def error(message: str, code: str | None = None) -> dict:
 
 # ----------------------------------------------------------------------------
 def scripts(active: str | None, others: list[str]) -> dict:
-    """``list``: every stored script, the active one first."""
+    """``filterset list``: every stored filter set, the active one first."""
     names = [*([active] if active else []), *others]
 
     return _document(
-        scripts=[{"name": name, "active": name == active} for name in names]
+        filtersets=[{"name": name, "active": name == active} for name in names]
     )
 
 
@@ -217,7 +217,7 @@ def message(content) -> dict:
 def rules_report(report) -> dict:
     """``rules``: the rules in evaluation order, and which cannot fire."""
     return _document(
-        script=report.script,
+        filterset=report.script,
         rules=[_rule(rule) for rule in report.rules],
         findings=[_shadow(finding) for finding in report.findings],
     )
@@ -260,7 +260,7 @@ def activation(record) -> dict:
     """Which script runs. ``activate`` is whether this script is the active
     one once the change is made -- true where it already is."""
     return {
-        "script": record.script,
+        "filterset": record.script,
         "active": record.active,
         "activate": record.activate,
     }

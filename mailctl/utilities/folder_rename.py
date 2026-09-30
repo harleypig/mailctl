@@ -301,7 +301,7 @@ class FolderRenameResult:
 def _rules_left(plan: FolderRenamePlan) -> str:
     count = len({retarget.rule for retarget in plan.retargets})
 
-    return f"{count} rule{'s' if count != 1 else ''}"
+    return f"{count} filter{'s' if count != 1 else ''}"
 
 
 # ----------------------------------------------------------------------------
@@ -578,7 +578,7 @@ def verify_folder_rename(
 
         checks.append(
             PostCondition(
-                f"no rule in {plan.script!r} files into {old!r} or a folder "
+                f"no filter in {plan.script!r} files into {old!r} or a folder "
                 f"under it",
                 not left,
                 ", ".join(f"{rule!r} still does" for rule in left),
@@ -588,7 +588,9 @@ def verify_folder_rename(
     except MailctlError as exc:
         checks.append(
             PostCondition(
-                f"the rules in {plan.script!r} could be read", False, str(exc)
+                f"the filters in {plan.script!r} could be read",
+                False,
+                str(exc),
             )
         )
 

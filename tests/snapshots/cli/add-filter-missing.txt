@@ -1,4 +1,4 @@
-$ mailctl filter add --filter /nonexistent/f.json --fileinto Lists
+$ mailctl filter add --filter /nonexistent/f.json --move-to Lists
 exit: 1
 --- stdout
 

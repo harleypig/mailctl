@@ -1,4 +1,4 @@
-$ mailctl filter add --like 9 --derive subject --fileinto Lists --dry-run
+$ mailctl filter add --like 9 --derive subject --move-to Lists --dry-run
 exit: 0
 --- stdout
 Message uid 9 in 'INBOX':
@@ -7,11 +7,11 @@ Message uid 9 in 'INBOX':
 
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'subject-inv-0-pwn-oice' in filter set 'managesieve':
+Filter 'subject-inv-0-pwn-oice' in filter set 'managesieve':
   when:  Subject contains 'Inv\x1b]0;pwn\x07oice'
   then:  files the message into 'INBOX.Lists'; stops
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

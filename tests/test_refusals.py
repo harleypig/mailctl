@@ -51,7 +51,7 @@ def parse_add(*extra: str):
             "add",
             "--from",
             "boss@example.com",
-            "--fileinto",
+            "--move-to",
             "Lists",
             *extra,
         ]

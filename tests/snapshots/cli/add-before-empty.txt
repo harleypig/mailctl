@@ -1,9 +1,9 @@
-$ mailctl filter add --from noreply@github.com --before  --fileinto Lists
+$ mailctl filter add --from noreply@github.com --before  --move-to Lists
 exit: 1
 --- stdout
 
 --- stderr
-mailctl: --before and --after need a rule name
+mailctl: --before and --after need a filter name
 
 --- sieve calls
 --- imap calls

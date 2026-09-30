@@ -361,7 +361,7 @@ def test_an_upload_failing_after_the_rename_says_how_to_undo(
 
     assert "'INBOX.Lists' was renamed to 'INBOX.Archive'" in message
     assert "is still the old one" in message
-    assert "2 rules still file into the old name" in message
+    assert "2 filters still file into the old name" in message
     assert "'mailctl folder rename INBOX.Archive INBOX.Lists'" in message
     assert sieve.names().count("put_script") == 1
 
@@ -394,7 +394,7 @@ def test_a_rule_left_on_the_old_name_fails_the_check(live, imap_session):
 
     checks = {c.label: c for c in verify_folder_rename(live, before)}
     rules = checks[
-        "no rule in 'managesieve' files into 'INBOX.Lists' or a "
+        "no filter in 'managesieve' files into 'INBOX.Lists' or a "
         "folder under it"
     ]
 

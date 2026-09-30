@@ -169,7 +169,7 @@ def rewrite_hash_comments(
             if raw[start : start + len(value)] != value:
                 raise MailctlError(
                     "cannot locate a comment in the filter set safely, so "
-                    "rule names cannot be translated without risking the "
+                    "filter names cannot be translated without risking the "
                     "filter set's contents; this is an mailctl/sievelib "
                     "version mismatch, not a problem with your filter set"
                 )
@@ -522,7 +522,7 @@ def _named_entry(filters: factory.FiltersSet, name: str) -> dict[str, Any]:
     known = ", ".join(rule_names(filters)) or "(none)"
 
     raise MailctlError(
-        f"no rule named {name!r} in the active filter set. Known rules: "
+        f"no filter named {name!r} in the active filter set. Known filters: "
         f"{known}"
     )
 
@@ -543,7 +543,7 @@ def disable_rule(
 
     if not isinstance(command, commands.IfCommand):
         raise MailctlError(
-            f"rule {name!r} cannot be disabled: it has no 'if' test to "
+            f"filter {name!r} cannot be disabled: it has no 'if' test to "
             f"switch off"
         )
 
@@ -554,8 +554,8 @@ def disable_rule(
 
     if line is None:
         raise MailctlError(
-            f"rule {name!r} cannot be disabled: its test spans more than "
-            f"one line, and a disabled rule keeps its test on one line"
+            f"filter {name!r} cannot be disabled: its test spans more than "
+            f"one line, and a disabled filter keeps its test on one line"
         )
 
     _switch_off(entry, line)
@@ -591,7 +591,7 @@ def enable_rule(
 
         if comment is None:
             raise MailctlError(
-                f"rule {name!r} cannot be enabled: it is disabled with no "
+                f"filter {name!r} cannot be enabled: it is disabled with no "
                 f"test kept after 'if false', so there is nothing to restore"
             )
 
@@ -600,7 +600,7 @@ def enable_rule(
 
         except MailctlError as error:
             raise MailctlError(
-                f"rule {name!r} cannot be enabled: {error}"
+                f"filter {name!r} cannot be enabled: {error}"
             ) from None
 
         command.arguments["test"] = test
@@ -634,7 +634,7 @@ def rename_rule(
     same as ``old`` returns ``existing`` unchanged.
     """
     if not new.strip():
-        raise MailctlError("a rule's new name cannot be empty")
+        raise MailctlError("a filter's new name cannot be empty")
 
     filters = parse_script(existing, dialect)
     names = rule_names(filters)
@@ -643,8 +643,8 @@ def rename_rule(
         known = ", ".join(names) or "(none)"
 
         raise MailctlError(
-            f"no rule named {old!r} in the active filter set. Known rules: "
-            f"{known}"
+            f"no filter named {old!r} in the active filter set. Known "
+            f"filters: {known}"
         )
 
     if new == old:
@@ -652,8 +652,8 @@ def rename_rule(
 
     if new in names:
         raise MailctlError(
-            f"a rule named {new!r} already exists in the active filter set, "
-            f"and two rules of one name cannot be told apart.",
+            f"a filter named {new!r} already exists in the active filter set, "
+            f"and two filters of one name cannot be told apart.",
             code="rule_name_taken",
             fields={"operation": "filter list"},
         )
@@ -681,7 +681,7 @@ def rename_rule(
     # sievelib records no command offsets to find it by. Revisit if a
     # script with unnamed rules turns up on a real account.
     raise MailctlError(
-        f"rule {old!r} has no name written in the filter set to change, so "
+        f"filter {old!r} has no name written in the filter set to change, so "
         f"it cannot be renamed in place"
     )
 
@@ -691,7 +691,7 @@ def _check_rule_name(name: str, dialect: NameDialect) -> None:
     """Refuse a name that would not read back as itself in ``dialect``."""
     if any(unicodedata.category(char) == "Cc" for char in name):
         raise MailctlError(
-            f"{name!r} cannot be written as a rule name: it holds a control "
+            f"{name!r} cannot be written as a filter name: it holds a control "
             f"character, and a name is one line of the filter set"
         )
 
@@ -699,7 +699,7 @@ def _check_rule_name(name: str, dialect: NameDialect) -> None:
 
     if rule_names(parse_script(probe, dialect)) != [name]:
         raise MailctlError(
-            f"{name!r} cannot be written as a rule name: it would not read "
+            f"{name!r} cannot be written as a filter name: it would not read "
             f"back as the same name. Leading or trailing spaces, or a name "
             f"marker inside it, are the usual cause"
         )
@@ -782,7 +782,7 @@ def parse_script(
     if not script_parser.parse(source.encode("utf-8")):
         raise MailctlError(
             "the existing filter set could not be parsed, so merging into "
-            "it would risk losing rules: "
+            "it would risk losing filters: "
             f"{getattr(script_parser, 'error', 'unknown parse error')}"
         )
 
@@ -865,8 +865,8 @@ def resolve_position(
         verb = "moved" if moving else "added"
 
         raise MailctlError(
-            f"{placement.anchor!r} is the rule being {verb}, which has no "
-            f"position to be relative to. Name another rule, or place it "
+            f"{placement.anchor!r} is the filter being {verb}, which has no "
+            f"position to be relative to. Name another filter, or place it "
             f"first or last.",
             code="self_anchor",
             fields={
@@ -880,8 +880,8 @@ def resolve_position(
         known = ", ".join(names) or "(none)"
 
         raise MailctlError(
-            f"no rule named {placement.anchor!r} in the active filter set to "
-            f"place this rule {placement.where}. Known rules: {known}",
+            f"no filter named {placement.anchor!r} in the active filter set "
+            f"to place this filter {placement.where}. Known filters: {known}",
             code="unknown_anchor",
             fields={
                 "where": placement.where,
@@ -1045,7 +1045,8 @@ def merge_rule(
 
     if exists and not replace:
         raise MailctlError(
-            f"a rule named {name!r} already exists in the active filter set.",
+            f"a filter named {name!r} already exists in the active filter "
+            "set.",
             code="rule_exists",
         )
 
@@ -1101,8 +1102,8 @@ def _replace_rule(
 
     if line is None:
         before = (
-            f"rule {name!r} cannot be replaced while disabled: its new test "
-            f"spans more than one line, and a disabled rule keeps its test "
+            f"filter {name!r} cannot be replaced while disabled: its new test "
+            f"spans more than one line, and a disabled filter keeps its test "
             f"in a comment on the 'if false' line, where Roundcube looks "
             f"for it. Enable it first"
         )
@@ -1131,8 +1132,8 @@ def remove_rule(
         known = ", ".join(rule_names(filters)) or "(none)"
 
         raise MailctlError(
-            f"no rule named {name!r} in the active filter set. Known rules: "
-            f"{known}"
+            f"no filter named {name!r} in the active filter set. Known "
+            f"filters: {known}"
         )
 
     return render_script(filters, dialect)
@@ -1158,8 +1159,8 @@ def move_rule(
         known = ", ".join(rule_names(filters)) or "(none)"
 
         raise MailctlError(
-            f"no rule named {name!r} in the active filter set. Known rules: "
-            f"{known}"
+            f"no filter named {name!r} in the active filter set. Known "
+            f"filters: {known}"
         )
 
     position = resolve_position(
@@ -1203,7 +1204,7 @@ def rearrange_rules(
         0 <= index < len(entries) for index in named
     ):
         raise MailctlError(
-            "a rearrangement must name each rule in the filter set at most "
+            "a rearrangement must name each filter in the filter set at most "
             "once"
         )
 
@@ -1237,7 +1238,7 @@ def _absorb(entry: dict[str, Any], others: list[dict[str, Any]]) -> None:
             _action_source(other["content"]) != actions
         ):
             raise MailctlError(
-                f"rule {other['name']!r} cannot be merged into "
+                f"filter {other['name']!r} cannot be merged into "
                 f"{entry['name']!r}: they do not test the same header the "
                 f"same way with the same actions"
             )
@@ -1270,8 +1271,8 @@ def _sole_header(entry: dict[str, Any]) -> commands.Command:
         or len(_string_list(test.arguments.get("header-names"))) != 1
     ):
         raise MailctlError(
-            f"rule {entry['name']!r} cannot be merged: only an enabled rule "
-            f"with one header test on one header can be"
+            f"filter {entry['name']!r} cannot be merged: only an enabled "
+            "filter with one header test on one header can be"
         )
 
     return test
@@ -1513,7 +1514,7 @@ def retarget_fileinto(text: str, renames: Mapping[str, str]) -> str:
         expected
     ):
         raise MailctlError(
-            "a rule's folder could not be rewritten in place, so the "
+            "a filter's folder could not be rewritten in place, so the "
             "filter set is left as it is"
         )
 

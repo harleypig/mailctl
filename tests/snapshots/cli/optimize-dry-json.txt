@@ -51,7 +51,7 @@ exit: 0
           "Github billing",
           "Any shop"
         ],
-        "reason": "'Github billing' carries stop and may catch mail meant for 'Any shop' first; whether it does cannot be decided from the rules alone"
+        "reason": "'Github billing' carries stop and may catch mail meant for 'Any shop' first; whether it does cannot be decided from the filters alone"
       },
       {
         "kind": "reorder",
@@ -59,10 +59,10 @@ exit: 0
           "Any shop",
           "Bike shop"
         ],
-        "reason": "'Any shop' carries stop and may catch mail meant for 'Bike shop' first; whether it does cannot be decided from the rules alone"
+        "reason": "'Any shop' carries stop and may catch mail meant for 'Bike shop' first; whether it does cannot be decided from the filters alone"
       }
     ],
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

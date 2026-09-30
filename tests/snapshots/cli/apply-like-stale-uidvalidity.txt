@@ -1,4 +1,4 @@
-$ mailctl filter apply --like 2 --fileinto Lists --uidvalidity 1726999999 --yes
+$ mailctl filter apply --like 2 --move-to Lists --uidvalidity 1726999999 --yes
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

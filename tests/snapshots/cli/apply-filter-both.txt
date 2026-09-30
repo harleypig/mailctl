@@ -1,4 +1,4 @@
-$ mailctl filter apply --filter - --from noreply@github.com --fileinto Lists
+$ mailctl filter apply --filter - --from noreply@github.com --move-to Lists
 exit: 1
 --- stdout
 

@@ -1,4 +1,4 @@
-$ mailctl filter apply --from noreply@github.com --fileinto Lists/GitHub --create-folder --yes
+$ mailctl filter apply --from noreply@github.com --move-to Lists/GitHub --create-folder --yes
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')

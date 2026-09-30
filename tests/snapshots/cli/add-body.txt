@@ -1,18 +1,18 @@
-$ mailctl filter add --from noreply@github.com --body merged --fileinto Lists --dry-run
+$ mailctl filter add --from noreply@github.com --body merged --move-to Lists --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'from-noreply-github-com' in filter set 'managesieve':
+Filter 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com' OR body contains 'merged'
   then:  files the message into 'INBOX.Lists'; stops
 
-Before this rule is reached:
+Before this filter is reached:
   ? 'from-noreply-github-com' may never run -- 'keep-boss' carries stop and one of the two uses a condition this check does not model, so overlap cannot be ruled out
   ? 'from-noreply-github-com' may never run -- 'bin-the-noise' carries stop and one of the two uses a condition this check does not model, so overlap cannot be ruled out
 
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

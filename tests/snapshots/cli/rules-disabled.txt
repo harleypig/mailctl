@@ -3,7 +3,7 @@ exit: 0
 --- stdout
 Filter set 'managesieve':
 
-2 rule(s), in evaluation order:
+2 filter(s), in evaluation order:
 
   1. keep-boss  [disabled]  [stop]
        when:  From contains 'boss@example.com'
@@ -13,7 +13,7 @@ Filter set 'managesieve':
        when:  Subject contains 'newsletter'
        then:  files the message into a folder; stops
 
-No rule is shadowed by an earlier one.
+No filter is shadowed by an earlier one.
 
 --- stderr
 

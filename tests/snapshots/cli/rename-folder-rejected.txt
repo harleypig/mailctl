@@ -8,7 +8,7 @@ Rename folder 'INBOX.Lists' to 'INBOX.Archive' (360 messages)
     'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
   Subscribed after the rename, as before: 'INBOX.Archive', 'INBOX.Archive.GitHub'
 
-Rules in 'managesieve' that file into it:
+Filters in 'managesieve' that file into it:
   lists: 'INBOX.Lists' -> 'INBOX.Archive'
   github: 'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
 

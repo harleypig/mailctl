@@ -334,7 +334,7 @@ def check_rule_extensions(config: Config, actions: list) -> None:
         it = "it" if len(blocked) == 1 else "them"
 
         raise MailctlError(
-            f"{disabled_message(config, blocked)}, and this rule needs "
+            f"{disabled_message(config, blocked)}, and this filter needs "
             f"{it}. Drop the action that needs {it}, or take {it} out of "
             f"disabled_extensions."
         )
@@ -359,7 +359,7 @@ def check_criteria_extensions(
         it = "it" if len(blocked) == 1 else "them"
 
         raise MailctlError(
-            f"{disabled_message(config, blocked)}, and this rule's criteria "
+            f"{disabled_message(config, blocked)}, and this filter's criteria "
             f"need {it}. Drop the criterion that needs {it}, or take {it} "
             f"out of disabled_extensions."
         )
@@ -373,7 +373,7 @@ def check_criteria_extensions(
         raise MailctlError(
             f"the server does not advertise the Sieve {noun} "
             f"{', '.join(repr(name) for name in missing)}, which this "
-            f"rule's criteria need, so it cannot be saved as a rule.",
+            f"filter's criteria need, so it cannot be saved as a filter.",
             code="extension_missing",
             fields={
                 "operations": ("server test", "mail search", "filter apply")

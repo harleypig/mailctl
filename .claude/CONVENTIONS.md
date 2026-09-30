@@ -657,9 +657,15 @@ fails before any login or password prompt (decided on [#137][i137]).
   component ([#99][i99]).
 - **What the user sees is the same for every provider** (operator,
   2026-09-29, [#219][i219]). The user-facing nouns are *filter* and *filter
-  set*, whatever the host calls them; code names such as `Rule`,
-  `rules.py`, and `script` may stay. A provider's own words reach the user
-  in three places only:
+  set*, whatever the host calls them, and never *rule* or *script*; code
+  names such as `Rule`, `rules.py`, `RulePlan`, the `rule_sets` capability,
+  and `script` may stay. The options follow: `--move-to` (was
+  `--fileinto`), `--filterset` (was `--script`), and `--no-mail` (was
+  `--no-imap`), each old name refused naming the new one
+  (`cli.GONE_OPTIONS`, beside `cli.GONE_COMMANDS`); and a `--json`
+  document's `filterset` / `filtersets` keys and its folder `status` values
+  (`create`, `created-on-delivery`, `create-and-on-delivery`). A provider's
+  own words reach the user in three places only:
   1. documentation about the provider, such as its `RECORD.md`;
   2. the help of an option only it has — `--disable-extension`, and the
      connection settings it declares (`--host`, `--imap-*`, `--sieve-*`,
@@ -697,7 +703,7 @@ fails before any login or password prompt (decided on [#137][i137]).
   the provider, then the parsers are built from its capabilities. Without
   `ordering`, the placement flags, `filter move`, and `filter optimize` are
   not offered; without `stop`, `--no-stop`; without `rule_sets`, `filter
-  add`'s `--script` and `--activate`; without `disable`, `filter disable` and
+  add`'s `--filterset` and `--activate`; without `disable`, `filter disable` and
   `filter enable`; without `rename`, `filter rename`; without `extensions`,
   `--disable-extension`; without `raw_query`, `mail search`'s `--raw`; without
   `mark`, `mail mark`; without `folder_counts`, `folder list`'s `--counts`;

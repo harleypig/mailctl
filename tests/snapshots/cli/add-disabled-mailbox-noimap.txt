@@ -1,10 +1,10 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap --disable-extension mailbox
+$ mailctl filter add --from noreply@github.com --move-to Lists/GitHub --create-folder --no-mail --disable-extension mailbox
 exit: 1
 --- stdout
 
 --- stderr
 warning: no mail connection: assuming delimiter '.', target folder 'INBOX.Lists.GitHub'
-mailctl: folder creation on delivery is disabled by mailctl (disabled_extensions, from flag --disable-extension) and --no-imap was given, so 'INBOX.Lists.GitHub' cannot be created
+mailctl: folder creation on delivery is disabled by mailctl (disabled_extensions, from flag --disable-extension) and --no-mail was given, so 'INBOX.Lists.GitHub' cannot be created
 
 --- sieve calls
 ('connect',)

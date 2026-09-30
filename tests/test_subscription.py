@@ -51,7 +51,7 @@ def add_args(*extra: str):
             "add",
             "--from",
             "noreply@github.com",
-            "--fileinto",
+            "--move-to",
             "Lists/GitHub",
             "--create-folder",
             *extra,
@@ -450,7 +450,7 @@ def test_no_subscribe_without_create_folder_is_refused(command, capsys):
                 command,
                 "--from",
                 "a@b.c",
-                "--fileinto",
+                "--move-to",
                 "Lists",
                 "--no-subscribe",
             ]

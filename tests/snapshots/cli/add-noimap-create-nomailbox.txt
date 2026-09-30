@@ -1,10 +1,10 @@
-$ mailctl filter add --from noreply@github.com --fileinto X --no-imap --create-folder
+$ mailctl filter add --from noreply@github.com --move-to X --no-mail --create-folder
 exit: 1
 --- stdout
 
 --- stderr
 warning: no mail connection: assuming delimiter '.', target folder 'INBOX.X'
-mailctl: the server does not advertise folder creation on delivery and --no-imap was given, so 'INBOX.X' cannot be created
+mailctl: the server does not advertise folder creation on delivery and --no-mail was given, so 'INBOX.X' cannot be created
 
 --- sieve calls
 ('connect',)

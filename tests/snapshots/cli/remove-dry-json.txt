@@ -12,7 +12,7 @@ exit: 0
       "reformats": true
     },
     "rule": "keep-boss",
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

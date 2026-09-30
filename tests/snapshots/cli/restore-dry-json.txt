@@ -14,7 +14,7 @@ exit: 0
     "source": "<TMP>/restore.sieve",
     "rules_before": 2,
     "rules_after": 1,
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

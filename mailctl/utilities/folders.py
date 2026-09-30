@@ -22,9 +22,12 @@ from .events import EventSink, FolderCreated
 FOLDER_NONE = "none"
 FOLDER_EXISTS = "exists"
 FOLDER_MISSING = "missing"
-FOLDER_SIEVE_CREATES = "sieve-creates"
-FOLDER_IMAP_CREATE = "imap-create"
-FOLDER_BOTH_CREATE = "imap-and-sieve-create"
+# The values are in a --json plan's folder "status", so they are worded the
+# same for every provider: mailctl creates it ("create"), the filter does
+# as mail arrives ("created-on-delivery"), or both.
+FOLDER_SIEVE_CREATES = "created-on-delivery"
+FOLDER_IMAP_CREATE = "create"
+FOLDER_BOTH_CREATE = "create-and-on-delivery"
 FOLDER_UNCREATABLE = "uncreatable"
 
 # What lets a rule make its own folder as mail arrives, in words that fit

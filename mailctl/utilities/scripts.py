@@ -135,7 +135,7 @@ def activates(name: str, active: str | None, requested: bool) -> bool:
     """Whether uploading ``name`` should also make it the active script.
 
     Only one script runs, so switching it is a change of its own and is
-    never a side effect of editing another: ``--script other`` edits
+    never a side effect of editing another: ``--filterset other`` edits
     ``other`` and leaves the running script alone unless activation was
     asked for. With nothing active, activating is the only way the upload
     does anything at all.

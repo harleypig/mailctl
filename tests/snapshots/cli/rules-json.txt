@@ -3,7 +3,7 @@ exit: 0
 --- stdout
 {
   "version": 2,
-  "script": "managesieve",
+  "filterset": "managesieve",
   "rules": [
     {
       "position": 1,

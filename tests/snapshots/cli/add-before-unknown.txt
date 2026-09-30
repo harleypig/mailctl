@@ -1,10 +1,10 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists --before phantom
+$ mailctl filter add --from noreply@github.com --move-to Lists --before phantom
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 --- stderr
-mailctl: no rule named 'phantom' in the active filter set, so --before has nothing to place this rule against. Known rules: keep-boss, bin-the-noise
+mailctl: no filter named 'phantom' in the active filter set, so --before has nothing to place this filter against. Known filters: keep-boss, bin-the-noise
 
 --- sieve calls
 ('connect',)

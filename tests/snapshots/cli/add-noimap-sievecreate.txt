@@ -1,14 +1,14 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap
+$ mailctl filter add --from noreply@github.com --move-to Lists/GitHub --create-folder --no-mail
 exit: 0
 --- stdout
 Folder 'INBOX.Lists.GitHub' will be created by the filter, when the first message is filed into it
   Nothing promises the server will subscribe to a folder a filter creates, so it may not appear in webmail until you subscribe to it: once the first message has created it, run 'mailctl folder subscribe INBOX.Lists.GitHub'.
 
-Rule 'from-noreply-github-com' in filter set 'managesieve':
+Filter 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com'
   then:  files the message into 'INBOX.Lists.GitHub', creating it if it is missing; stops
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

@@ -1,4 +1,4 @@
-$ mailctl filter add --like 3 --fileinto Lists
+$ mailctl filter add --like 3 --move-to Lists
 exit: 0
 --- stdout
 Message uid 3 in 'INBOX':
@@ -10,11 +10,11 @@ Message uid 3 in 'INBOX':
 
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'list-id-dev-lists-example-com' in filter set 'managesieve':
+Filter 'list-id-dev-lists-example-com' in filter set 'managesieve':
   when:  List-Id contains 'dev.lists.example.com'
   then:  files the message into 'INBOX.Lists'; stops
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

@@ -392,7 +392,7 @@ def test_backup_writes_the_script_verbatim_and_says_where(
 
     output = capsys.readouterr().out
 
-    assert output == f"wrote 1 rule(s) to {target}\n"
+    assert output == f"wrote 1 filter(s) to {target}\n"
     assert "# ----" not in output
 
 
@@ -445,7 +445,7 @@ def test_backup_dry_run_writes_nothing(fake_sieve, tmp_path, capsys):
 
     output = capsys.readouterr().out
 
-    assert output == f"[dry-run] would write 1 rule(s) to {target}\n"
+    assert output == f"[dry-run] would write 1 filter(s) to {target}\n"
 
 
 # ----------------------------------------------------------------------------

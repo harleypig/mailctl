@@ -2,7 +2,7 @@
 
 Read, sort, and filter the mail on your account from the command line: build
 a filter from criteria flags, merge it into the account's **active** filter
-set without disturbing the rules already there, and apply the same criteria
+set without disturbing the filters already there, and apply the same criteria
 to the mail that has already been delivered. It also finds, counts, reads,
 and marks that mail, and manages the folders it is filed into. MXRoute is
 the provider it speaks to today (see *MXRoute specifics*); what it shows you
@@ -10,10 +10,10 @@ is the same whichever provider it is.
 
 ## What it is for
 
-A server-side filter only ever sees **new** mail. Write a rule in webmail and
+A server-side filter only ever sees **new** mail. Write a filter in webmail and
 every message already in the mailbox stays exactly where it was. mailctl
 does both halves, as two commands that take the same criteria: `add` saves
-the rule, and `apply` acts on the mail already there.
+the filter, and `apply` acts on the mail already there.
 
 It exists for a second reason too: the filter and search screens in
 Roundcube, the webmail MXRoute ships, are too restricted, and mailctl is
@@ -21,12 +21,12 @@ replacing them rather than working within them. mailctl's
 criteria go further — any header, text in the body, whole-value and
 wildcard comparisons, and, for mail already delivered, dates and read or
 flagged state — and it can list, count, sort, and read the mail, so the
-message a rule should catch can be found without leaving the terminal. The
-rules it writes are in the form webmail uses, so they show up there, and
-the rules you made in webmail are kept ([ADR 0002][adr2]).
+message a filter should catch can be found without leaving the terminal. The
+filters it writes are in the form webmail uses, so they show up there, and
+the filters you made in webmail are kept ([ADR 0002][adr2]).
 
 Its scope is managing the filters and settings on one mailbox, by hand or
-from a script: rules and their order, folders and their subscriptions,
+from a script: filters and their order, folders and their subscriptions,
 message flags. It is not a mail client. It does not compose or send, and it
 names an attachment but never saves or opens it. Forwarding is MXRoute's
 panel's job, since MXRoute disables Sieve `redirect` (see *MXRoute
@@ -62,7 +62,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 default_folder = "Lists"
 ```
 
-`default_folder` is where `add` and `apply` file mail when no `--fileinto`
+`default_folder` is where `add` and `apply` file mail when no `--move-to`
 is given; it has no flag or variable.
 
 Resolution order is **CLI flag > env file > environment > config file >
@@ -160,7 +160,7 @@ A disabled extension counts as not advertised:
 
 | Disabled | What mailctl does |
 |----------|-------------------|
-| `mailbox` | Writes plain `fileinto`, never `fileinto :create`, and creates a new folder over IMAP instead. With `--no-imap` a folder that needs creating is refused, as it is on a server without `mailbox`. |
+| `mailbox` | Writes plain `fileinto`, never `fileinto :create`, and creates a new folder over IMAP instead. With `--no-mail` a folder that needs creating is refused, as it is on a server without `mailbox`. |
 | `fileinto` | Refuses a rule that files mail into a folder. `--discard`, `--keep`, and flag-only rules still work. |
 | `imap4flags` | Refuses a rule that sets a flag (`--mark-read`, `--flag`). |
 | `body` | Refuses a rule with a `--body` test. `search --body` and `apply --body` are unaffected: they never write Sieve. |
@@ -278,7 +278,7 @@ mailctl help filter apply
 On servers it recognises, `probe --report` prints nothing and says there is
 nothing to report. The body goes to stdout; how to file it goes to stderr.
 
-### Find the mail a rule should catch
+### Find the mail a filter should catch
 
 ```bash
 # What does this server call its folders, and which does webmail show?
@@ -364,51 +364,51 @@ folder that is noticeably slower.
 `--sort` cannot be combined with `--build-filter`, which prints a filter
 rather than a listing, and `--reverse` needs `--sort`.
 
-### Save a rule, then apply it to the mail already there
+### Save a filter, then apply it to the mail already there
 
 ```bash
 # See exactly what would change, without changing it.
-mailctl filter add --from newsletter@example.com --fileinto Lists/News --dry-run
+mailctl filter add --from newsletter@example.com --move-to Lists/News --dry-run
 
-# Save the rule: merge it, back up, upload, activate. It filters new mail
+# Save the filter: merge it, back up, upload, activate. It filters new mail
 # only; the mail already delivered is left alone.
-mailctl filter add --from newsletter@example.com --fileinto Lists/News
+mailctl filter add --from newsletter@example.com --move-to Lists/News
 
 # Then act on the mail already there, with the same criteria and actions.
 # It previews the messages and asks before it moves any.
-mailctl filter apply --from newsletter@example.com --fileinto Lists/News
+mailctl filter apply --from newsletter@example.com --move-to Lists/News
 
-# Take the criteria from a message you already have, for the rule and then
+# Take the criteria from a message you already have, for the filter and then
 # for the mail: its List-Id, else its From, as with 'search --like'. A
 # criteria flag replaces what was taken for its header.
-mailctl filter add --like 4127 --fileinto Lists/News --dry-run
-mailctl filter apply --like 4127 --fileinto Lists/News
+mailctl filter add --like 4127 --move-to Lists/News --dry-run
+mailctl filter apply --like 4127 --move-to Lists/News
 
 # Or from a filter document (see "Filter documents" below); '-' reads it
 # from standard input.
-mailctl filter add --filter news.json --fileinto Lists/News
-mailctl filter apply --filter news.json --fileinto Lists/News
+mailctl filter add --filter news.json --move-to Lists/News
+mailctl filter apply --filter news.json --move-to Lists/News
 mailctl mail search --like 4127 --build-filter --json \
-    | mailctl filter add --filter - --fileinto Lists/News
+    | mailctl filter add --filter - --move-to Lists/News
 
-# Mail already delivered only, with no rule. --create-folder because the
+# Mail already delivered only, with no filter. --create-folder because the
 # target may not exist yet.
-mailctl filter apply --subject '[SPAM]' --fileinto Quarantine --create-folder \
+mailctl filter apply --subject '[SPAM]' --move-to Quarantine --create-folder \
     --mark-read
-mailctl filter apply --flagged --before 2026-01-01 --fileinto Archive --dry-run
+mailctl filter apply --flagged --before 2026-01-01 --move-to Archive --dry-run
 
 # Copy rather than move: --keep files a copy and leaves each message where
-# it is, as the saved rule does. A re-run skips what the folder already
+# it is, as the saved filter does. A re-run skips what the folder already
 # holds (same Message-ID); a message with no Message-ID cannot be looked
 # for, so it is copied each time, and apply says how many.
-mailctl filter apply --list-id news.example.com --fileinto Lists/News --keep
+mailctl filter apply --list-id news.example.com --move-to Lists/News --keep
 ```
 
-The actions are `--fileinto FOLDER`, `--discard`, `--keep`, `--mark-read`,
-and `--flag NAME`; `--no-stop` lets later rules run too. A rule's name is
+The actions are `--move-to FOLDER`, `--discard`, `--keep`, `--mark-read`,
+and `--flag NAME`; `--no-stop` lets later filters run too. A filter's name is
 derived from its criteria unless `--name` gives one, and `--replace`
-overwrites a rule of the same name. `--first`, `--last` (the default),
-`--before RULE`, and `--after RULE` place it in the script.
+overwrites a filter of the same name. `--first`, `--last` (the default),
+`--before RULE`, and `--after RULE` place it in the filter set.
 
 `apply` alone takes `--max-messages` (default 500; see *Safety*) and
 `--move-threshold` (default 25), above which the confirmation treats a move
@@ -437,15 +437,15 @@ The dates and states are always **ANDed** with everything else, whatever
 `--match` says: `--from a --from b --unread` is unread mail from either
 sender, never "from a, or unread".
 
-**`add` refuses the dates and states.** A rule runs as each message is
+**`add` refuses the dates and states.** A filter runs as each message is
 delivered, and every message being delivered is new: unread, unflagged,
-and zero days old. A rule testing any of those would be always true or
+and zero days old. A filter testing any of those would be always true or
 never true, so `add` says why and points at `search` and `apply`, which is
 where they mean something. So does `add --filter` given a document that
 carries one. `add` has no date `--before` at all: its `--before RULE`
-places the rule in the script.
+places the filter in the filter set.
 
-**`--body` on `add` needs the server's Sieve `body` extension.** A rule
+**`--body` on `add` needs the server's Sieve `body` extension.** A filter
 with a body test is refused, naming the extension, on a server that does
 not advertise it or when `disabled_extensions` turns it off; there is no
 fallback for a test. `search` and `apply` never write Sieve, so they take
@@ -454,7 +454,7 @@ fallback for a test. `search` and `apply` never write Sieve, so they take
 **The two halves read slightly different text.** The Sieve `body` test
 reads the message's text parts, decoded. IMAP's search, which `search` and
 `apply` use, reads whatever parts the server decodes, which may include an
-attachment's text. So `apply --body` can find a word the rule would not.
+attachment's text. So `apply --body` can find a word the filter would not.
 mailctl takes the server's answer on the body, and on the dates and states,
 rather than re-checking it: re-checking a body would mean downloading every
 candidate, and IMAP answers the dates and states exactly.
@@ -534,7 +534,7 @@ only — what to match, never what to do with it:
 
 `add --filter FILE` and `apply --filter FILE` read one back as their
 criteria, and `--filter -` reads it from standard input — so one document
-can be saved as the rule and applied to the mail already there. It takes
+can be saved as the filter and applied to the mail already there. It takes
 the place of the criteria flags, so giving both is refused, and so is
 `--filter` with `--like`; the actions still come from the command line.
 
@@ -575,7 +575,7 @@ mailctl folder create Lists/News --dry-run
 mailctl folder create Lists/Archive --no-subscribe
 
 # Rename a folder, and the folders under it. Its subscription comes with
-# it, and every rule filing into it is repointed; nothing else in the
+# it, and every filter filing into it is repointed; nothing else in the
 # script changes. The account is read back afterwards to check it landed.
 mailctl folder rename Github.Notificaitons Github.Notifications --dry-run
 mailctl folder rename Lists/Old Lists/Archive
@@ -586,7 +586,7 @@ Folder names are normalized against the server's own: `Lists/GitHub` and
 the new name must not exist yet. A name that differs from an existing
 folder only in case is refused by `create-folder` and `rename-folder`.
 
-### Manage the rules
+### Manage the filters
 
 ```bash
 # The filter sets on the server, and one set's text (the active one by
@@ -594,47 +594,47 @@ folder only in case is refused by `create-folder` and `rename-folder`.
 mailctl filterset list
 mailctl filterset show
 
-# The rules in the order the server runs them, and any an earlier rule
+# The filters in the order the server runs them, and any an earlier filter
 # makes unreachable ('!' is decided, '?' worth checking). Changes nothing.
 mailctl filter list
 
 mailctl filter remove from-newsletter-example-com
 
-# Reorder a rule without restating it; reports what the move would starve.
+# Reorder a filter without restating it; reports what the move would starve.
 mailctl filter move from-newsletter-example-com --first --dry-run
 mailctl filter move from-newsletter-example-com --after keep-boss
 
-# Propose a better arrangement of the whole rule set: remove a rule that
-# only repeats an earlier one, move a specific rule ahead of the broader
-# one starving it, and merge rules doing the same thing into one rule with
-# a key list. Only what the rules decide is changed; guesses are reported.
+# Propose a better arrangement of the whole filter set: remove a filter that
+# only repeats an earlier one, move a specific filter ahead of the broader
+# one starving it, and merge filters doing the same thing into one filter with
+# a key list. Only what the filters decide is changed; guesses are reported.
 mailctl filter optimize --dry-run
 mailctl filter optimize --skip merge
 
-# Switch a rule off without deleting it, and back on. On MXRoute it is
+# Switch a filter off without deleting it, and back on. On MXRoute it is
 # written the way Roundcube writes one, so webmail shows it disabled too.
 mailctl filter disable from-newsletter-example-com --dry-run
 mailctl filter disable from-newsletter-example-com
 mailctl filter enable from-newsletter-example-com
 
-# Give a rule a better name. Only the name changes: the rule's conditions,
-# actions, position, and disabled state, and every other rule, stay as
+# Give a filter a better name. Only the name changes: the filter's conditions,
+# actions, position, and disabled state, and every other filter, stay as
 # they were.
 mailctl filter rename "Herrschners Spam" "Yarn shops" --dry-run
 mailctl filter rename "Herrschners Spam" "Yarn shops"
 ```
 
-`filter optimize` never moves, merges, or removes a disabled rule, and the
-filter set stays a flat list of rules. `--skip` takes `redundant`, `reorder`,
+`filter optimize` never moves, merges, or removes a disabled filter, and the
+filter set stays a flat list of filters. `--skip` takes `redundant`, `reorder`,
 or `merge`, and is repeatable.
 
-`filter rename` edits the rule's name line in place, so the diff it shows
-is the whole change. It refuses, before anything is uploaded, a rule that
-is not there, a new name that is empty or already another rule's, and one
+`filter rename` edits the filter's name line in place, so the diff it shows
+is the whole change. It refuses, before anything is uploaded, a filter that
+is not there, a new name that is empty or already another filter's, and one
 the filter set cannot hold as a name: a line break or other control
-character, spaces at the end, or a name marker inside it. A rule with no
+character, spaces at the end, or a name marker inside it. A filter with no
 name written in the filter set (`filter list` shows it as `Unnamed rule N`)
-cannot be renamed. A merged rule keeps the first rule's name, so `filter
+cannot be renamed. A merged filter keeps the first filter's name, so `filter
 rename` after `filter optimize` gives it one that fits.
 
 ### Back up and restore
@@ -654,11 +654,11 @@ Where backups go, and what `restore` does and refuses, are in *Safety*.
 ### Watch the servers for change
 
 MXRoute is migrating its servers, and a server that changes underneath a
-filter does not announce it: a rule just stops behaving as it did.
+filter does not announce it: a filter just stops behaving as it did.
 
 ```bash
 # Save what the servers say now as this host's baseline; later, ask what
-# has changed since and what it means for your rules. Saving writes a
+# has changed since and what it means for your filters. Saving writes a
 # local file only.
 mailctl server baseline save
 mailctl server baseline check
@@ -710,11 +710,11 @@ and save again.
   move, and the diff, for `folder rename`; each proposed change, and the
   diff, for `filter optimize`.
 * `add` **never touches mail already delivered**; `apply` is the only
-  command that does. After saving a rule, `add` says so and points at
+  command that does. After saving a filter, `add` says so and points at
   `apply`.
 * `--like`, on `search`, `add`, and `apply`, **shows you the message
   first** — Date, From, To, Subject, and List-Id when it has one — before
-  anything is derived from it, and so before a rule is written or mail is
+  anything is derived from it, and so before a filter is written or mail is
   moved. The UID is something you read out of webmail by hand, and
   the derived criteria look equally plausible whichever message produced
   them, so the headers are the only thing that catches a mistyped digit
@@ -722,12 +722,12 @@ and save again.
   stale (see *Mark messages*).
 * `folder rename` **has the server check the rewritten filter set before
   it touches the folder**, then renames, fixes the subscriptions, and
-  stores the filter set straight after, so a rule points at a missing folder for as short a
-  time as possible. It edits only the folder names in the rules; every
+  stores the filter set straight after, so a filter points at a missing folder for as short a
+  time as possible. It edits only the folder names in the filters; every
   other byte of the filter set is kept. It does not report success on the
   folder list alone: it reads the account back and checks the new name is
   subscribed where the old one was, holds at least the messages the old
-  one did, and that no rule still files into an old name, exiting
+  one did, and that no filter still files into an old name, exiting
   non-zero naming any that failed. A step that fails part-way is not
   retried; the error says what was done and how to undo it
   (`mailctl folder rename NEW OLD`).
@@ -789,22 +789,22 @@ and save again.
 * **`mailctl filterset restore FILE` puts a backup back.** The backup is the
   server's exact bytes — no banner lines, nothing reformatted — and restore
   uploads them exactly, over the active filter set — or over the one
-  `--script NAME` names, which stays inactive unless `--activate` is given.
+  `--filterset NAME` names, which stays inactive unless `--activate` is given.
   No other stored filter set is touched. It shows the raw diff against what
   the server has now, backs the current one up first, lets the server check
   the file,
   and asks before it replaces anything. It is the one command that
-  **replaces** rather than merges: a rule added since the backup was taken is
+  **replaces** rather than merges: a filter added since the backup was taken is
   removed, and the diff shows it. It works even over a filter set mailctl
   cannot
-  parse ([ADR 0005][adr5]). An empty FILE would remove every rule, so it is
+  parse ([ADR 0005][adr5]). An empty FILE would remove every filter, so it is
   refused unless `--allow-empty` is given. FILE is read and checked before
   mailctl connects, and `~` and `$VAR` in it are expanded. If the account has
-  no active filter set, restore refuses rather than guess, and `--script
+  no active filter set, restore refuses rather than guess, and `--filterset
   NAME` is
   the way back: NAME is restored and made active.
-* Rules are merged into the parsed existing filter set, never appended
-  blindly, so other rules survive. If the existing filter set cannot be
+* Filters are merged into the parsed existing filter set, never appended
+  blindly, so other filters survive. If the existing filter set cannot be
   parsed, mailctl stops rather than overwrite it.
 * The server checks every filter set before it is stored (on MXRoute,
   ManageSieve's `CHECKSCRIPT` before `PUTSCRIPT`).
@@ -813,8 +813,8 @@ and save again.
   it. `--yes` skips the prompts. Deletion says in as many words that it
   cannot be undone; a move says it can be reversed; a copy says the
   originals stay where they are.
-* `apply --fileinto FOLDER --keep` **copies rather than moves**, as the
-  saved rule does: a rule that files and keeps leaves the message in place
+* `apply --move-to FOLDER --keep` **copies rather than moves**, as the
+  saved filter does: a filter that files and keeps leaves the message in place
   too. Any `--mark-read` or `--flag` is set on the originals before they
   are copied, so the copies carry it as well. **A re-run copies only what
   the folder lacks**: a match whose Message-ID the folder already holds is
@@ -823,7 +823,7 @@ and save again.
   holds every match and there is no flag to set, `apply` says so and
   changes nothing.
 * `apply --discard --keep` **deletes nothing**. An explicit keep outlives a
-  discard in Sieve (RFC 5228, section 4.4), and `apply` does what the rule
+  discard in Sieve (RFC 5228, section 4.4), and `apply` does what the filter
   would: with no flag to set it skips the pass, and with one it only sets
   the flag.
 * `--max-messages` (default 500) refuses the whole batch when more matches
@@ -836,8 +836,8 @@ and save again.
   failed batch may already have been copied and a re-run copies it again;
   mailctl says so, and names the folder to check. `senders` has its own
   `--max-messages` (default 5000), and refuses before reading a header.
-* A `--fileinto` target that does not exist is a **warning, not an error**,
-  unless you pass `--create-folder`. `add` will still write the rule, and
+* A `--move-to` target that does not exist is a **warning, not an error**,
+  unless you pass `--create-folder`. `add` will still write the filter, and
   mail filed there by the server later may be lost. `apply` refuses outright,
   since it would have nowhere to put the messages.
 * `--create-folder` also **subscribes** to the folder it creates. Existing
@@ -853,11 +853,11 @@ and save again.
   the subscription fails, the folder is **not** torn back down: it exists
   and mail filed there will arrive, so mailctl warns and tells you to run
   `mailctl folder subscribe` on it.
-* On a server that advertises the Sieve `mailbox` extension, the rule says
+* On a server that advertises the Sieve `mailbox` extension, the filter says
   `fileinto :create` **as well**, so Sieve recreates the folder if it is
   later deleted. mailctl still creates and subscribes the folder over IMAP
   itself, because Sieve only creates it when the first message arrives,
-  when mailctl is not running to subscribe to it. With `--no-imap`, Sieve
+  when mailctl is not running to subscribe to it. With `--no-mail`, Sieve
   is the only thing that can create the folder, and mailctl says it may
   not appear in webmail until you run `mailctl folder subscribe` on it.
 * The folder is **announced when the change is shown and created only when
@@ -884,12 +884,12 @@ exit status. `server probe --json` prints its own versioned document (see
 
 | Command | Document |
 |---------|----------|
-| `filterset list` | `{"version", "scripts": [{"name", "active"}]}` |
+| `filterset list` | `{"version", "filtersets": [{"name", "active"}]}` |
 | `folder list` | `{"version", "delimiter", "prefix", "folders": [{"name", "subscribed"}]}`; with `--counts`, each folder also has `"messages", "unseen", "size"` (`null` where the server gave none) |
 | `mail search` | `{"version", "folder", "uidvalidity", "more", "sort", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
 | `mail senders` | `{"version", "folder", "by", "messages", "unread", "groups", "senders": [{"key", "name", "total", "unread", "unread_percent"}]}` — busiest first; `messages`, `unread`, and `groups` count everything matched, rows `--top` and `--min` left out included; `key` is `null` for mail with no address or no List-Id |
 | `mail view` | `{"version", "message": {"uid", "folder", "uidvalidity", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
-| `filter list` | `{"version", "script", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
+| `filter list` | `{"version", "filterset", "rules": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — `command` is the command's path, such as `"filter add"`; what else a plan holds depends on the command |
 | `server baseline check` | `{"version", "host", "baseline", "baseline_taken", "taken", "account_recorded", "requires_known", "serious", "informational", "drift": [{"severity", "kind", "half", "name", "before", "after"}]}` |
 | `server baseline show` | the saved file as stored (see *Watch the servers for change*) |
@@ -902,10 +902,16 @@ exit status. `server probe --json` prints its own versioned document (see
 * `received` is ISO 8601 in local time, with no offset, because the
   server's date reaches mailctl without one.
 * A plan's `changes` is `false` where the command would do nothing; its
-  `diff`, on a script change, is then `null`. A `rename-folder` plan always
-  changes something; its `diff` is `null` when no rule files into the
-  folder, and the script is then left alone.
-* An `optimize-rules` plan lists `removals` (`{"rule", "covered_by"}`),
+  `diff`, on a filter set change, is then `null`. A `folder rename` plan
+  always changes something; its `diff` is `null` when no filter files into
+  the folder, and the filter set is then left alone.
+* A plan that uploads a filter set names it as `filterset`, beside `active`
+  and `activate`. A plan's folder `status` is `none`, `exists`, `missing`,
+  `create` (mailctl creates it), `created-on-delivery` (the filter creates
+  it as mail arrives), `create-and-on-delivery` (both), or
+  `uncreatable`. `diff.label` names the language the diff's text is in
+  (`sieve` on MXRoute).
+* A `filter optimize` plan lists `removals` (`{"rule", "covered_by"}`),
   `reorders` (`{"rule", "before"}`), `merges` (`{"into", "absorbed",
   "header", "match_type", "keys"}`), and `uncertain` (`{"kind", "rules",
   "reason"}`), what was left alone for want of certainty; `considered`
@@ -984,7 +990,7 @@ that day, not MXRoute.
   list, and folder names are matched against that list — type `Lists/News`
   or `INBOX.Lists.News` and the server's spelling is used for both the Sieve
   rule and the move. `mailctl folder list` is the authority for your account.
-  The one exception is `--no-imap`, which has no folder list to consult and
+  The one exception is `--no-mail`, which has no folder list to consult and
   falls back to `.` (or `--delimiter`), and warns that it did.
 * **`vacation` was advertised and `enotify` was not.** mailctl refuses both
   `vacation` and `notify` as **our own choice**, not as an MXRoute
@@ -1012,14 +1018,14 @@ The record lists the rest.
 
 The active script's name is read from `LISTSCRIPTS` and written back to, and
 is never guessed — the webmail's script name is server-side config, and
-MXRoute is mid-migration on both its panel and Dovecot. `--script` overrides
+MXRoute is mid-migration on both its panel and Dovecot. `--filterset` overrides
 it. With nothing active, a script called `mxfilter` — what the tool created
 under its old name — is still recognised as its own and reused rather
 than a second one made beside it; the name `mailctl` is used only when there
 is neither.
 
 The server runs one script, and editing a different one does not change
-which. `--script NAME` on a script that is not the active one stores the
+which. `--filterset NAME` on a script that is not the active one stores the
 change and leaves NAME inactive, and mailctl says so before it uploads;
 `--activate` makes NAME the active script as well. When the account has no
 active script at all, the script mailctl writes is activated, since
@@ -1063,15 +1069,15 @@ filters need domain-owner credentials, and mailctl logs in as a mailbox. So:
   in Python against the Sieve semantics above. Correct, but it fetches the
   header block of every candidate the broad search returned, not just the
   ones that end up matching.
-* Merging round-trips the script through a parser. A rule with neither a
+* Merging round-trips the filter set through a parser. A filter with neither a
   `# rule:[NAME]` nor a `# Filter: NAME` comment above it is renamed
   `Unnamed rule N`, and formatting is normalized. Your own `#` comments are
-  kept, each above the rule it preceded; `/* ... */` comments are dropped.
+  kept, each above the filter it preceded; `/* ... */` comments are dropped.
   The diff shows all of this before anything is uploaded.
-* `rules` and `optimize-rules` judge the script from the rules' own
+* `filter list` and `filter optimize` judge the filter set from the filters' own
   conditions and their order. Nothing runs a message through your existing
-  rules: mailctl can apply criteria you give it to old mail, but it cannot
-  tell you which of your rules would have caught a given message.
+  filters: mailctl can apply criteria you give it to old mail, but it cannot
+  tell you which of your filters would have caught a given message.
 
 [adr2]: adr/0002-non-destructive-script-merge.md
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md

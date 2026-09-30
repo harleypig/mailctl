@@ -1,7 +1,7 @@
 $ mailctl filter rename keep-boss The boss --dry-run
 exit: 0
 --- stdout
-Rename rule 'keep-boss' to 'The boss' in filter set 'managesieve':
+Rename filter 'keep-boss' to 'The boss' in filter set 'managesieve':
 
 --- diff ---
 --- managesieve (current)

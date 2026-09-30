@@ -13,7 +13,7 @@ usage: mailctl filter optimize [-h] [--verbose] [--debug]
                                [--sieve-tls {starttls,ssl,none}]
                                [--backup-dir BACKUP_DIR]
                                [--disable-extension NAME] [--dry-run] [--yes]
-                               [--json] [--script SCRIPT] [--activate]
+                               [--json] [--filterset NAME] [--activate]
                                [--skip KIND]
 mailctl filter optimize: error: argument --skip: invalid choice: 'tidy' (choose from redundant, reorder, merge)
 

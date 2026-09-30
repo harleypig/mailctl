@@ -1,4 +1,4 @@
-$ mailctl filter apply --like 3 --fileinto Lists --dry-run
+$ mailctl filter apply --like 3 --move-to Lists --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

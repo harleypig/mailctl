@@ -1,9 +1,9 @@
-$ mailctl filter add --like 2 --fileinto Lists --no-imap
+$ mailctl filter add --like 2 --move-to Lists --no-mail
 exit: 1
 --- stdout
 
 --- stderr
-mailctl: --like reads the message over the mail connection, so it cannot be combined with --no-imap
+mailctl: --like reads the message over the mail connection, so it cannot be combined with --no-mail
 
 --- sieve calls
 --- imap calls

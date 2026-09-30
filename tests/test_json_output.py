@@ -174,7 +174,7 @@ def test_what_a_command_prints_on_the_way_goes_to_stderr(monkeypatch, capsys):
 
     captured = capsys.readouterr()
 
-    assert json.loads(captured.out)["scripts"] == [
+    assert json.loads(captured.out)["filtersets"] == [
         {"name": "a", "active": True}
     ]
     assert "a note for a person" in captured.err

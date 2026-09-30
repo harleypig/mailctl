@@ -46,7 +46,7 @@ exit: 0
       "dead_on_arrival": [],
       "starves": []
     },
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

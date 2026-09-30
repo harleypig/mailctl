@@ -46,7 +46,7 @@ from . import sieve as mxroute_sieve
 __all__ = ["ASSUMED_DELIMITER", "MxrouteDialect", "capability_facts"]
 
 # The delimiter guessed when there is no folder list to read one from
-# (--no-imap). Maildir++'s, the layout observed on MXroute; with a
+# (--no-mail). Maildir++'s, the layout observed on MXroute; with a
 # session the delimiter is always read, never assumed.
 ASSUMED_DELIMITER = "."
 

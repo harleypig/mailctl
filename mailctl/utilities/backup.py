@@ -141,7 +141,7 @@ def read_backup_file(
     if not text.strip() and not allow_empty:
         raise MailctlError(
             f"backup {source} is empty; restoring it would remove every "
-            f"rule from the filter set.",
+            f"filter from the filter set.",
             code="empty_backup",
         )
 

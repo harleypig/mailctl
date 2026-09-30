@@ -4,9 +4,9 @@ exit: 0
 The baseline for mail.example.com (<TMP>/config/mailctl/baselines/mail.example.com.json) was taken <STAMP>.
 
 Since then:
-  ! the active script is now 'managesieve', not 'old' -- mailctl edits the active script, so it may no longer be the one your rules are in
-  ! the folder delimiter is now '.', not '/' -- every folder a rule files into is suspect
-  ! Sieve extensions: 'fileinto' is gone -- the active script requires it, so its rules may now fail
+  ! the active script is now 'managesieve', not 'old' -- mailctl edits the active script, so it may no longer be the one your filters are in
+  ! the folder delimiter is now '.', not '/' -- every folder a filter files into is suspect
+  ! Sieve extensions: 'fileinto' is gone -- the active script requires it, so its filters may now fail
   ! IMAP personal namespace is now prefix 'INBOX.' delimiter '.', not prefix '' delimiter '/' -- a new folder is placed under it
   ! IMAP capability 'MOVE' is new -- mailctl uses it where it is offered
   - IMAP capability 'QUOTA' is gone

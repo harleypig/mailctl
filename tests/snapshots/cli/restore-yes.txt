@@ -1,7 +1,7 @@
 $ mailctl filterset restore <TMP>/restore.sieve --yes
 exit: 0
 --- stdout
-Restore <TMP>/restore.sieve (1 rule(s)) over filter set 'managesieve' (2 rule(s)):
+Restore <TMP>/restore.sieve (1 filter(s)) over filter set 'managesieve' (2 filter(s)):
 
 --- diff ---
 --- managesieve (current)

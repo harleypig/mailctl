@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-mailctl: rule 'keep-boss' cannot be enabled: it is disabled with no test kept after 'if false', so there is nothing to restore
+mailctl: filter 'keep-boss' cannot be enabled: it is disabled with no test kept after 'if false', so there is nothing to restore
 
 --- sieve calls
 ('connect',)

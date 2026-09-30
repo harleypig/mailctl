@@ -11,7 +11,7 @@ usage: mailctl filter move [-h] [--verbose] [--debug] [--provider PROVIDER]
                            [--sieve-tls {starttls,ssl,none}]
                            [--backup-dir BACKUP_DIR]
                            [--disable-extension NAME] [--dry-run] [--yes]
-                           [--json] [--script SCRIPT] [--activate]
+                           [--json] [--filterset NAME] [--activate]
                            (--first | --last | --before OTHER | --after OTHER)
                            NAME
 mailctl filter move: error: one of the arguments --first --last --before --after is required

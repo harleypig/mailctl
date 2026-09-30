@@ -79,7 +79,7 @@ NEW_ISSUE_URL = f"https://github.com/{ISSUES}/issues/new"
 
 ACTIVATE_HELP = (
     "make the filter set the active one, the one the server runs. Without "
-    "it, a --script other than the active one is stored but left inactive"
+    "it, a --filterset other than the active one is stored but left inactive"
 )
 
 # --folder has no argparse default: one there would outrank
@@ -641,7 +641,7 @@ def placement_from_args(args) -> Placement | None:
     after = getattr(args, "place_after", None)
 
     if before == "" or after == "":
-        raise MailctlError("--before and --after need a rule name")
+        raise MailctlError("--before and --after need a filter name")
 
     if getattr(args, "place_first", False):
         return Placement(PLACE_FIRST)
@@ -680,7 +680,7 @@ def show_folder_plan(plan: utilities.folders.FolderPlan) -> None:
 
     if plan.delimiter_assumed:
         # Without a folder list the Maildir++ heuristic is the best that
-        # can be done; --no-imap is opt-in precisely for this trade.
+        # can be done; --no-mail is opt-in precisely for this trade.
         warn(
             f"no mail connection: assuming delimiter {plan.delimiter!r}, "
             f"target folder {plan.folder!r}"
@@ -751,7 +751,7 @@ def settle_folder(sessions, plan: utilities.folders.FolderPlan, args) -> None:
         )
 
         if plan.subscribe:
-            # Only reached under --no-imap: with an IMAP session the folder
+            # Only reached under --no-mail: with an IMAP session the folder
             # is created and subscribed over IMAP as well (#40). Here Sieve
             # creates it at delivery time, when mailctl is not running and
             # cannot subscribe to it. Whether the server does so itself is
@@ -867,7 +867,7 @@ def print_script_diff(report: DisplayDiff) -> None:
         print(
             "\nNote: the filter set on the server is not in mailctl's "
             "formatting, so uploading re-indents the whole file. The diff "
-            "below shows only the rule change; no rule body is altered."
+            "below shows only the filter change; no filter body is altered."
         )
 
     print("\n--- diff ---")
@@ -883,7 +883,7 @@ def warn_missing_extensions(missing: list[str]) -> None:
     """Warn about extensions the rule needs but the server does not list."""
     if missing:
         warn(
-            f"the server does not advertise the extension(s) this rule "
+            f"the server does not advertise the extension(s) this filter "
             f"needs: {', '.join(missing)}. The server checks the filter set "
             f"before storing it, and may reject it."
         )
@@ -897,8 +897,10 @@ def print_placement(analysis) -> None:
     so inserting ahead of rules that already work -- the case that starves
     them -- is reported rather than missed.
     """
-    print_findings(analysis.dead_on_arrival, "\nBefore this rule is reached:")
-    print_findings(analysis.starves, "\nThis rule would come before:")
+    print_findings(
+        analysis.dead_on_arrival, "\nBefore this filter is reached:"
+    )
+    print_findings(analysis.starves, "\nThis filter would come before:")
 
 
 # ############################################################################
@@ -924,7 +926,7 @@ def apply_to_existing(
 
     if utilities.mail.mail_pass_is_noop(spec, source, folder.folder):
         print(
-            f"\nSkipping the existing-mail pass: the rule leaves matching "
+            f"\nSkipping the existing-mail pass: the filter leaves matching "
             f"mail in {source!r} as it is, so there is nothing to do."
         )
 
@@ -1162,7 +1164,9 @@ def cmd_show(args) -> int:
 
         names = [safe_line(name) for name in script.rule_names()]
 
-        print(f"--- {len(names)} rule(s): {', '.join(names) or '(none)'} ---")
+        print(
+            f"--- {len(names)} filter(s): {', '.join(names) or '(none)'} ---"
+        )
 
     return 0
 
@@ -1232,11 +1236,11 @@ def print_rules(sessions, rules) -> None:
     given their own column rather than left to be read out of the source.
     """
     if not rules:
-        print("The filter set has no rules.")
+        print("The filter set has no filters.")
 
         return
 
-    print(f"{len(rules)} rule(s), in evaluation order:\n")
+    print(f"{len(rules)} filter(s), in evaluation order:\n")
 
     for rule in rules:
         marker = "  [disabled]" if rule.disabled else ""
@@ -1290,11 +1294,11 @@ def cmd_rules(args) -> int:
 
         if report.findings:
             print_findings(
-                report.findings, "Rules that cannot fire where they are:"
+                report.findings, "Filters that cannot fire where they are:"
             )
 
         elif report.rules:
-            print("No rule is shadowed by an earlier one.")
+            print("No filter is shadowed by an earlier one.")
 
     # Reading is the whole command, so a finding is information rather than
     # a failure. Exiting non-zero here would make the audit unusable in any
@@ -1496,7 +1500,7 @@ def rule_count_phrase(provider, source: str) -> str:
     if count is None:
         return "a filter set mailctl could not parse"
 
-    return f"{count} rule(s)"
+    return f"{count} filter(s)"
 
 
 # ----------------------------------------------------------------------------
@@ -1828,8 +1832,7 @@ def print_folder_rename(plan) -> None:
 
     count = plan.messages
     print(
-        f"Rename folder {plan.old!r} to {plan.new!r} "
-        f"({count} "
+        f"Rename folder {plan.old!r} to {plan.new!r} ({count} "
         f"message{'s' if count != 1 else ''})"
     )
 
@@ -1870,13 +1873,13 @@ def print_folder_rename(plan) -> None:
 
     if not plan.retargets:
         print(
-            f"\nNo rule in {plan.script!r} files into {plan.old!r} or a "
+            f"\nNo filter in {plan.script!r} files into {plan.old!r} or a "
             f"folder under it; the filter set is left alone."
         )
 
         return
 
-    print(f"\nRules in {plan.script!r} that file into it:")
+    print(f"\nFilters in {plan.script!r} that file into it:")
 
     for item in plan.retargets:
         print(f"  {item.rule}: {item.old!r} -> {item.new!r}")
@@ -1967,7 +1970,8 @@ def cmd_test(args) -> int:
         # from the provider's notes at the end instead.
         if extensions:
             print(
-                f"  {words.extensions} (* = mailctl's own rules can need it):"
+                f"  {words.extensions} (* = mailctl's own filters can need "
+                "it):"
             )
             print_extension_table(extensions)
 
@@ -2437,18 +2441,18 @@ def describe_drift(item, words) -> str:
         return (
             f"the active script is now {after}, not {before} -- mailctl "
             f"edits the active script, so it may no longer be the one "
-            f"your rules are in"
+            f"your filters are in"
         )
 
     if item.kind == kinds.DELIMITER:
         return (
             f"the folder delimiter is now {after}, not {before} -- every "
-            f"folder a rule files into is suspect"
+            f"folder a filter files into is suspect"
         )
 
     if item.kind == kinds.EXTENSION_REMOVED:
         why = (
-            "the active script requires it, so its rules may now fail"
+            "the active script requires it, so its filters may now fail"
             if serious
             else "the active script does not require it"
         )
@@ -2662,7 +2666,7 @@ def cmd_add(args) -> int:
     if args.like is not None and args.no_imap:
         raise MailctlError(
             "--like reads the message over the mail connection, so it cannot "
-            "be combined with --no-imap"
+            "be combined with --no-mail"
         )
 
     spec = actions_from_args(args)
@@ -2704,7 +2708,7 @@ def cmd_add(args) -> int:
                 ),
             )
 
-        print(f"\nRule {plan.name!r} in filter set {plan.script!r}:")
+        print(f"\nFilter {plan.name!r} in filter set {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
         print(f"  then:  {describe_steps(plan.steps)}")
 
@@ -2818,7 +2822,7 @@ def cmd_remove_rule(args) -> int:
             return 0
 
         if not confirm(
-            f"Remove rule {plan.rule!r} from {plan.script!r}?", args.yes
+            f"Remove filter {plan.rule!r} from {plan.script!r}?", args.yes
         ):
             print("Aborted; nothing was changed.")
 
@@ -2869,7 +2873,7 @@ def cmd_move_rule(args) -> int:
 
         if not plan.changes:
             print(
-                f"Rule {plan.rule!r} is already at position "
+                f"Filter {plan.rule!r} is already at position "
                 f"{plan.to_index + 1} of {plan.count} in {plan.script!r}; "
                 f"nothing to change."
             )
@@ -2877,8 +2881,9 @@ def cmd_move_rule(args) -> int:
             return 0
 
         print(
-            f"Move rule {plan.rule!r} in filter set {plan.script!r}: position "
-            f"{plan.from_index + 1} -> {plan.to_index + 1} of {plan.count}"
+            f"Move filter {plan.rule!r} in filter set {plan.script!r}: "
+            f"position {plan.from_index + 1} -> {plan.to_index + 1} of "
+            f"{plan.count}"
         )
 
         print_placement(plan.placement)
@@ -2891,7 +2896,7 @@ def cmd_move_rule(args) -> int:
             return 0
 
         if not confirm(
-            f"Move rule {plan.rule!r} to position {plan.to_index + 1} in "
+            f"Move filter {plan.rule!r} to position {plan.to_index + 1} in "
             f"{plan.script!r}?",
             args.yes,
         ):
@@ -2967,7 +2972,8 @@ def print_optimize(plan) -> None:
     ]
 
     print(
-        f"Filter set {plan.script!r}: {count} rule{'s' if count != 1 else ''} "
+        f"Filter set {plan.script!r}: {count} "
+        f"filter{'s' if count != 1 else ''} "
         f"read."
     )
 
@@ -2976,7 +2982,7 @@ def print_optimize(plan) -> None:
 
     if proposals.removals:
         print(
-            "\nRemove -- it can never run, and an earlier rule that stops "
+            "\nRemove -- it can never run, and an earlier filter that stops "
             "does exactly the same to all of its mail:"
         )
 
@@ -2988,7 +2994,7 @@ def print_optimize(plan) -> None:
 
     if proposals.reorders:
         print(
-            "\nMove -- a broader rule ahead of it stops all of its mail, so "
+            "\nMove -- a broader filter ahead of it stops all of its mail, so "
             "it never runs. Moved, its mail gets its own actions instead:"
         )
 
@@ -3001,7 +3007,7 @@ def print_optimize(plan) -> None:
     if proposals.merges:
         print(
             "\nMerge -- the same test on the same header, with the same "
-            "actions; one rule with a key list files exactly the same mail:"
+            "actions; one filter with a key list files exactly the same mail:"
         )
 
         for item in proposals.merges:
@@ -3058,13 +3064,13 @@ def cmd_switch_rule(args) -> int:
 
         if not plan.changes:
             print(
-                f"Rule {plan.rule!r} is already {state} in "
+                f"Filter {plan.rule!r} is already {state} in "
                 f"{plan.script!r}; nothing to change."
             )
 
             return 0
 
-        print(f"{verb} rule {plan.rule!r} in filter set {plan.script!r}:")
+        print(f"{verb} filter {plan.rule!r} in filter set {plan.script!r}:")
         print_script_diff(plan.diff)
         print_activation(plan)
 
@@ -3074,7 +3080,7 @@ def cmd_switch_rule(args) -> int:
             return 0
 
         if not confirm(
-            f"{verb} rule {plan.rule!r} in {plan.script!r}?", args.yes
+            f"{verb} filter {plan.rule!r} in {plan.script!r}?", args.yes
         ):
             print("Aborted; nothing was changed.")
 
@@ -3112,14 +3118,14 @@ def cmd_rename_rule(args) -> int:
 
         if not plan.changes:
             print(
-                f"Rule {plan.rule!r} already has that name in "
+                f"Filter {plan.rule!r} already has that name in "
                 f"{plan.script!r}; nothing to change."
             )
 
             return 0
 
         print(
-            f"Rename rule {plan.rule!r} to {plan.new_name!r} in filter set "
+            f"Rename filter {plan.rule!r} to {plan.new_name!r} in filter set "
             f"{plan.script!r}:"
         )
         print_script_diff(plan.diff)
@@ -3131,7 +3137,7 @@ def cmd_rename_rule(args) -> int:
             return 0
 
         if not confirm(
-            f"Rename rule {plan.rule!r} to {plan.new_name!r} in "
+            f"Rename filter {plan.rule!r} to {plan.new_name!r} in "
             f"{plan.script!r}?",
             args.yes,
         ):
@@ -3888,7 +3894,11 @@ def action_parser(
 
     group = parser.add_argument_group("actions")
     group.add_argument(
-        "--fileinto", metavar="FOLDER", help="file the message into FOLDER"
+        "--move-to",
+        dest="fileinto",
+        metavar="FOLDER",
+        help="move the message into FOLDER; with --keep, copy it there "
+        "instead",
     )
     group.add_argument("--discard", action="store_true")
     group.add_argument(
@@ -3908,7 +3918,7 @@ def action_parser(
         "--no-stop",
         dest="no_stop",
         action="store_true",
-        help="let later rules run too (omit the 'stop' action)"
+        help="let later filters run too (omit the 'stop' action)"
         if offer.stop
         else argparse.SUPPRESS,
     )
@@ -4337,20 +4347,18 @@ def build_parser(
     rename_folder = command(
         "folder rename",
         parents=[common, connection, safety],
-        help="rename a folder, and repoint the rules that file into it",
+        help="rename a folder, and repoint the filters that file into it",
         description="Rename a folder, together with every folder under it, "
-        "and repoint every rule in the active filter set that files into "
-        "any of them. A rename on the server leaves subscriptions behind, "
-        "so "
-        "each moved folder that was subscribed is subscribed under its "
-        "new name, and the old name is dropped from the list. Only the "
-        "folder names in the rules change; every other byte of the filter "
-        "set is kept. What would change is shown first and you are asked to "
+        "and repoint every filter in the active filter set that files into "
+        "any of them. A rename on the server leaves subscriptions behind, so "
+        "each moved folder that was subscribed is subscribed under its new "
+        "name, and the old name is dropped from the list. Only the folder "
+        "names in the filters change; every other byte of the filter set is "
+        "kept. What would change is shown first and you are asked to "
         "confirm; the new filter set is backed up and checked by the server "
-        "before the folder is touched, and "
-        "afterwards the account is read back to check that everything "
-        "landed. INBOX cannot be renamed, "
-        "and NEW must not exist yet.",
+        "before the folder is touched, and afterwards the account is read "
+        "back to check that everything landed. INBOX cannot be renamed, and "
+        "NEW must not exist yet.",
     )
     rename_folder.add_argument("old", metavar="OLD")
     rename_folder.add_argument("new", metavar="NEW")
@@ -4391,16 +4399,18 @@ def build_parser(
     rules = command(
         "filter list",
         parents=[common, connection],
-        help="show the rules in order, and which cannot fire",
-        description="List the active filter set's rules in the order the "
-        "server "
-        "evaluates them, marking which carry 'stop' and which are disabled, "
-        "then report any rule an earlier one makes unreachable. A '!' "
-        "finding is decided; a '?' is a suspicion worth checking. Nothing is "
-        "changed.",
+        help="show the filters in order, and which cannot fire",
+        description="List the active filter set's filters in the order the "
+        "server evaluates them, marking which carry 'stop' and which are "
+        "disabled, then report any filter an earlier one makes unreachable. "
+        "A '!' finding is decided; a '?' is a suspicion worth checking. "
+        "Nothing is changed.",
     )
     rules.add_argument(
-        "--script", help="filter set name; default the active one"
+        "--filterset",
+        dest="script",
+        metavar="NAME",
+        help="filter set name; default the active one",
     )
     rules.add_argument("--json", action="store_true", help=JSON_HELP)
     rules.set_defaults(handler=cmd_rules)
@@ -4408,12 +4418,12 @@ def build_parser(
     add = command(
         "filter add",
         parents=[common, connection, rule_criteria, sources, actions],
-        help="save a rule; mail already delivered is left alone",
-        description="Save a rule into the active filter set, merged with the "
-        "rules already there. The diff is shown, the filter set is backed up, "
-        "and the new one uploaded. Only new mail is filtered by it; "
-        "'mailctl filter apply' with the same criteria acts on mail already "
-        "delivered.",
+        help="save a filter; mail already delivered is left alone",
+        description="Save a filter into the active filter set, merged with "
+        "the filters already there. The diff is shown, the filter set is "
+        "backed up, and the new one uploaded. Only new mail is filtered by "
+        "it; 'mailctl filter apply' with the same criteria acts on mail "
+        "already delivered.",
     )
     add.add_argument(
         "--dry-run",
@@ -4437,12 +4447,12 @@ def build_parser(
             mail_safety,
         ],
         help="act on mail already delivered",
-        description="Act on the mail already in a folder as a rule would: the "
-        "messages that match the criteria are found and shown, then --dry-run "
-        "stops, or you are asked to confirm (--yes skips the question). No "
-        "rule is saved; 'mailctl filter add' with the same criteria saves one "
-        "for new mail. More matches than --max-messages refuse the whole "
-        "pass, and nothing is changed.",
+        description="Act on the mail already in a folder as a filter would: "
+        "the messages that match the criteria are found and shown, then "
+        "--dry-run stops, or you are asked to confirm (--yes skips the "
+        "question). No filter is saved; 'mailctl filter add' with the same "
+        "criteria saves one for new mail. More matches than --max-messages "
+        "refuse the whole pass, and nothing is changed.",
     )
     apply_cmd.add_argument(
         "--folder", help=f"source folder; {FOLDER_DEFAULT_HELP}"
@@ -4453,11 +4463,14 @@ def build_parser(
     remove = command(
         "filter remove",
         parents=[common, connection, safety],
-        help="remove a named rule from the active filter set",
+        help="remove a named filter from the active filter set",
     )
     remove.add_argument("rule_name", metavar="NAME")
     remove.add_argument(
-        "--script", help="filter set name; default the active one"
+        "--filterset",
+        dest="script",
+        metavar="NAME",
+        help="filter set name; default the active one",
     )
     remove.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
     remove.set_defaults(handler=cmd_remove_rule)
@@ -4466,17 +4479,20 @@ def build_parser(
         "filter move",
         offer.ordering,
         parents=[common, connection, safety],
-        help="move a named rule to a new position, unchanged",
-        description="Reorder one rule without restating it: only its "
-        "position changes. The server runs rules in order and "
-        "'stop' ends the run, so the move is judged where the rule lands "
+        help="move a named filter to a new position, unchanged",
+        description="Reorder one filter without restating it: only its "
+        "position changes. The server runs filters in order and "
+        "'stop' ends the run, so the move is judged where the filter lands "
         "-- what would stop it running, and what it would now stop -- "
         "before the diff is shown. The filter set is backed up first and you "
         "are asked to confirm.",
     )
     move.add_argument("rule_name", metavar="NAME")
     move.add_argument(
-        "--script", help="filter set name; default the active one"
+        "--filterset",
+        dest="script",
+        metavar="NAME",
+        help="filter set name; default the active one",
     )
     move.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
 
@@ -4487,25 +4503,25 @@ def build_parser(
         "--first",
         dest="place_first",
         action="store_true",
-        help="before every other rule",
+        help="before every other filter",
     )
     where.add_argument(
         "--last",
         dest="place_last",
         action="store_true",
-        help="after every other rule",
+        help="after every other filter",
     )
     where.add_argument(
         "--before",
         dest="place_before",
         metavar="OTHER",
-        help="immediately before the rule named OTHER",
+        help="immediately before the filter named OTHER",
     )
     where.add_argument(
         "--after",
         dest="place_after",
         metavar="OTHER",
-        help="immediately after the rule named OTHER",
+        help="immediately after the filter named OTHER",
     )
     move.set_defaults(handler=cmd_move_rule)
 
@@ -4513,17 +4529,20 @@ def build_parser(
         "filter rename",
         offer.rename,
         parents=[common, connection, safety],
-        help="give a named rule a new name, unchanged otherwise",
-        description="Change one rule's name and nothing else: its "
+        help="give a named filter a new name, unchanged otherwise",
+        description="Change one filter's name and nothing else: its "
         "conditions, its actions, its position, and whether it is "
-        "disabled stay as they are, and so does every other rule. NEW "
-        "must not be empty or already another rule's name. The filter set "
+        "disabled stay as they are, and so does every other filter. NEW "
+        "must not be empty or already another filter's name. The filter set "
         "is backed up first and you are asked to confirm.",
     )
     rename.add_argument("rule_name", metavar="OLD")
     rename.add_argument("new_name", metavar="NEW")
     rename.add_argument(
-        "--script", help="filter set name; default the active one"
+        "--filterset",
+        dest="script",
+        metavar="NAME",
+        help="filter set name; default the active one",
     )
     rename.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
     rename.set_defaults(handler=cmd_rename_rule)
@@ -4534,16 +4553,19 @@ def build_parser(
             name,
             offer.disable,
             parents=[common, connection, safety],
-            help=f"{verb} a named rule, keeping it in the filter set",
-            description=f"Switch one rule {'on' if enable else 'off'} "
-            "without removing it. A disabled rule stays in the filter set, "
+            help=f"{verb} a named filter, keeping it in the filter set",
+            description=f"Switch one filter {'on' if enable else 'off'} "
+            "without removing it. A disabled filter stays in the filter set, "
             "marked as disabled, and does nothing until it is enabled. The "
             "filter set is backed up first and you "
             "are asked to confirm.",
         )
         switch.add_argument("rule_name", metavar="NAME")
         switch.add_argument(
-            "--script", help="filter set name; default the active one"
+            "--filterset",
+            dest="script",
+            metavar="NAME",
+            help="filter set name; default the active one",
         )
         switch.add_argument(
             "--activate", action="store_true", help=ACTIVATE_HELP
@@ -4554,20 +4576,23 @@ def build_parser(
         "filter optimize",
         offer.ordering,
         parents=[common, connection, safety],
-        help="propose a better order for the rules, and merge duplicates",
-        description="Read the active filter set's rules and propose a better "
-        "arrangement: remove a rule that can never run and would only "
-        "repeat an earlier rule, move a specific rule ahead of a broader "
-        "one that starves it, and merge consecutive rules that test the "
-        "same header the same way with the same actions into one rule "
-        "with a key list. Only what the rules' own conditions decide is "
-        "changed; anything less certain is reported and left alone, and "
-        "disabled rules are never moved, merged, or removed. The filter set "
-        "stays a flat list of rules. It is backed up first and you are "
-        "asked to confirm.",
+        help="propose a better order for the filters, and merge duplicates",
+        description="Read the active filter set's filters and propose a "
+        "better arrangement: remove a filter that can never run and would "
+        "only repeat an earlier filter, move a specific filter ahead of a "
+        "broader one that starves it, and merge consecutive filters that "
+        "test the same header the same way with the same actions into one "
+        "filter with a key list. Only what the filters' own conditions "
+        "decide is changed; anything less certain is reported and left "
+        "alone, and disabled filters are never moved, merged, or removed. "
+        "The filter set stays a flat list of filters. It is backed up first "
+        "and you are asked to confirm.",
     )
     optimize.add_argument(
-        "--script", help="filter set name; default the active one"
+        "--filterset",
+        dest="script",
+        metavar="NAME",
+        help="filter set name; default the active one",
     )
     optimize.add_argument(
         "--activate", action="store_true", help=ACTIVATE_HELP
@@ -4644,15 +4669,15 @@ def build_parser(
         "filterset restore",
         offer.rule_sets,
         parents=[common, connection, safety],
-        help="upload a backup file over the active filter set, or --script",
+        help="upload a backup file over the active filter set, or --filterset",
         description="Replace the active filter set -- or the one "
-        "--script names -- with a backup file, "
+        "--filterset names -- with a backup file, "
         "byte for byte. The difference between the file and what the "
         "server has now is shown first, the current filter set is backed up "
         "before anything is sent, the server checks the file, and you are "
         "asked to confirm. No other stored filter set is touched. Unlike "
         "every other change mailctl makes, this REPLACES the filter set "
-        "rather than merging into it -- any rule "
+        "rather than merging into it -- any filter "
         "added since the backup was taken is removed, which the diff "
         "shows.",
     )
@@ -4662,14 +4687,17 @@ def build_parser(
         help="a file written by 'mailctl filterset backup'",
     )
     restore.add_argument(
-        "--script", help="filter set name; default the active one"
+        "--filterset",
+        dest="script",
+        metavar="NAME",
+        help="filter set name; default the active one",
     )
     restore.add_argument("--activate", action="store_true", help=ACTIVATE_HELP)
     restore.add_argument(
         "--allow-empty",
         dest="allow_empty",
         action="store_true",
-        help="restore a FILE that is empty, which removes every rule; "
+        help="restore a FILE that is empty, which removes every filter; "
         "refused without this",
     )
     restore.set_defaults(handler=cmd_restore)
@@ -4877,12 +4905,14 @@ def _add_rule_flags(
     def offered(capability: str, text: str) -> str:
         return text if getattr(offer, capability) else argparse.SUPPRESS
 
-    group = parser.add_argument_group("rule")
+    group = parser.add_argument_group("filter")
     group.add_argument(
-        "--name", help="rule name; derived from criteria if omitted"
+        "--name", help="filter name; derived from criteria if omitted"
     )
     group.add_argument(
-        "--script",
+        "--filterset",
+        dest="script",
+        metavar="NAME",
         help=offered("rule_sets", "filter set name; default the active one"),
     )
     group.add_argument(
@@ -4896,10 +4926,10 @@ def _add_rule_flags(
     group.add_argument(
         "--replace",
         action="store_true",
-        help="overwrite an existing rule of the same name",
+        help="overwrite an existing filter of the same name",
     )
     group.add_argument(
-        "--no-imap",
+        "--no-mail",
         dest="no_imap",
         action="store_true",
         help="skip the mail connection entirely: the target folder is not "
@@ -4912,7 +4942,7 @@ def _add_rule_flags(
     )
     group.add_argument(
         "--delimiter",
-        help="folder delimiter to assume when --no-imap is used",
+        help="folder delimiter to assume when --no-mail is used",
     )
 
     # Sieve runs rules in order and 'stop' ends the run, so where a rule
@@ -4924,7 +4954,9 @@ def _add_rule_flags(
         "--first",
         dest="place_first",
         action="store_true",
-        help=offered("ordering", "put the rule before every existing rule"),
+        help=offered(
+            "ordering", "put the filter before every existing filter"
+        ),
     )
     where.add_argument(
         "--last",
@@ -4932,9 +4964,9 @@ def _add_rule_flags(
         action="store_true",
         help=offered(
             "ordering",
-            "put the rule after every existing rule (the default). With "
-            "--replace this MOVES an existing rule to the end; without it, "
-            "the rule is simply appended as always",
+            "put the filter after every existing filter (the default). With "
+            "--replace this MOVES an existing filter to the end; without it, "
+            "the filter is simply appended as always",
         ),
     )
     where.add_argument(
@@ -4942,7 +4974,8 @@ def _add_rule_flags(
         dest="place_before",
         metavar="NAME",
         help=offered(
-            "ordering", "put the rule immediately before the rule named NAME"
+            "ordering",
+            "put the filter immediately before the filter named NAME",
         ),
     )
     where.add_argument(
@@ -4950,7 +4983,8 @@ def _add_rule_flags(
         dest="place_after",
         metavar="NAME",
         help=offered(
-            "ordering", "put the rule immediately after the rule named NAME"
+            "ordering",
+            "put the filter immediately after the filter named NAME",
         ),
     )
 
@@ -4997,6 +5031,16 @@ GONE_COMMANDS = {
 }
 
 
+# Every option renamed for the same reason (#219), and its name now. A
+# clean break too: the old name is refused naming the new one, rather than
+# left to argparse's "unrecognized arguments", which names neither.
+GONE_OPTIONS = {
+    "--fileinto": "--move-to",
+    "--script": "--filterset",
+    "--no-imap": "--no-mail",
+}
+
+
 # ----------------------------------------------------------------------------
 def provider_offer(
     argv: list[str] | None,
@@ -5035,7 +5079,9 @@ def provider_offer(
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, dispatch, and turn failures into diagnostics."""
     parser = build_parser(*(provider_offer(argv) or (None, None)))
-    refuse_gone_command(parser, sys.argv[1:] if argv is None else argv)
+    given = sys.argv[1:] if argv is None else argv
+    refuse_gone_command(parser, given)
+    refuse_gone_option(parser, given)
     args = parser.parse_args(argv)
 
     # The same parse as 'mailctl [GROUP [ACTION]] --help', on the parser
@@ -5129,6 +5175,23 @@ def refuse_gone_command(parser: argparse.ArgumentParser, argv) -> None:
 
 
 # ----------------------------------------------------------------------------
+def refuse_gone_option(parser: argparse.ArgumentParser, argv) -> None:
+    """Stop a command line that gives an option by its old name, naming
+    the option it is now. Nothing after ``--`` is an option."""
+    for word in argv:
+        if word == "--":
+            return
+
+        old = word.split("=", 1)[0]
+
+        if old in GONE_OPTIONS:
+            parser.error(
+                f"{old} is now {GONE_OPTIONS[old]}; the options are named "
+                f"the same for every provider"
+            )
+
+
+# ----------------------------------------------------------------------------
 def report_failure(args, message: str, code: str | None = None) -> None:
     """Say on stderr why the run failed: as one line of JSON under --json,
     the last line stderr holds."""
@@ -5190,11 +5253,11 @@ ERROR_TEXT = {
         f"contains (the default)"
     ),
     "no_action": lambda message, _: (
-        f"{message} -- use --fileinto, --discard, --mark-read, --flag, or "
+        f"{message} -- use --move-to, --discard, --mark-read, --flag, or "
         f"--keep"
     ),
     "no_mail_action": lambda message, _: (
-        f"{message} -- use --fileinto, --discard, --mark-read, or --flag"
+        f"{message} -- use --move-to, --discard, --mark-read, or --flag"
     ),
     "no_marks": lambda message, _: (
         f"{message} -- use --read, --unread, --flag, --unflag, --keyword, "
@@ -5219,7 +5282,7 @@ ERROR_TEXT = {
         f"{fields['after']}"
     ),
     "needs_mail": lambda _, fields: (
-        f"{fields['reason']} and --no-imap was given, so "
+        f"{fields['reason']} and --no-mail was given, so "
         f"{fields['folder']!r} cannot be created"
     ),
     "max_messages": lambda _, fields: (
@@ -5234,7 +5297,7 @@ ERROR_TEXT = {
     ),
     "restore_needs_script": lambda _, __: (
         "no active filter set on the server to restore over. Name the "
-        "filter set to restore with --script NAME; with nothing active it "
+        "filter set to restore with --filterset NAME; with nothing active it "
         "is activated. 'mailctl filterset list' shows what the account has."
     ),
     "no_host": lambda message, _: f"{message}; set --host or MAILCTL_HOST",
@@ -5246,14 +5309,14 @@ ERROR_TEXT = {
         f"{message} Use --replace to overwrite it, or --name to pick another."
     ),
     "self_anchor": lambda _, fields: (
-        f"--{fields['where']} {fields['anchor']!r} names the rule being "
+        f"--{fields['where']} {fields['anchor']!r} names the filter being "
         f"{fields['verb']}, which has no position to be relative to. Name "
-        f"another rule, or use --first / --last."
+        f"another filter, or use --first / --last."
     ),
     "unknown_anchor": lambda _, fields: (
-        f"no rule named {fields['anchor']!r} in the active filter set, so "
-        f"--{fields['where']} has nothing to place this rule against. "
-        f"Known rules: {fields['known']}"
+        f"no filter named {fields['anchor']!r} in the active filter set, so "
+        f"--{fields['where']} has nothing to place this filter against. "
+        f"Known filters: {fields['known']}"
     ),
     "at_least_one": lambda _, fields: (
         f"{SENDERS_FLAGS[fields['setting']]} must be at least 1, not "

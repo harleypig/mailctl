@@ -13,7 +13,7 @@ Folder:    INBOX  (default)  -- read by apply, search, view, mark, senders, and 
 [filter] authenticated
 
 ManageSieve: connected
-  Sieve extensions (* = mailctl's own rules can need it):
+  Sieve extensions (* = mailctl's own filters can need it):
     * body        unavailable
       copy        unavailable
       enotify     unavailable

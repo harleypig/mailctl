@@ -1,4 +1,4 @@
-$ mailctl filter apply --body merged --since 2026-09-01 --before 2026-09-28 --flagged --fileinto Lists --dry-run --json
+$ mailctl filter apply --body merged --since 2026-09-01 --before 2026-09-28 --flagged --move-to Lists --dry-run --json
 exit: 0
 --- stdout
 {

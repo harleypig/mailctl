@@ -189,7 +189,8 @@ where every write path is proved first.
      seen to fail as well as pass.
    - **Neutral wording** (`test_neutral_wording.py`, [#219][i219]) —
      under `mxroute`, no provider word (Sieve, IMAP, MXroute, Roundcube,
-     CHECKSCRIPT, fileinto, Exim, DirectAdmin, script) in any help page
+     CHECKSCRIPT, fileinto, Exim, DirectAdmin, script), and no *rule*
+     outside a quoted name, in any help page
      read off the parser, outside the `server` commands, the
      `--disable-extension` help, and the connection settings the provider
      declares; and none in what any snapshot's command prints, outside the

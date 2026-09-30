@@ -153,7 +153,7 @@ def test_an_anchor_on_an_empty_script_says_the_script_is_empty():
     known rules reads ``(none)``, which answers the question the error
     raises rather than leaving the user to run ``list`` to find out.
     """
-    with pytest.raises(MailctlError, match=r"Known rules: \(none\)"):
+    with pytest.raises(MailctlError, match=r"Known filters: \(none\)"):
         resolve_position([], Placement(PLACE_BEFORE, "anything"), "new")
 
 
@@ -167,7 +167,7 @@ def test_an_unknown_anchor_names_the_flag_that_could_not_be_satisfied():
     with pytest.raises(MailctlError) as raised:
         resolve_position(NAMES, Placement(PLACE_AFTER, "typo"), "new")
 
-    assert "place this rule after" in str(raised.value)
+    assert "place this filter after" in str(raised.value)
     assert "one, two, three" in str(raised.value)
     assert "--after 'typo'" not in str(raised.value)
     assert "so --after has nothing" in error_text(raised.value)
@@ -182,7 +182,7 @@ def test_naming_the_rule_itself_is_refused_before_the_lookup():
     rule does not exist -- while listing it among the known ones. Checking
     self-reference first is what keeps the message honest.
     """
-    with pytest.raises(MailctlError, match="is the rule being added"):
+    with pytest.raises(MailctlError, match="is the filter being added"):
         resolve_position(NAMES, Placement(PLACE_BEFORE, "two"), "two")
 
 
@@ -194,10 +194,10 @@ def test_a_self_anchor_while_moving_says_moved():
             NAMES, Placement(PLACE_BEFORE, "two"), "two", moving=True
         )
 
-    assert "is the rule being moved" in str(raised.value)
+    assert "is the filter being moved" in str(raised.value)
     assert error_text(raised.value) == (
-        "--before 'two' names the rule being moved, which has no position "
-        "to be relative to. Name another rule, or use --first / --last."
+        "--before 'two' names the filter being moved, which has no position "
+        "to be relative to. Name another filter, or use --first / --last."
     )
 
 
@@ -272,7 +272,7 @@ def test_move_rule_with_an_empty_anchor_is_refused_before_connecting(
     monkeypatch.setattr(cli, "connect", no_connect)
     args = build_parser().parse_args(["filter", "move", "Lists", flag, ""])
 
-    with pytest.raises(MailctlError, match="need a rule name"):
+    with pytest.raises(MailctlError, match="need a filter name"):
         cli.cmd_move_rule(args)
 
 
@@ -293,10 +293,10 @@ def test_add_with_an_empty_anchor_is_refused_before_connecting(
 
     monkeypatch.setattr(cli, "connect", no_connect)
     args = build_parser().parse_args(
-        ["filter", "add", "--from", "a@b.c", "--fileinto", "X", flag, ""]
+        ["filter", "add", "--from", "a@b.c", "--move-to", "X", flag, ""]
     )
 
-    with pytest.raises(MailctlError, match="need a rule name"):
+    with pytest.raises(MailctlError, match="need a filter name"):
         cli.cmd_add(args)
 
 

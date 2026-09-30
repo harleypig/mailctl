@@ -249,7 +249,7 @@ def _reorder(
                     (rules[possible].name, rule.name),
                     f"{rules[possible].name!r} carries stop and may catch "
                     f"mail meant for {rule.name!r} first; whether it does "
-                    f"cannot be decided from the rules alone",
+                    f"cannot be decided from the filters alone",
                 )
             )
 
@@ -306,7 +306,7 @@ def _merge(
                         MERGE,
                         (last[key], rule.name),
                         f"{last[key]!r} and {rule.name!r} do the same "
-                        f"thing, but a rule between them may catch some of "
+                        f"thing, but a filter between them may catch some of "
                         f"the same mail first",
                     )
                 )
@@ -491,7 +491,7 @@ def plan_optimize(
         if landed != expected_rules(rules, proposals):
             raise MailctlError(
                 f"the rearranged filter set {name!r} does not read back as "
-                f"the rules proposed, so nothing is offered; this is a "
+                f"the filters proposed, so nothing is offered; this is a "
                 f"mailctl defect, not a problem with your filter set"
             )
 

@@ -1,4 +1,4 @@
-$ mailctl filter apply --filter - --fileinto Lists --dry-run
+$ mailctl filter apply --filter - --move-to Lists --dry-run
 exit: 1
 --- stdout
 

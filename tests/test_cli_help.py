@@ -178,3 +178,53 @@ def test_an_old_name_as_an_argument_is_only_an_argument(capsys, monkeypatch):
 
     assert cli.main(["folder", "create", "list"]) == 1
     assert "stopped before connecting" in capsys.readouterr().err
+
+
+# ############################################################################
+# Options renamed to the same words for every provider (#219)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def every_option() -> set[str]:
+    """Every option string any command takes, hidden ones included."""
+    return {
+        option
+        for parser in command_parsers().values()
+        for action in parser._actions
+        for option in action.option_strings
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_no_old_option_name_is_still_taken():
+    """No alias: an old name the parser still took would be one, and each
+    new name is one the parser does take."""
+    options = every_option()
+
+    assert set(cli.GONE_OPTIONS).isdisjoint(options)
+    assert set(cli.GONE_OPTIONS.values()) <= options
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("old", sorted(cli.GONE_OPTIONS))
+@pytest.mark.parametrize("spelling", ["apart", "joined"])
+def test_an_old_option_is_refused_naming_the_new_one(capsys, old, spelling):
+    given = [old, "X"] if spelling == "apart" else [f"{old}=X"]
+
+    code, out, err = run(
+        capsys, "filter", "add", "--from", "a@example.com", *given
+    )
+
+    assert (code, out) == (2, "")
+    assert f"{old} is now {cli.GONE_OPTIONS[old]}" in err
+
+
+# ----------------------------------------------------------------------------
+def test_an_old_option_name_after_a_double_dash_is_not_an_option(capsys):
+    """After '--' every word is an argument, so nothing is refused for it:
+    argparse's own error is what the user sees."""
+    code, _, err = run(capsys, "mail", "view", "--", "--script")
+
+    assert code == 2
+    assert "is now" not in err

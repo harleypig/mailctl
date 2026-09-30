@@ -9,7 +9,7 @@ exit: 0
     "diff": null,
     "rule": "keep-boss",
     "enable": true,
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

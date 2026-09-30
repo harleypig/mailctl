@@ -392,7 +392,7 @@ def test_a_name_marker_inside_a_string_is_not_a_rule_to_reorder_around():
     assert 'header :contains "subject" "# rule:[phantom]"' in merged
     assert 'fileinto "INBOX.# rule:[fake]";' in merged
 
-    with pytest.raises(MailctlError, match="no rule named 'phantom'"):
+    with pytest.raises(MailctlError, match="no filter named 'phantom'"):
         merge(
             DECOY_SCRIPT,
             "new",
@@ -638,7 +638,7 @@ def test_an_anchor_that_only_looks_like_a_rule_name_is_refused(anchor):
     ``Lists`` -- the space is not part of the name -- so a user copying the
     marker text verbatim is holding a string the script does not contain.
     """
-    with pytest.raises(MailctlError, match="no rule named"):
+    with pytest.raises(MailctlError, match="no filter named"):
         merge(
             script_of("Lists", "Other"),
             "new",

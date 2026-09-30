@@ -13,7 +13,7 @@ exit: 0
     },
     "rule": "keep-boss",
     "enable": true,
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

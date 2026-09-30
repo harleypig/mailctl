@@ -126,13 +126,13 @@ if header :contains "subject" "newsletter"
 \tfileinto "INBOX.Noise";
 \tstop;
 }
---- 2 rule(s): keep boss, bin-the-noise ---
+--- 2 filter(s): keep boss, bin-the-noise ---
 """
 
 RULES = """\
 Script 'managesieve':
 
-2 rule(s), in evaluation order:
+2 filter(s), in evaluation order:
 
   1. keep boss  [stop]
        when:  From contains 'boss@example.com'
@@ -382,12 +382,12 @@ def backup() -> str:
         target.parent.mkdir(parents=True, exist_ok=True)
         (target.parent / "managesieve-2.sieve").write_text("require [];\n")
 
-    return f"[dry-run] would write 2 rule(s) to {target}\n"
+    return f"[dry-run] would write 2 filter(s) to {target}\n"
 
 
 # ----------------------------------------------------------------------------
 def add() -> str:
-    folder = option("--fileinto")
+    folder = option("--move-to")
     out = ""
 
     if "--create-folder" in ARGV:
@@ -396,7 +396,7 @@ def add() -> str:
     subject = option("--subject")
     name = f"subject-{subject.lower()}" if subject else "from-probe"
 
-    return out + f"\nRule '{name}' on script 'managesieve':\n\n" + DIFF
+    return out + f"\nFilter '{name}' in filter set 'managesieve':\n\n" + DIFF
 
 
 # ----------------------------------------------------------------------------
@@ -484,7 +484,7 @@ def document(command: str) -> str:
         body = {"delimiter": ".", "prefix": None, "folders": []}
 
     else:
-        body = {"script": "managesieve", "rules": [], "findings": []}
+        body = {"filterset": "managesieve", "rules": [], "findings": []}
 
     out = json.dumps({"version": 2, **body}, indent=2) + "\n"
 
@@ -568,7 +568,7 @@ def optimize() -> str:
             }
         ],
         "uncertain": [],
-        "script": "managesieve",
+        "filterset": "managesieve",
         "active": "managesieve",
         "activate": True,
     }
@@ -701,7 +701,7 @@ def main() -> int:
             out += "Uploaded and activated script 'managesieve'\n"
 
     elif command == "enable-rule":
-        out = "Rule 'keep boss' is already enabled in 'managesieve'; "
+        out = "Filter 'keep boss' is already enabled in 'managesieve'; "
         out += "nothing to change.\n"
 
     elif command == "subscribe":

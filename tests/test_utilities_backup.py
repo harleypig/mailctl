@@ -219,7 +219,7 @@ def test_an_empty_backup_is_refused_unless_allowed(content, tmp_path):
     backup.write_bytes(content.encode())
     live = mxroute(sieve=FakeSieveSession(script="old\n"))
 
-    with pytest.raises(MailctlError, match="would remove every rule"):
+    with pytest.raises(MailctlError, match="would remove every filter"):
         utilities.backup.read_backup_file(backup)
 
     plan = utilities.backup.plan_restore(

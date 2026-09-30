@@ -1,9 +1,9 @@
 $ mailctl filter move bin-the-noise --first --yes
 exit: 0
 --- stdout
-Move rule 'bin-the-noise' in filter set 'managesieve': position 2 -> 1 of 2
+Move filter 'bin-the-noise' in filter set 'managesieve': position 2 -> 1 of 2
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

@@ -1,25 +1,25 @@
 $ mailctl filter optimize
 exit: 1
 --- stdout
-Filter set 'managesieve': 9 rules read.
+Filter set 'managesieve': 9 filters read.
 
-Remove -- it can never run, and an earlier rule that stops does exactly the same to all of its mail:
+Remove -- it can never run, and an earlier filter that stops does exactly the same to all of its mail:
   'Github again'  (covered by 'Github catchall')
 
-Move -- a broader rule ahead of it stops all of its mail, so it never runs. Moved, its mail gets its own actions instead:
+Move -- a broader filter ahead of it stops all of its mail, so it never runs. Moved, its mail gets its own actions instead:
   'Github billing' to just before 'Github catchall'
 
-Merge -- the same test on the same header, with the same actions; one rule with a key list files exactly the same mail:
+Merge -- the same test on the same header, with the same actions; one filter with a key list files exactly the same mail:
   'Rumble', 'Dump list' into 'Herrschners Spam', which keeps its name: To contains
       'herrschners@example.com'
       'rumble@example.com'
       'aur-general@lists.example.org'
 
 Left alone -- mailctl will not change these on a guess:
-  ? 'Github billing' carries stop and may catch mail meant for 'Any shop' first; whether it does cannot be decided from the rules alone
-  ? 'Any shop' carries stop and may catch mail meant for 'Bike shop' first; whether it does cannot be decided from the rules alone
+  ? 'Github billing' carries stop and may catch mail meant for 'Any shop' first; whether it does cannot be decided from the filters alone
+  ? 'Any shop' carries stop and may catch mail meant for 'Bike shop' first; whether it does cannot be decided from the filters alone
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

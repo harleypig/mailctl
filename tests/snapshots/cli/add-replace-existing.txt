@@ -1,17 +1,17 @@
-$ mailctl filter add --subject newsletter --fileinto Lists --name keep-boss --replace --first --dry-run
+$ mailctl filter add --subject newsletter --move-to Lists --name keep-boss --replace --first --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'keep-boss' in filter set 'managesieve':
+Filter 'keep-boss' in filter set 'managesieve':
   when:  Subject contains 'newsletter'
   then:  files the message into 'INBOX.Lists'; stops
 
-This rule would come before:
+This filter would come before:
   ! 'bin-the-noise' never runs -- 'keep-boss' carries stop and its conditions cover every case 'bin-the-noise' tests for
 
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

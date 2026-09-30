@@ -8,7 +8,7 @@ Rename folder 'INBOX.Lists' to 'INBOX.Archive' (360 messages)
     'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
   Subscribed after the rename, as before: 'INBOX.Archive', 'INBOX.Archive.GitHub'
 
-Rules in 'managesieve' that file into it:
+Filters in 'managesieve' that file into it:
   lists: 'INBOX.Lists' -> 'INBOX.Archive'
   github: 'INBOX.Lists.GitHub' -> 'INBOX.Archive.GitHub'
 
@@ -49,7 +49,7 @@ Checked after the rename:
   ok    the 1 folder under it moved with it
   ok    those subscribed before are subscribed now
   ok    'INBOX.Archive' holds 360 messages; 'INBOX.Lists' held 360
-  ok    no rule in 'managesieve' files into 'INBOX.Lists' or a folder under it
+  ok    no filter in 'managesieve' files into 'INBOX.Lists' or a folder under it
 
 --- stderr
 

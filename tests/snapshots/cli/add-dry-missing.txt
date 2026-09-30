@@ -1,13 +1,13 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --dry-run
+$ mailctl filter add --from noreply@github.com --move-to Lists/GitHub --dry-run
 exit: 0
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')
 
-Rule 'from-noreply-github-com' in filter set 'managesieve':
+Filter 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com'
   then:  files the message into 'INBOX.Lists.GitHub'; stops
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)

@@ -266,7 +266,7 @@ class FakeDialect(Dialect):
         entry = next((e for e in entries if e["name"] == old), None)
 
         if entry is None:
-            raise MailctlError(f"no rule named {old!r}")
+            raise MailctlError(f"no filter named {old!r}")
 
         entry["name"] = new
 
@@ -286,7 +286,7 @@ class FakeDialect(Dialect):
         entry = next((e for e in entries if e["name"] == name), None)
 
         if entry is None:
-            raise MailctlError(f"no rule named {name!r}")
+            raise MailctlError(f"no filter named {name!r}")
 
         if entry.get("off", False) == off:
             return source
@@ -1215,7 +1215,7 @@ def test_a_declined_capability_is_refused_before_any_connection(fakes):
         utilities.rules.check_rule(config, request)
 
     assert str(caught.value) == (
-        "the unordered provider cannot place a rule at a position in "
+        "the unordered provider cannot place a filter at a position in "
         "evaluation order: it does not declare the 'ordering' capability"
     )
     assert UnorderedTransport.opened == 0
@@ -1253,7 +1253,7 @@ def test_the_cli_refuses_it_before_connecting(fakes, capsys):
             "unordered",
             "--from",
             GITHUB,
-            "--fileinto",
+            "--move-to",
             "Lists",
             "--first",
         ]
@@ -1523,7 +1523,7 @@ def test_asking_a_host_without_stop_to_stop_is_refused(fakes):
         )
 
     assert str(caught.value) == (
-        "the stopless provider cannot end evaluation after a rule: it does "
+        "the stopless provider cannot end evaluation after a filter: it does "
         "not declare the 'stop' capability"
     )
 
@@ -1538,7 +1538,7 @@ def test_the_cli_adds_a_default_rule_on_a_host_without_stop(fakes, capsys):
             "stopless",
             "--from",
             GITHUB,
-            "--fileinto",
+            "--move-to",
             "Lists",
             "--dry-run",
         ]
@@ -1567,7 +1567,7 @@ def test_a_diff_and_its_actions_are_shown_in_generic_words(fakes, capsys):
             "fake",
             "--from",
             GITHUB,
-            "--fileinto",
+            "--move-to",
             "Lists",
             "--dry-run",
         ]
@@ -2160,7 +2160,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     ("argv", "refusal"),
     [
         (
-            ["filter", "add", "--from", GITHUB, "--fileinto", "L", "--first"],
+            ["filter", "add", "--from", GITHUB, "--move-to", "L", "--first"],
             "'ordering'",
         ),
         (["filter", "move", "x", "--first"], "'ordering'"),
@@ -2525,13 +2525,13 @@ def run_fake(capsys, *argv: str) -> tuple[int, str]:
                 "add",
                 "--from",
                 GITHUB,
-                "--fileinto",
+                "--move-to",
                 "New",
                 "--create-folder",
-                "--no-imap",
+                "--no-mail",
             ],
             "the server does not advertise folder creation on delivery and "
-            "--no-imap was given, so 'New' cannot be created",
+            "--no-mail was given, so 'New' cannot be created",
             id="needs-mail",
         ),
         pytest.param(
@@ -2540,7 +2540,7 @@ def run_fake(capsys, *argv: str) -> tuple[int, str]:
                 "apply",
                 "--from",
                 GITHUB,
-                "--fileinto",
+                "--move-to",
                 "Lists",
                 "--max-messages",
                 "0",
@@ -2555,7 +2555,7 @@ def run_fake(capsys, *argv: str) -> tuple[int, str]:
                 "add",
                 "--from",
                 GITHUB,
-                "--fileinto",
+                "--move-to",
                 "Lists",
                 "--dry-run",
             ],

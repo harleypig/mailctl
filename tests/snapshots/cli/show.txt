@@ -16,7 +16,7 @@ if header :contains "subject" "newsletter"
 	fileinto "INBOX.Noise";
 	stop;
 }
---- 2 rule(s): keep-boss, bin-the-noise ---
+--- 2 filter(s): keep-boss, bin-the-noise ---
 
 --- stderr
 

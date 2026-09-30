@@ -1,9 +1,9 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists
+$ mailctl filter add --from noreply@github.com --move-to Lists
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'from-noreply-github-com' in filter set 'mailctl':
+Filter 'from-noreply-github-com' in filter set 'mailctl':
   when:  From contains 'noreply@github.com'
   then:  files the message into 'INBOX.Lists'; stops
 

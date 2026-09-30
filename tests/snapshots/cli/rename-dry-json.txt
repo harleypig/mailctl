@@ -13,7 +13,7 @@ exit: 0
     },
     "rule": "keep-boss",
     "new_name": "The boss",
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

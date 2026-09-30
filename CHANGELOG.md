@@ -58,12 +58,13 @@ BREAKING CHANGES:
 
 * **What mailctl prints is worded the same for every provider** ([#219]).
   Every command's help and output but the server reports now speaks of
-  filters and filter sets, not Sieve scripts, ManageSieve, or IMAP: the
-  diff's heading is `--- diff ---` rather than `--- sieve diff ---`; a
-  rule's actions read `files the message into 'INBOX.Lists'; stops`
+  filters and filter sets, not rules, Sieve scripts, ManageSieve, or IMAP:
+  `Filter 'x' in filter set 'y'`, `2 filter(s), in evaluation order`, and
+  `no filter named 'x' in the active filter set`; the diff's heading is
+  `--- diff ---` rather than `--- sieve diff ---`; a filter's actions read `files the message into 'INBOX.Lists'; stops`
   rather than `fileinto INBOX.Lists; stop`, in a plan and in `filter
   list`; `filterset show` frames the source as `--- filter set 'NAME'
-  ---` and `--- N rule(s): ... ---` rather than `# ---- NAME ----`; and
+  ---` and `--- N filter(s): ... ---` rather than `# ---- NAME ----`; and
   `Rule 'x' on script 'y'`, `Backed up current script`, `Created IMAP
   folder`, and the rest now say `filter set` and `folder`. A server's
   alert or warning is introduced as `mailctl: alert from the mail server:`
@@ -74,9 +75,33 @@ BREAKING CHANGES:
   connection settings (`--host`, `--imap-*`, `--sieve-*`, which keep their
   names), a refusal about an extension or an action MXRoute does not
   allow, and the filter set's own text in a diff or `filterset show`.
-  Option names, including `--fileinto` and `--script`, and every `--json`
-  key are unchanged; a JSON error's `message` carries the new wording. A
-  script that matches on a line of mailctl's output needs the new text.
+  A script that matches on a line of mailctl's output needs the new text,
+  and a JSON error's `message` carries it too.
+
+* **Three options are renamed, with no aliases** ([#219]). Each old name
+  is refused with exit status 2 and a message naming the new one, such as
+  `--fileinto is now --move-to`:
+
+  | Old | New |
+  |-----|-----|
+  | `--fileinto FOLDER` | `--move-to FOLDER` (with `--keep` it copies) |
+  | `--script NAME` | `--filterset NAME` |
+  | `--no-imap` | `--no-mail` |
+
+  None had a `MAILCTL_*` variable or a `config.toml` key. The connection
+  settings (`--host`, `--imap-*`, `--sieve-*`), `--disable-extension`, and
+  `--raw` keep their names.
+
+* **`--json` documents name a filter set `filterset`** ([#219]), within
+  the version 2 this release already brings. `filterset list` prints
+  `"filtersets": [{"name", "active"}]` where it printed `"scripts"`; `filter
+  list` and every plan that uploads print `"filterset"` where they printed
+  `"script"`. A plan's folder `status` is `create`, `created-on-delivery`,
+  or `create-and-on-delivery` where it was `imap-create`, `sieve-creates`,
+  or `imap-and-sieve-create`; `none`, `exists`, `missing`, and
+  `uncreatable` are unchanged. `diff.label` stays, naming the language of
+  the diff's text (`sieve`). The `rule`, `rules`, `rules_before`, and
+  `rules_after` keys are unchanged.
 
 BUG FIXES:
 

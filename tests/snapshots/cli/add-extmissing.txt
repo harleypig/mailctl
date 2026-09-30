@@ -1,13 +1,13 @@
-$ mailctl filter add --from noreply@github.com --mark-read --fileinto Lists --dry-run
+$ mailctl filter add --from noreply@github.com --mark-read --move-to Lists --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
-Rule 'from-noreply-github-com' in filter set 'managesieve':
+Filter 'from-noreply-github-com' in filter set 'managesieve':
   when:  From contains 'noreply@github.com'
   then:  adds the flag \Seen; files the message into 'INBOX.Lists'; stops
 
-Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the rule change; no rule body is altered.
+Note: the filter set on the server is not in mailctl's formatting, so uploading re-indents the whole file. The diff below shows only the filter change; no filter body is altered.
 
 --- diff ---
 --- managesieve (current)
@@ -28,7 +28,7 @@ Note: the filter set on the server is not in mailctl's formatting, so uploading 
 [dry-run] the filter set was NOT uploaded.
 
 --- stderr
-warning: the server does not advertise the extension(s) this rule needs: imap4flags. The server checks the filter set before storing it, and may reject it.
+warning: the server does not advertise the extension(s) this filter needs: imap4flags. The server checks the filter set before storing it, and may reject it.
 
 --- sieve calls
 ('connect',)

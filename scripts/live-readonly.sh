@@ -639,9 +639,9 @@ t_show() {
 
   summary=$(
     tail -n 1 "$OUT" \
-      | sed -n 's/^--- \([0-9][0-9]*\) rule(s): .* ---$/\1/p'
+      | sed -n 's/^--- \([0-9][0-9]*\) filter(s): .* ---$/\1/p'
   )
-  [[ -n $summary ]] || fail "no '--- N rule(s) ---' summary line" || return 1
+  [[ -n $summary ]] || fail "no '--- N filter(s) ---' summary line" || return 1
 
   markers=$(grep -c '^# rule:\[' "$OUT")
 
@@ -660,11 +660,11 @@ t_rules() {
   run_mailctl filter list
   expect_ok 'filter list' || return 1
 
-  count=$(sed -n 's/^\([0-9][0-9]*\) rule(s), in evaluation order:$/\1/p' \
+  count=$(sed -n 's/^\([0-9][0-9]*\) filter(s), in evaluation order:$/\1/p' \
     "$OUT")
 
   if [[ -z $count ]]; then
-    grep -q '^The filter set has no rules\.$' "$OUT" && count=0
+    grep -q '^The filter set has no filters\.$' "$OUT" && count=0
   fi
 
   [[ -n $count ]] || fail "no rule count in filter list output" || return 1
@@ -949,7 +949,7 @@ t_apply() {
   from=$(view_from_address)
   need "$from" "the newest message has no From address" || return 2
 
-  run_mailctl filter apply --dry-run --from "$from" --fileinto "$folder"
+  run_mailctl filter apply --dry-run --from "$from" --move-to "$folder"
   expect_ok 'filter apply --dry-run' || return 1
   expect_nothing_changed || return 1
 
@@ -969,7 +969,7 @@ t_apply_like() {
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl filter apply --dry-run --like "$uid" --fileinto "$folder"
+  run_mailctl filter apply --dry-run --like "$uid" --move-to "$folder"
   expect_ok "filter apply --dry-run --like $uid" || return 1
   expect_nothing_changed || return 1
 
@@ -985,12 +985,12 @@ t_add() {
   expect_ok 'folder list' || return 1
   folder=$(pick_folder)
 
-  run_mailctl filter add --dry-run --subject 'Café' --fileinto "$folder"
+  run_mailctl filter add --dry-run --subject 'Café' --move-to "$folder"
   expect_ok 'filter add --dry-run' || return 1
   expect_nothing_changed || return 1
 
   expect_line '^\[dry-run\] the filter set was NOT uploaded\.$' || return 1
-  expect_line "^Rule '[^']*café"
+  expect_line "^Filter '[^']*café"
 }
 
 #-----------------------------------------------------------------------------
@@ -998,7 +998,7 @@ t_add_create_folder() {
   local probe="MailctlReadonlyProbe-$$"
 
   run_mailctl filter add --dry-run --from probe@example.invalid \
-    --fileinto "$probe" --create-folder
+    --move-to "$probe" --create-folder
   expect_ok 'filter add --dry-run --create-folder' || return 1
   expect_nothing_changed || return 1
 
@@ -1027,7 +1027,7 @@ t_add_like() {
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl filter add --dry-run --like "$uid" --fileinto "$folder"
+  run_mailctl filter add --dry-run --like "$uid" --move-to "$folder"
   expect_ok "filter add --dry-run --like $uid" || return 1
   expect_nothing_changed || return 1
 

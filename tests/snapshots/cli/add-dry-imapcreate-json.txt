@@ -1,4 +1,4 @@
-$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --mark-read --dry-run --json
+$ mailctl filter add --from noreply@github.com --move-to Lists/GitHub --create-folder --mark-read --dry-run --json
 exit: 0
 --- stdout
 {
@@ -36,7 +36,7 @@ exit: 0
       "folder": "INBOX.Lists.GitHub",
       "delimiter": ".",
       "delimiter_assumed": false,
-      "status": "imap-and-sieve-create",
+      "status": "create-and-on-delivery",
       "subscribe": true,
       "case_variants": [],
       "mailbox_disabled_by": null
@@ -46,7 +46,7 @@ exit: 0
       "dead_on_arrival": [],
       "starves": []
     },
-    "script": "managesieve",
+    "filterset": "managesieve",
     "active": "managesieve",
     "activate": true
   }

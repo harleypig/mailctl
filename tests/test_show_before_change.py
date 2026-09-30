@@ -366,7 +366,7 @@ def test_the_note_appears_when_the_server_copy_will_be_reformatted(
     out = capsys.readouterr().out
 
     assert "re-indents the whole file" in out
-    assert "no rule body is altered" in out
+    assert "no filter body is altered" in out
     assert "+# rule:[new-rule]" in out
 
 
