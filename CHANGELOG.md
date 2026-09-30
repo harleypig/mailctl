@@ -4,6 +4,8 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.10.0
+
 FEATURES:
 
 * **`mailctl rename-rule OLD NEW` changes a rule's name, and nothing else**
