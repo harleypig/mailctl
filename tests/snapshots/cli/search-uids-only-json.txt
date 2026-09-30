@@ -1,9 +1,9 @@
-$ mailctl search --uids-only --json
+$ mailctl mail search --uids-only --json
 exit: 1
 --- stdout
 
 --- stderr
-{"version": 1, "error": {"message": "--uids-only prints a listing's UIDs; it cannot be combined with --json or --build-filter"}}
+{"version": 2, "error": {"message": "--uids-only prints a listing's UIDs; it cannot be combined with --json or --build-filter"}}
 
 --- sieve calls
 --- imap calls

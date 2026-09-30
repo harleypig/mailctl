@@ -1,4 +1,4 @@
-$ mailctl check-baseline
+$ mailctl server baseline check
 exit: 4
 --- stdout
 Baseline for mail.example.com, taken <STAMP>: <TMP>/config/mailctl/baselines/mail.example.com.json
@@ -19,7 +19,7 @@ Baseline for mail.example.com, taken <STAMP>: <TMP>/config/mailctl/baselines/mai
 
 The active script could not be parsed, so every extension that is gone is counted as one it requires.
 
-Nothing was refused: the baseline records, it does not decide. 'mailctl save-baseline' replaces it, after showing what changed.
+Nothing was refused: the baseline records, it does not decide. 'mailctl server baseline save' replaces it, after showing what changed.
 
 --- stderr
 

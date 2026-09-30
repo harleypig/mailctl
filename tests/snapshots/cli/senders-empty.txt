@@ -1,4 +1,4 @@
-$ mailctl senders --from nobody@x.y
+$ mailctl mail senders --from nobody@x.y
 exit: 0
 --- stdout
 No messages found in 'INBOX'.

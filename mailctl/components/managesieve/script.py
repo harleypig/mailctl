@@ -65,7 +65,7 @@ __all__ = [
 # accept is a choice of ours, where declining one it never advertised is
 # not. Neither is a documented host restriction, which is the thing the
 # message must not imply. What a given server supports is a question its
-# CAPABILITY response answers; run 'mailctl test'.
+# CAPABILITY response answers; run 'mailctl server test'.
 UNIMPLEMENTED_ACTIONS = {
     "notify": "notify (enotify)",
     "vacation": "vacation",
@@ -654,7 +654,7 @@ def rename_rule(
             f"a rule named {new!r} already exists in the active script, and "
             f"two rules of one name cannot be told apart.",
             code="rule_name_taken",
-            fields={"operation": "rules"},
+            fields={"operation": "filter list"},
         )
 
     _check_rule_name(new, dialect)
@@ -1111,7 +1111,7 @@ def _replace_rule(
             code="replace_disabled",
             fields={
                 "before": before,
-                "operation": "enable-rule",
+                "operation": "filter enable",
                 "arguments": (name,),
             },
         )

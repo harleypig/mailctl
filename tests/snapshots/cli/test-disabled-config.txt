@@ -1,4 +1,4 @@
-$ mailctl test
+$ mailctl server test
 exit: 0
 --- stdout
 Sources:   environment, config file <TMP>/config/mailctl/config.toml
@@ -37,7 +37,7 @@ IMAP: connected
   FILTER=SIEVE: no -- no server-side retroactive filtering (Dovecot imap_filter_sieve is not enabled).
                 mailctl's client-side search-and-move pass is the only option here.
 
-Servers:   mailctl does not recognise the ManageSieve or the IMAP server -- 'mailctl probe --report' prints a redacted issue body
+Servers:   mailctl does not recognise the ManageSieve or the IMAP server -- 'mailctl server probe --report' prints a redacted issue body
 
 Note: MXRoute disables the Sieve 'redirect' action as a matter of policy (2024-03-22) -- use a panel forwarder, which handles SRS properly. That is the only MXRoute restriction mailctl asserts; everything else above came from the server.
 

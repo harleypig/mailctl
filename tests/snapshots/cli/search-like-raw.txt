@@ -1,4 +1,4 @@
-$ mailctl search --like 3 --raw ALL
+$ mailctl mail search --like 3 --raw ALL
 exit: 1
 --- stdout
 

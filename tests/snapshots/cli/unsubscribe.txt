@@ -1,4 +1,4 @@
-$ mailctl unsubscribe Lists
+$ mailctl folder unsubscribe Lists
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

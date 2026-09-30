@@ -1,4 +1,4 @@
-$ mailctl rules
+$ mailctl filter list
 exit: 0
 --- stdout
 Script 'managesieve':

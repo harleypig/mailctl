@@ -1,4 +1,4 @@
-$ mailctl search --sort received --reverse
+$ mailctl mail search --sort received --reverse
 exit: 0
 --- stdout
 5 message(s) in 'INBOX' (UIDVALIDITY 1727000000), by date received, newest first:

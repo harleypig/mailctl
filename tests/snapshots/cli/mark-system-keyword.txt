@@ -1,4 +1,4 @@
-$ mailctl mark 1 --keyword \Deleted
+$ mailctl mail mark 1 --keyword \Deleted
 exit: 1
 --- stdout
 

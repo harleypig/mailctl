@@ -1,4 +1,4 @@
-$ mailctl test
+$ mailctl server test
 exit: 0
 --- stdout
 Sources:   environment
@@ -37,7 +37,7 @@ IMAP: connected
   FILTER=SIEVE: no -- no server-side retroactive filtering (Dovecot imap_filter_sieve is not enabled).
                 mailctl's client-side search-and-move pass is the only option here.
 
-Baseline:  not checked -- the baseline <TMP>/config/mailctl/baselines/mail.example.com.json cannot be read: it is not a JSON object. It was left as it is; move it aside and run 'mailctl save-baseline' to take a new one.
+Baseline:  not checked -- the baseline <TMP>/config/mailctl/baselines/mail.example.com.json cannot be read: it is not a JSON object. It was left as it is; move it aside and run 'mailctl server baseline save' to take a new one.
 
 Note: MXRoute disables the Sieve 'redirect' action as a matter of policy (2024-03-22) -- use a panel forwarder, which handles SRS properly. That is the only MXRoute restriction mailctl asserts; everything else above came from the server.
 

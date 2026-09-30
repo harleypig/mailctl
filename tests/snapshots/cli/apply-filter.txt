@@ -1,4 +1,4 @@
-$ mailctl apply --filter <TMP>/restore.sieve --fileinto Lists --yes
+$ mailctl filter apply --filter <TMP>/restore.sieve --fileinto Lists --yes
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

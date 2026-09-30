@@ -1,4 +1,4 @@
-"""``mailctl rename-folder`` against a real Dovecot + Pigeonhole (#5).
+"""``mailctl folder rename`` against a real Dovecot + Pigeonhole (#5).
 
 The issue's by-hand rename checked LIST and STATUS, both passed, and the
 folder had still vanished from webmail: RENAME had left it unsubscribed.
@@ -64,7 +64,7 @@ def test_rename_folder_moves_subscribes_and_repoints(account):
     account.seed_script("managesieve", SCRIPT)
     before = account.script_bytes("managesieve")
 
-    result = account.run("rename-folder", "Lists/Old", "Lists/New", "--yes")
+    result = account.run("folder", "rename", "Lists/Old", "Lists/New", "--yes")
 
     assert result.code == 0, result.err + result.out
     assert "FAIL" not in result.out
@@ -97,7 +97,7 @@ def test_rename_folder_refuses_an_existing_name_and_changes_nothing(account):
     account.seed_script("managesieve", SCRIPT)
     before = account.script_bytes("managesieve")
 
-    result = account.run("rename-folder", "Lists/Old", "Taken", "--yes")
+    result = account.run("folder", "rename", "Lists/Old", "Taken", "--yes")
 
     assert result.code == 1
     assert "'Taken' already exists" in result.err

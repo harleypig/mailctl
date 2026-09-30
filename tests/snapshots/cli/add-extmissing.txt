@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --mark-read --fileinto Lists --dry-run
+$ mailctl filter add --from noreply@github.com --mark-read --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

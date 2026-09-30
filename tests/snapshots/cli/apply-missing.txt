@@ -1,4 +1,4 @@
-$ mailctl apply --from noreply@github.com --fileinto Lists/GitHub
+$ mailctl filter apply --from noreply@github.com --fileinto Lists/GitHub
 exit: 1
 --- stdout
 Folder 'Lists/GitHub' resolves to 'INBOX.Lists.GitHub' (delimiter '.')

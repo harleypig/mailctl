@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists --uidvalidity 1727000000
+$ mailctl filter add --from noreply@github.com --fileinto Lists --uidvalidity 1727000000
 exit: 1
 --- stdout
 

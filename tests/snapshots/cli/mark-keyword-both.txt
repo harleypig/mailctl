@@ -1,4 +1,4 @@
-$ mailctl mark 1 --keyword $Todo --no-keyword $todo
+$ mailctl mail mark 1 --keyword $Todo --no-keyword $todo
 exit: 1
 --- stdout
 

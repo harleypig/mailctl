@@ -126,6 +126,6 @@ def stale(folder: str, given: int, current: int) -> MailctlError:
             "folder": folder,
             "given": given,
             "current": current,
-            "operation": "search",
+            "operation": "mail search",
         },
     )

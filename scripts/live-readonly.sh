@@ -61,25 +61,26 @@ readonly TESTS=(
   unchanged
 )
 
-# Subcommands that change something, locally or on the server.
+# Commands that change something, locally or on the server, by the path
+# that names each: a group and an action, or three words for a baseline.
 readonly MUTATING=(
-  add
-  apply
-  backup
-  create-folder
-  disable-rule
-  enable-rule
-  mark
-  migrate-config
-  move-rule
-  optimize-rules
-  remove-rule
-  rename-folder
-  rename-rule
-  restore
-  save-baseline
-  subscribe
-  unsubscribe
+  'config migrate'
+  'filter add'
+  'filter apply'
+  'filter disable'
+  'filter enable'
+  'filter move'
+  'filter optimize'
+  'filter remove'
+  'filter rename'
+  'filterset backup'
+  'filterset restore'
+  'folder create'
+  'folder rename'
+  'folder subscribe'
+  'folder unsubscribe'
+  'mail mark'
+  'server baseline save'
 )
 
 # What `probe --json` must hold: it parses, it is version 1, and each half
@@ -121,7 +122,7 @@ for half, keys in (
 PYTHON
 readonly PROBE_CHECK
 
-# What `folders --counts --json` must hold: it parses, it is version 1, it
+# What `folder list --counts --json` must hold: it parses, it is version 2, it
 # lists folders, and each has integer message and unread counts, unread no
 # more than the total, and a size that is an integer or null. Prints the
 # first problem found and exits non-zero.
@@ -147,7 +148,7 @@ def whole(value):
 
 
 need(isinstance(doc, dict), "not a JSON object")
-need(doc.get("version") == 1, "version is not 1")
+need(doc.get("version") == 2, "version is not 2")
 need(isinstance(doc.get("folders"), list) and doc["folders"], "no folders")
 
 for folder in doc["folders"]:
@@ -192,7 +193,7 @@ PYTHON
 readonly SORT_CHECK
 
 # What `search --limit 1 --json` must hold for the uidvalidity check: a
-# version 1 listing whose uidvalidity is a whole number from 1 up. Prints
+# version 2 listing whose uidvalidity is a whole number from 1 up. Prints
 # the value and the newest message's UID, which is empty for an empty
 # folder, or the first problem found and exits non-zero.
 read -r -d '' UIDVALIDITY_CHECK << 'PYTHON'
@@ -208,8 +209,8 @@ except ValueError as exc:
 
 validity = doc.get("uidvalidity")
 
-if doc.get("version") != 1 or not isinstance(doc.get("messages"), list):
-    sys.exit("not a version 1 listing")
+if doc.get("version") != 2 or not isinstance(doc.get("messages"), list):
+    sys.exit("not a version 2 listing")
 
 if type(validity) is not int or validity < 1:
     sys.exit(f"uidvalidity is {validity!r}, not a whole number from 1")
@@ -220,8 +221,8 @@ print(validity, *uids[:1])
 PYTHON
 readonly UIDVALIDITY_CHECK
 
-# What `senders --json` must hold: it parses, it is version 1, no more than
-# five rows, each with whole counts and unread no more than its total, the
+# What `mail senders --json` must hold: it parses, it is version 2, no more
+# than five rows, each with whole counts and unread no more than its total, the
 # rows busiest first, and the report's own totals at least what its rows
 # add up to. Prints the first problem found and exits non-zero.
 read -r -d '' SENDERS_CHECK << 'PYTHON'
@@ -246,7 +247,7 @@ def whole(value):
 
 
 need(isinstance(doc, dict), "not a JSON object")
-need(doc.get("version") == 1, "version is not 1")
+need(doc.get("version") == 2, "version is not 2")
 need(isinstance(doc.get("senders"), list), "no senders list")
 
 rows = doc["senders"]
@@ -276,8 +277,8 @@ need(
 PYTHON
 readonly SENDERS_CHECK
 
-# What `optimize-rules --dry-run --json` must hold: it parses, it is version
-# 1, it is that command's plan, every proposal list is a list, `changes`
+# What `filter optimize --dry-run --json` must hold: it parses, it is version
+# 2, it is that command's plan, every proposal list is a list, `changes`
 # says whether any proposal was made, and a diff is there exactly when it
 # does. Prints the first problem found and exits non-zero.
 read -r -d '' OPTIMIZE_CHECK << 'PYTHON'
@@ -298,12 +299,12 @@ def need(ok, what):
 
 
 need(isinstance(doc, dict), "not a JSON object")
-need(doc.get("version") == 1, "version is not 1")
+need(doc.get("version") == 2, "version is not 2")
 
 plan = doc.get("plan")
 
 need(isinstance(plan, dict), "no plan")
-need(plan.get("command") == "optimize-rules", "not an optimize-rules plan")
+need(plan.get("command") == "filter optimize", "not a filter optimize plan")
 
 for name in ("removals", "reorders", "merges", "uncertain", "considered"):
     need(isinstance(plan.get(name), list), f"no {name} list")
@@ -372,15 +373,22 @@ in_list() {
 
 #-----------------------------------------------------------------------------
 # Succeeds when the argv may be sent: nothing mutating without --dry-run,
-# and never --yes. Any mutating name anywhere in the argv counts, so a
-# positional that happens to share one only makes the guard stricter.
+# and never --yes. A mutating path anywhere in the argv counts -- two or
+# three words in a row -- so positionals that happen to spell one only make
+# the guard stricter.
 guard_allows() {
-  local arg mutating=0 dry=0
+  local arg i mutating=0 dry=0
+  local -a argv=("$@")
 
   for arg in "$@"; do
     [[ $arg == --yes ]] && return 1
     [[ $arg == --dry-run ]] && dry=1
-    in_list "$arg" "${MUTATING[@]}" && mutating=1
+  done
+
+  for ((i = 0; i < ${#argv[@]}; i++)); do
+    in_list "${argv[i]} ${argv[i + 1]:-}" "${MUTATING[@]}" && mutating=1
+    in_list "${argv[i]} ${argv[i + 1]:-} ${argv[i + 2]:-}" "${MUTATING[@]}" \
+      && mutating=1
   done
 
   ((mutating && !dry)) && return 1
@@ -462,9 +470,9 @@ expect_document() {
   python3 -c '
 import json, sys
 document = json.load(sys.stdin)
-sys.exit(0 if document.get("version") == 1 and sys.argv[1] in document else 1)
+sys.exit(0 if document.get("version") == 2 and sys.argv[1] in document else 1)
 ' "$1" < "$RAW" 2> /dev/null \
-    || fail "stdout is not one version 1 JSON document with '$1'"
+    || fail "stdout is not one version 2 JSON document with '$1'"
 }
 
 #-----------------------------------------------------------------------------
@@ -521,10 +529,10 @@ view_from_address() {
 
 #-----------------------------------------------------------------------------
 fingerprint() {
-  run_mailctl show || return 1
+  run_mailctl filterset show || return 1
   sha256sum < "$RAW" | cut -c1-64
 
-  run_mailctl folders || return 1
+  run_mailctl folder list || return 1
   sha256sum < "$RAW" | cut -c1-64
 }
 
@@ -535,8 +543,8 @@ fingerprint() {
 
 #-----------------------------------------------------------------------------
 t_test() {
-  run_mailctl test
-  expect_ok test || return 1
+  run_mailctl server test
+  expect_ok 'server test' || return 1
 
   expect_line '^ManageSieve: connected' || return 1
   expect_line '^IMAP: connected' || return 1
@@ -556,11 +564,11 @@ t_test() {
 t_probe() {
   local problem
 
-  run_mailctl probe --json
-  expect_ok 'probe --json' || return 1
+  run_mailctl server probe --json
+  expect_ok 'server probe --json' || return 1
 
   problem=$(python3 -c "$PROBE_CHECK" "$RAW" 2>&1) \
-    || fail "probe --json: ${problem:-not a probe document}"
+    || fail "server probe --json: ${problem:-not a probe document}"
 }
 
 #-----------------------------------------------------------------------------
@@ -568,17 +576,18 @@ t_probe() {
 # fails, since that is what the check exists to catch; informational drift
 # passes with its lines as diagnostics.
 t_check_baseline() {
-  run_mailctl show-baseline --json
+  run_mailctl server baseline show --json
 
   if ((RC == 1)) && grep -q 'no baseline has been saved' "$ERR"; then
-    SKIP_REASON="no baseline saved ('mailctl save-baseline' records one)"
+    SKIP_REASON="no baseline saved"
+    SKIP_REASON+=" ('mailctl server baseline save' records one)"
 
     return 2
   fi
 
-  expect_ok 'show-baseline --json' || return 1
+  expect_ok 'server baseline show --json' || return 1
 
-  run_mailctl check-baseline
+  run_mailctl server baseline check
 
   case $RC in
     0)
@@ -595,7 +604,7 @@ t_check_baseline() {
       ;;
 
     *)
-      fail "mailctl check-baseline exited $RC"
+      fail "mailctl server baseline check exited $RC"
       ;;
   esac
 }
@@ -604,8 +613,8 @@ t_check_baseline() {
 t_list() {
   local active
 
-  run_mailctl list
-  expect_ok list || return 1
+  run_mailctl filterset list
+  expect_ok 'filterset list' || return 1
 
   active=$(grep -c '(active)$' "$OUT")
   ((active == 1)) \
@@ -613,7 +622,7 @@ t_list() {
     || return 1
 
   if grep -q '^[[:space:]]*$' "$OUT"; then
-    fail "list printed a blank line"
+    fail "filterset list printed a blank line"
 
     return 1
   fi
@@ -623,8 +632,8 @@ t_list() {
 t_show() {
   local markers summary
 
-  run_mailctl show
-  expect_ok show || return 1
+  run_mailctl filterset show
+  expect_ok 'filterset show' || return 1
 
   expect_line '^# ---- .+ ----$' || return 1
 
@@ -642,14 +651,14 @@ t_show() {
 
 #-----------------------------------------------------------------------------
 t_rules() {
-  local markers count
+  local markers count counted
 
-  run_mailctl show
-  expect_ok show || return 1
+  run_mailctl filterset show
+  expect_ok 'filterset show' || return 1
   markers=$(grep -c '^# rule:\[' "$OUT")
 
-  run_mailctl rules
-  expect_ok rules || return 1
+  run_mailctl filter list
+  expect_ok 'filter list' || return 1
 
   count=$(sed -n 's/^\([0-9][0-9]*\) rule(s), in evaluation order:$/\1/p' \
     "$OUT")
@@ -658,18 +667,19 @@ t_rules() {
     grep -q '^The active script has no rules\.$' "$OUT" && count=0
   fi
 
-  [[ -n $count ]] || fail "no rule count in rules output" || return 1
+  [[ -n $count ]] || fail "no rule count in filter list output" || return 1
 
-  ((count == markers)) \
-    || fail "rules counts $count, show has $markers '# rule:[' marker(s)"
+  counted="filter list counts $count, filterset show has $markers"
+
+  ((count == markers)) || fail "$counted '# rule:[' marker(s)"
 }
 
 #-----------------------------------------------------------------------------
 t_folders() {
   local count listed
 
-  run_mailctl folders
-  expect_ok folders || return 1
+  run_mailctl folder list
+  expect_ok 'folder list' || return 1
 
   count=$(sed -n 's/^\([0-9][0-9]*\) folder(s),.*/\1/p' "$OUT")
   [[ -n $count ]] || fail "no 'N folder(s)' line" || return 1
@@ -688,7 +698,7 @@ t_folders() {
 t_folder_counts() {
   local problem
 
-  run_mailctl folders --counts --json
+  run_mailctl folder list --counts --json
 
   if ((RC != 0)) && grep -q 'does not advertise LIST-STATUS' "$ERR"; then
     SKIP_REASON="the server does not advertise LIST-STATUS"
@@ -696,10 +706,10 @@ t_folder_counts() {
     return 2
   fi
 
-  expect_ok 'folders --counts --json' || return 1
+  expect_ok 'folder list --counts --json' || return 1
 
   problem=$(python3 -c "$COUNTS_CHECK" "$RAW" 2>&1) \
-    || fail "folders --counts --json: ${problem:-not a counts document}"
+    || fail "folder list --counts --json: ${problem:-not a counts document}"
 }
 
 #-----------------------------------------------------------------------------
@@ -708,8 +718,8 @@ t_backup() {
 
   touch "$WORK/marker"
 
-  run_mailctl backup --dry-run
-  expect_ok 'backup --dry-run' || return 1
+  run_mailctl filterset backup --dry-run
+  expect_ok 'filterset backup --dry-run' || return 1
   expect_line '^\[dry-run\] would write .* to ' || return 1
 
   target=$(sed -n 's/^\[dry-run\] would write .* to \(.*\)$/\1/p' "$OUT")
@@ -728,8 +738,8 @@ t_backup() {
 t_search() {
   local rows
 
-  run_mailctl search --limit 5
-  expect_ok 'search --limit 5' || return 1
+  run_mailctl mail search --limit 5
+  expect_ok 'mail search --limit 5' || return 1
 
   rows=$(message_marks | wc -l)
 
@@ -745,8 +755,8 @@ t_search_unread() {
 
   since=$(date -d '30 days ago' +%F 2> /dev/null || date -v-30d +%F)
 
-  run_mailctl search --unread --since "$since" --limit 5
-  expect_ok "search --unread --since $since --limit 5" || return 1
+  run_mailctl mail search --unread --since "$since" --limit 5
+  expect_ok "mail search --unread --since $since --limit 5" || return 1
 
   rows=$(message_marks | wc -l)
 
@@ -762,11 +772,11 @@ t_search_unread() {
 t_search_sort() {
   local problem
 
-  run_mailctl search --sort size --reverse --limit 3 --json
-  expect_ok 'search --sort size --reverse --limit 3 --json' || return 1
+  run_mailctl mail search --sort size --reverse --limit 3 --json
+  expect_ok 'mail search --sort size --reverse --limit 3 --json' || return 1
 
   problem=$(python3 -c "$SORT_CHECK" "$RAW" 2>&1) \
-    || fail "search --sort: ${problem:-not a listing document}"
+    || fail "mail search --sort: ${problem:-not a listing document}"
 }
 
 #-----------------------------------------------------------------------------
@@ -777,7 +787,7 @@ t_senders() {
 
   since=$(date -d '30 days ago' +%F 2> /dev/null || date -v-30d +%F)
 
-  run_mailctl senders --since "$since" --top 5 --json
+  run_mailctl mail senders --since "$since" --top 5 --json
 
   if ((RC != 0)) && grep -q -- '--max-messages is' "$ERR"; then
     SKIP_REASON="more mail since $since than --max-messages allows"
@@ -785,23 +795,23 @@ t_senders() {
     return 2
   fi
 
-  expect_ok "senders --since $since --top 5 --json" || return 1
+  expect_ok "mail senders --since $since --top 5 --json" || return 1
 
   problem=$(python3 -c "$SENDERS_CHECK" "$RAW" 2>&1) \
-    || fail "senders --json: ${problem:-not a senders document}"
+    || fail "mail senders --json: ${problem:-not a senders document}"
 }
 
 #-----------------------------------------------------------------------------
 t_search_like() {
   local uid
 
-  run_mailctl search --limit 1
-  expect_ok 'search --limit 1' || return 1
+  run_mailctl mail search --limit 1
+  expect_ok 'mail search --limit 1' || return 1
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl search --like "$uid" --limit 5
-  expect_ok "search --like $uid" || return 1
+  run_mailctl mail search --like "$uid" --limit 5
+  expect_ok "mail search --like $uid" || return 1
   expect_line '^Criteria: ' || return 1
 
   # Criteria derived from a message match it, and it is the newest, so it
@@ -817,40 +827,40 @@ t_search_like() {
 t_uidvalidity() {
   local found validity uid other
 
-  run_mailctl search --limit 1 --json
-  expect_ok 'search --limit 1 --json' || return 1
+  run_mailctl mail search --limit 1 --json
+  expect_ok 'mail search --limit 1 --json' || return 1
 
   found=$(python3 -c "$UIDVALIDITY_CHECK" "$RAW" 2>&1) \
-    || fail "search --json: ${found:-not a listing document}" || return 1
+    || fail "mail search --json: ${found:-not a listing document}" || return 1
 
   read -r validity uid <<< "$found"
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl view "$uid" --uidvalidity "$validity"
-  expect_ok "view $uid --uidvalidity $validity" || return 1
+  run_mailctl mail view "$uid" --uidvalidity "$validity"
+  expect_ok "mail view $uid --uidvalidity $validity" || return 1
 
   other=$((validity > 1 ? validity - 1 : validity + 1))
 
-  run_mailctl view "$uid" --uidvalidity "$other"
+  run_mailctl mail view "$uid" --uidvalidity "$other"
 
   ((RC == 1)) \
-    || fail "view $uid --uidvalidity $other exited $RC, not 1" || return 1
+    || fail "mail view $uid --uidvalidity $other exited $RC, not 1" || return 1
 
   grep -q 'renumbered' "$ERR" \
-    || fail "view $uid --uidvalidity $other was not refused as renumbered"
+    || fail "mail view $uid --uidvalidity $other was not refused as renumbered"
 }
 
 #-----------------------------------------------------------------------------
 t_build_filter() {
   local uid
 
-  run_mailctl search --limit 1
-  expect_ok 'search --limit 1' || return 1
+  run_mailctl mail search --limit 1
+  expect_ok 'mail search --limit 1' || return 1
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl search --like "$uid" --build-filter --json
-  expect_ok "search --like $uid --build-filter --json" || return 1
+  run_mailctl mail search --like "$uid" --build-filter --json
+  expect_ok "mail search --like $uid --build-filter --json" || return 1
 
   # Only the document goes to stdout; the message shown goes to stderr.
   [[ $(head -n 1 "$OUT") == '{' ]] \
@@ -862,16 +872,16 @@ t_build_filter() {
 
 #-----------------------------------------------------------------------------
 t_json() {
-  run_mailctl search --json --limit 3
-  expect_ok 'search --json --limit 3' || return 1
+  run_mailctl mail search --json --limit 3
+  expect_ok 'mail search --json --limit 3' || return 1
   expect_document messages || return 1
 
-  run_mailctl folders --json
-  expect_ok 'folders --json' || return 1
+  run_mailctl folder list --json
+  expect_ok 'folder list --json' || return 1
   expect_document folders || return 1
 
-  run_mailctl rules --json
-  expect_ok 'rules --json' || return 1
+  run_mailctl filter list --json
+  expect_ok 'filter list --json' || return 1
   expect_document rules
 }
 
@@ -879,42 +889,42 @@ t_json() {
 t_view_keeps_unread() {
   local uid
 
-  run_mailctl search --limit 20
-  expect_ok 'search --limit 20' || return 1
+  run_mailctl mail search --limit 20
+  expect_ok 'mail search --limit 20' || return 1
 
   uid=$(message_marks | awk '$2 ~ /N/ { print $1; exit }')
   need "$uid" "no unread message among the newest 20" || return 2
 
-  run_mailctl view "$uid"
-  expect_ok "view $uid" || return 1
+  run_mailctl mail view "$uid"
+  expect_ok "mail view $uid" || return 1
 
-  run_mailctl search --limit 20
-  expect_ok 'search --limit 20' || return 1
+  run_mailctl mail search --limit 20
+  expect_ok 'mail search --limit 20' || return 1
 
   message_marks \
     | awk -v uid="$uid" '$1 == uid && $2 ~ /N/ { f = 1 } END { exit !f }' \
-    || fail "uid $uid is no longer marked unread (N) after view"
+    || fail "uid $uid is no longer marked unread (N) after mail view"
 }
 
 #-----------------------------------------------------------------------------
 t_mark() {
   local uid before after
 
-  run_mailctl search --limit 1
-  expect_ok 'search --limit 1' || return 1
+  run_mailctl mail search --limit 1
+  expect_ok 'mail search --limit 1' || return 1
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
   before=$(message_marks | awk '{ print $2; exit }')
 
-  run_mailctl mark --dry-run "$uid" --flag
-  expect_ok "mark --dry-run $uid --flag" || return 1
+  run_mailctl mail mark --dry-run "$uid" --flag
+  expect_ok "mail mark --dry-run $uid --flag" || return 1
   expect_nothing_changed || return 1
   expect_line '^\[dry-run\] would mark|^Nothing to change' || return 1
 
   # Wider than the first listing, so mail arriving meanwhile cannot push
   # the message out of it.
-  run_mailctl search --limit 20
-  expect_ok 'search --limit 20' || return 1
+  run_mailctl mail search --limit 20
+  expect_ok 'mail search --limit 20' || return 1
   after=$(message_marks | awk -v uid="$uid" '$1 == uid { print $2; exit }')
 
   [[ $after == "$before" ]] \
@@ -925,22 +935,22 @@ t_mark() {
 t_apply() {
   local folder uid from
 
-  run_mailctl folders
-  expect_ok folders || return 1
+  run_mailctl folder list
+  expect_ok 'folder list' || return 1
   folder=$(pick_folder)
 
-  run_mailctl search --limit 1
-  expect_ok 'search --limit 1' || return 1
+  run_mailctl mail search --limit 1
+  expect_ok 'mail search --limit 1' || return 1
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl view "$uid"
-  expect_ok "view $uid" || return 1
+  run_mailctl mail view "$uid"
+  expect_ok "mail view $uid" || return 1
   from=$(view_from_address)
   need "$from" "the newest message has no From address" || return 2
 
-  run_mailctl apply --dry-run --from "$from" --fileinto "$folder"
-  expect_ok 'apply --dry-run' || return 1
+  run_mailctl filter apply --dry-run --from "$from" --fileinto "$folder"
+  expect_ok 'filter apply --dry-run' || return 1
   expect_nothing_changed || return 1
 
   expect_line '^\[dry-run\]|^No existing messages match\.$'
@@ -950,17 +960,17 @@ t_apply() {
 t_apply_like() {
   local folder uid
 
-  run_mailctl folders
-  expect_ok folders || return 1
+  run_mailctl folder list
+  expect_ok 'folder list' || return 1
   folder=$(pick_folder)
 
-  run_mailctl search --limit 1
-  expect_ok 'search --limit 1' || return 1
+  run_mailctl mail search --limit 1
+  expect_ok 'mail search --limit 1' || return 1
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl apply --dry-run --like "$uid" --fileinto "$folder"
-  expect_ok "apply --dry-run --like $uid" || return 1
+  run_mailctl filter apply --dry-run --like "$uid" --fileinto "$folder"
+  expect_ok "filter apply --dry-run --like $uid" || return 1
   expect_nothing_changed || return 1
 
   expect_line "^Message uid $uid in " || return 1
@@ -971,12 +981,12 @@ t_apply_like() {
 t_add() {
   local folder
 
-  run_mailctl folders
-  expect_ok folders || return 1
+  run_mailctl folder list
+  expect_ok 'folder list' || return 1
   folder=$(pick_folder)
 
-  run_mailctl add --dry-run --subject 'Café' --fileinto "$folder"
-  expect_ok 'add --dry-run' || return 1
+  run_mailctl filter add --dry-run --subject 'Café' --fileinto "$folder"
+  expect_ok 'filter add --dry-run' || return 1
   expect_nothing_changed || return 1
 
   expect_line '^\[dry-run\] the script was NOT uploaded\.$' || return 1
@@ -987,15 +997,15 @@ t_add() {
 t_add_create_folder() {
   local probe="MailctlReadonlyProbe-$$"
 
-  run_mailctl add --dry-run --from probe@example.invalid \
+  run_mailctl filter add --dry-run --from probe@example.invalid \
     --fileinto "$probe" --create-folder
-  expect_ok 'add --dry-run --create-folder' || return 1
+  expect_ok 'filter add --dry-run --create-folder' || return 1
   expect_nothing_changed || return 1
 
   expect_line '^\[dry-run\] would create IMAP folder' || return 1
 
-  run_mailctl folders
-  expect_ok folders || return 1
+  run_mailctl folder list
+  expect_ok 'folder list' || return 1
 
   if folder_names | grep -qF -- "$probe"; then
     fail "the probe folder exists after a dry run"
@@ -1008,17 +1018,17 @@ t_add_create_folder() {
 t_add_like() {
   local folder uid
 
-  run_mailctl folders
-  expect_ok folders || return 1
+  run_mailctl folder list
+  expect_ok 'folder list' || return 1
   folder=$(pick_folder)
 
-  run_mailctl search --limit 1
-  expect_ok 'search --limit 1' || return 1
+  run_mailctl mail search --limit 1
+  expect_ok 'mail search --limit 1' || return 1
   uid=$(message_marks | awk '{ print $1; exit }')
   need "$uid" "the folder has no messages" || return 2
 
-  run_mailctl add --dry-run --like "$uid" --fileinto "$folder"
-  expect_ok "add --dry-run --like $uid" || return 1
+  run_mailctl filter add --dry-run --like "$uid" --fileinto "$folder"
+  expect_ok "filter add --dry-run --like $uid" || return 1
   expect_nothing_changed || return 1
 
   expect_line "^Message uid $uid in " || return 1
@@ -1029,23 +1039,23 @@ t_add_like() {
 t_remove_rule() {
   local name
 
-  run_mailctl show
-  expect_ok show || return 1
+  run_mailctl filterset show
+  expect_ok 'filterset show' || return 1
 
   # The marker is the rule's name exactly as the script holds it. A marker
   # that is there but does not parse is a failure, not a reason to skip.
   name=$(sed -n 's/^# rule:\[\(.*\)\]$/\1/p' "$OUT" | head -n 1)
 
   if [[ -z $name ]] && grep -q '^# rule:\[' "$OUT"; then
-    fail "show has '# rule:[' markers, but none parsed as a name"
+    fail "filterset show has '# rule:[' markers, but none parsed as a name"
 
     return 1
   fi
 
   need "$name" "the active script has no rules" || return 2
 
-  run_mailctl remove-rule --dry-run "$name"
-  expect_ok 'remove-rule --dry-run' || return 1
+  run_mailctl filter remove --dry-run "$name"
+  expect_ok 'filter remove --dry-run' || return 1
   expect_nothing_changed || return 1
 
   expect_line '^--- sieve diff ---$' || return 1
@@ -1059,13 +1069,13 @@ t_disable_rule() {
   local name switch
   local planned='^\[dry-run\] the script was NOT uploaded\.$'
 
-  run_mailctl show
-  expect_ok show || return 1
+  run_mailctl filterset show
+  expect_ok 'filterset show' || return 1
 
   name=$(sed -n 's/^# rule:\[\(.*\)\]$/\1/p' "$OUT" | head -n 1)
 
   if [[ -z $name ]] && grep -q '^# rule:\[' "$OUT"; then
-    fail "show has '# rule:[' markers, but none parsed as a name"
+    fail "filterset show has '# rule:[' markers, but none parsed as a name"
 
     return 1
   fi
@@ -1073,8 +1083,8 @@ t_disable_rule() {
   need "$name" "the active script has no rules" || return 2
 
   for switch in disable enable; do
-    run_mailctl "$switch-rule" --dry-run "$name"
-    expect_ok "$switch-rule --dry-run" || return 1
+    run_mailctl filter "$switch" --dry-run "$name"
+    expect_ok "filter $switch --dry-run" || return 1
     expect_nothing_changed || return 1
 
     expect_line "$planned|already ${switch}d in .*; nothing to change\.$" \
@@ -1084,8 +1094,8 @@ t_disable_rule() {
 
 #-----------------------------------------------------------------------------
 t_subscribe() {
-  run_mailctl subscribe --dry-run INBOX
-  expect_ok 'subscribe --dry-run INBOX' || return 1
+  run_mailctl folder subscribe --dry-run INBOX
+  expect_ok 'folder subscribe --dry-run INBOX' || return 1
   expect_nothing_changed || return 1
 
   expect_line 'already subscribed; nothing to change\.$|^\[dry-run\]'
@@ -1097,14 +1107,14 @@ t_create_folder() {
 
   probe="MailctlReadonlyProbe-$(date -u +%Y%m%dT%H%M%S)-$$"
 
-  run_mailctl create-folder --dry-run "$probe"
-  expect_ok 'create-folder --dry-run' || return 1
+  run_mailctl folder create --dry-run "$probe"
+  expect_ok 'folder create --dry-run' || return 1
   expect_nothing_changed || return 1
 
   expect_line '^\[dry-run\] would create IMAP folder' || return 1
 
-  run_mailctl folders
-  expect_ok folders || return 1
+  run_mailctl folder list
+  expect_ok 'folder list' || return 1
 
   if folder_names | grep -qF -- "$probe"; then
     fail "the probe folder exists after a dry run"
@@ -1118,8 +1128,8 @@ t_create_folder() {
 t_rename_folder() {
   local folder probe
 
-  run_mailctl folders
-  expect_ok folders || return 1
+  run_mailctl folder list
+  expect_ok 'folder list' || return 1
   folder=$(pick_folder)
 
   [[ ${folder^^} == INBOX ]] && folder=''
@@ -1128,8 +1138,8 @@ t_rename_folder() {
 
   probe="MailctlReadonlyProbe-$(date -u +%Y%m%dT%H%M%S)-$$"
 
-  run_mailctl rename-folder --dry-run "$folder" "$probe"
-  expect_ok 'rename-folder --dry-run' || return 1
+  run_mailctl folder rename --dry-run "$folder" "$probe"
+  expect_ok 'folder rename --dry-run' || return 1
   expect_nothing_changed || return 1
 
   expect_line '^\[dry-run\] nothing was renamed'
@@ -1140,12 +1150,12 @@ t_rename_folder() {
 t_optimize_rules() {
   local problem
 
-  run_mailctl optimize-rules --dry-run --json
-  expect_ok 'optimize-rules --dry-run --json' || return 1
+  run_mailctl filter optimize --dry-run --json
+  expect_ok 'filter optimize --dry-run --json' || return 1
   expect_nothing_changed || return 1
 
   problem=$(python3 -c "$OPTIMIZE_CHECK" "$RAW" 2>&1) \
-    || fail "optimize-rules --json: ${problem:-not a plan document}"
+    || fail "filter optimize --json: ${problem:-not a plan document}"
 }
 
 #-----------------------------------------------------------------------------

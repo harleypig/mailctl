@@ -145,7 +145,7 @@ def reject_actions(requested: Iterable[str]) -> None:
                 f"MXRoute restriction -- the MXRoute control panel is where "
                 f"this feature lives if you need it.",
                 code="unimplemented_action",
-                fields={"operation": "test"},
+                fields={"operation": "server test"},
             )
 
 
@@ -337,7 +337,9 @@ def check_criteria_extensions(
             f"{', '.join(repr(name) for name in missing)}, which this "
             f"rule's criteria need, so it cannot be saved as a rule.",
             code="extension_missing",
-            fields={"operations": ("test", "search", "apply")},
+            fields={
+                "operations": ("server test", "mail search", "filter apply")
+            },
         )
 
 

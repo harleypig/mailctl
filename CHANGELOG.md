@@ -4,6 +4,58 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BREAKING CHANGES:
+
+* **The commands are grouped by what they act on, noun first: `mailctl
+  <group> <action>`** ([#219]). `mailctl filter add` replaces `mailctl
+  add`, `mailctl mail search` replaces `mailctl search`, and so on for
+  every command; each takes the same flags and does the same thing as
+  before under its new name. The top-level help lists the groups — `mail`,
+  `folder`, `filter`, `filterset`, `server`, `config` — and each group's
+  help lists its commands; `mailctl help GROUP [ACTION]` prints the same as
+  `--help` there. `filterset` is offered only where the provider stores
+  several sets of filters, as `mxroute` does. The old names are a clean
+  break, with no aliases: each is refused with exit status 2 and a message
+  naming the command it is now, such as `'rules' is now 'mailctl filter
+  list'`; `from-message` and `messages`, gone since 0.9.0, now point at
+  `filter add --like` and `mail search` the same way. A `--dry-run --json`
+  plan's `command` is the new path, such as `"filter add"`, so every
+  `--json` document's `version` is now `2`; the filter document, the probe,
+  a saved baseline, and the drift report keep their own versions, which
+  are unchanged. A message that points at another command names the new
+  one. A script calling mailctl needs the new names:
+
+  | Old | New |
+  |-----|-----|
+  | `search` | `mail search` |
+  | `view` | `mail view` |
+  | `mark` | `mail mark` |
+  | `senders` | `mail senders` |
+  | `folders` | `folder list` |
+  | `create-folder` | `folder create` |
+  | `rename-folder` | `folder rename` |
+  | `subscribe` | `folder subscribe` |
+  | `unsubscribe` | `folder unsubscribe` |
+  | `rules` | `filter list` |
+  | `add` | `filter add` |
+  | `apply` | `filter apply` |
+  | `remove-rule` | `filter remove` |
+  | `move-rule` | `filter move` |
+  | `rename-rule` | `filter rename` |
+  | `enable-rule` | `filter enable` |
+  | `disable-rule` | `filter disable` |
+  | `optimize-rules` | `filter optimize` |
+  | `list` | `filterset list` |
+  | `show` | `filterset show` |
+  | `backup` | `filterset backup` |
+  | `restore` | `filterset restore` |
+  | `test` | `server test` |
+  | `probe` | `server probe` |
+  | `save-baseline` | `server baseline save` |
+  | `show-baseline` | `server baseline show` |
+  | `check-baseline` | `server baseline check` |
+  | `migrate-config` | `config migrate` |
+
 ## 0.10.0
 
 FEATURES:
@@ -1339,6 +1391,7 @@ NOTES:
 [#192]: https://github.com/harleypig/mailctl/issues/192
 [#196]: https://github.com/harleypig/mailctl/issues/196
 [#10]: https://github.com/harleypig/mailctl/issues/10
+[#219]: https://github.com/harleypig/mailctl/issues/219
 [#216]: https://github.com/harleypig/mailctl/issues/216
 [#205]: https://github.com/harleypig/mailctl/issues/205
 [#208]: https://github.com/harleypig/mailctl/issues/208

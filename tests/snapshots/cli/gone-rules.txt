@@ -1,0 +1,11 @@
+$ mailctl rules
+exit: SystemExit(2)
+--- stdout
+
+--- stderr
+usage: mailctl [-h] [--version] [--verbose] [--debug]
+               {mail,folder,filter,filterset,server,config,help} ...
+mailctl: error: 'rules' is now 'mailctl filter list'; the commands are grouped (see 'mailctl help')
+
+--- sieve calls
+--- imap calls

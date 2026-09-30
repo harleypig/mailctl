@@ -1,4 +1,4 @@
-$ mailctl rename-folder Lists Archive --dry-run
+$ mailctl folder rename Lists Archive --dry-run
 exit: 0
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

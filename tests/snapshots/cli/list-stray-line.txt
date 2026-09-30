@@ -1,4 +1,4 @@
-$ mailctl list
+$ mailctl filterset list
 exit: 0
 --- stdout
 * managesieve   (active)

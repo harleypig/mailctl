@@ -235,7 +235,7 @@ def test_each_flag_reaches_the_resolver_as_a_placement(argv, expected):
     The CLI builds the engine's neutral placement, which the provider
     translates for its own script handling.
     """
-    args = build_parser().parse_args(["add", "--to", "x", *argv])
+    args = build_parser().parse_args(["filter", "add", "--to", "x", *argv])
 
     assert placement_from_args(args) == expected
 
@@ -249,7 +249,9 @@ def test_two_placement_flags_at_once_are_refused_by_the_parser():
     to be read first would win, and the other flag would be ignored.
     """
     with pytest.raises(SystemExit):
-        build_parser().parse_args(["add", "--to", "x", "--first", "--last"])
+        build_parser().parse_args(
+            ["filter", "add", "--to", "x", "--first", "--last"]
+        )
 
 
 # ----------------------------------------------------------------------------
@@ -268,7 +270,7 @@ def test_move_rule_with_an_empty_anchor_is_refused_before_connecting(
         raise AssertionError("connected before refusing")
 
     monkeypatch.setattr(cli, "connect", no_connect)
-    args = build_parser().parse_args(["move-rule", "Lists", flag, ""])
+    args = build_parser().parse_args(["filter", "move", "Lists", flag, ""])
 
     with pytest.raises(MailctlError, match="need a rule name"):
         cli.cmd_move_rule(args)
@@ -291,7 +293,7 @@ def test_add_with_an_empty_anchor_is_refused_before_connecting(
 
     monkeypatch.setattr(cli, "connect", no_connect)
     args = build_parser().parse_args(
-        ["add", "--from", "a@b.c", "--fileinto", "X", flag, ""]
+        ["filter", "add", "--from", "a@b.c", "--fileinto", "X", flag, ""]
     )
 
     with pytest.raises(MailctlError, match="need a rule name"):

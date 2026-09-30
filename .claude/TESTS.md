@@ -93,8 +93,8 @@ where every write path is proved first.
      servers echo a sentinel address, host, IPv4 address, folder, and
      script name back, and none of them, the password, or the script's
      text may reach the report ([#39][i39]). `test_utilities_uids.py` pins
-     the UIDVALIDITY check ([#204][i204]): a stale pin given to `mark`
-     refused before any write, and before its flags are read; `view` and
+     the UIDVALIDITY check ([#204][i204]): a stale pin given to `mail mark`
+     refused before any write, and before its flags are read; `mail view` and
      `--like` refusing one, a UID lost in the renumbering included; a plan's
      own value checked again at execute; and reading it costing no SELECT
      of its own. The fakes they share are `tests/utilities_support.py`.
@@ -112,7 +112,7 @@ where every write path is proved first.
      `disabled_extensions` refusing, falling back, and doing nothing where
      the server lacks the extension anyway. Its ladder is in
      `test_config.py`.
-   - **The old name** (`test_migration.py`) — `migrate-config` moving the
+   - **The old name** (`test_migration.py`) — `config migrate` moving the
      old config directory (modes kept, a clash refused, `--dry-run` inert),
      the old-directory warning and when it stays silent, and old
      `MXROUTE_*` names reported by name — checked against a sentinel value
@@ -123,6 +123,12 @@ where every write path is proved first.
      server call into `tests/snapshots/cli/<name>.txt`. A behaviour change
      shows up as a snapshot diff; regenerate with
      `MAILCTL_UPDATE_SNAPSHOTS=1` and read the diff before committing.
+   - **The command tree** (`test_cli_help.py`, over `tests/cli_support.py`,
+     which reads the groups and commands off the parser) — `mailctl help` with
+     a group, or a group and an action, is the same text and exit as `--help`
+     there, for every one; the groups are listed in their decided order; and
+     every old flat name is refused, exit 2, naming the command it is now,
+     wherever it is the command word and never as an argument ([#219][i219]).
    - **`--json`** (`test_json_output.py`) — a `Secret` refused rather than
      serialised, failures as one JSON line, and which commands offer it.
    - **The ManageSieve wrapper** (`test_managesieve_client.py`) — the real
@@ -194,20 +200,21 @@ where every write path is proved first.
      `mxroute` hands back the neutral records, never its components'.
      Fakes without a capability pin what that removes ([#99][i99]): without
      `stop` a default rule still plans; without `ordering` the placement
-     flags, `move-rule`, and `optimize-rules` are not offered in help and are
-     refused by name if given; without `extensions` `disabled_extensions` is
-     refused; without `raw_query` `search --raw` is not offered in help and is
-     refused by name, by the CLI and by the utility alike; without `disable`
-     `disable-rule` and `enable-rule` are not listed and a switch is refused;
-     without `rename` `rename-rule` is not listed and a rename is refused;
-     without `mark` `mark` is not listed and is refused; without
-     `folder_counts` `folders --counts` is not offered and is refused;
-     without `uidvalidity` `--uidvalidity` is not offered and a pin is
-     refused, while listing and reading still work; a
-     connection flag the provider does not read is hidden and refused; and
-     `add` and `test` under a fake carry its own wording, with nothing about
-     Sieve or MXroute. `mxroute`'s help hides nothing but the always-hidden
-     flags.
+     flags, `filter move`, and `filter optimize` are not offered in help and
+     are refused by name if given; without `extensions` `disabled_extensions`
+     is refused; without `raw_query` `mail search --raw` is not offered in
+     help and is refused by name, by the CLI and by the utility alike; without
+     `disable` `filter disable` and `filter enable` are not listed and a
+     switch is refused; without `rename` `filter rename` is not listed and a
+     rename is refused; without `mark` `mail mark` is not listed and is
+     refused; without `folder_counts` `folder list --counts` is not offered
+     and is refused; without `uidvalidity` `--uidvalidity` is not offered and
+     a pin is refused, while listing and reading still work; without
+     `rule_sets` the `filterset` group is not listed, and its commands still
+     parse and run; a connection flag the provider does not read is hidden and
+     refused; and `filter add` and `server test` under a fake carry its own
+     wording, with nothing about Sieve or MXroute. `mxroute`'s help hides
+     nothing but the always-hidden flags.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
@@ -233,59 +240,58 @@ running Docker daemon and skips cleanly without one, or without
 `MAILCTL_CONTAINER=1` exactly — its own gate, never `MAILCTL_LIVE`, so a
 container run cannot be mistaken for an MXroute one ([#49][i49]).
 
-- **What it proves.** `add` merging beside a Roundcube-written rule (ADR
-  0002), `remove-rule`, `move-rule`, `disable-rule` then `enable-rule` (a
-  replaced disabled rule staying disabled), a fresh account's new active
-  script, `backup` then `restore` byte for byte, `--create-folder` with and
-  without `--no-subscribe` and the `subscribe` / `unsubscribe` toggles,
-  `apply` moving, flagging and discarding existing mail, `apply --keep`
-  copying it as the saved rule does, both copies flagged ([#188][i188]),
-  and run again copying nothing twice ([#192][i192]), `--max-messages`
-  refusing the whole pass, one filter document from `search --build-filter
-  --json` driving both `add --filter` and `apply --filter`, `view` and the
-  message listing leaving mail unread, `mark` setting then clearing read,
-  flagged, and a keyword and refusing a UID the folder does not hold, and
-  `search` and `apply --dry-run` selecting appended mail by body (a non-ASCII
-  one included), arrival date, `--older-than`, and read or flagged state,
-  alone and together ([#152][i152]). Its dates are counted from the day it
-  runs, so it means the same whenever it does. Reads are here too: `probe
-  --json` checked against what the server says about itself, and against
-  printing the password; `probe --report` finding nothing to report on
-  this recognised server, and neither `probe` nor `test` calling it
-  unrecognised ([#39][i39]); `folders --counts --json` checked against each
-  folder's own `STATUS`, leaving every message unread ([#157][i157]); and
-  `senders` in `test_senders.py` ([#160][i160]), counting each address and its
-  unread exactly, grouping by domain and List-Id, refusing above its ceiling,
-  and leaving every message as it was. `search --sort` runs against Dovecot's
-  own `SORT` in `test_search_sort.py` ([#159][i159]). UIDVALIDITY in
-  `test_uidvalidity.py` ([#204][i204]): a folder deleted and made again
-  gets a new value from Dovecot (asserted, not assumed), `search --json`
-  reports the server's, and a UID pinned to the old value is refused by
-  `mark` and `view`, leaving the message that now has it unread, while a
-  pin to the current value marks it. An IMAP `ALERT` in `test_alerts.py`
-  ([#205][i205]): the image's post-login script (`image/postlogin.sh`)
-  sends one to a user whose name starts with `alert-`, and it reaches
-  stderr, under `--json` too, with stdout untouched; any other user is
-  sent nothing, so no other test meets one. A Sieve `WARNINGS` in
+- **What it proves.** `filter add` merging beside a Roundcube-written rule
+  (ADR 0002), `filter remove`, `filter move`, `filter disable` then `filter
+  enable` (a replaced disabled rule staying disabled), a fresh account's new
+  active script, `filterset backup` then `filterset restore` byte for byte,
+  `--create-folder` with and without `--no-subscribe` and the `folder
+  subscribe` / `folder unsubscribe` toggles, `filter apply` moving, flagging
+  and discarding existing mail, `filter apply --keep` copying it as the saved
+  rule does, both copies flagged ([#188][i188]), and run again copying nothing
+  twice ([#192][i192]), `--max-messages` refusing the whole pass, one filter
+  document from `mail search --build-filter --json` driving both `filter add
+  --filter` and `filter apply --filter`, `mail view` and the message listing
+  leaving mail unread, `mail mark` setting then clearing read, flagged, and a
+  keyword and refusing a UID the folder does not hold, and `mail search` and
+  `filter apply --dry-run` selecting appended mail by body (a non-ASCII one
+  included), arrival date, `--older-than`, and read or flagged state, alone
+  and together ([#152][i152]). Its dates are counted from the day it runs, so
+  it means the same whenever it does. Reads are here too: `probe --json`
+  checked against what the server says about itself, and against printing the
+  password; `server probe --report` finding nothing to report on this
+  recognised server, and neither `server probe` nor `server test` calling it
+  unrecognised ([#39][i39]); `folder list --counts --json` checked against
+  each folder's own `STATUS`, leaving every message unread ([#157][i157]); and
+  `mail senders` in `test_senders.py` ([#160][i160]), counting each address
+  and its unread exactly, grouping by domain and List-Id, refusing above its
+  ceiling, and leaving every message as it was. `mail search --sort` runs
+  against Dovecot's own `SORT` in `test_search_sort.py` ([#159][i159]).
+  UIDVALIDITY in `test_uidvalidity.py` ([#204][i204]): a folder deleted and
+  made again gets a new value from Dovecot (asserted, not assumed), `mail
+  search --json` reports the server's, and a UID pinned to the old value is
+  refused by `mail mark` and `mail view`, leaving the message that now has it
+  unread, while a pin to the current value marks it. An IMAP `ALERT` in
+  `test_alerts.py` ([#205][i205]): the image's post-login script
+  (`image/postlogin.sh`) sends one to a user whose name starts with `alert-`,
+  and it reaches stderr, under `--json` too, with stdout untouched; any other
+  user is sent nothing, so no other test meets one. A Sieve `WARNINGS` in
   `test_sieve_warnings.py` ([#208][i208]): Pigeonhole warns on `addflag
-  "\\Bogus"`, and PUTSCRIPT's warning reaches stderr once. And
-  baselines: one saved from the server checks clean against it, saving
-  writes nothing there, and drift made by editing the saved file exits 3 or
-  4 as documented.
-  `rename-rule` in `test_rename_rule.py` ([#216][i216]): the script's bytes
-  changed only in the two name markers, a disabled rule's included, the
-  renamed rule still filing new mail and the disabled one still not, and a
-  taken name refused with the script untouched.
-  `rename-folder` in `test_rename_folder.py` ([#5][i5]): the folder and its
-  subfolder moved, both subscribed under the new names and gone from `LSUB`
-  under the old, the message count kept, and the script's bytes changed only
-  in the two folder names. `optimize-rules` in `test_optimize_rules.py`
-  ([#21][i21]): the same messages handed to `dovecot-lda` before and after a
-  merge and a removal land in the same folders, a reorder moves only the
-  starved rule's mail, and a dry run stores nothing. New mail is also
-  handed to `dovecot-lda`, which runs the uploaded script, so the
-  going-forward half is seen filing it too — by header, and by body through
-  an `add --body` rule.
+  "\\Bogus"`, and PUTSCRIPT's warning reaches stderr once. And baselines: one
+  saved from the server checks clean against it, saving writes nothing there,
+  and drift made by editing the saved file exits 3 or 4 as documented. `filter
+  rename` in `test_rename_rule.py` ([#216][i216]): the script's bytes changed
+  only in the two name markers, a disabled rule's included, the renamed rule
+  still filing new mail and the disabled one still not, and a taken name
+  refused with the script untouched. `folder rename` in
+  `test_rename_folder.py` ([#5][i5]): the folder and its subfolder moved, both
+  subscribed under the new names and gone from `LSUB` under the old, the
+  message count kept, and the script's bytes changed only in the two folder
+  names. `filter optimize` in `test_optimize_rules.py` ([#21][i21]): the same
+  messages handed to `dovecot-lda` before and after a merge and a removal land
+  in the same folders, a reorder moves only the starved rule's mail, and a dry
+  run stores nothing. New mail is also handed to `dovecot-lda`, which runs the
+  uploaded script, so the going-forward half is seen filing it too — by
+  header, and by body through a `filter add --body` rule.
 - **The oracle is not mailctl.** Each test reads the server back with
   sievelib's and IMAPClient's own clients, and a byte-exact claim with the
   script file on the container's disk, so a write that mailctl both gets
@@ -356,12 +362,12 @@ script, not to `tests/live/`. `search-unread` is one: a single `search
 --unread --since <30 days ago> --limit 5`, checking the date and state
 filters reach MXroute and every row it lists is unread ([#152][i152]). It
 does not check each row's date, since a message near midnight can show on
-either side of the server's. `optimize-rules` is another: one
-`optimize-rules --dry-run --json`, checking the plan is well formed, has a
+either side of the server's. `filter optimize` is another: one
+`filter optimize --dry-run --json`, checking the plan is well formed, has a
 diff exactly when it proposes a change, and uploaded nothing
 ([#21][i21]). `uidvalidity` is a third: the newest UID and its
-UIDVALIDITY from one `search --json`, a `view` pinned to that value, and a
-`view` pinned to another, which must be refused ([#204][i204]).
+UIDVALIDITY from one `mail search --json`, a `mail view` pinned to that value,
+and a `mail view` pinned to another, which must be refused ([#204][i204]).
 
 ## Live-test credentials & safety
 
@@ -407,8 +413,8 @@ written in the PR as the first draft of the user-facing docs
 (`testing.md` › *The manual verification bar*). This matters more than usual
 here: a filter that was written but silently does nothing looks identical, at
 the terminal, to one that works. "The rule was added" is not a success
-criterion; "`mailctl list` shows the rule, and a new message matching it
-lands in `Lists/GitHub`" is.
+criterion; "`mailctl filter list` shows the rule, and a new message matching
+it lands in `Lists/GitHub`" is.
 
 ## Running
 
@@ -450,3 +456,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i208]: https://github.com/harleypig/mailctl/issues/208
 [i160]: https://github.com/harleypig/mailctl/issues/160
 [i216]: https://github.com/harleypig/mailctl/issues/216
+[i219]: https://github.com/harleypig/mailctl/issues/219

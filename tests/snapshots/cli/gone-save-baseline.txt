@@ -1,0 +1,11 @@
+$ mailctl --verbose save-baseline
+exit: SystemExit(2)
+--- stdout
+
+--- stderr
+usage: mailctl [-h] [--version] [--verbose] [--debug]
+               {mail,folder,filter,filterset,server,config,help} ...
+mailctl: error: 'save-baseline' is now 'mailctl server baseline save'; the commands are grouped (see 'mailctl help')
+
+--- sieve calls
+--- imap calls

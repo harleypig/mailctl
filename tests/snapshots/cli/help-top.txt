@@ -1,0 +1,29 @@
+$ mailctl --help
+exit: SystemExit(0)
+--- stdout
+usage: mailctl [-h] [--version] [--verbose] [--debug]
+               {mail,folder,filter,filterset,server,config,help} ...
+
+Read, sort, and filter the mail on your account.
+
+positional arguments:
+  {mail,folder,filter,filterset,server,config,help}
+    mail                find, read, and mark messages
+    folder              list, create, rename, and subscribe to folders
+    filter              save filters, and apply them to mail already delivered
+    filterset           list, show, back up, and restore sets of filters
+    server              check the servers, and what they report
+    config              the configuration mailctl reads
+    help                show help for mailctl, a group, or a command
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+  --verbose, -v         step-by-step progress
+  --debug               show a full traceback on failure (never prints
+                        credentials)
+
+--- stderr
+
+--- sieve calls
+--- imap calls

@@ -1,4 +1,4 @@
-"""``mailctl probe --json`` against a real Dovecot + Pigeonhole (#101).
+"""``mailctl server probe --json`` against a real Dovecot + Pigeonhole (#101).
 
 The probe is what a provider record's *Observed* tier is copied from, so
 what it prints has to be what the server says. Each assertion below reads
@@ -24,7 +24,7 @@ def test_probe_json_is_what_the_server_says(account):
     server runs, or if the document's shape or version moves."""
     account.seed_script("managesieve", SCRIPT)
 
-    result = account.run("probe", "--json")
+    result = account.run("server", "probe", "--json")
 
     assert result.code == 0, result.err
     assert result.err == ""
@@ -93,8 +93,8 @@ def test_probe_prints_no_credential_and_changes_nothing(account):
 
     before = account.script("managesieve"), account.active_script()
 
-    human = account.run("probe", "-v")
-    document = account.run("probe", "--json", "-v")
+    human = account.run("server", "probe", "-v")
+    document = account.run("server", "probe", "--json", "-v")
 
     assert human.code == document.code == 0
     assert password
@@ -122,9 +122,9 @@ def test_a_known_server_has_no_unknown_server_report(account):
     assert "pigeonhole" in implementation.lower()
     assert b"dovecot" in b" ".join(fields[1::2]).lower()
 
-    report = account.run("probe", "--report")
-    human = account.run("probe")
-    test = account.run("test")
+    report = account.run("server", "probe", "--report")
+    human = account.run("server", "probe")
+    test = account.run("server", "test")
 
     assert report.code == human.code == test.code == 0, report.err
     assert report.out == ""

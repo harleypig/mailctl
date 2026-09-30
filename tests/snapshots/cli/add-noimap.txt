@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --no-imap --dry-run
+$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --no-imap --dry-run
 exit: 0
 --- stdout
 

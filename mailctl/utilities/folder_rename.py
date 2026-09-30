@@ -136,7 +136,7 @@ def _check_names(
             "folder and leaves an empty INBOX behind (RFC 3501 section "
             "6.3.5), which is not a rename.",
             code="rename_inbox",
-            fields={"operation": "apply"},
+            fields={"operation": "filter apply"},
         )
 
     if not listing.exists(old):
@@ -147,7 +147,7 @@ def _check_names(
                 f"{case_variant_hint(listing.case_variants(old))}"
             ).rstrip(),
             code="no_such_folder",
-            fields={"operation": "folders"},
+            fields={"operation": "folder list"},
         )
 
     if same_folder(old, new):
@@ -338,7 +338,11 @@ def _interrupted(
         return MailctlError(
             f"{before}{saved}",
             code="rename_not_activated",
-            fields={"before": before, "saved": saved, "operation": "list"},
+            fields={
+                "before": before,
+                "saved": saved,
+                "operation": "filterset list",
+            },
         )
 
     state = (
@@ -359,7 +363,7 @@ def _interrupted(
         code="rename_interrupted",
         fields={
             "before": before,
-            "operation": "rename-folder",
+            "operation": "folder rename",
             "arguments": (plan.new, plan.old),
         },
     )
@@ -501,7 +505,7 @@ def verify_folder_rename(
                 label,
                 False,
                 "webmail will not show it",
-                operation="subscribe",
+                operation="folder subscribe",
                 arguments=(new,),
             )
         )

@@ -1,4 +1,4 @@
-$ mailctl remove-rule keep-boss --script spare --activate --yes
+$ mailctl filter remove keep-boss --script spare --activate --yes
 exit: 0
 --- stdout
 

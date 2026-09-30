@@ -1,4 +1,4 @@
-$ mailctl search --sort size --reverse --limit 2
+$ mailctl mail search --sort size --reverse --limit 2
 exit: 0
 --- stdout
 2 message(s) in 'INBOX' (UIDVALIDITY 1727000000), by size, largest first:

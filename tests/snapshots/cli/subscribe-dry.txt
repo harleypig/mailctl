@@ -1,4 +1,4 @@
-$ mailctl subscribe INBOX.spam --dry-run
+$ mailctl folder subscribe INBOX.spam --dry-run
 exit: 0
 --- stdout
 [dry-run] would subscribe to 'INBOX.spam'

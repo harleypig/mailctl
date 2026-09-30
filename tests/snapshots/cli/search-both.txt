@@ -1,4 +1,4 @@
-$ mailctl search --from noreply@github.com --raw ALL
+$ mailctl mail search --from noreply@github.com --raw ALL
 exit: 1
 --- stdout
 

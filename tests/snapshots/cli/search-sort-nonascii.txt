@@ -1,4 +1,4 @@
-$ mailctl search --subject Café --sort size --limit 1
+$ mailctl mail search --subject Café --sort size --limit 1
 exit: 0
 --- stdout
 No messages found in 'INBOX'.

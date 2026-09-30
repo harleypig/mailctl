@@ -1,4 +1,4 @@
-$ mailctl search --like 2 --subject Issue --match all
+$ mailctl mail search --like 2 --subject Issue --match all
 exit: 0
 --- stdout
 Message uid 2 in 'INBOX':

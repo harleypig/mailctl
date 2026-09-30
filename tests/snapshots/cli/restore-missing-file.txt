@@ -1,4 +1,4 @@
-$ mailctl restore /nonexistent/x.sieve
+$ mailctl filterset restore /nonexistent/x.sieve
 exit: 1
 --- stdout
 

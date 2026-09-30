@@ -1,4 +1,4 @@
-$ mailctl restore <TMP>/restore.sieve --script spare --yes
+$ mailctl filterset restore <TMP>/restore.sieve --script spare --yes
 exit: 0
 --- stdout
 Restore <TMP>/restore.sieve (1 rule(s)) over script 'spare' (0 rule(s)):

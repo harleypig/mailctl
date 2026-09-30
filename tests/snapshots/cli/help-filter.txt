@@ -1,0 +1,32 @@
+$ mailctl help filter
+exit: SystemExit(0)
+--- stdout
+usage: mailctl filter [-h] [--verbose] [--debug]
+                      {list,add,apply,remove,move,rename,enable,disable,optimize}
+                      ...
+
+Save filters, and apply them to mail already delivered.
+
+positional arguments:
+  {list,add,apply,remove,move,rename,enable,disable,optimize}
+    list                show the rules in order, and which cannot fire
+    add                 save a rule; mail already delivered is left alone
+    apply               act on mail already delivered
+    remove              remove a named rule from the active script
+    move                move a named rule to a new position, unchanged
+    rename              give a named rule a new name, unchanged otherwise
+    enable              enable a named rule, keeping it in the script
+    disable             disable a named rule, keeping it in the script
+    optimize            propose a better order for the rules, and merge
+                        duplicates
+
+options:
+  -h, --help            show this help message and exit
+  --verbose, -v         step-by-step progress
+  --debug               show a full traceback on failure (never prints
+                        credentials)
+
+--- stderr
+
+--- sieve calls
+--- imap calls

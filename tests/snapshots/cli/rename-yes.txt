@@ -1,4 +1,4 @@
-$ mailctl rename-rule keep-boss The boss --yes
+$ mailctl filter rename keep-boss The boss --yes
 exit: 0
 --- stdout
 Rename rule 'keep-boss' to 'The boss' in script 'managesieve':

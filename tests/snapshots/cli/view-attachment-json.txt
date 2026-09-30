@@ -1,8 +1,8 @@
-$ mailctl view 6 --json
+$ mailctl mail view 6 --json
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "message": {
     "uid": 6,
     "folder": "INBOX",

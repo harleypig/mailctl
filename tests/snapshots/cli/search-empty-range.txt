@@ -1,4 +1,4 @@
-$ mailctl search --since 2026-09-28 --before 2026-09-01
+$ mailctl mail search --since 2026-09-28 --before 2026-09-01
 exit: 1
 --- stdout
 

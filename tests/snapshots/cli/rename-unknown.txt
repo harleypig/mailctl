@@ -1,4 +1,4 @@
-$ mailctl rename-rule phantom The boss --yes
+$ mailctl filter rename phantom The boss --yes
 exit: 1
 --- stdout
 

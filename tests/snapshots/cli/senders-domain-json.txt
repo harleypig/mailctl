@@ -1,8 +1,8 @@
-$ mailctl senders --by domain --json
+$ mailctl mail senders --by domain --json
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "folder": "INBOX",
   "by": "domain",
   "messages": 7,

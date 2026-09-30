@@ -1,9 +1,9 @@
-$ mailctl folders --counts --json
+$ mailctl folder list --counts --json
 exit: 1
 --- stdout
 
 --- stderr
-{"version": 1, "error": {"message": "the mxroute provider cannot count the messages in every folder in one request: the IMAP server does not advertise LIST-STATUS, and without it every folder would be a request of its own"}}
+{"version": 2, "error": {"message": "the mxroute provider cannot count the messages in every folder in one request: the IMAP server does not advertise LIST-STATUS, and without it every folder would be a request of its own"}}
 
 --- sieve calls
 --- imap calls

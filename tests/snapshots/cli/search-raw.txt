@@ -1,4 +1,4 @@
-$ mailctl search --raw UNSEEN
+$ mailctl mail search --raw UNSEEN
 exit: 0
 --- stdout
 5 message(s) in 'INBOX' (UIDVALIDITY 1727000000), newest first:

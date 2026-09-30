@@ -1,8 +1,8 @@
-$ mailctl search --json --from noreply@github.com
+$ mailctl mail search --json --from noreply@github.com
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "folder": "INBOX",
   "uidvalidity": 1727000000,
   "more": false,

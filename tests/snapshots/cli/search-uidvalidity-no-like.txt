@@ -1,4 +1,4 @@
-$ mailctl search --uidvalidity 1727000000
+$ mailctl mail search --uidvalidity 1727000000
 exit: 1
 --- stdout
 

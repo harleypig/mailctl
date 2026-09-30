@@ -1,10 +1,10 @@
-$ mailctl rename-rule keep-boss The boss --dry-run --json
+$ mailctl filter rename keep-boss The boss --dry-run --json
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "plan": {
-    "command": "rename-rule",
+    "command": "filter rename",
     "changes": true,
     "diff": {
       "label": "sieve",

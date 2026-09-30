@@ -1,4 +1,4 @@
-$ mailctl search --sort size --reverse --uids-only
+$ mailctl mail search --sort size --reverse --uids-only
 exit: 0
 --- stdout
 4

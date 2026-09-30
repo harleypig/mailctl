@@ -1,4 +1,4 @@
-$ mailctl restore <TMP>/restore.sieve --script managesieve --yes
+$ mailctl filterset restore <TMP>/restore.sieve --script managesieve --yes
 exit: 0
 --- stdout
 Restore <TMP>/restore.sieve (1 rule(s)) over script 'managesieve' (a script mailctl could not parse):

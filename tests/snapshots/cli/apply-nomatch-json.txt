@@ -1,10 +1,10 @@
-$ mailctl apply --from nobody@x.y --fileinto Lists --dry-run --json
+$ mailctl filter apply --from nobody@x.y --fileinto Lists --dry-run --json
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "plan": {
-    "command": "apply",
+    "command": "filter apply",
     "changes": false,
     "criteria": {
       "match": "any",

@@ -10,9 +10,10 @@ the test layout are pulled in via the imports at the bottom.
 
 - **The tool has two halves, and the second one is the point.** Sieve only
   ever affects **new incoming** mail. The retroactive IMAP pass over mail
-  already delivered is why this exists. The halves are two commands, `add`
-  then `apply`: `add` saves the rule, `apply` acts on the mail already
-  there, and both take the same criteria so they stay in step (see
+  already delivered is why this exists. The halves are two commands,
+  `filter add` then `filter apply`: `filter add` saves the rule, `filter
+  apply` acts on the mail already there, and both take the same criteria so
+  they stay in step (see
   [CONVENTIONS.md](CONVENTIONS.md) › *The command surface*).
 - **Credentials are a hard boundary.** The mailbox password must **never**
   reach stdout, stderr, a log, or a transcript. `config.Secret` renders

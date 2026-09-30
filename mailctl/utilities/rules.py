@@ -176,7 +176,7 @@ def read_rules(session: Session, script: str | None = None) -> RulesReport:
         raise MailctlError(
             "no active script on the server, so there are no rules to show.",
             code="no_active_script",
-            fields={"operation": "list"},
+            fields={"operation": "filterset list"},
         )
 
     rules = session.dialect.read_rules(session.transport.read_rule_set(name))

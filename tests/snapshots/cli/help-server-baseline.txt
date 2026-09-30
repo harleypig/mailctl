@@ -1,0 +1,24 @@
+$ mailctl server baseline --help
+exit: SystemExit(0)
+--- stdout
+usage: mailctl server baseline [-h] [--verbose] [--debug]
+                               {save,show,check} ...
+
+Save, show, or check a record of what the servers say.
+
+positional arguments:
+  {save,show,check}
+    save             record what the servers say now, to compare against later
+    show             print the saved baseline for this host
+    check            report what has changed on the servers since the baseline
+
+options:
+  -h, --help         show this help message and exit
+  --verbose, -v      step-by-step progress
+  --debug            show a full traceback on failure (never prints
+                     credentials)
+
+--- stderr
+
+--- sieve calls
+--- imap calls

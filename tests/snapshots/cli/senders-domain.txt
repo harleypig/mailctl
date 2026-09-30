@@ -1,4 +1,4 @@
-$ mailctl senders --by domain
+$ mailctl mail senders --by domain
 exit: 0
 --- stdout
 7 message(s) in 'INBOX', 4 unread; 3 group(s) by domain, busiest first:
@@ -6,7 +6,7 @@ exit: 0
       3        2      67%  github.com
       3        1      33%  example.com
       1        1     100%  lists.example.com
-To build a filter for a row: mailctl search --from @github.com --build-filter
+To build a filter for a row: mailctl mail search --from @github.com --build-filter
 
 --- stderr
 

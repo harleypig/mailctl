@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap --disable-extension mailbox
+$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap --disable-extension mailbox
 exit: 1
 --- stdout
 

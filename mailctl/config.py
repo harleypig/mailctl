@@ -116,8 +116,9 @@ NO_PASSWORD_MESSAGE = f"no password available -- {NO_PASSWORD_SETTINGS}"
 
 # What password_state() reports for each kind of source. A literal from a
 # flag and one from the environment are the same kind of value and are
-# resolved identically; they are labelled apart only so `mailctl test` can
-# say which one is in play. No label says anything about the value itself.
+# resolved identically; they are labelled apart only so `mailctl server
+# test` can say which one is in play. No label says anything about the
+# value itself.
 PASSWORD_STATE_LABELS = {
     "file": "set (via file)",
     "command": "set (via command)",
@@ -580,8 +581,8 @@ def default_backup_dir() -> Path:
     put ``config.toml`` there; ``~/.local/state`` is a path most people
     have never opened, and the moment it matters is the moment a script
     has just been mangled and nobody wants to go looking. Co-locating also
-    keeps ``mailctl backup`` and the automatic pre-upload backup in one
-    place instead of two.
+    keeps ``mailctl filterset backup`` and the automatic pre-upload backup
+    in one place instead of two.
 
     ``MAILCTL_BACKUP_DIR`` / ``backup_dir`` override it either way.
     """

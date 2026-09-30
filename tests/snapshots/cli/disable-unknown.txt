@@ -1,4 +1,4 @@
-$ mailctl disable-rule phantom --yes
+$ mailctl filter disable phantom --yes
 exit: 1
 --- stdout
 

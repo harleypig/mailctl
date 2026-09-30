@@ -1,4 +1,4 @@
-$ mailctl mark 1 --keyword two words
+$ mailctl mail mark 1 --keyword two words
 exit: 1
 --- stdout
 

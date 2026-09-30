@@ -325,7 +325,7 @@ def _unreadable(path: Path, why: str) -> MailctlError:
     return MailctlError(
         f"{before} save a new one.",
         code="baseline_unreadable",
-        fields={"before": before, "operation": "save-baseline"},
+        fields={"before": before, "operation": "server baseline save"},
     )
 
 
@@ -569,7 +569,7 @@ def check_baseline(
         raise MailctlError(
             f"no baseline has been saved for {path.stem} (looked for {path})",
             code="no_baseline",
-            fields={"operation": "save-baseline"},
+            fields={"operation": "server baseline save"},
         )
 
     record = probe_servers(session, config, now=now)
@@ -580,7 +580,7 @@ def check_baseline(
             f"{baseline.server.provider!r}, and this run uses "
             f"{record.provider!r}; the two do not describe the same thing.",
             code="baseline_other_provider",
-            fields={"operation": "save-baseline"},
+            fields={"operation": "server baseline save"},
         )
 
     requires = _active_requires(session, record)

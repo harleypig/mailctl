@@ -1,4 +1,4 @@
-$ mailctl move-rule bin-the-noise --first --yes
+$ mailctl filter move bin-the-noise --first --yes
 exit: 0
 --- stdout
 Move rule 'bin-the-noise' in script 'managesieve': position 2 -> 1 of 2

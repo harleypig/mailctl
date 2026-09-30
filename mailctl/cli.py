@@ -108,7 +108,7 @@ NO_CRITERIA = (
 # expected the mail already there to move needs pointing at apply (#149).
 ADD_LEAVES_MAIL = (
     "\nMail already delivered was not touched; to act on it, run "
-    "'mailctl apply' with the same criteria and actions."
+    "'mailctl filter apply' with the same criteria and actions."
 )
 
 # The headers a person recognises one of their own emails by, shown by
@@ -759,7 +759,7 @@ def settle_folder(sessions, plan: utilities.folders.FolderPlan, args) -> None:
                 f"  Nothing promises {words.rule_language} will subscribe to "
                 "a folder it creates, so it may not appear in webmail until "
                 "you subscribe to it: once the first message has created "
-                f"it, run 'mailctl subscribe {plan.folder}'."
+                f"it, run 'mailctl folder subscribe {plan.folder}'."
             )
 
     elif plan.status == utilities.folders.FOLDER_IMAP_CREATE:
@@ -829,15 +829,15 @@ def report_folder_creation(result: FolderCreation) -> None:
             f"created folder {folder!r}, but subscribing to it failed: "
             f"{result.subscribe_error}. The folder exists and mail filed "
             f"there will arrive, but it will not appear in webmail until "
-            f"you subscribe to it: run 'mailctl subscribe {folder}'."
+            f"you subscribe to it: run 'mailctl folder subscribe {folder}'."
         )
 
         return
 
     print(
         f"Created IMAP folder {folder!r}; not subscribed (--no-subscribe), "
-        f"so it will not appear in webmail ('mailctl subscribe {folder}' "
-        f"shows it later)."
+        f"so it will not appear in webmail ('mailctl folder subscribe "
+        f"{folder}' shows it later)."
     )
 
 
@@ -999,7 +999,7 @@ def emit_mail_plan(sessions, criteria, args, spec, folder, source) -> int:
     return emit_json(
         args,
         json_output.plan(
-            "apply",
+            "filter apply",
             changes=bool(mail and mail.changes),
             criteria=criteria.to_dict(),
             actions=json_output.actions(spec),
@@ -1300,7 +1300,7 @@ def cmd_restore(args) -> int:
             return emit_json(
                 args,
                 json_output.plan(
-                    "restore",
+                    "filterset restore",
                     **json_output.change(plan.changes, plan.diff),
                     source=str(plan.source),
                     rules_before=count(sessions, plan.before),
@@ -1359,7 +1359,7 @@ def warn_about_config_dir(pending) -> None:
         f"  old: {pending.old}  (still there, and NOT read)",
         f"  new: {pending.new}  (does not exist yet)",
         "Your config.toml and script backups are still in the old one.",
-        "Run 'mailctl migrate-config' to move them; --dry-run shows what",
+        "Run 'mailctl config migrate' to move them; --dry-run shows what",
         "would move.",
         "*" * 72,
     )
@@ -1559,7 +1559,7 @@ def count_cell(value: int | None, field: str) -> str:
 def cmd_subscribe(args) -> int:
     """Subscribe to, or unsubscribe from, an existing folder."""
     config = configure(args)
-    subscribe = args.command == "subscribe"
+    subscribe = args.command == "folder subscribe"
 
     with connect(config, args, rules=False, mail=True) as sessions:
         plan = utilities.folders.plan_subscription(
@@ -1629,7 +1629,7 @@ def cmd_create_folder(args) -> int:
             return emit_json(
                 args,
                 json_output.plan(
-                    "create-folder",
+                    "folder create",
                     changes=not plan.exists,
                     folder=json_output.folder_plan(target),
                     subscribed_now=plan.subscribed_now,
@@ -1706,7 +1706,7 @@ def report_existing_folder(plan: utilities.folders.FolderCreationPlan) -> None:
         if not plan.target.subscribe:
             print(
                 f"  --no-subscribe only shapes a folder this command "
-                f"creates; 'mailctl unsubscribe {folder}' hides it."
+                f"creates; 'mailctl folder unsubscribe {folder}' hides it."
             )
 
         return
@@ -1721,8 +1721,8 @@ def report_existing_folder(plan: utilities.folders.FolderCreationPlan) -> None:
 
     print(
         f"{folder!r} already exists but is not subscribed, so webmail does "
-        f"not show it; nothing was changed. 'mailctl subscribe {folder}' "
-        f"shows it."
+        f"not show it; nothing was changed. 'mailctl folder subscribe "
+        f"{folder}' shows it."
     )
 
 
@@ -1972,7 +1972,8 @@ def cmd_test(args) -> int:
         )
         print(
             f"\nServers:   mailctl does not recognise the {services} "
-            f"server -- 'mailctl probe --report' prints a redacted issue body"
+            f"server -- 'mailctl server probe --report' prints a redacted "
+            f"issue body"
         )
 
     print_baseline_summary(config, args)
@@ -2013,7 +2014,7 @@ def print_baseline_summary(config, args) -> None:
 
     print(
         f"\nBaseline:  {drift_counts(check.drift)} since {taken} -- "
-        f"'mailctl check-baseline' lists them"
+        f"'mailctl server baseline check' lists them"
     )
 
 
@@ -2222,7 +2223,7 @@ def cmd_show_baseline(args) -> int:
     if baseline is None:
         raise MailctlError(
             f"no baseline has been saved for {path.stem} (looked for "
-            f"{path}); 'mailctl save-baseline' records one"
+            f"{path}); 'mailctl server baseline save' records one"
         )
 
     # Written as stored: the file is already one versioned document.
@@ -2295,7 +2296,8 @@ def cmd_check_baseline(args) -> int:
 
     print(
         "\nNothing was refused: the baseline records, it does not decide. "
-        "'mailctl save-baseline' replaces it, after showing what changed."
+        "'mailctl server baseline save' replaces it, after showing what "
+        "changed."
     )
 
     return code
@@ -2647,7 +2649,7 @@ def cmd_add(args) -> int:
             return emit_json(
                 args,
                 json_output.plan(
-                    "add",
+                    "filter add",
                     **json_output.change(plan.before != plan.after, plan.diff),
                     rule=plan.name,
                     criteria=criteria.to_dict(),
@@ -2757,7 +2759,7 @@ def cmd_remove_rule(args) -> int:
             return emit_json(
                 args,
                 json_output.plan(
-                    "remove-rule",
+                    "filter remove",
                     **json_output.change(plan.before != plan.after, plan.diff),
                     rule=plan.rule,
                     **json_output.activation(plan),
@@ -2811,7 +2813,7 @@ def cmd_move_rule(args) -> int:
             return emit_json(
                 args,
                 json_output.plan(
-                    "move-rule",
+                    "filter move",
                     **json_output.change(plan.changes, plan.diff),
                     rule=plan.rule,
                     from_position=plan.from_index + 1,
@@ -3057,7 +3059,7 @@ def cmd_rename_rule(args) -> int:
             return emit_json(
                 args,
                 json_output.plan(
-                    "rename-rule",
+                    "filter rename",
                     **json_output.change(plan.changes, plan.diff),
                     rule=plan.rule,
                     new_name=plan.new_name,
@@ -3560,7 +3562,7 @@ def print_senders(report) -> int:
         value = shlex.quote(safe_line(prefix + example))
 
         print(
-            f"To build a filter for a row: mailctl search {flag} {value} "
+            f"To build a filter for a row: mailctl mail search {flag} {value} "
             f"--build-filter"
         )
 
@@ -3576,11 +3578,11 @@ def print_senders(report) -> int:
 def global_parser() -> argparse.ArgumentParser:
     """Flags accepted both before and after the subcommand.
 
-    ``--verbose mailctl add`` and ``mailctl add --verbose`` should both
-    work; people type the second. ``SUPPRESS`` is what makes that safe --
-    without it the subparser's default would overwrite a value already set
-    by the top-level parser, so passing the flag first would silently do
-    nothing.
+    ``--verbose mailctl filter add`` and ``mailctl filter add --verbose``
+    should both work; people type the second. ``SUPPRESS`` is what makes
+    that safe -- without it the subparser's default would overwrite a value
+    already set by the top-level parser, so passing the flag first would
+    silently do nothing.
     """
     parser = argparse.ArgumentParser(add_help=False)
 
@@ -3677,7 +3679,7 @@ def connection_parser(
         "--backup-dir",
         dest="backup_dir",
         help="where script backups are written, both the automatic "
-        "pre-upload one and 'mailctl backup'; default "
+        "pre-upload one and 'mailctl filterset backup'; default "
         "$XDG_CONFIG_HOME/mailctl/backups",
     )
     group.add_argument(
@@ -3688,7 +3690,7 @@ def connection_parser(
         help=f"never emit this {words.extension}, even if the server "
         "advertises it; repeatable, and replaces "
         "MAILCTL_DISABLED_EXTENSIONS / disabled_extensions for this run; "
-        "'none' disables nothing. 'mailctl test' lists the names"
+        "'none' disables nothing. 'mailctl server test' lists the names"
         if offer.extensions
         else argparse.SUPPRESS,
     )
@@ -3821,8 +3823,8 @@ def add_uidvalidity(
         "--uidvalidity",
         type=int,
         metavar="N",
-        help=f"the UIDVALIDITY {what} {verb} listed under, as 'search' shows "
-        f"it; if the folder's is now another, its UIDs have been "
+        help=f"the UIDVALIDITY {what} {verb} listed under, as 'mail search' "
+        f"shows it; if the folder's is now another, its UIDs have been "
         f"renumbered and the command is refused, using none of them"
         if offer.uidvalidity
         else argparse.SUPPRESS,
@@ -3974,8 +3976,7 @@ def build_parser(
 
     parser = argparse.ArgumentParser(
         prog="mailctl",
-        description=f"Manage {words.host} {words.filters} and apply them to "
-        "existing mail.",
+        description="Read, sort, and filter the mail on your account.",
     )
 
     parser.add_argument(
@@ -3990,340 +3991,57 @@ def build_parser(
         help="show a full traceback on failure (never prints credentials)",
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    listed = []
+    # Commands are grouped, noun first: 'mailctl filter add' (#219). Each
+    # level of the tree is a subparsers action, keyed by the path above it.
+    levels = {"": parser.add_subparsers(dest="group", required=True)}
+    offered_at: dict[str, list[tuple[str, bool | None]]] = {"": []}
 
-    def command(name: str, offered: bool = True, **kwargs):
-        """Add a subcommand, listed in help only when offered.
+    def branch(path: str, summary: str):
+        """Add a group of commands under ``path``'s last word.
+
+        Whether it is listed is decided once its commands are known: a
+        group with none offered is hidden like an unoffered command.
+        """
+        above, _, name = path.rpartition(" ")
+        group = levels[above].add_parser(
+            name,
+            parents=[common],
+            help=summary,
+            description=f"{summary[0].upper()}{summary[1:]}.",
+        )
+        offered_at[above].append((name, None))
+        levels[path] = group.add_subparsers(dest="action", required=True)
+        offered_at[path] = []
+
+    def command(path: str, offered: bool = True, **kwargs):
+        """Add the command ``path``, listed in help only when offered.
 
         argparse lists a subcommand in help only when it is given
         ``help``, so an unoffered one is added without it and left out of
         the choices shown in usage.
         """
-        if offered:
-            listed.append(name)
+        above, _, name = path.rpartition(" ")
 
-        else:
+        if not offered:
             kwargs.pop("help", None)
 
-        return subparsers.add_parser(name, **kwargs)
+        offered_at[above].append((name, offered))
+        sub = levels[above].add_parser(name, **kwargs)
+        sub.set_defaults(command=path)
 
-    listing = command(
-        "list", parents=[common, connection], help=f"list {words.rule_sets}"
-    )
-    listing.add_argument("--json", action="store_true", help=JSON_HELP)
-    listing.set_defaults(handler=cmd_list)
+        return sub
 
-    show = command(
-        "show", parents=[common, connection], help=f"print a {words.rule_set}"
-    )
-    show.add_argument("name", nargs="?", help="script name; default active")
-    show.set_defaults(handler=cmd_show)
-
-    rules = command(
-        "rules",
-        parents=[common, connection],
-        help="show the rules in order, and which cannot fire",
-        description="List the active script's rules in the order the server "
-        "evaluates them, marking which carry 'stop' and which are disabled, "
-        "then report any rule an earlier one makes unreachable. A '!' "
-        "finding is decided; a '?' is a suspicion worth checking. Nothing is "
-        "changed.",
-    )
-    rules.add_argument("--script", help="script name; default active")
-    rules.add_argument("--json", action="store_true", help=JSON_HELP)
-    rules.set_defaults(handler=cmd_rules)
-
-    backup = command(
-        "backup",
-        parents=[common, connection],
-        help="save the active script to a file",
-        description=f"Save the active {words.rule_set} to a file, byte for "
-        "byte as the server has it -- no banner lines, nothing reformatted "
-        "(which is what 'mailctl show' adds, and why it is not a backup). "
-        "The file is written mode 0600, in a directory created 0700 if it "
-        "was not there. Nothing on the server is touched. 'mailctl "
-        "restore FILE' puts a backup back.",
-    )
-    backup.add_argument(
-        "--output",
-        "-o",
-        metavar="PATH",
-        help="where to write it. A PATH ending in '/', or naming a "
-        "directory that already exists, means 'put the default filename "
-        "in here'; anything else is the exact file to write. Default: "
-        f"the backup directory (--backup-dir), named {words.backup_file}",
-    )
-    backup.add_argument(
-        "--dry-run",
-        dest="dry_run",
-        action="store_true",
-        help="report the file that would be written; write nothing",
-    )
-    backup.set_defaults(handler=cmd_backup)
-
-    restore = command(
-        "restore",
-        parents=[common, connection, safety],
-        help="upload a backup file over the active script, or --script",
-        description=f"Replace the active {words.rule_set} -- or the one "
-        "--script names -- with a backup file, "
-        "byte for byte. The difference between the file and what the "
-        "server has now is shown first, the current script is backed up "
-        "before anything is sent, the server validates the file "
-        f"({words.validation}), and you are asked to confirm. No other stored "
-        "script is touched. Unlike every other change mailctl makes, "
-        "this REPLACES the script rather than merging into it -- any rule "
-        "added since the backup was taken is removed, which the diff "
-        "shows.",
-    )
-    restore.add_argument(
-        "file", metavar="FILE", help="a file written by 'mailctl backup'"
-    )
-    restore.add_argument("--script", help="script name; default active")
-    restore.add_argument("--activate", action="store_true", help=activate_help)
-    restore.add_argument(
-        "--allow-empty",
-        dest="allow_empty",
-        action="store_true",
-        help="restore a FILE that is empty, which removes every rule; "
-        "refused without this",
-    )
-    restore.set_defaults(handler=cmd_restore)
-
-    folders = command(
-        "folders",
-        parents=[common, connection],
-        help=f"list {words.mail_service} folders",
-    )
-    folders.add_argument(
-        "--counts",
-        action="store_true",
-        help="show each folder's total and unread messages, and its size "
-        "where the server reports it, from one request"
-        if offer.folder_counts
-        else argparse.SUPPRESS,
-    )
-    folders.add_argument("--json", action="store_true", help=JSON_HELP)
-    folders.set_defaults(handler=cmd_folders)
-
-    for name, summary in (
-        ("subscribe", "show a folder in webmail (IMAP SUBSCRIBE)"),
-        ("unsubscribe", "hide a folder from webmail; it keeps its mail"),
-    ):
-        toggle = command(
-            name,
-            parents=[common, connection],
-            help=summary,
-            description=f"{summary[0].upper()}{summary[1:]}. Webmail draws "
-            "its folder tree from the subscription list (LSUB), so this is "
-            "what decides whether a folder is visible there. The folder "
-            "name is normalized like every other: 'Lists/GitHub' and "
-            "'INBOX.Lists.GitHub' name the same folder.",
-        )
-        toggle.add_argument("folder", metavar="FOLDER")
-        toggle.add_argument(
-            "--dry-run",
-            dest="dry_run",
-            action="store_true",
-            help="say what would change; change nothing",
-        )
-        toggle.add_argument("--json", action="store_true", help=JSON_PLAN_HELP)
-        toggle.set_defaults(handler=cmd_subscribe)
-
-    create_folder = command(
-        "create-folder",
-        parents=[common, connection, safety],
-        help=f"create a folder over {words.mail_service}, and subscribe to it",
-        description=f"Create a folder over {words.mail_service} and "
-        "subscribe to it, so "
-        "webmail shows it. The folder name is normalized like every other: "
-        "'Lists/GitHub' and 'INBOX.Lists.GitHub' name the same folder, and "
-        "a new one goes where the server says new folders belong. What "
-        "would be created is shown first, and you are asked to confirm. A "
-        "folder that already exists is left as it is; one that differs "
-        "from an existing folder only in case is refused.",
-    )
-    create_folder.add_argument("folder", metavar="NAME")
-    create_folder.add_argument(
-        "--no-subscribe",
-        dest="subscribe",
-        action="store_false",
-        help="create the folder without subscribing to it; webmail will not "
-        "show it until 'mailctl subscribe NAME'",
-    )
-    create_folder.set_defaults(handler=cmd_create_folder)
-
-    rename_folder = command(
-        "rename-folder",
-        parents=[common, connection, safety],
-        help="rename a folder, and repoint the rules that file into it",
-        description=f"Rename a folder over {words.mail_service}, together "
-        "with every folder under it, and repoint every rule in the active "
-        f"script that files into any of them. {words.mail_service}'s "
-        "RENAME leaves subscriptions behind, so "
-        "each moved folder that was subscribed is subscribed under its "
-        "new name, and the old name is dropped from the list. Only the "
-        "folder names in the rules change; every other byte of the script "
-        "is kept. What would change is shown first and you are asked to "
-        "confirm; the new script is backed up and validated "
-        f"({words.validation}) before the folder is touched, and "
-        "afterwards the account is read back to check that everything "
-        "landed. INBOX cannot be renamed, "
-        "and NEW must not exist yet.",
-    )
-    rename_folder.add_argument("old", metavar="OLD")
-    rename_folder.add_argument("new", metavar="NEW")
-    rename_folder.set_defaults(handler=cmd_rename_folder)
-
-    test = command(
-        "test",
-        parents=[common, connection],
-        help="check reachability, change nothing",
-    )
-    test.set_defaults(handler=cmd_test)
-
-    probe = command(
-        "probe",
-        parents=[common, connection],
-        help="print what the servers say about themselves, change nothing",
-        description="Print, dated, everything a provider record's Observed "
-        "tier needs: where each half connects, each server's identity and "
-        "its full capability list (and whether that list was read before "
-        "or after login), the active script, the folder delimiter, and "
-        "the namespaces. Lists are sorted, so two probes of an unchanged "
-        "server differ only in the time. Nothing is changed, and no "
-        "credential is printed.",
-    )
-    shape = probe.add_mutually_exclusive_group()
-    shape.add_argument(
-        "--json",
-        action="store_true",
-        help="print it as a versioned JSON document, for storing and "
-        "comparing",
-    )
-    shape.add_argument(
-        "--report",
-        action="store_true",
-        help="where a server is one mailctl does not recognise, print a "
-        "redacted issue body to report it: no address, host, folder or "
-        "script name, or credential. Nothing is sent",
-    )
-    probe.set_defaults(handler=cmd_probe)
-
-    save_baseline = command(
-        "save-baseline",
-        parents=[common, connection],
-        help="record what the servers say now, to compare against later",
-        description="Probe both servers, as 'mailctl probe' does, and save "
-        "the result as this host's baseline: "
-        "$XDG_CONFIG_HOME/mailctl/baselines/<host>.json, written mode 0600 "
-        "in a directory created 0700. What describes the server is kept "
-        "once per host; the active script is kept per account. The first "
-        "save just writes it. Replacing one shows what changed and the "
-        "file's diff, then asks. Only this local file is written; nothing "
-        "on the server is changed, and no credential is stored.",
-    )
-    save_baseline.add_argument(
-        "--dry-run",
-        dest="dry_run",
-        action="store_true",
-        help="show what would be saved; write nothing",
-    )
-    save_baseline.add_argument(
-        "--yes", action="store_true", help="skip the confirmation prompt"
-    )
-    save_baseline.set_defaults(handler=cmd_save_baseline)
-
-    show_baseline = command(
-        "show-baseline",
-        parents=[common, connection],
-        help="print the saved baseline for this host",
-        description="Print the baseline 'mailctl save-baseline' saved for "
-        "the configured host, as 'mailctl probe' lays out a probe. The "
-        "server is not contacted.",
-    )
-    show_baseline.add_argument(
-        "--json", action="store_true", help="print the file as it is stored"
-    )
-    show_baseline.set_defaults(handler=cmd_show_baseline)
-
-    check_baseline = command(
-        "check-baseline",
-        parents=[common, connection],
-        help="report what has changed on the servers since the baseline",
-        description="Probe both servers and compare what they say with the "
-        "saved baseline, saying what each difference means for this "
-        "account. Serious (!): an extension the active script requires is "
-        "gone; the folder delimiter or the personal namespace changed; an "
-        "IMAP capability mailctl behaves differently without came or went; "
-        "the active script is another one. Everything else is "
-        "informational. Nothing is refused and nothing is changed.",
-        epilog=f"Exit status: 0 no drift, {DRIFT_INFO_EXIT} informational "
-        f"drift only, {DRIFT_SERIOUS_EXIT} serious drift, 1 on a failure "
-        f"(no baseline saved, one that cannot be read, no connection).",
-    )
-    check_baseline.add_argument(
-        "--json",
-        action="store_true",
-        help="print the report as a versioned JSON document",
-    )
-    check_baseline.set_defaults(handler=cmd_check_baseline)
-
-    add = command(
-        "add",
-        parents=[common, connection, rule_criteria, sources, actions],
-        help="save a rule; mail already delivered is left alone",
-        description="Save a rule into the active script, merged with the "
-        "rules already there. The diff is shown, the script is backed up, "
-        "and the new one uploaded. Only new mail is filtered by it; "
-        "'mailctl apply' with the same criteria acts on mail already "
-        "delivered.",
-    )
-    add.add_argument(
-        "--dry-run",
-        dest="dry_run",
-        action="store_true",
-        help="show the diff; upload nothing",
-    )
-    add.add_argument("--json", action="store_true", help=JSON_PLAN_HELP)
-    _add_rule_flags(add, offer, words)
-    add.set_defaults(handler=cmd_add)
-
-    apply_cmd = command(
-        "apply",
-        parents=[
-            common,
-            connection,
-            criteria,
-            sources,
-            actions,
-            safety,
-            mail_safety,
-        ],
-        help="act on mail already delivered",
-        description="Act on the mail already in a folder as a rule would: "
-        "the messages that match the criteria are found and shown, then "
-        "--dry-run stops, or you are asked to confirm (--yes skips the "
-        "question). No rule is saved; 'mailctl add' with the same criteria "
-        "saves one for new mail. More matches than --max-messages refuse "
-        "the whole pass, and nothing is changed.",
-    )
-    apply_cmd.add_argument(
-        "--folder", help=f"source folder; {FOLDER_DEFAULT_HELP}"
-    )
-    apply_cmd.add_argument("--delimiter", help=argparse.SUPPRESS)
-    apply_cmd.set_defaults(handler=cmd_apply, no_imap=False)
+    branch("mail", "find, read, and mark messages")
 
     search = command(
-        "search",
+        "mail search",
         parents=[common, connection, criteria],
         help="list the newest messages in a folder",
-        description="List the messages in a folder that match the "
-        "criteria, newest first, with the UID each is known by -- the UID "
-        "'view', 'mark', and --like take. With --like the criteria are "
-        "built from a message, and --build-filter prints the filter they "
-        "make instead of a listing. Nothing is marked read, and nothing is "
+        description="List the messages in a folder that match the criteria, "
+        "newest first, with the UID each is known by -- the UID 'mail view', "
+        "'mail mark', and --like take. With --like the criteria are built "
+        "from a message, and --build-filter prints the filter they make "
+        "instead of a listing. Nothing is marked read, and nothing is "
         "changed.",
     )
     search.add_argument(
@@ -4390,11 +4108,11 @@ def build_parser(
     search.set_defaults(handler=cmd_search)
 
     view = command(
-        "view",
+        "mail view",
         parents=[common, connection],
         help="show one message, without marking it read",
     )
-    view.add_argument("uid", type=int, help="the message UID ('search')")
+    view.add_argument("uid", type=int, help="the message UID ('mail search')")
     view.add_argument(
         "--folder", help=f"folder holding it; {FOLDER_DEFAULT_HELP}"
     )
@@ -4415,68 +4133,18 @@ def build_parser(
     shape.add_argument("--json", action="store_true", help=JSON_HELP)
     view.set_defaults(handler=cmd_view)
 
-    senders = command(
-        "senders",
-        parents=[common, connection, criteria],
-        help="count a folder's mail by sender, with how much is unread",
-        description="Count the mail in a folder by sender -- the address, "
-        "its domain, or the mailing list -- busiest first, with how many "
-        "are unread: the mail worth a filter. Takes the same criteria "
-        "flags as 'search', such as --since or --unread. One search finds "
-        "the mail and its headers are read a page at a time; nothing is "
-        "marked read, and nothing is changed.",
-    )
-    senders.add_argument(
-        "--folder", help=f"folder to count; {FOLDER_DEFAULT_HELP}"
-    )
-    senders.add_argument(
-        "--by",
-        choices=utilities.senders.GROUPINGS,
-        default="address",
-        help="count by sender address, its domain, or the List-Id header; "
-        "default address",
-    )
-    senders.add_argument(
-        "--top",
-        type=int,
-        default=DEFAULT_SENDERS_TOP,
-        metavar="N",
-        help=f"show the N busiest; 0 shows every one. Default "
-        f"{DEFAULT_SENDERS_TOP}",
-    )
-    senders.add_argument(
-        "--min",
-        dest="minimum",
-        type=int,
-        default=1,
-        metavar="N",
-        help="leave out any that sent fewer than N messages; default 1",
-    )
-    senders.add_argument(
-        "--max-messages",
-        dest="max_messages",
-        type=int,
-        default=utilities.senders.DEFAULT_MAX_MESSAGES,
-        metavar="N",
-        help=f"refuse, reading no header, if the search finds more than "
-        f"N messages, rather than counting some of them (default "
-        f"{utilities.senders.DEFAULT_MAX_MESSAGES})",
-    )
-    senders.add_argument("--json", action="store_true", help=JSON_HELP)
-    senders.set_defaults(handler=cmd_senders)
-
     mark = command(
-        "mark",
+        "mail mark",
         offer.mark,
         parents=[common, connection, safety],
         help="mark messages read or unread, flagged, or with keywords",
-        description="Set or clear the read flag, the flagged flag, and "
-        "named keywords on messages, by UID ('search' lists them). Several "
-        "may be given at once, such as --read --flag. What each message has "
-        "now and what would change is shown first, then --dry-run stops, or "
-        "you are asked to confirm (--yes skips the question). A UID the "
-        "folder does not hold refuses the whole command, naming it; nothing "
-        "is marked. 'view' never marks anything read; this is how to.",
+        description="Set or clear the read flag, the flagged flag, and named "
+        "keywords on messages, by UID ('mail search' lists them). Several may "
+        "be given at once, such as --read --flag. What each message has now "
+        "and what would change is shown first, then --dry-run stops, or you "
+        "are asked to confirm (--yes skips the question). A UID the folder "
+        "does not hold refuses the whole command, naming it; nothing is "
+        "marked. 'mail view' never marks anything read; this is how to.",
     )
     mark.add_argument(
         "uids", nargs="+", type=int, metavar="UID", help="the message UIDs"
@@ -4533,8 +4201,212 @@ def build_parser(
     )
     mark.set_defaults(handler=cmd_mark)
 
+    senders = command(
+        "mail senders",
+        parents=[common, connection, criteria],
+        help="count a folder's mail by sender, with how much is unread",
+        description="Count the mail in a folder by sender -- the address, "
+        "its domain, or the mailing list -- busiest first, with how many "
+        "are unread: the mail worth a filter. Takes the same criteria "
+        "flags as 'mail search', such as --since or --unread. One search "
+        "finds the mail and its headers are read a page at a time; nothing is "
+        "marked read, and nothing is changed.",
+    )
+    senders.add_argument(
+        "--folder", help=f"folder to count; {FOLDER_DEFAULT_HELP}"
+    )
+    senders.add_argument(
+        "--by",
+        choices=utilities.senders.GROUPINGS,
+        default="address",
+        help="count by sender address, its domain, or the List-Id header; "
+        "default address",
+    )
+    senders.add_argument(
+        "--top",
+        type=int,
+        default=DEFAULT_SENDERS_TOP,
+        metavar="N",
+        help=f"show the N busiest; 0 shows every one. Default "
+        f"{DEFAULT_SENDERS_TOP}",
+    )
+    senders.add_argument(
+        "--min",
+        dest="minimum",
+        type=int,
+        default=1,
+        metavar="N",
+        help="leave out any that sent fewer than N messages; default 1",
+    )
+    senders.add_argument(
+        "--max-messages",
+        dest="max_messages",
+        type=int,
+        default=utilities.senders.DEFAULT_MAX_MESSAGES,
+        metavar="N",
+        help=f"refuse, reading no header, if the search finds more than "
+        f"N messages, rather than counting some of them (default "
+        f"{utilities.senders.DEFAULT_MAX_MESSAGES})",
+    )
+    senders.add_argument("--json", action="store_true", help=JSON_HELP)
+    senders.set_defaults(handler=cmd_senders)
+
+    branch("folder", "list, create, rename, and subscribe to folders")
+
+    folders = command(
+        "folder list",
+        parents=[common, connection],
+        help=f"list {words.mail_service} folders",
+    )
+    folders.add_argument(
+        "--counts",
+        action="store_true",
+        help="show each folder's total and unread messages, and its size "
+        "where the server reports it, from one request"
+        if offer.folder_counts
+        else argparse.SUPPRESS,
+    )
+    folders.add_argument("--json", action="store_true", help=JSON_HELP)
+    folders.set_defaults(handler=cmd_folders)
+
+    create_folder = command(
+        "folder create",
+        parents=[common, connection, safety],
+        help=f"create a folder over {words.mail_service}, and subscribe to it",
+        description=f"Create a folder over {words.mail_service} and "
+        "subscribe to it, so "
+        "webmail shows it. The folder name is normalized like every other: "
+        "'Lists/GitHub' and 'INBOX.Lists.GitHub' name the same folder, and "
+        "a new one goes where the server says new folders belong. What "
+        "would be created is shown first, and you are asked to confirm. A "
+        "folder that already exists is left as it is; one that differs "
+        "from an existing folder only in case is refused.",
+    )
+    create_folder.add_argument("folder", metavar="NAME")
+    create_folder.add_argument(
+        "--no-subscribe",
+        dest="subscribe",
+        action="store_false",
+        help="create the folder without subscribing to it; webmail will not "
+        "show it until 'mailctl folder subscribe NAME'",
+    )
+    create_folder.set_defaults(handler=cmd_create_folder)
+
+    rename_folder = command(
+        "folder rename",
+        parents=[common, connection, safety],
+        help="rename a folder, and repoint the rules that file into it",
+        description=f"Rename a folder over {words.mail_service}, together "
+        "with every folder under it, and repoint every rule in the active "
+        f"script that files into any of them. {words.mail_service}'s "
+        "RENAME leaves subscriptions behind, so "
+        "each moved folder that was subscribed is subscribed under its "
+        "new name, and the old name is dropped from the list. Only the "
+        "folder names in the rules change; every other byte of the script "
+        "is kept. What would change is shown first and you are asked to "
+        "confirm; the new script is backed up and validated "
+        f"({words.validation}) before the folder is touched, and "
+        "afterwards the account is read back to check that everything "
+        "landed. INBOX cannot be renamed, "
+        "and NEW must not exist yet.",
+    )
+    rename_folder.add_argument("old", metavar="OLD")
+    rename_folder.add_argument("new", metavar="NEW")
+    rename_folder.set_defaults(handler=cmd_rename_folder)
+
+    for name, summary in (
+        ("folder subscribe", "show a folder in webmail (IMAP SUBSCRIBE)"),
+        (
+            "folder unsubscribe",
+            "hide a folder from webmail; it keeps its mail",
+        ),
+    ):
+        toggle = command(
+            name,
+            parents=[common, connection],
+            help=summary,
+            description=f"{summary[0].upper()}{summary[1:]}. Webmail draws "
+            "its folder tree from the subscription list (LSUB), so this is "
+            "what decides whether a folder is visible there. The folder "
+            "name is normalized like every other: 'Lists/GitHub' and "
+            "'INBOX.Lists.GitHub' name the same folder.",
+        )
+        toggle.add_argument("folder", metavar="FOLDER")
+        toggle.add_argument(
+            "--dry-run",
+            dest="dry_run",
+            action="store_true",
+            help="say what would change; change nothing",
+        )
+        toggle.add_argument("--json", action="store_true", help=JSON_PLAN_HELP)
+        toggle.set_defaults(handler=cmd_subscribe)
+
+    branch(
+        "filter",
+        "save filters, and apply them to mail already delivered",
+    )
+
+    rules = command(
+        "filter list",
+        parents=[common, connection],
+        help="show the rules in order, and which cannot fire",
+        description="List the active script's rules in the order the server "
+        "evaluates them, marking which carry 'stop' and which are disabled, "
+        "then report any rule an earlier one makes unreachable. A '!' "
+        "finding is decided; a '?' is a suspicion worth checking. Nothing is "
+        "changed.",
+    )
+    rules.add_argument("--script", help="script name; default active")
+    rules.add_argument("--json", action="store_true", help=JSON_HELP)
+    rules.set_defaults(handler=cmd_rules)
+
+    add = command(
+        "filter add",
+        parents=[common, connection, rule_criteria, sources, actions],
+        help="save a rule; mail already delivered is left alone",
+        description="Save a rule into the active script, merged with the "
+        "rules already there. The diff is shown, the script is backed up, "
+        "and the new one uploaded. Only new mail is filtered by it; "
+        "'mailctl filter apply' with the same criteria acts on mail already "
+        "delivered.",
+    )
+    add.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="show the diff; upload nothing",
+    )
+    add.add_argument("--json", action="store_true", help=JSON_PLAN_HELP)
+    _add_rule_flags(add, offer, words)
+    add.set_defaults(handler=cmd_add)
+
+    apply_cmd = command(
+        "filter apply",
+        parents=[
+            common,
+            connection,
+            criteria,
+            sources,
+            actions,
+            safety,
+            mail_safety,
+        ],
+        help="act on mail already delivered",
+        description="Act on the mail already in a folder as a rule would: the "
+        "messages that match the criteria are found and shown, then --dry-run "
+        "stops, or you are asked to confirm (--yes skips the question). No "
+        "rule is saved; 'mailctl filter add' with the same criteria saves one "
+        "for new mail. More matches than --max-messages refuse the whole "
+        "pass, and nothing is changed.",
+    )
+    apply_cmd.add_argument(
+        "--folder", help=f"source folder; {FOLDER_DEFAULT_HELP}"
+    )
+    apply_cmd.add_argument("--delimiter", help=argparse.SUPPRESS)
+    apply_cmd.set_defaults(handler=cmd_apply, no_imap=False)
+
     remove = command(
-        "remove-rule",
+        "filter remove",
         parents=[common, connection, safety],
         help="remove a named rule from the active script",
     )
@@ -4544,7 +4416,7 @@ def build_parser(
     remove.set_defaults(handler=cmd_remove_rule)
 
     move = command(
-        "move-rule",
+        "filter move",
         offer.ordering,
         parents=[common, connection, safety],
         help="move a named rule to a new position, unchanged",
@@ -4588,8 +4460,44 @@ def build_parser(
     )
     move.set_defaults(handler=cmd_move_rule)
 
+    rename = command(
+        "filter rename",
+        offer.rename,
+        parents=[common, connection, safety],
+        help="give a named rule a new name, unchanged otherwise",
+        description="Change one rule's name and nothing else: its "
+        "conditions, its actions, its position, and whether it is "
+        "disabled stay as they are, and so does every other rule. NEW "
+        "must not be empty or already another rule's name. The script "
+        "is backed up first and you are asked to confirm.",
+    )
+    rename.add_argument("rule_name", metavar="OLD")
+    rename.add_argument("new_name", metavar="NEW")
+    rename.add_argument("--script", help="script name; default active")
+    rename.add_argument("--activate", action="store_true", help=activate_help)
+    rename.set_defaults(handler=cmd_rename_rule)
+
+    for enable, name in ((True, "filter enable"), (False, "filter disable")):
+        verb = "enable" if enable else "disable"
+        switch = command(
+            name,
+            offer.disable,
+            parents=[common, connection, safety],
+            help=f"{verb} a named rule, keeping it in the script",
+            description=f"Switch one rule {'on' if enable else 'off'} "
+            "without removing it. A disabled rule stays in the script, "
+            f"{words.disabled_form}. The script is backed up first and you "
+            "are asked to confirm.",
+        )
+        switch.add_argument("rule_name", metavar="NAME")
+        switch.add_argument("--script", help="script name; default active")
+        switch.add_argument(
+            "--activate", action="store_true", help=activate_help
+        )
+        switch.set_defaults(handler=cmd_switch_rule, enable=enable)
+
     optimize = command(
-        "optimize-rules",
+        "filter optimize",
         offer.ordering,
         parents=[common, connection, safety],
         help="propose a better order for the rules, and merge duplicates",
@@ -4619,44 +4527,200 @@ def build_parser(
     )
     optimize.set_defaults(handler=cmd_optimize_rules)
 
-    for enable, name in ((False, "disable-rule"), (True, "enable-rule")):
-        verb = "enable" if enable else "disable"
-        switch = command(
-            name,
-            offer.disable,
-            parents=[common, connection, safety],
-            help=f"{verb} a named rule, keeping it in the script",
-            description=f"Switch one rule {'on' if enable else 'off'} "
-            "without removing it. A disabled rule stays in the script, "
-            f"{words.disabled_form}. The script is backed up first and you "
-            "are asked to confirm.",
-        )
-        switch.add_argument("rule_name", metavar="NAME")
-        switch.add_argument("--script", help="script name; default active")
-        switch.add_argument(
-            "--activate", action="store_true", help=activate_help
-        )
-        switch.set_defaults(handler=cmd_switch_rule, enable=enable)
-
-    rename = command(
-        "rename-rule",
-        offer.rename,
-        parents=[common, connection, safety],
-        help="give a named rule a new name, unchanged otherwise",
-        description="Change one rule's name and nothing else: its "
-        "conditions, its actions, its position, and whether it is "
-        "disabled stay as they are, and so does every other rule. NEW "
-        "must not be empty or already another rule's name. The script "
-        "is backed up first and you are asked to confirm.",
+    # Offered only where the host stores several rule sets, as decided on
+    # #219; hidden, each still parses and runs.
+    branch(
+        "filterset",
+        "list, show, back up, and restore sets of filters",
     )
-    rename.add_argument("rule_name", metavar="OLD")
-    rename.add_argument("new_name", metavar="NEW")
-    rename.add_argument("--script", help="script name; default active")
-    rename.add_argument("--activate", action="store_true", help=activate_help)
-    rename.set_defaults(handler=cmd_rename_rule)
+
+    listing = command(
+        "filterset list",
+        offer.rule_sets,
+        parents=[common, connection],
+        help=f"list {words.rule_sets}",
+    )
+    listing.add_argument("--json", action="store_true", help=JSON_HELP)
+    listing.set_defaults(handler=cmd_list)
+
+    show = command(
+        "filterset show",
+        offer.rule_sets,
+        parents=[common, connection],
+        help=f"print a {words.rule_set}",
+    )
+    show.add_argument("name", nargs="?", help="script name; default active")
+    show.set_defaults(handler=cmd_show)
+
+    backup = command(
+        "filterset backup",
+        offer.rule_sets,
+        parents=[common, connection],
+        help="save the active script to a file",
+        description=f"Save the active {words.rule_set} to a file, byte for "
+        "byte as the server has it -- no banner lines, nothing reformatted "
+        "(which is what 'mailctl filterset show' adds, and why it is not a "
+        "backup). The file is written mode 0600, in a directory created 0700 "
+        "if it was not there. Nothing on the server is touched. 'mailctl "
+        "filterset restore FILE' puts a backup back.",
+    )
+    backup.add_argument(
+        "--output",
+        "-o",
+        metavar="PATH",
+        help="where to write it. A PATH ending in '/', or naming a "
+        "directory that already exists, means 'put the default filename "
+        "in here'; anything else is the exact file to write. Default: "
+        f"the backup directory (--backup-dir), named {words.backup_file}",
+    )
+    backup.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="report the file that would be written; write nothing",
+    )
+    backup.set_defaults(handler=cmd_backup)
+
+    restore = command(
+        "filterset restore",
+        offer.rule_sets,
+        parents=[common, connection, safety],
+        help="upload a backup file over the active script, or --script",
+        description=f"Replace the active {words.rule_set} -- or the one "
+        "--script names -- with a backup file, "
+        "byte for byte. The difference between the file and what the "
+        "server has now is shown first, the current script is backed up "
+        "before anything is sent, the server validates the file "
+        f"({words.validation}), and you are asked to confirm. No other stored "
+        "script is touched. Unlike every other change mailctl makes, "
+        "this REPLACES the script rather than merging into it -- any rule "
+        "added since the backup was taken is removed, which the diff "
+        "shows.",
+    )
+    restore.add_argument(
+        "file",
+        metavar="FILE",
+        help="a file written by 'mailctl filterset backup'",
+    )
+    restore.add_argument("--script", help="script name; default active")
+    restore.add_argument("--activate", action="store_true", help=activate_help)
+    restore.add_argument(
+        "--allow-empty",
+        dest="allow_empty",
+        action="store_true",
+        help="restore a FILE that is empty, which removes every rule; "
+        "refused without this",
+    )
+    restore.set_defaults(handler=cmd_restore)
+
+    branch(
+        "server",
+        "check the servers, and what they report",
+    )
+
+    test = command(
+        "server test",
+        parents=[common, connection],
+        help="check reachability, change nothing",
+    )
+    test.set_defaults(handler=cmd_test)
+
+    probe = command(
+        "server probe",
+        parents=[common, connection],
+        help="print what the servers say about themselves, change nothing",
+        description="Print, dated, everything a provider record's Observed "
+        "tier needs: where each half connects, each server's identity and "
+        "its full capability list (and whether that list was read before "
+        "or after login), the active script, the folder delimiter, and "
+        "the namespaces. Lists are sorted, so two probes of an unchanged "
+        "server differ only in the time. Nothing is changed, and no "
+        "credential is printed.",
+    )
+    shape = probe.add_mutually_exclusive_group()
+    shape.add_argument(
+        "--json",
+        action="store_true",
+        help="print it as a versioned JSON document, for storing and "
+        "comparing",
+    )
+    shape.add_argument(
+        "--report",
+        action="store_true",
+        help="where a server is one mailctl does not recognise, print a "
+        "redacted issue body to report it: no address, host, folder or "
+        "script name, or credential. Nothing is sent",
+    )
+    probe.set_defaults(handler=cmd_probe)
+
+    branch(
+        "server baseline",
+        "save, show, or check a record of what the servers say",
+    )
+
+    save_baseline = command(
+        "server baseline save",
+        parents=[common, connection],
+        help="record what the servers say now, to compare against later",
+        description="Probe both servers, as 'mailctl server probe' does, and "
+        "save the result as this host's baseline: "
+        "$XDG_CONFIG_HOME/mailctl/baselines/<host>.json, written mode 0600 "
+        "in a directory created 0700. What describes the server is kept "
+        "once per host; the active script is kept per account. The first "
+        "save just writes it. Replacing one shows what changed and the "
+        "file's diff, then asks. Only this local file is written; nothing "
+        "on the server is changed, and no credential is stored.",
+    )
+    save_baseline.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="show what would be saved; write nothing",
+    )
+    save_baseline.add_argument(
+        "--yes", action="store_true", help="skip the confirmation prompt"
+    )
+    save_baseline.set_defaults(handler=cmd_save_baseline)
+
+    show_baseline = command(
+        "server baseline show",
+        parents=[common, connection],
+        help="print the saved baseline for this host",
+        description="Print the baseline 'mailctl server baseline save' saved "
+        "for the configured host, as 'mailctl server probe' lays out a probe. "
+        "The server is not contacted.",
+    )
+    show_baseline.add_argument(
+        "--json", action="store_true", help="print the file as it is stored"
+    )
+    show_baseline.set_defaults(handler=cmd_show_baseline)
+
+    check_baseline = command(
+        "server baseline check",
+        parents=[common, connection],
+        help="report what has changed on the servers since the baseline",
+        description="Probe both servers and compare what they say with the "
+        "saved baseline, saying what each difference means for this "
+        "account. Serious (!): an extension the active script requires is "
+        "gone; the folder delimiter or the personal namespace changed; an "
+        "IMAP capability mailctl behaves differently without came or went; "
+        "the active script is another one. Everything else is "
+        "informational. Nothing is refused and nothing is changed.",
+        epilog=f"Exit status: 0 no drift, {DRIFT_INFO_EXIT} informational "
+        f"drift only, {DRIFT_SERIOUS_EXIT} serious drift, 1 on a failure "
+        f"(no baseline saved, one that cannot be read, no connection).",
+    )
+    check_baseline.add_argument(
+        "--json",
+        action="store_true",
+        help="print the report as a versioned JSON document",
+    )
+    check_baseline.set_defaults(handler=cmd_check_baseline)
+
+    branch("config", "the configuration mailctl reads")
 
     migrate = command(
-        "migrate-config",
+        "config migrate",
         parents=[common],
         help="move config and backups from the old mxfilter directory",
         description="Move everything in the config directory the tool used "
@@ -4683,13 +4747,17 @@ def build_parser(
     helping = command(
         "help",
         parents=[common],
-        help="show help for mailctl or a command",
-        description="Print what 'mailctl --help' prints, or with COMMAND "
-        "what 'mailctl COMMAND --help' prints, for the provider --provider "
-        "names or the configuration selects. The server is not contacted.",
+        help="show help for mailctl, a group, or a command",
+        description="Print what 'mailctl --help' prints, or with a GROUP "
+        "and an ACTION what 'mailctl GROUP ACTION --help' prints -- 'mailctl "
+        "help filter add' -- for the provider --provider names or the "
+        "configuration selects. The server is not contacted.",
     )
     helping.add_argument(
-        "topic", nargs="?", metavar="COMMAND", help="the command to explain"
+        "topic",
+        nargs="*",
+        metavar="GROUP [ACTION]",
+        help="the group, or the group and the command, to explain",
     )
     helping.add_argument(
         "--provider",
@@ -4705,7 +4773,30 @@ def build_parser(
         "dotenv-style file (default .env in the current directory)",
     )
 
-    subparsers.metavar = "{" + ",".join(listed) + "}"
+    # Deepest first, so a group knows whether any command under it is
+    # offered before the level above it is drawn.
+    for path in sorted(levels, key=lambda p: len(p.split()), reverse=True):
+        children = offered_at[path]
+        listed = [name for name, offered in children if offered]
+
+        if path:
+            above, _, name = path.rpartition(" ")
+            offered_at[above] = [
+                (child, bool(listed) if child == name else offered)
+                for child, offered in offered_at[above]
+            ]
+
+            # argparse keeps the one-line help of each subcommand here;
+            # dropping the group's entry is what hides it.
+            if not listed:
+                levels[above]._choices_actions = [
+                    action
+                    for action in levels[above]._choices_actions
+                    if action.dest != name
+                ]
+
+        shown = listed or [name for name, _ in children]
+        levels[path].metavar = "{" + ",".join(shown) + "}"
 
     return parser
 
@@ -4807,6 +4898,43 @@ def _add_rule_flags(
 # Entry point
 # ############################################################################
 
+# Every command's name before they were grouped (#219), and the command it
+# is now. A clean break: the old name is refused, never run.
+GONE_COMMANDS = {
+    "search": "mail search",
+    "view": "mail view",
+    "mark": "mail mark",
+    "senders": "mail senders",
+    "folders": "folder list",
+    "create-folder": "folder create",
+    "rename-folder": "folder rename",
+    "subscribe": "folder subscribe",
+    "unsubscribe": "folder unsubscribe",
+    "rules": "filter list",
+    "add": "filter add",
+    "apply": "filter apply",
+    "remove-rule": "filter remove",
+    "move-rule": "filter move",
+    "rename-rule": "filter rename",
+    "enable-rule": "filter enable",
+    "disable-rule": "filter disable",
+    "optimize-rules": "filter optimize",
+    "list": "filterset list",
+    "show": "filterset show",
+    "backup": "filterset backup",
+    "restore": "filterset restore",
+    "test": "server test",
+    "probe": "server probe",
+    "save-baseline": "server baseline save",
+    "show-baseline": "server baseline show",
+    "check-baseline": "server baseline check",
+    "migrate-config": "config migrate",
+    # Gone before the grouping (#149, #147), and named here so they point
+    # at what replaced them.
+    "from-message": "filter add --like",
+    "messages": "mail search",
+}
+
 
 # ----------------------------------------------------------------------------
 def provider_offer(
@@ -4846,22 +4974,23 @@ def provider_offer(
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, dispatch, and turn failures into diagnostics."""
     parser = build_parser(*(provider_offer(argv) or (None, None)))
+    refuse_gone_command(parser, sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(argv)
 
-    # The same parse as 'mailctl [COMMAND] --help', on the parser built for
-    # this run's provider, so the two cannot drift; argparse exits from it,
-    # 0 with the help or 2 naming the valid commands.
+    # The same parse as 'mailctl [GROUP [ACTION]] --help', on the parser
+    # built for this run's provider, so the two cannot drift; argparse exits
+    # from it, 0 with the help or 2 naming the valid commands.
     if args.command == "help":
-        topic = [] if args.topic is None else [args.topic]
-
-        parser.parse_args([*topic, "--help"])
+        refuse_gone_command(parser, args.topic)
+        parser.parse_args([*args.topic, "--help"])
 
     # --no-subscribe only shapes a folder this run creates. Accepting it
     # alone would be a flag that looks like it took effect and did not.
     if getattr(args, "no_subscribe", False) and not args.create_folder:
         parser.error(
             "--no-subscribe only applies with --create-folder; to hide a "
-            "folder that already exists, use 'mailctl unsubscribe FOLDER'"
+            "folder that already exists, use 'mailctl folder unsubscribe "
+            "FOLDER'"
         )
 
     # --json and --uids-only keep stdout for the data alone: the data goes
@@ -4919,6 +5048,23 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         return 1
+
+
+# ----------------------------------------------------------------------------
+def refuse_gone_command(parser: argparse.ArgumentParser, argv) -> None:
+    """Stop a command line that starts with a command's old name, naming
+    the command it is now; there are no aliases (#219).
+
+    The top level takes no option with a value, so its first word that is
+    not an option is the command.
+    """
+    first = next((word for word in argv if not word.startswith("-")), None)
+
+    if first in GONE_COMMANDS:
+        parser.error(
+            f"'{first}' is now 'mailctl {GONE_COMMANDS[first]}'; the "
+            f"commands are grouped (see 'mailctl help')"
+        )
 
 
 # ----------------------------------------------------------------------------
@@ -5028,7 +5174,7 @@ ERROR_TEXT = {
     "restore_needs_script": lambda _, __: (
         "no active script on the server to restore over. Name the script "
         "to restore with --script NAME; with nothing active it is "
-        "activated. 'mailctl list' shows what the account has."
+        "activated. 'mailctl filterset list' shows what the account has."
     ),
     "no_host": lambda message, _: f"{message}; set --host or MAILCTL_HOST",
     "rule_name_taken": lambda message, fields: (

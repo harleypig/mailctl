@@ -1,4 +1,4 @@
-$ mailctl move-rule keep-boss --first
+$ mailctl filter move keep-boss --first
 exit: 0
 --- stdout
 Rule 'keep-boss' is already at position 1 of 2 in 'managesieve'; nothing to change.

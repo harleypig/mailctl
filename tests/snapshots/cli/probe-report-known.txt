@@ -1,4 +1,4 @@
-$ mailctl probe --report
+$ mailctl server probe --report
 exit: 0
 --- stdout
 

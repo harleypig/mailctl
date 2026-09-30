@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists --before phantom
+$ mailctl filter add --from noreply@github.com --fileinto Lists --before phantom
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')

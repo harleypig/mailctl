@@ -1,10 +1,10 @@
-$ mailctl create-folder Lists --dry-run --json
+$ mailctl folder create Lists --dry-run --json
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "plan": {
-    "command": "create-folder",
+    "command": "folder create",
     "changes": false,
     "folder": {
       "requested": "Lists",

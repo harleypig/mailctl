@@ -1,4 +1,4 @@
-$ mailctl mark 2 --flag
+$ mailctl mail mark 2 --flag
 exit: 1
 --- stdout
 Marking in 'INBOX': set \Flagged

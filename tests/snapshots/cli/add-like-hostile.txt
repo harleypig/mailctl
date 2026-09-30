@@ -1,4 +1,4 @@
-$ mailctl add --like 9 --derive subject --fileinto Lists --dry-run
+$ mailctl filter add --like 9 --derive subject --fileinto Lists --dry-run
 exit: 0
 --- stdout
 Message uid 9 in 'INBOX':

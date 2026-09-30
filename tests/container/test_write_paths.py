@@ -146,6 +146,7 @@ def test_add_merges_into_a_roundcube_script_and_keeps_its_rule(account):
     account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
 
     result = account.run(
+        "filter",
         "add",
         "--from",
         GITHUB,
@@ -187,6 +188,7 @@ def test_listing_commands_show_the_added_rule(account):
     account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
 
     added = account.run(
+        "filter",
         "add",
         "--subject",
         "invoice",
@@ -197,9 +199,9 @@ def test_listing_commands_show_the_added_rule(account):
 
     assert added.code == 0, added.err
 
-    listed = account.run("list")
-    rules = account.run("rules")
-    shown = account.run("show")
+    listed = account.run("filterset", "list")
+    rules = account.run("filter", "list")
+    shown = account.run("filterset", "show")
 
     assert listed.code == rules.code == shown.code == 0
     assert ROUNDCUBE_NAME in listed.out
@@ -222,6 +224,7 @@ def test_the_uploaded_rule_files_new_mail(account):
     account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
 
     added = account.run(
+        "filter",
         "add",
         "--from",
         GITHUB,
@@ -253,7 +256,7 @@ def test_remove_rule_takes_out_one_rule_and_leaves_the_rest(account):
     way through, or if the server keeps the old script."""
     account.seed_script(ROUNDCUBE_NAME, THREE_RULES)
 
-    result = account.run("remove-rule", "beta", "--yes")
+    result = account.run("filter", "remove", "beta", "--yes")
 
     assert result.code == 0, result.err
 
@@ -269,7 +272,7 @@ def test_move_rule_reorders_without_changing_the_rule(account):
     move, or if another rule is dropped or duplicated."""
     account.seed_script(ROUNDCUBE_NAME, THREE_RULES)
 
-    result = account.run("move-rule", "gamma", "--first", "--yes")
+    result = account.run("filter", "move", "gamma", "--first", "--yes")
 
     assert result.code == 0, result.err
 
@@ -305,7 +308,7 @@ def test_disable_then_enable_switches_the_rule_off_and_on(account):
     with account.imap() as client:
         client.create_folder("INBOX.Bills")
 
-    disabled = account.run("disable-rule", "invoices", "--yes")
+    disabled = account.run("filter", "disable", "invoices", "--yes")
 
     assert disabled.code == 0, disabled.err
 
@@ -322,7 +325,7 @@ def test_disable_then_enable_switches_the_rule_off_and_on(account):
     assert mail_in(account, "INBOX.Bills") == {}
     assert [s for s, _ in mail_in(account, "INBOX").values()] == ["invoice 1"]
 
-    enabled = account.run("enable-rule", "invoices", "--yes")
+    enabled = account.run("filter", "enable", "invoices", "--yes")
 
     assert enabled.code == 0, enabled.err
     assert "if false" not in account.script(ROUNDCUBE_NAME)
@@ -357,6 +360,7 @@ def test_replacing_a_disabled_rule_keeps_it_disabled(account):
         client.create_folder("INBOX.Bills")
 
     replaced = account.run(
+        "filter",
         "add",
         "--subject",
         "receipt",
@@ -380,7 +384,7 @@ def test_replacing_a_disabled_rule_keeps_it_disabled(account):
     assert "invoice" not in rule
     assert "if " not in rule
 
-    rules = account.run("rules")
+    rules = account.run("filter", "list")
 
     assert rules.code == 0, rules.err
     assert "invoices  [disabled]" in rules.out
@@ -391,7 +395,7 @@ def test_replacing_a_disabled_rule_keeps_it_disabled(account):
     assert mail_in(account, "INBOX.Bills") == {}
     assert [s for s, _ in mail_in(account, "INBOX").values()] == ["receipt 1"]
 
-    enabled = account.run("enable-rule", "invoices", "--yes")
+    enabled = account.run("filter", "enable", "invoices", "--yes")
 
     assert enabled.code == 0, enabled.err
     assert "if false" not in account.script(ROUNDCUBE_NAME)
@@ -413,6 +417,7 @@ def test_a_fresh_account_gets_a_new_active_script(account):
     assert account.active_script() is None
 
     result = account.run(
+        "filter",
         "add",
         "--subject",
         "hello",
@@ -444,17 +449,17 @@ def test_backup_then_restore_is_byte_exact(account, tmp_path):
     stored = account.script_bytes(ROUNDCUBE_NAME)
     target = tmp_path / "saved.sieve"
 
-    backed_up = account.run("backup", "--output", str(target))
+    backed_up = account.run("filterset", "backup", "--output", str(target))
 
     assert backed_up.code == 0, backed_up.err
     assert target.read_bytes() == stored
 
-    changed = account.run("remove-rule", "alpha", "--yes")
+    changed = account.run("filter", "remove", "alpha", "--yes")
 
     assert changed.code == 0, changed.err
     assert account.script_bytes(ROUNDCUBE_NAME) != stored
 
-    restored = account.run("restore", str(target), "--yes")
+    restored = account.run("filterset", "restore", str(target), "--yes")
 
     assert restored.code == 0, restored.err
     assert account.script_bytes(ROUNDCUBE_NAME) == stored
@@ -479,6 +484,7 @@ def test_create_folder_subscribes_unless_told_not_to(account):
     webmail draws its folder tree from (#38).
     """
     shown = account.run(
+        "filter",
         "add",
         "--subject",
         "shown",
@@ -487,6 +493,7 @@ def test_create_folder_subscribes_unless_told_not_to(account):
         "--create-folder",
     )
     hidden = account.run(
+        "filter",
         "add",
         "--subject",
         "hidden",
@@ -505,10 +512,10 @@ def test_create_folder_subscribes_unless_told_not_to(account):
     assert "Lists.Shown" in subscribed
     assert "Lists.Hidden" not in subscribed
 
-    assert account.run("subscribe", "Lists/Hidden").code == 0
+    assert account.run("folder", "subscribe", "Lists/Hidden").code == 0
     assert "Lists.Hidden" in folder_state(account)[1]
 
-    assert account.run("unsubscribe", "Lists/Shown").code == 0
+    assert account.run("folder", "unsubscribe", "Lists/Shown").code == 0
     assert "Lists.Shown" not in folder_state(account)[1]
 
 
@@ -527,6 +534,7 @@ def test_apply_moves_and_marks_existing_mail(account):
     account.append("INBOX", message("friend@example.org", "lunch?"))
 
     result = account.run(
+        "filter",
         "apply",
         "--from",
         GITHUB,
@@ -575,11 +583,11 @@ def test_apply_keep_copies_as_the_saved_rule_does(account):
     account.append("INBOX", message(GITHUB, "old pr"))
     account.append("INBOX", message("friend@example.org", "lunch?"))
 
-    applied = account.run("apply", *actions, "--yes")
+    applied = account.run("filter", "apply", *actions, "--yes")
 
     assert applied.code == 0, applied.err
 
-    added = account.run("add", "--name", "github", *actions)
+    added = account.run("filter", "add", "--name", "github", *actions)
 
     assert added.code == 0, added.err
 
@@ -618,22 +626,22 @@ def test_apply_keep_run_again_copies_nothing_twice(account):
     account.append("INBOX", message(GITHUB, "old issue"))
     account.append("INBOX", message("friend@example.org", "lunch?"))
 
-    first = account.run("apply", *actions, "--yes")
+    first = account.run("filter", "apply", *actions, "--yes")
 
     assert first.code == 0, first.err
 
-    added = account.run("add", "--name", "github", *actions)
+    added = account.run("filter", "add", "--name", "github", *actions)
 
     assert added.code == 0, added.err
 
     account.deliver(message(GITHUB, "new pr"), GITHUB)
 
-    planned = account.run("apply", *actions, "--dry-run")
+    planned = account.run("filter", "apply", *actions, "--dry-run")
 
     assert planned.code == 0, planned.err
     assert "3 message(s) already in 'Lists.GitHub'" in planned.out
 
-    again = account.run("apply", *actions, "--yes")
+    again = account.run("filter", "apply", *actions, "--yes")
 
     assert again.code == 0, again.err
     assert "Nothing to do" in again.out
@@ -660,6 +668,7 @@ def test_apply_flags_in_place(account):
     account.append("INBOX", message("friend@example.org", "lunch?"))
 
     result = account.run(
+        "filter",
         "apply",
         "--from",
         GITHUB,
@@ -684,6 +693,7 @@ def test_apply_discard_removes_only_the_matches(account):
     account.append("INBOX", message("friend@example.org", "lunch?"))
 
     result = account.run(
+        "filter",
         "apply",
         "--from",
         "spam@example.net",
@@ -709,6 +719,7 @@ def test_max_messages_refuses_the_whole_pass(account):
         account.append("INBOX", message(GITHUB, subject))
 
     result = account.run(
+        "filter",
         "apply",
         "--from",
         GITHUB,
@@ -744,7 +755,7 @@ def test_one_filter_document_drives_both_halves(account, tmp_path):
     account.append("INBOX", message("friend@example.org", "lunch?"))
 
     built = account.run(
-        "search", "--like", str(like), "--build-filter", "--json"
+        "mail", "search", "--like", str(like), "--build-filter", "--json"
     )
 
     assert built.code == 0, built.err
@@ -753,6 +764,7 @@ def test_one_filter_document_drives_both_halves(account, tmp_path):
     document.write_text(built.out, encoding="utf-8")
 
     added = account.run(
+        "filter",
         "add",
         "--filter",
         str(document),
@@ -771,6 +783,7 @@ def test_one_filter_document_drives_both_halves(account, tmp_path):
     assert len(mail_in(account, "INBOX")) == 3
 
     applied = account.run(
+        "filter",
         "apply",
         "--filter",
         str(document),
@@ -812,7 +825,7 @@ def test_view_does_not_mark_a_message_read(account):
     """
     uid = account.append("INBOX", message(GITHUB, "unread still"))
 
-    result = account.run("view", str(uid))
+    result = account.run("mail", "view", str(uid))
 
     assert result.code == 0, result.err
     assert "unread still" in result.out
@@ -877,12 +890,12 @@ def test_mark_sets_then_clears_read_flagged_and_a_keyword(account):
 
     wanted = ["--read", "--flag", "--keyword", "$Todo"]
 
-    dry = account.run("mark", str(uid), *wanted, "--dry-run")
+    dry = account.run("mail", "mark", str(uid), *wanted, "--dry-run")
 
     assert dry.code == 0, dry.err
     assert flags_of(account, uid) == set()
 
-    marked = account.run("mark", str(uid), *wanted, "--yes")
+    marked = account.run("mail", "mark", str(uid), *wanted, "--yes")
 
     assert marked.code == 0, marked.err
 
@@ -890,6 +903,7 @@ def test_mark_sets_then_clears_read_flagged_and_a_keyword(account):
     assert flags_of(account, other) == set()
 
     cleared = account.run(
+        "mail",
         "mark",
         str(uid),
         "--unread",
@@ -909,7 +923,9 @@ def test_mark_refuses_a_uid_the_folder_does_not_hold(account):
     reported, which would be a partial change reported as a refusal."""
     uid = account.append("INBOX", message(GITHUB, "to mark"))
 
-    result = account.run("mark", str(uid), str(uid + 100), "--flag", "--yes")
+    result = account.run(
+        "mail", "mark", str(uid), str(uid + 100), "--flag", "--yes"
+    )
 
     assert result.code == 1
     assert f"no message with uid {uid + 100}" in result.err
@@ -1013,12 +1029,13 @@ def test_search_and_apply_select_by_body_date_and_state(account):
     }
 
     for flags, expected in cases.items():
-        result = account.run("search", *flags)
+        result = account.run("mail", "search", *flags)
 
         assert result.code == 0, (flags, result.err)
         assert listed(result) == expected, (flags, result.out)
 
     planned = account.run(
+        "filter",
         "apply",
         "--body",
         "merged",
@@ -1051,6 +1068,7 @@ def test_a_body_rule_files_a_delivered_message_by_its_body(account):
     account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
 
     added = account.run(
+        "filter",
         "add",
         "--body",
         "build failed",
@@ -1097,6 +1115,7 @@ def test_a_header_named_notes_files_only_mail_that_carries_it(account):
     account.seed_script(ROUNDCUBE_NAME, ROUNDCUBE)
 
     added = account.run(
+        "filter",
         "add",
         "--header",
         "notes=follow up",

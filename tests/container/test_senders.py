@@ -1,4 +1,4 @@
-"""``mailctl senders`` against a real Dovecot (#160).
+"""``mailctl mail senders`` against a real Dovecot (#160).
 
 Read-only: the oracle APPENDs mail from several senders, some of it
 already read, and mailctl only counts it. The expected counts are the
@@ -68,7 +68,7 @@ def test_senders_counts_each_address_and_its_unread_exactly(account):
     message is counted unread, or a name is not decoded."""
     fill(account)
 
-    result = account.run("senders", "--json")
+    result = account.run("mail", "senders", "--json")
     document = json.loads(result.out)
 
     assert counted(result) == [
@@ -102,7 +102,10 @@ def test_senders_counts_each_address_and_its_unread_exactly(account):
 def test_senders_groups_by_domain_and_list_id(account, by, expected):
     fill(account)
 
-    assert counted(account.run("senders", "--by", by, "--json")) == expected
+    assert (
+        counted(account.run("mail", "senders", "--by", by, "--json"))
+        == expected
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -110,7 +113,7 @@ def test_senders_criteria_reach_the_server(account):
     """--unread is answered by the server's UNSEEN: every row is unread."""
     fill(account)
 
-    assert counted(account.run("senders", "--unread", "--json")) == [
+    assert counted(account.run("mail", "senders", "--unread", "--json")) == [
         ("noreply@github.com", 3, 3),
         ("jurgen@example.org", 1, 1),
         ("news@lists.example.net", 1, 1),
@@ -121,7 +124,7 @@ def test_senders_criteria_reach_the_server(account):
 def test_senders_refuses_over_the_ceiling(account):
     fill(account)
 
-    result = account.run("senders", "--max-messages", "7")
+    result = account.run("mail", "senders", "--max-messages", "7")
 
     assert result.code == 1
     assert "found 8 message(s)" in result.err
@@ -136,7 +139,7 @@ def test_counting_leaves_every_message_as_it_was(account):
         client.select_folder("INBOX", readonly=True)
         before = client.get_flags(client.search("ALL"))
 
-    assert account.run("senders").code == 0
+    assert account.run("mail", "senders").code == 0
 
     with account.imap() as client:
         client.select_folder("INBOX", readonly=True)

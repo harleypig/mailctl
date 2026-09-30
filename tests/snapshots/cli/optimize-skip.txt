@@ -1,4 +1,4 @@
-$ mailctl optimize-rules --skip merge --skip redundant --dry-run
+$ mailctl filter optimize --skip merge --skip redundant --dry-run
 exit: 0
 --- stdout
 Script 'managesieve': 9 rules read.

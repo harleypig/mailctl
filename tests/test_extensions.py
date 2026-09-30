@@ -403,9 +403,11 @@ def test_a_body_rule_is_refused_where_the_server_lacks_body(
         utilities.rules.plan_rule(live, imap_config, body_request(), folder)
 
     assert "'body'" in str(caught.value)
-    assert "mailctl apply" not in str(caught.value)
+    assert "mailctl filter apply" not in str(caught.value)
     assert caught.value.code == "extension_missing"
-    assert "'mailctl apply' take the same criteria" in error_text(caught.value)
+    assert "'mailctl filter apply' take the same criteria" in error_text(
+        caught.value
+    )
 
 
 # ----------------------------------------------------------------------------

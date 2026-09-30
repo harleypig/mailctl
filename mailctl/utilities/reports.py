@@ -1,8 +1,8 @@
 """What the account and the configured provider say about themselves.
 
-Read-only: the probes behind ``mailctl test`` and ``mailctl probe``, the
-provider's own wording and connection facts, and the state of each Sieve
-extension.
+Read-only: the probes behind ``mailctl server test`` and ``mailctl server
+probe``, the provider's own wording and connection facts, and the state of
+each Sieve extension.
 """
 
 import json

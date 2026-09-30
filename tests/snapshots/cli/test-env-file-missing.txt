@@ -1,4 +1,4 @@
-$ mailctl test --env-file nowhere.env
+$ mailctl server test --env-file nowhere.env
 exit: 1
 --- stdout
 

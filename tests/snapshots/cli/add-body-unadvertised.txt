@@ -1,10 +1,10 @@
-$ mailctl add --body merged --fileinto Lists --dry-run
+$ mailctl filter add --body merged --fileinto Lists --dry-run
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
 
 --- stderr
-mailctl: the server does not advertise the Sieve extension 'body', which this rule's criteria need, so it cannot be saved as a rule. 'mailctl test' lists what the server advertises; 'mailctl search' and 'mailctl apply' take the same criteria for mail already delivered.
+mailctl: the server does not advertise the Sieve extension 'body', which this rule's criteria need, so it cannot be saved as a rule. 'mailctl server test' lists what the server advertises; 'mailctl mail search' and 'mailctl filter apply' take the same criteria for mail already delivered.
 
 --- sieve calls
 ('connect',)

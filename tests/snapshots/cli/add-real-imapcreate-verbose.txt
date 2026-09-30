@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder -v
+$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-folder -v
 exit: 0
 --- stdout
 [imap] connecting to mail.example.com:993 (ssl=True) as user@example.com
@@ -37,7 +37,7 @@ Created IMAP folder 'INBOX.Lists.GitHub' and subscribed to it
 [sieve] activating script 'managesieve'
 Uploaded and activated script 'managesieve'
 
-Mail already delivered was not touched; to act on it, run 'mailctl apply' with the same criteria and actions.
+Mail already delivered was not touched; to act on it, run 'mailctl filter apply' with the same criteria and actions.
 
 --- stderr
 

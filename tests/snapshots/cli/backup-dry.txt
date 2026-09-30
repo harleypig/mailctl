@@ -1,4 +1,4 @@
-$ mailctl backup --dry-run
+$ mailctl filterset backup --dry-run
 exit: 0
 --- stdout
 [dry-run] would write 2 rule(s) to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve

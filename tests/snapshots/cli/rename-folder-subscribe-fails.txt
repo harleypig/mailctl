@@ -1,4 +1,4 @@
-$ mailctl rename-folder Lists Archive --yes
+$ mailctl folder rename Lists Archive --yes
 exit: 1
 --- stdout
 Folder 'Lists' resolves to 'INBOX.Lists' (delimiter '.')
@@ -42,7 +42,7 @@ Uploaded and activated script 'managesieve'
 Checked after the rename:
   ok    'INBOX.Lists' is gone
   ok    'INBOX.Archive' exists
-  FAIL  'INBOX.Archive' is subscribed, as 'INBOX.Lists' was -- webmail will not show it; 'mailctl subscribe INBOX.Archive' does
+  FAIL  'INBOX.Archive' is subscribed, as 'INBOX.Lists' was -- webmail will not show it; 'mailctl folder subscribe INBOX.Archive' does
   ok    'INBOX.Lists' is off the subscription list
   ok    the 1 folder under it moved with it
   FAIL  those subscribed before are subscribed now -- 'INBOX.Archive.GitHub' is not

@@ -1,4 +1,4 @@
-$ mailctl move-rule keep-boss --last
+$ mailctl filter move keep-boss --last
 exit: 1
 --- stdout
 Move rule 'keep-boss' in script 'managesieve': position 1 -> 2 of 2

@@ -1,4 +1,4 @@
-$ mailctl move-rule all-lists --first --dry-run
+$ mailctl filter move all-lists --first --dry-run
 exit: 0
 --- stdout
 Move rule 'all-lists' in script 'managesieve': position 2 -> 1 of 2

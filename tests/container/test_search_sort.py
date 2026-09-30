@@ -77,7 +77,14 @@ def test_sort_size_reverse_limit_lists_the_biggest_in_order(account):
     newest = account.append("INBOX", message("newest", 50))
 
     result = account.run(
-        "search", "--sort", "size", "--reverse", "--limit", "2", "--uids-only"
+        "mail",
+        "search",
+        "--sort",
+        "size",
+        "--reverse",
+        "--limit",
+        "2",
+        "--uids-only",
     )
     by_size = sorted(sizes(account).items(), key=lambda item: -item[1])
 
@@ -106,8 +113,10 @@ def test_sent_is_the_date_header_and_received_the_arrival(account):
         now - datetime.timedelta(days=30),
     )
 
-    sent = account.run("search", "--sort", "sent", "--uids-only")
-    received = account.run("search", "--sort", "received", "--uids-only")
+    sent = account.run("mail", "search", "--sort", "sent", "--uids-only")
+    received = account.run(
+        "mail", "search", "--sort", "received", "--uids-only"
+    )
 
     assert uids(sent) == [early_sent, late_sent]
     assert uids(received) == [late_sent, early_sent]
@@ -124,7 +133,7 @@ def test_a_non_ascii_criterion_is_sorted_and_rechecked(account):
     small = account.append("INBOX", message("café noir", 100))
 
     result = account.run(
-        "search", "--subject", "café", "--sort", "size", "--uids-only"
+        "mail", "search", "--subject", "café", "--sort", "size", "--uids-only"
     )
 
     assert uids(result) == [small, large]
@@ -136,7 +145,14 @@ def test_json_lists_sizes_in_order_and_names_the_sort(account):
         account.append("INBOX", message(f"{size} bytes", size))
 
     result = account.run(
-        "search", "--sort", "size", "--reverse", "--limit", "3", "--json"
+        "mail",
+        "search",
+        "--sort",
+        "size",
+        "--reverse",
+        "--limit",
+        "3",
+        "--json",
     )
 
     assert result.code == 0, result.err
@@ -157,7 +173,13 @@ def test_a_sort_that_matches_nothing_lists_nothing(account):
     account.append("INBOX", message("anything", 10))
 
     result = account.run(
-        "search", "--from", "nobody@x.test", "--sort", "size", "--uids-only"
+        "mail",
+        "search",
+        "--from",
+        "nobody@x.test",
+        "--sort",
+        "size",
+        "--uids-only",
     )
 
     assert uids(result) == []

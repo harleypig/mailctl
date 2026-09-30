@@ -1,4 +1,4 @@
-$ mailctl search --build-filter
+$ mailctl mail search --build-filter
 exit: 1
 --- stdout
 

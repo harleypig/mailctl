@@ -139,8 +139,8 @@ def test_a_rule_testing_date_or_state_is_refused_before_connecting(given):
     with pytest.raises(MailctlError, match="cannot test") as caught:
         utilities.rules.check_rule(Config(), request)
 
-    assert "'mailctl apply'" not in str(caught.value)
-    assert "'mailctl apply'" in error_text(caught.value)
+    assert "'mailctl filter apply'" not in str(caught.value)
+    assert "'mailctl filter apply'" in error_text(caught.value)
 
 
 # ----------------------------------------------------------------------------
@@ -809,7 +809,7 @@ def test_a_taken_name_points_at_the_rules_listing():
 
     assert refused.value.code == "rule_name_taken"
     assert error_text(refused.value).endswith(
-        "'mailctl rules' lists the names in use."
+        "'mailctl filter list' lists the names in use."
     )
 
 

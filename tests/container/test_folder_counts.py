@@ -1,4 +1,4 @@
-"""``mailctl folders --counts`` against a real Dovecot (#157).
+"""``mailctl folder list --counts`` against a real Dovecot (#157).
 
 Read-only: the mail is put there by the oracle, and mailctl only counts
 it. What the counts must be is read through IMAPClient's own ``STATUS``,
@@ -49,7 +49,7 @@ def test_counts_json_is_what_status_says_for_every_folder(account):
 
     account.append(accented, message("six"))
 
-    result = account.run("folders", "--counts", "--json")
+    result = account.run("folder", "list", "--counts", "--json")
 
     assert result.code == 0, result.err
 
@@ -93,7 +93,7 @@ def test_counting_leaves_every_message_unread(account):
     """LIST-STATUS reads no message, so nothing it does can set \\Seen."""
     account.append("INBOX", message("unread"))
 
-    result = account.run("folders", "--counts")
+    result = account.run("folder", "list", "--counts")
 
     assert result.code == 0, result.err
 

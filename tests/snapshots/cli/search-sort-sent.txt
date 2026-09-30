@@ -1,4 +1,4 @@
-$ mailctl search --sort sent
+$ mailctl mail search --sort sent
 exit: 0
 --- stdout
 5 message(s) in 'INBOX' (UIDVALIDITY 1727000000), by sent date (Date header), oldest first:

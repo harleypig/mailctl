@@ -1,4 +1,4 @@
-$ mailctl search --build-filter --json --from noreply@github.com
+$ mailctl mail search --build-filter --json --from noreply@github.com
 exit: 0
 --- stdout
 {

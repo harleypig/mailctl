@@ -88,7 +88,7 @@ def test_search_json_reports_the_servers_uidvalidity(account, renumbered):
     server's own EXAMINE reports."""
     _before, after = renumbered
 
-    result = account.run("search", "--folder", FOLDER, "--json")
+    result = account.run("mail", "search", "--folder", FOLDER, "--json")
 
     assert result.code == 0, result.err
     assert json.loads(result.out)["uidvalidity"] == after
@@ -105,6 +105,7 @@ def test_a_stale_uid_is_refused_and_the_new_message_left_alone(
     before, after = renumbered
 
     result = account.run(
+        "mail",
         "mark",
         "1",
         "--folder",
@@ -126,6 +127,7 @@ def test_a_current_pin_marks_the_message(account, renumbered):
     _before, after = renumbered
 
     result = account.run(
+        "mail",
         "mark",
         "1",
         "--folder",
@@ -147,7 +149,7 @@ def test_view_refuses_a_stale_uid_and_leaves_it_unread(account, renumbered):
     before, _after = renumbered
 
     result = account.run(
-        "view", "1", "--folder", FOLDER, "--uidvalidity", str(before)
+        "mail", "view", "1", "--folder", FOLDER, "--uidvalidity", str(before)
     )
 
     assert result.code == 1

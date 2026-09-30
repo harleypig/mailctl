@@ -1,4 +1,4 @@
-$ mailctl view 5
+$ mailctl mail view 5
 exit: 0
 --- stdout
 Message uid 5 in 'INBOX' (131B; no flags):

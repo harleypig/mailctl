@@ -19,7 +19,9 @@ from mailctl.criteria import Criteria, dump_filter
 
 # ----------------------------------------------------------------------------
 def given(*argv: str, command: str = "add") -> Criteria:
-    return criteria_given(build_parser().parse_args([command, *argv]))
+    return criteria_given(
+        build_parser().parse_args(["filter", command, *argv])
+    )
 
 
 # ----------------------------------------------------------------------------

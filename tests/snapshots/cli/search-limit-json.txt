@@ -1,8 +1,8 @@
-$ mailctl search --json --limit 2
+$ mailctl mail search --json --limit 2
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "folder": "INBOX",
   "uidvalidity": 1727000000,
   "more": true,

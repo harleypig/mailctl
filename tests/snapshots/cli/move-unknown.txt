@@ -1,4 +1,4 @@
-$ mailctl move-rule phantom --first
+$ mailctl filter move phantom --first
 exit: 1
 --- stdout
 

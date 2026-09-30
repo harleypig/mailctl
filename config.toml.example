@@ -4,13 +4,13 @@
 # ~/.config/mailctl/config.toml when XDG_CONFIG_HOME is unset -- and fill
 # it in. It is the TOML counterpart of .env.example: the same settings,
 # minus the password itself. Before the rename this lived in
-# $XDG_CONFIG_HOME/mxfilter/; `mailctl migrate-config` moves it across.
+# $XDG_CONFIG_HOME/mxfilter/; `mailctl config migrate` moves it across.
 #
 # The format is flat: plain `key = value` lines at the top level, no
 # [tables]. Strings are quoted, ports are bare numbers. A key mailctl does
 # not know is ignored, so a misspelt one is silently ignored too --
-# `mailctl test` shows where each setting came from, which is the way to
-# check it was picked up.
+# `mailctl server test` shows where each setting came from, which is the way
+# to check it was picked up.
 #
 # This file is the lowest-priority source. Resolution order, highest first:
 # a CLI flag > the --env-file file > an exported MAILCTL_* variable > this
@@ -88,7 +88,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 #provider = "mxroute"
 
 # Where script backups are written -- both the automatic pre-upload copy
-# and 'mailctl backup'.
+# and 'mailctl filterset backup'.
 #
 # Default: $XDG_CONFIG_HOME/mailctl/backups, beside this file. XDG would
 # call a backup state rather than config; keeping it here is a deliberate
@@ -115,7 +115,7 @@ password_cmd = "pass show email/you@yourdomain.com"
 # case-insensitive; an unknown one is an error. MAILCTL_DISABLED_EXTENSIONS
 # and --disable-extension REPLACE this list rather than adding to it; set
 # either to "none" to clear it for one run.
-# `mailctl test` lists the names. Default: none.
+# `mailctl server test` lists the names. Default: none.
 #disabled_extensions = ["mailbox"]
 
 # The folder mail is read from when you give no --folder: the one

@@ -1,4 +1,4 @@
-$ mailctl search --body merged --since 2026-09-01 --before 2026-09-28 --unread --flagged
+$ mailctl mail search --body merged --since 2026-09-01 --before 2026-09-28 --unread --flagged
 exit: 0
 --- stdout
 5 message(s) in 'INBOX' (UIDVALIDITY 1727000000), newest first:

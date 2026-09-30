@@ -30,6 +30,7 @@ from dataclasses import replace
 from typing import cast
 
 import pytest
+from cli_support import command_parsers, group_paths
 from utilities_support import mxroute
 
 from mailctl import MailctlError, cli, engine, utilities
@@ -1027,7 +1028,7 @@ def test_an_unknown_provider_is_refused_naming_the_known_ones(monkeypatch):
 
 # ----------------------------------------------------------------------------
 def test_the_cli_takes_the_provider_flag_and_refuses_an_unknown_one(capsys):
-    assert cli.main(["list", "--provider", "nope"]) == 1
+    assert cli.main(["filterset", "list", "--provider", "nope"]) == 1
 
     error = capsys.readouterr().err
 
@@ -1246,6 +1247,7 @@ def test_plan_rule_refuses_it_before_touching_the_provider(fakes):
 def test_the_cli_refuses_it_before_connecting(fakes, capsys):
     code = cli.main(
         [
+            "filter",
             "add",
             "--provider",
             "unordered",
@@ -1530,6 +1532,7 @@ def test_asking_a_host_without_stop_to_stop_is_refused(fakes):
 def test_the_cli_adds_a_default_rule_on_a_host_without_stop(fakes, capsys):
     code = cli.main(
         [
+            "filter",
             "add",
             "--provider",
             "stopless",
@@ -1559,6 +1562,7 @@ def test_a_diff_and_its_actions_are_shown_in_the_hosts_own_words(
     """No Sieve heading and no Sieve tuple rendering on a JSON host."""
     code = cli.main(
         [
+            "filter",
             "add",
             "--provider",
             "fake",
@@ -1586,7 +1590,7 @@ def test_the_test_report_is_laid_out_from_the_providers_data(
     provider's; nothing about MXroute or Sieve is left in the CLI."""
     monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
 
-    code = cli.main(["test", "--provider", "fake"])
+    code = cli.main(["server", "test", "--provider", "fake"])
 
     out = capsys.readouterr().out
 
@@ -1636,7 +1640,14 @@ def test_an_empty_disabled_extensions_is_no_request_at_all(fakes):
 # ----------------------------------------------------------------------------
 def test_the_cli_refuses_disable_extension_for_such_a_host(fakes, capsys):
     code = cli.main(
-        ["list", "--provider", "stopless", "--disable-extension", "mailbox"]
+        [
+            "filterset",
+            "list",
+            "--provider",
+            "stopless",
+            "--disable-extension",
+            "mailbox",
+        ]
     )
 
     assert code == 1
@@ -1780,15 +1791,10 @@ def help_text(capsys, *argv: str) -> str:
 
 # ----------------------------------------------------------------------------
 def offered_flags(parser: argparse.ArgumentParser) -> dict[str, set[str]]:
-    """Every subcommand's flags, split into shown and hidden."""
-    subparsers = next(
-        action
-        for action in parser._actions
-        if isinstance(action, argparse._SubParsersAction)
-    )
+    """Every command's flags, split into shown and hidden."""
     found = {"shown": set(), "hidden": set()}
 
-    for sub in subparsers.choices.values():
+    for sub in command_parsers(parser).values():
         for action in sub._actions:
             key = "hidden" if action.help == argparse.SUPPRESS else "shown"
             found[key].update(action.option_strings)
@@ -1812,7 +1818,7 @@ def test_mxroute_declares_everything_so_nothing_is_hidden():
 
 # ----------------------------------------------------------------------------
 def test_placement_is_not_offered_without_ordering(bare, capsys):
-    text = help_text(capsys, "add", "--provider", "bare")
+    text = help_text(capsys, "filter", "add", "--provider", "bare")
 
     for flag in PLACEMENT_FLAGS:
         assert flag not in text
@@ -1821,42 +1827,70 @@ def test_placement_is_not_offered_without_ordering(bare, capsys):
 
 
 # ----------------------------------------------------------------------------
-def test_move_rule_is_not_listed_without_ordering(bare, capsys, monkeypatch):
+def listed(capsys, *group: str) -> set[str]:
+    """What ``mailctl GROUP --help`` lists, read off its usage line."""
+    usage = help_text(capsys, *group).split("\n\n")[0]
+    choices = re.search(r"\{([\w,-]+)\}", usage)
+
+    assert choices, usage
+
+    return set(choices.group(1).split(","))
+
+
+# ----------------------------------------------------------------------------
+def test_move_is_not_listed_without_ordering(bare, capsys, monkeypatch):
+    assert "move" in listed(capsys, "filter")
+
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
 
-    text = help_text(capsys)
-    usage = text.split("\n\n")[0]
-
-    # remove-rule contains the name, so it is matched as a whole word.
-    assert not re.search(r"(?<![\w-])move-rule", text)
-    assert "remove-rule" in usage
+    assert "move" not in listed(capsys, "filter")
+    assert "remove" in listed(capsys, "filter")
+    assert "filter move" not in help_text(capsys, "filter")
 
 
 # ----------------------------------------------------------------------------
 def test_disable_and_enable_are_not_listed_without_disable(
     bare, capsys, monkeypatch
 ):
-    listed = help_text(capsys)
-
-    assert "disable-rule" in listed
-    assert "enable-rule" in listed
+    assert {"disable", "enable"} <= listed(capsys, "filter")
 
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
-    text = help_text(capsys)
 
-    assert "disable-rule" not in text
-    assert "enable-rule" not in text
+    assert not {"disable", "enable"} & listed(capsys, "filter")
 
 
 # ----------------------------------------------------------------------------
-def test_rename_rule_is_not_listed_without_rename(bare, capsys, monkeypatch):
-    assert re.search(r"(?<![\w-])rename-rule", help_text(capsys))
+def test_rename_is_not_listed_without_rename(bare, capsys, monkeypatch):
+    assert "rename" in listed(capsys, "filter")
 
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
-    text = help_text(capsys)
 
-    assert not re.search(r"(?<![\w-])rename-rule", text)
-    assert "rename-folder" in text
+    assert "rename" not in listed(capsys, "filter")
+    assert "rename" in listed(capsys, "folder")
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_is_listed_only_where_rule_sets_are(capsys, monkeypatch):
+    """#219: a group with none of its commands offered is hidden whole,
+    and still parses -- hidden, not removed."""
+    single = replace(
+        FAKE,
+        name="single",
+        capabilities=replace(FAKE.capabilities, rule_sets=False),
+    )
+    monkeypatch.setitem(registry.PROVIDERS, "single", single)
+
+    assert "filterset" in listed(capsys)
+
+    monkeypatch.setenv("MAILCTL_PROVIDER", "single")
+
+    assert "filterset" not in listed(capsys)
+    assert "filterset" not in help_text(capsys)
+    assert "filter" in listed(capsys)
+    assert listed(capsys, "filterset") == {"list", "show", "backup", "restore"}
+    assert "usage: mailctl filterset list" in help_text(
+        capsys, "filterset", "list"
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -1888,21 +1922,25 @@ def test_a_switch_is_refused_by_a_host_without_disable(bare):
 
 # ----------------------------------------------------------------------------
 def test_no_stop_is_not_offered_without_stop(bare, capsys):
-    assert "--no-stop" not in help_text(capsys, "add", "--provider", "bare")
-    assert "--no-stop" in help_text(capsys, "add")
+    assert "--no-stop" not in help_text(
+        capsys, "filter", "add", "--provider", "bare"
+    )
+    assert "--no-stop" in help_text(capsys, "filter", "add")
 
 
 # ----------------------------------------------------------------------------
 def test_disable_extension_is_not_offered_without_extensions(bare, capsys):
-    text = help_text(capsys, "list", "--provider", "bare")
+    text = help_text(capsys, "filterset", "list", "--provider", "bare")
 
     assert "--disable-extension" not in text
 
 
 # ----------------------------------------------------------------------------
 def test_raw_is_not_offered_without_raw_query(bare, capsys):
-    assert "--raw" not in help_text(capsys, "search", "--provider", "bare")
-    assert "--raw" in help_text(capsys, "search")
+    assert "--raw" not in help_text(
+        capsys, "mail", "search", "--provider", "bare"
+    )
+    assert "--raw" in help_text(capsys, "mail", "search")
 
 
 # ----------------------------------------------------------------------------
@@ -1926,13 +1964,11 @@ def test_bare_declines_exactly_what_it_says():
 
 # ----------------------------------------------------------------------------
 def test_mark_is_listed_only_where_declared(bare, capsys, monkeypatch):
-    listed = re.compile(r"[{,]mark[,}]")
-
-    assert listed.search(help_text(capsys).split("\n\n")[0])
+    assert "mark" in listed(capsys, "mail")
 
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
 
-    assert not listed.search(help_text(capsys).split("\n\n")[0])
+    assert "mark" not in listed(capsys, "mail")
 
 
 # ----------------------------------------------------------------------------
@@ -1969,15 +2005,18 @@ def test_the_fake_really_marked_and_unmarked_the_mail(fakes):
 
 
 # ----------------------------------------------------------------------------
-@pytest.mark.parametrize("command", ["view", "mark", "search", "add", "apply"])
+@pytest.mark.parametrize(
+    "command",
+    ["mail view", "mail mark", "mail search", "filter add", "filter apply"],
+)
 def test_uidvalidity_is_offered_only_where_declared(
     bare, capsys, monkeypatch, command
 ):
-    assert "--uidvalidity" in help_text(capsys, command)
+    assert "--uidvalidity" in help_text(capsys, *command.split())
 
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
 
-    assert "--uidvalidity" not in help_text(capsys, command)
+    assert "--uidvalidity" not in help_text(capsys, *command.split())
 
 
 # ----------------------------------------------------------------------------
@@ -2035,11 +2074,11 @@ def test_the_fake_refuses_a_uid_from_its_own_old_numbering(fakes):
 
 # ----------------------------------------------------------------------------
 def test_counts_are_offered_only_where_declared(bare, capsys, monkeypatch):
-    assert "--counts" in help_text(capsys, "folders")
+    assert "--counts" in help_text(capsys, "folder", "list")
 
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
 
-    assert "--counts" not in help_text(capsys, "folders")
+    assert "--counts" not in help_text(capsys, "folder", "list")
 
 
 # ----------------------------------------------------------------------------
@@ -2070,7 +2109,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     says nothing about MXroute."""
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
 
-    text = help_text(capsys, "list")
+    text = help_text(capsys, "filterset", "list")
 
     for flag in ("--sieve-port", "--sieve-tls", "--imap-host", "--host "):
         assert flag not in text
@@ -2084,19 +2123,22 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     ("argv", "refusal"),
     [
         (
-            ["add", "--from", GITHUB, "--fileinto", "L", "--first"],
+            ["filter", "add", "--from", GITHUB, "--fileinto", "L", "--first"],
             "'ordering'",
         ),
-        (["move-rule", "x", "--first"], "'ordering'"),
-        (["disable-rule", "x", "--yes"], "'disable'"),
-        (["enable-rule", "x", "--yes"], "'disable'"),
-        (["rename-rule", "x", "y", "--yes"], "'rename'"),
-        (["list", "--sieve-port", "4190"], "flag --sieve-port"),
-        (["list", "--disable-extension", "mailbox"], "disabled_extensions"),
-        (["search", "--raw", "ALL"], "'raw_query'"),
-        (["mark", "7", "--flag"], "'mark'"),
-        (["folders", "--counts"], "'folder_counts'"),
-        (["view", "7", "--uidvalidity", "5"], "'uidvalidity'"),
+        (["filter", "move", "x", "--first"], "'ordering'"),
+        (["filter", "disable", "x", "--yes"], "'disable'"),
+        (["filter", "enable", "x", "--yes"], "'disable'"),
+        (["filter", "rename", "x", "y", "--yes"], "'rename'"),
+        (["filterset", "list", "--sieve-port", "4190"], "flag --sieve-port"),
+        (
+            ["filterset", "list", "--disable-extension", "mailbox"],
+            "disabled_extensions",
+        ),
+        (["mail", "search", "--raw", "ALL"], "'raw_query'"),
+        (["mail", "mark", "7", "--flag"], "'mark'"),
+        (["folder", "list", "--counts"], "'folder_counts'"),
+        (["mail", "view", "7", "--uidvalidity", "5"], "'uidvalidity'"),
     ],
     ids=[
         "placement",
@@ -2132,19 +2174,20 @@ def test_an_unreadable_selection_falls_back_to_offering_everything(
     """Help is never where a bad setting is reported; the run is."""
     monkeypatch.setenv("MAILCTL_PROVIDER", "no-such-provider")
 
-    assert "--first" in help_text(capsys, "add")
+    assert "--first" in help_text(capsys, "filter", "add")
 
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "argv",
     [
-        ["help", "add", "--provider", "bare"],
-        ["help", "--provider", "bare", "add"],
+        ["help", "filter", "add", "--provider", "bare"],
+        ["help", "--provider", "bare", "filter", "add"],
     ],
 )
 def test_help_shows_the_selected_providers_offer(bare, capsys, argv):
-    """#153: 'help add' resolves the provider as 'add --help' does."""
+    """#153: 'help filter add' resolves the provider as 'filter add
+    --help' does."""
     with pytest.raises(SystemExit) as stopped:
         cli.main(argv)
 
@@ -2152,8 +2195,8 @@ def test_help_shows_the_selected_providers_offer(bare, capsys, argv):
 
     text = capsys.readouterr().out
 
-    assert text == help_text(capsys, "add", "--provider", "bare")
-    assert text != help_text(capsys, "add")
+    assert text == help_text(capsys, "filter", "add", "--provider", "bare")
+    assert text != help_text(capsys, "filter", "add")
     assert "--first" not in text
     assert BareTransport.opened == 0
 
@@ -2329,17 +2372,12 @@ HOST_WORDS = re.compile(r"Sieve|MXroute|MXRoute|Roundcube|CHECKSCRIPT")
 
 # ----------------------------------------------------------------------------
 def commands_for(provider: str) -> list[str]:
-    """Every subcommand the parser built for ``provider`` has, offered or
-    not, read off the parser rather than listed."""
+    """Every group and command the parser built for ``provider`` has,
+    offered or not, read off the parser rather than listed."""
     offer = registry.PROVIDERS[provider]
     parser = cli.build_parser(offer.capabilities, offer.wording)
-    subparsers = next(
-        action
-        for action in parser._actions
-        if isinstance(action, argparse._SubParsersAction)
-    )
 
-    return sorted(subparsers.choices)
+    return sorted([*command_parsers(parser), *group_paths(parser)])
 
 
 # ----------------------------------------------------------------------------
@@ -2347,7 +2385,14 @@ def test_the_command_list_is_read_off_the_parser(fakes):
     """Vacuous if it read nothing; too narrow if it missed a command."""
     names = commands_for("fake")
 
-    assert {"add", "list", "move-rule", "disable-rule", "help"} <= set(names)
+    assert {
+        "filter add",
+        "filterset list",
+        "filter move",
+        "filter disable",
+        "server baseline",
+        "help",
+    } <= set(names)
     assert len(names) > 20
 
 
@@ -2362,7 +2407,7 @@ def test_another_hosts_help_says_nothing_about_mxroute(
     pages = {"(top)": help_text(capsys)}
 
     for name in commands_for("fake"):
-        pages[name] = help_text(capsys, name)
+        pages[name] = help_text(capsys, *name.split())
 
     found = {
         name: sorted(set(HOST_WORDS.findall(text)))
@@ -2371,11 +2416,13 @@ def test_another_hosts_help_says_nothing_about_mxroute(
     }
 
     assert found == {}
-    assert "Manage Fakehost Fakescript filters" in pages["(top)"]
+    assert "Read, sort, and filter the mail" in pages["(top)"]
 
 
 # A str.format field nobody filled in, such as "{rule_language}". Choice
-# lists argparse prints ("{starttls,ssl,none}") hold commas, so never match.
+# lists argparse prints ("{starttls,ssl,none}") hold commas, so never match;
+# a group of one command lists it alone ("{migrate}"), which is the name of
+# a command rather than a field.
 PLACEHOLDER = re.compile(r"\{[A-Za-z_]\w*\}")
 
 
@@ -2393,12 +2440,13 @@ def test_no_help_page_leaves_a_placeholder_unfilled(
     pages = {"(top)": help_text(capsys)}
 
     for name in commands_for(provider):
-        pages[name] = help_text(capsys, name)
+        pages[name] = help_text(capsys, *name.split())
 
+    commands = {f"{{{word}}}" for name in pages for word in name.split()}
     found = {
-        name: sorted(set(PLACEHOLDER.findall(text)))
+        name: unfilled
         for name, text in pages.items()
-        if PLACEHOLDER.search(text)
+        if (unfilled := sorted(set(PLACEHOLDER.findall(text)) - commands))
     }
 
     assert found == {}
@@ -2414,8 +2462,8 @@ def test_the_placeholder_check_sees_an_unfilled_template():
 # ----------------------------------------------------------------------------
 def test_the_host_words_check_sees_mxroutes_help(capsys):
     """The check above, pointed at a host it should catch."""
-    assert HOST_WORDS.search(help_text(capsys))
-    assert HOST_WORDS.search(help_text(capsys, "disable-rule"))
+    assert HOST_WORDS.search(help_text(capsys, "filterset", "restore"))
+    assert HOST_WORDS.search(help_text(capsys, "filter", "disable"))
 
 
 # ----------------------------------------------------------------------------
@@ -2433,6 +2481,7 @@ def run_fake(capsys, *argv: str) -> tuple[int, str]:
     [
         pytest.param(
             [
+                "filter",
                 "add",
                 "--from",
                 GITHUB,
@@ -2447,6 +2496,7 @@ def run_fake(capsys, *argv: str) -> tuple[int, str]:
         ),
         pytest.param(
             [
+                "filter",
                 "apply",
                 "--from",
                 GITHUB,
@@ -2460,11 +2510,19 @@ def run_fake(capsys, *argv: str) -> tuple[int, str]:
             id="max-messages",
         ),
         pytest.param(
-            ["add", "--from", GITHUB, "--fileinto", "Lists", "--dry-run"],
+            [
+                "filter",
+                "add",
+                "--from",
+                GITHUB,
+                "--fileinto",
+                "Lists",
+                "--dry-run",
+            ],
             "",
             id="add-plan",
         ),
-        pytest.param(["list"], "* main", id="list"),
+        pytest.param(["filterset", "list"], "* main", id="list"),
     ],
 )
 def test_another_hosts_output_and_errors_are_in_its_own_words(
@@ -2486,7 +2544,7 @@ def test_the_fake_says_it_has_no_rule_sets_in_its_own_words(
 ):
     monkeypatch.setattr(FakeTransport, "list_rule_sets", lambda _: ("", []))
 
-    code, text = run_fake(capsys, "list")
+    code, text = run_fake(capsys, "filterset", "list")
 
     assert code == 0
     assert text == "No Fakescript rule sets on the server.\n"
@@ -2499,7 +2557,7 @@ def test_the_test_report_has_no_host_row_for_a_host_without_one(
     """#109: the fake reads no host setting, so no Host row is printed."""
     monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
 
-    code, text = run_fake(capsys, "test")
+    code, text = run_fake(capsys, "server", "test")
 
     assert code == 0
     assert "\nHost:" not in text
@@ -2580,17 +2638,15 @@ def test_optimizing_is_refused_by_a_host_without_ordering(fakes):
 
 
 # ----------------------------------------------------------------------------
-def test_optimize_rules_is_listed_only_where_ordering_is(
-    bare, capsys, monkeypatch
-):
+def test_optimize_is_listed_only_where_ordering_is(bare, capsys, monkeypatch):
     """Hidden, not removed: given anyway, it is refused by name before
     anything connects."""
-    assert "optimize-rules" in help_text(capsys)
+    assert "optimize" in listed(capsys, "filter")
 
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
 
-    assert "optimize-rules" not in help_text(capsys)
-    assert cli.main(["optimize-rules", "--dry-run"]) == 1
+    assert "optimize" not in listed(capsys, "filter")
+    assert cli.main(["filter", "optimize", "--dry-run"]) == 1
     assert "the bare provider cannot" in capsys.readouterr().err
     assert BareTransport.opened == 0
 
@@ -2621,7 +2677,9 @@ def test_optimize_rules_speaks_in_the_fake_hosts_words(
 
     monkeypatch.setattr(FakeTransport, "__init__", seeded)
 
-    code, text = run_fake(capsys, "optimize-rules", "--dry-run", *json_flag)
+    code, text = run_fake(
+        capsys, "filter", "optimize", "--dry-run", *json_flag
+    )
 
     assert code == 0, text
     assert not HOST_WORDS.search(text), text
@@ -2637,7 +2695,7 @@ def test_probe_names_an_unrecognised_server_in_the_fake_hosts_words(
     """#39: the fake has no server modules, so both halves are
     unrecognised; what probe and its report say owes nothing to Sieve or
     MXroute."""
-    code, text = run_fake(capsys, "probe", *report)
+    code, text = run_fake(capsys, "server", "probe", *report)
 
     assert code == 0, text
     assert "fake rules" in text

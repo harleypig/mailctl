@@ -1,4 +1,4 @@
-$ mailctl move-rule keep-boss --after phantom
+$ mailctl filter move keep-boss --after phantom
 exit: 1
 --- stdout
 

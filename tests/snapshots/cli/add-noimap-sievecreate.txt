@@ -1,8 +1,8 @@
-$ mailctl add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap
+$ mailctl filter add --from noreply@github.com --fileinto Lists/GitHub --create-folder --no-imap
 exit: 0
 --- stdout
 Folder 'INBOX.Lists.GitHub' will be created by Sieve (fileinto :create)
-  Nothing promises Sieve will subscribe to a folder it creates, so it may not appear in webmail until you subscribe to it: once the first message has created it, run 'mailctl subscribe INBOX.Lists.GitHub'.
+  Nothing promises Sieve will subscribe to a folder it creates, so it may not appear in webmail until you subscribe to it: once the first message has created it, run 'mailctl folder subscribe INBOX.Lists.GitHub'.
 
 Rule 'from-noreply-github-com' on script 'managesieve':
   when:  From contains 'noreply@github.com'
@@ -33,7 +33,7 @@ Note: the script on the server is not in mailctl's formatting, so uploading re-i
 Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
 Uploaded and activated script 'managesieve'
 
-Mail already delivered was not touched; to act on it, run 'mailctl apply' with the same criteria and actions.
+Mail already delivered was not touched; to act on it, run 'mailctl filter apply' with the same criteria and actions.
 
 --- stderr
 warning: no IMAP connection: assuming delimiter '.', target folder 'INBOX.Lists.GitHub'

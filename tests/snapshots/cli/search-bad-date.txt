@@ -1,4 +1,4 @@
-$ mailctl search --since 1/9/2026
+$ mailctl mail search --since 1/9/2026
 exit: 1
 --- stdout
 

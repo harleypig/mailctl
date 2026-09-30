@@ -1,4 +1,4 @@
-$ mailctl mark 3 --unread --unflag --no-keyword $Todo --yes
+$ mailctl mail mark 3 --unread --unflag --no-keyword $Todo --yes
 exit: 0
 --- stdout
 Marking in 'INBOX': clear \Seen, \Flagged, $Todo

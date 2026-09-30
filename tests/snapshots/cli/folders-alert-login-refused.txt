@@ -1,4 +1,4 @@
-$ mailctl folders
+$ mailctl folder list
 exit: 1
 --- stdout
 

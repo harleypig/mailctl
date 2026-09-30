@@ -1,19 +1,19 @@
-$ mailctl view 4 --json --raw
+$ mailctl mail view 4 --json --raw
 exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mailctl view [-h] [--verbose] [--debug] [--provider PROVIDER]
-                    [--host HOST] [--user USER]
-                    [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
-                    [--env-file [PATH]] [--imap-host IMAP_HOST]
-                    [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
-                    [--sieve-tls {starttls,ssl,none}]
-                    [--backup-dir BACKUP_DIR] [--disable-extension NAME]
-                    [--folder FOLDER] [--uidvalidity N]
-                    [--headers-only | --raw | --json]
-                    uid
-mailctl view: error: argument --raw: not allowed with argument --json
+usage: mailctl mail view [-h] [--verbose] [--debug] [--provider PROVIDER]
+                         [--host HOST] [--user USER]
+                         [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
+                         [--env-file [PATH]] [--imap-host IMAP_HOST]
+                         [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
+                         [--sieve-tls {starttls,ssl,none}]
+                         [--backup-dir BACKUP_DIR] [--disable-extension NAME]
+                         [--folder FOLDER] [--uidvalidity N]
+                         [--headers-only | --raw | --json]
+                         uid
+mailctl mail view: error: argument --raw: not allowed with argument --json
 
 --- sieve calls
 --- imap calls

@@ -1,4 +1,4 @@
-$ mailctl search --sort size --uids-only --from noreply@github.com
+$ mailctl mail search --sort size --uids-only --from noreply@github.com
 exit: 0
 --- stdout
 1

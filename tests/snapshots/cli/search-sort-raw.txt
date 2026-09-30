@@ -1,4 +1,4 @@
-$ mailctl search --raw UNSEEN --sort size
+$ mailctl mail search --raw UNSEEN --sort size
 exit: 0
 --- stdout
 5 message(s) in 'INBOX' (UIDVALIDITY 1727000000), by size, smallest first:

@@ -1,4 +1,4 @@
-$ mailctl test --disable-extension none --disable-extension copy
+$ mailctl server test --disable-extension none --disable-extension copy
 exit: 1
 --- stdout
 

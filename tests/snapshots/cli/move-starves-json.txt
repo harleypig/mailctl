@@ -1,10 +1,10 @@
-$ mailctl move-rule all-lists --first --dry-run --json
+$ mailctl filter move all-lists --first --dry-run --json
 exit: 0
 --- stdout
 {
-  "version": 1,
+  "version": 2,
   "plan": {
-    "command": "move-rule",
+    "command": "filter move",
     "changes": true,
     "diff": {
       "label": "sieve",

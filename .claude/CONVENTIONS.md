@@ -18,7 +18,8 @@ to end. It does two things, and the second is the reason it exists:
    Writing the Sieve rule alone leaves every message already delivered exactly
    where it was.
 
-They are two commands, `add` then `apply` (*The command surface*).
+They are two commands, `filter add` then `filter apply` (*The command
+surface*).
 
 Distribution name and package are both `mailctl`; the console entry point is
 `mailctl = "mailctl.cli:main"`. It is **not published anywhere** — see
@@ -117,12 +118,11 @@ needs: an attachment is named, never saved or opened.
 observations came out of the subscription work
 ([#38](https://github.com/harleypig/mailctl/issues/38)) and
 were surfaced as open questions: no CLI way to subscribe an existing folder;
-`folders` and `test` silent about subscription; an unsubscribed folder left
-alone; a flag with no effect. Applying the rule, three are not questions at
-all — subscription is a setting, so exposing it is in scope by definition
-([#42](https://github.com/harleypig/mailctl/issues/42)) — and
-the fourth is a plain bug
-([#43](https://github.com/harleypig/mailctl/issues/43)).
+`folder list` and `server test` silent about subscription; an unsubscribed
+folder left alone; a flag with no effect. Applying the rule, three are not
+questions at all — subscription is a setting, so exposing it is in scope by
+definition ([#42](https://github.com/harleypig/mailctl/issues/42)) — and the
+fourth is a plain bug ([#43](https://github.com/harleypig/mailctl/issues/43)).
 Asking was the error.
 
 Built on two libraries, both of which the code wraps rather than exposes:
@@ -185,10 +185,11 @@ layer may call.
     same-filter rules merged), then uploaded.
   - `senders.py` — a folder's mail counted by sender, read-only.
   - `migration.py` — what the rename from `mxfilter` left behind.
-  - `reports.py` — the probes behind `mailctl test`, the provider's wording
+  - `reports.py` — the probes behind `mailctl server test`, the provider's
+    wording
     and connection facts, and each extension's state.
   - `server_report.py` — which servers no module recognised, and the
-    redacted issue body `probe --report` prints for them ([#39][i39]).
+    redacted issue body `server probe --report` prints for them ([#39][i39]).
   - `events.py` — the steps of a change, as a front-end is told of them,
     and `ServerAlert` re-exported for a front-end to recognise one.
   - `uids.py` — a UID kept between runs, pinned to the folder's
@@ -223,7 +224,7 @@ layer may call.
     Sieve merged into the account's script and read back out, MXroute's
     refusals and wording, backup paths, folder names normalized against the
     server's list, and what `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean as
-    the facts `mailctl test` shows.
+    the facts `mailctl server test` shows.
   - `mxroute/sieve.py` — the dialect's Sieve side, offline:
     `MXROUTE_FORBIDDEN_ACTIONS`, the Roundcube `# rule:[NAME]` name dialect
     and the script functions bound to it, the translation of an
@@ -452,9 +453,10 @@ make such a change visible.
 ## The command surface
 
 **The decisions are the operator's**, 2026-09-28 ([#145][i145]), built in
-[#147][i147] through [#155][i155]. `add` saves the rule only, `apply` acts
-on mail already delivered, and `add --like` and `apply --like` build
-the criteria from a message ([#149][i149], as decided on [#148][i148]).
+[#147][i147] through [#155][i155]. `filter add` saves the rule only, `filter
+apply` acts on mail already delivered, and `filter add --like` and `filter
+apply --like` build the criteria from a message ([#149][i149], as decided on
+[#148][i148]).
 
 **Read and write are separate at every layer.** A command, a utility, and a
 transport operation each either changes the server or does not, even where
@@ -463,38 +465,60 @@ separate operation, never a mode switch on the read. The transport's
 classification (*Providers*) already names each operation's kind;
 [#154][i154] guards that a read-only utility never calls a write.
 
-**Commands are flat, grouped in the help and the docs.** `mailctl search`,
-never a subcommand group. The grouping is presentation, not part of a
-command's name. `mailctl help [command]` prints the same as `--help`
-([#153][i153]).
+**Commands are grouped, noun first: `mailctl <group> <action>`**
+([#219][i219]). The operator, 2026-09-29, replacing the flat commands of
+[#145][i145]: *"yes, change the decision, and the groups as above is much
+better."* The groups, in the order the top-level help lists them:
 
-**`add` saves a filter; `apply` acts on mail already delivered.** `add` writes
-the rule into the active script and touches no message; `apply` is the only
-command that acts on existing mail ([#149][i149]). So `--max-messages` and
-`--move-threshold` are `apply`'s and not `add`'s, `add` asks nothing and takes
-no `--yes`, and `add` ends by saying the mail already there was left alone and
-pointing at `apply`. Both take their criteria as flags **or** as `--filter
-FILE|-` (a filter file, or `-` for stdin), never both — `--match` and
-`--compare` count as flags, since the document carries its own — and both take
-`--like UID`, which pre-fills the criteria from a message in `--folder`.
-`--like` merges with criteria flags exactly as `search --like` does, and is
-refused with `--filter`, since each supplies the whole set. Every one of these
-refusals is made before connecting.
+```text
+mailctl mail      search · view · mark · senders
+mailctl folder    list · create · rename · subscribe · unsubscribe
+mailctl filter    list · add · apply · remove · move · rename · enable · disable · optimize
+mailctl filterset list · show · backup · restore
+mailctl server    test · probe · baseline save|show|check
+mailctl config    migrate
+mailctl help [group [action]]
+```
+
+The user-facing noun is **filter**, for every provider; code may keep
+`Rule` and `rules.py`. A command is named by its path (`filter add`)
+everywhere a command is named: an error's `operation` field, a plan's
+`--json` `command`, and the help. Capability gating stays per command, and
+a group none of whose commands is offered is hidden whole: `filterset` goes
+with `rule_sets`. A hidden command still parses and runs, as a hidden
+option does. The old
+flat names are a clean break, never aliases: each is refused, exit 2,
+naming the command it is now (`cli.GONE_COMMANDS`). `mailctl help [group
+[action]]` prints the same as `--help` there ([#153][i153]).
+
+**`filter add` saves a filter; `filter apply` acts on mail already
+delivered.** `filter add` writes the rule into the active script and touches
+no message; `filter apply` is the only command that acts on existing mail
+([#149][i149]). So `--max-messages` and `--move-threshold` are `filter
+apply`'s and not `filter add`'s, `filter add` asks nothing and takes no
+`--yes`, and `filter add` ends by saying the mail already there was left alone
+and pointing at `filter apply`. Both take their criteria as flags **or** as
+`--filter FILE|-` (a filter file, or `-` for stdin), never both — `--match`
+and `--compare` count as flags, since the document carries its own — and both
+take `--like UID`, which pre-fills the criteria from a message in `--folder`.
+`--like` merges with criteria flags exactly as `mail search --like` does, and
+is refused with `--filter`, since each supplies the whole set. Every one of
+these refusals is made before connecting.
 
 **Dates and message state select delivered mail only** ([#152][i152]).
 `--since`, `--before`, `--older-than`, `--unread`, and `--flagged` are
-`search`, `senders`, and `apply` criteria, always ANDed with the rest. `add`
-refuses them before connecting, from flags or a `--filter` document, because a
-message being delivered is new, unread, and unflagged; and `add` has no date
-`--before`, since its `--before NAME` places the rule. `--body` is in all
-four, and is always a substring test.
+`mail search`, `mail senders`, and `filter apply` criteria, always ANDed with
+the rest. `filter add` refuses them before connecting, from flags or a
+`--filter` document, because a message being delivered is new, unread, and
+unflagged; and `filter add` has no date `--before`, since its `--before NAME`
+places the rule. `--body` is in all four, and is always a substring test.
 
 **The split was decided over a recorded objection** (operator, 2026-09-28):
 it puts the tool's two halves, the rule and the existing mail, in two
-commands. `apply` taking the same `--like` and `--filter` as `add` is what
-keeps the two in step.
+commands. `filter apply` taking the same `--like` and `--filter` as `filter
+add` is what keeps the two in step.
 
-**`search` finds messages and never writes.** It replaces `messages`
+**`mail search` finds messages and never writes.** It replaces `messages`
 ([#147][i147]):
 
 - `--like UID` pre-fills the criteria from a message, and `--build-filter
@@ -502,15 +526,15 @@ keeps the two in step.
   ([#148][i148]). A criteria flag given with `--like` replaces what was
   derived for its own header and adds any other; `--match` and
   `--compare` govern the whole set (`criteria.merge_criteria`). The
-  `--json` form is the filter document `add --filter` and `apply
-  --filter` read: versioned, criteria only, written and read by
+  `--json` form is the filter document `filter add --filter` and `filter
+  apply --filter` read: versioned, criteria only, written and read by
   `criteria.dump_filter` / `load_filter`, which refuse a version or a key
   they do not know.
 - `--raw QUERY` is the escape hatch, a query in the host's own search
   language. Each provider declares it, and it is offered only where
   declared, like every other capability-gated option (*Providers*).
 
-**`rename-rule OLD NEW` changes a rule's name and no other byte**
+**`filter rename OLD NEW` changes a rule's name and no other byte**
 ([#216][i216]). The dialect rewrites the name marker where it sits and
 reads the result back, so the rule's body, position, and disabled state,
 and every other rule and comment, are kept exactly, and the diff is of the
@@ -518,28 +542,28 @@ script's own bytes. An unknown OLD, an empty or taken NEW (coded
 `rule_name_taken`), and a NEW the dialect cannot read back as itself are
 refused before any upload.
 
-**`view` stays read-only; `mark` is its write twin.** `mark UID...` takes
-`--read`, `--unread`, `--flag`, `--unflag`, `--keyword K`, and
+**`mail view` stays read-only; `mail mark` is its write twin.** `mail mark
+UID...` takes `--read`, `--unread`, `--flag`, `--unflag`, `--keyword K`, and
 `--no-keyword K`, several at once, over separate add-flag and remove-flag
 transport operations ([#150][i150]).
 
 **A UID from an earlier run can carry its folder's UIDVALIDITY**
-([#204][i204]). `search` shows the value, and `view`, `mark`, and `--like`
-take it as `--uidvalidity N`, one per command since every UID a command
-takes is in its one folder. A mismatch refuses the command, coded
+([#204][i204]). `mail search` shows the value, and `mail view`, `mail mark`,
+and `--like` take it as `--uidvalidity N`, one per command since every UID a
+command takes is in its one folder. A mismatch refuses the command, coded
 `uidvalidity_changed`, before any UID is used; a bare UID is still taken
 unchecked.
 
-**`senders` counts a folder's mail by address, domain, or List-Id and never
-writes** ([#160][i160]): one search, then headers a page per FETCH, refused
-above `--max-messages` (default 5000) before any header is read.
+**`mail senders` counts a folder's mail by address, domain, or List-Id and
+never writes** ([#160][i160]): one search, then headers a page per FETCH,
+refused above `--max-messages` (default 5000) before any header is read.
 
 **`--json` is offered where the output is data a script consumes**
-([#151][i151]). A report for a person, such as `test`, offers none, and its
-layout is not a contract; the contract is its exit code. On a write command
-`--json` prints the `--dry-run` plan and is refused without `--dry-run`,
-since a document on stdout leaves no room for a prompt; stdout holds the
-document alone, and a failure is one JSON line on stderr.
+([#151][i151]). A report for a person, such as `server test`, offers none, and
+its layout is not a contract; the contract is its exit code. On a write
+command `--json` prints the `--dry-run` plan and is refused without
+`--dry-run`, since a document on stdout leaves no room for a prompt; stdout
+holds the document alone, and a failure is one JSON line on stderr.
 
 ## Providers
 
@@ -641,22 +665,22 @@ fails before any login or password prompt (decided on [#137][i137]).
 - **Offered only what it declares** ([#26][i26] constraint 4). The CLI parses
   twice: a first pass reads only `--provider` and `--env-file` and resolves
   the provider, then the parsers are built from its capabilities. Without
-  `ordering`, the placement flags, `move-rule`, and `optimize-rules` are not
-  offered; without `stop`, `--no-stop`; without `rule_sets`, `add`'s
-  `--script` and `--activate`; without `disable`, `disable-rule` and
-  `enable-rule`; without `rename`, `rename-rule`; without `extensions`,
-  `--disable-extension`; without `raw_query`, `search`'s `--raw`; without
-  `mark`, `mark`; without `folder_counts`, `folders`'s `--counts`; without
-  `uidvalidity`, `--uidvalidity`. The connection flags (`--host`, `--imap-*`,
-  `--sieve-*`) are offered only where `ProviderCapabilities.settings` names
-  them, with the help it gives — they keep their names and their `MAILCTL_*`
-  variables, being `mxroute`'s connection options. An unoffered option is
-  **hidden, not removed**: given anyway it still parses and meets the
-  refusal below the front-end naming the provider, which stays the
-  backstop for every front-end. A first pass that cannot resolve a
-  provider falls back to the default provider's offer, and the run reports
-  the problem. `mxroute` declares everything, so its help is what it
-  always was.
+  `ordering`, the placement flags, `filter move`, and `filter optimize` are
+  not offered; without `stop`, `--no-stop`; without `rule_sets`, `filter
+  add`'s `--script` and `--activate`; without `disable`, `filter disable` and
+  `filter enable`; without `rename`, `filter rename`; without `extensions`,
+  `--disable-extension`; without `raw_query`, `mail search`'s `--raw`; without
+  `mark`, `mail mark`; without `folder_counts`, `folder list`'s `--counts`;
+  without `uidvalidity`, `--uidvalidity`. The connection flags (`--host`,
+  `--imap-*`, `--sieve-*`) are offered only where
+  `ProviderCapabilities.settings` names them, with the help it gives — they
+  keep their names and their `MAILCTL_*` variables, being `mxroute`'s
+  connection options. An unoffered option is **hidden, not removed**: given
+  anyway it still parses and meets the refusal below the front-end naming the
+  provider, which stays the backstop for every front-end. A first pass that
+  cannot resolve a provider falls back to the default provider's offer, and
+  the run reports the problem. `mxroute` declares everything, so its help is
+  what it always was.
 - **A setting belongs to the provider that can use it.**
   `disabled_extensions` keeps its name and its ladder, but only a provider
   declaring `extensions` takes it; any other refuses it, before
@@ -765,17 +789,17 @@ anyone can check. Nothing automates it yet.
 **What a probe is, today.** A probe is a read-only live session against one
 account, recorded with the command, the date, and the server's hostname:
 
-- **`mailctl probe`** prints, dated and with the hosts configured, each
+- **`mailctl server probe`** prints, dated and with the hosts configured, each
   server's identity (IMAP `ID`, ManageSieve `IMPLEMENTATION`) and its whole
   capability list — saying whether it was read before or after login — the
   Sieve extensions, the active script, the delimiter, and the namespaces
   ([#101][i101]). `--json` is the same as a versioned document with sorted
   lists, so two probes of an unchanged server differ only in the time.
-- **`mailctl test`** adds the folder and subscription counts and what
+- **`mailctl server test`** adds the folder and subscription counts and what
   `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean for mailctl, and one line on
   drift where a baseline is saved.
-- **`mailctl save-baseline`** stores the probe as the host's baseline, and
-  **`mailctl check-baseline`** reports drift from it (below).
+- **`mailctl server baseline save`** stores the probe as the host's baseline,
+  and **`mailctl server baseline check`** reports drift from it (below).
 - **`make testlive`** is the live tier's read-only smoke tests. It
   confirms the port, the TLS mode, and the delimiter.
 - **`make livecheck`** runs the read-only CLI checks against the account
@@ -785,13 +809,13 @@ A probe never prints the password. It is held to the same bar as a debug
 shim (*Credentials*).
 
 **The automated form is built** ([#18][i18], [#19][i19]).
-`save-baseline` writes the probe to
+`server baseline save` writes the probe to
 `$XDG_CONFIG_HOME/mailctl/baselines/<host>.json`, the server's part once
-and the active script per account; `check-baseline` compares a fresh probe
-with it and says what each difference means for the account, exiting 0, 3
-(informational drift), or 4 (serious drift). The file is on one machine and
-is not versioned, so the record still transcribes what a probe saw; a
-refresh is *save a baseline, then copy what changed into the record*.
+and the active script per account; `server baseline check` compares a fresh
+probe with it and says what each difference means for the account, exiting 0,
+3 (informational drift), or 4 (serious drift). The file is on one machine and
+is not versioned, so the record still transcribes what a probe saw; a refresh
+is *save a baseline, then copy what changed into the record*.
 
 ### Discover, don't hardcode
 
@@ -827,9 +851,9 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   hand-made filters. A parse failure is a **hard stop**, never a
   fall-back-to-overwrite. See [ADR 0002][adr2].
 - **Back up before every upload.** The previous script is written to the
-  backup directory before the new one is sent, and `mailctl backup` takes the
-  same copy on demand. **One location, and it is the config directory** —
-  `$XDG_CONFIG_HOME/mailctl/backups`, beside `config.toml`
+  backup directory before the new one is sent, and `mailctl filterset backup`
+  takes the same copy on demand. **One location, and it is the config
+  directory** — `$XDG_CONFIG_HOME/mailctl/backups`, beside `config.toml`
   (`config.default_backup_dir`), overridable by `--backup-dir` /
   `MAILCTL_BACKUP_DIR`. XDG would call a backup *state*; co-locating it with
   the config is a deliberate departure from XDG, not an XDG-endorsed reading,
@@ -840,13 +864,14 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   by the literal's declared length, CRLF and final newline included
   ([#90][i90]), and `write_backup` writes what it was handed, with newline
   translation off, mode `0600` in a directory
-  created `0700`. Nothing decorates it — `mailctl show` adds banner lines for
-  a reader and is therefore *not* a backup, which is exactly the trap
-  redirecting `show` to a file used to set. `mailctl restore` puts one back
-  over the active script only: it shows a raw diff, asks for confirmation,
-  backs up the current script, and runs CHECKSCRIPT before sending. It is
-  the one write path that replaces instead of merging, and it may replace a
-  script mailctl cannot parse ([ADR 0005][adr5], [#13][i13]).
+  created `0700`. Nothing decorates it — `mailctl filterset show` adds banner
+  lines for a reader and is therefore *not* a backup, which is exactly the
+  trap redirecting `filterset show` to a file used to set. `mailctl filterset
+  restore` puts one back over the active script only: it shows a raw diff,
+  asks for confirmation, backs up the current script, and runs CHECKSCRIPT
+  before sending. It is the one write path that replaces instead of merging,
+  and it may replace a script mailctl cannot parse ([ADR 0005][adr5],
+  [#13][i13]).
 - **Show, then change.** Every mutating subcommand works out what would
   change, shows it (a diff for the script, a preview for the messages), and
   only then applies it. `--dry-run` stops after the "show it" step.
@@ -871,8 +896,8 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   `EMIT_TABLE` (`components/managesieve/emit.py`) maps each command, test,
   and tag a rule can contain to
   the Sieve extension it needs (None for the base language). The required
-  set `mailctl test` reports and the check a rule is held to are both read
-  off it, and `tests/test_extensions.py` checks it against sievelib's own
+  set `mailctl server test` reports and the check a rule is held to are both
+  read off it, and `tests/test_extensions.py` checks it against sievelib's own
   `require` line over every rule shape — so a new action is added to the
   table, never listed by hand anywhere else.
 - **`disabled_extensions` narrows what we emit; it never widens it.** A
@@ -1270,6 +1295,7 @@ will read it.
 [i183]: https://github.com/harleypig/mailctl/issues/183
 [i204]: https://github.com/harleypig/mailctl/issues/204
 [i216]: https://github.com/harleypig/mailctl/issues/216
+[i219]: https://github.com/harleypig/mailctl/issues/219
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147

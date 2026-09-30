@@ -1,9 +1,9 @@
-$ mailctl check-baseline
+$ mailctl server baseline check
 exit: 1
 --- stdout
 
 --- stderr
-mailctl: the baseline <TMP>/config/mailctl/baselines/mail.example.com.json cannot be read: it is version 2, and this mailctl reads version 1. It was left as it is; move it aside and run 'mailctl save-baseline' to take a new one.
+mailctl: the baseline <TMP>/config/mailctl/baselines/mail.example.com.json cannot be read: it is version 2, and this mailctl reads version 1. It was left as it is; move it aside and run 'mailctl server baseline save' to take a new one.
 
 --- sieve calls
 --- imap calls

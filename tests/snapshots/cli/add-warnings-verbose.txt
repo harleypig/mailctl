@@ -1,4 +1,4 @@
-$ mailctl add --from noreply@github.com --flag \Bogus -v
+$ mailctl filter add --from noreply@github.com --flag \Bogus -v
 exit: 0
 --- stdout
 [sieve] connecting to mail.example.com:4190 (tls=starttls) as user@example.com
@@ -31,7 +31,7 @@ Backed up current script to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sie
 [sieve] activating script 'managesieve'
 Uploaded and activated script 'managesieve'
 
-Mail already delivered was not touched; to act on it, run 'mailctl apply' with the same criteria and actions.
+Mail already delivered was not touched; to act on it, run 'mailctl filter apply' with the same criteria and actions.
 
 --- stderr
 mailctl: warning from the sieve server: managesieve: line 16: warning: IMAP flag '\Bogus' specified for the addflag command is invalid and will be ignored (only first invalid is reported).

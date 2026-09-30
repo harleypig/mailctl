@@ -26,12 +26,12 @@ in a docstring -- which it does, in ``config.Secret`` -- is not a finding,
 and a call written as ``builtins.print`` still is.
 """
 
-import argparse
 import ast
 import re
 from pathlib import Path
 
 import pytest
+from cli_support import command_parsers, group_paths
 
 import mailctl
 from mailctl import cli
@@ -403,23 +403,23 @@ def test_the_flag_guard_would_actually_catch_a_violation():
 # A core message names no front-end's command (#183)
 # ############################################################################
 
-# "mailctl list" is a shell command a TUI user cannot type, so the core
-# names the operation in a field and the CLI renders the command
-# (cli.command_for). The commands are the parser's own, hidden ones
-# included, so a command added to the CLI is guarded the day it lands, and
-# "mailctl does not generate ..." -- the tool's name in prose -- is not a
-# finding. "mailctl {}" is: an interpolated command is still a command.
-COMMANDS = sorted(
-    next(
-        action
-        for action in cli.build_parser()._actions
-        if isinstance(action, argparse._SubParsersAction)
-    ).choices
+# "mailctl filterset list" is a shell command a TUI user cannot type, so
+# the core names the operation in a field and the CLI renders the command
+# (cli.command_for). The commands and their groups are the parser's own,
+# hidden ones included, so a command added to the CLI is guarded the day it
+# lands; a name from before they were grouped (#219) is a command too, and
+# a wrong one. "mailctl does not generate ..." -- the tool's name in prose
+# -- is not a finding. "mailctl {}" is: an interpolated command is still a
+# command.
+COMMANDS = sorted(command_parsers())
+
+NAMED = sorted(
+    {*COMMANDS, *group_paths(), *cli.GONE_COMMANDS}, key=len, reverse=True
 )
 
 COMMAND = re.compile(
     r"\bmailctl (?:\{\}|"
-    + "|".join(re.escape(name) for name in COMMANDS)
+    + "|".join(re.escape(name) for name in NAMED)
     + r")(?![\w-])"
 )
 
@@ -466,21 +466,23 @@ def test_the_command_guard_would_actually_catch_a_violation():
         "def f(name, op):\n"
         '    """Run mailctl list first."""\n'
         "    a = \"nothing active. 'mailctl list' shows what there is.\"\n"
-        '    b = f"Enable it first (mailctl enable-rule {name})"\n'
+        '    b = f"Enable it first (mailctl filter enable {name})"\n'
         "    c = f\"run 'mailctl {op}'\"\n"
         '    d = "mailctl does not generate that action"\n'
         '    e = "mailctl listing is not a command"\n'
         '    g = "mailctl enable-rules is not one either"\n'
+        "    h = \"see 'mailctl server' for the rest\"\n"
     )
 
-    assert "list" in COMMANDS
-    assert "enable-rule" in COMMANDS
+    assert "filterset list" in COMMANDS
+    assert "filter enable" in COMMANDS
     assert [
         text for _, text in built_strings(tree) if COMMAND.search(text)
     ] == [
-        "Enable it first (mailctl enable-rule {})",
+        "Enable it first (mailctl filter enable {})",
         "run 'mailctl {}'",
         "nothing active. 'mailctl list' shows what there is.",
+        "see 'mailctl server' for the rest",
     ]
 
 
@@ -527,7 +529,12 @@ def test_every_named_operation_is_a_command():
         *(named_operations(module_tree(n)) for n in CORE_MODULES)
     )
 
-    assert {"list", "folders", "save-baseline", "subscribe"} <= named
+    assert {
+        "filterset list",
+        "folder list",
+        "server baseline save",
+        "folder subscribe",
+    } <= named
     assert named - set(COMMANDS) == set()
     assert named_operations(
         ast.parse('f(fields={"operation": "lst"}, operation="x")\n')
