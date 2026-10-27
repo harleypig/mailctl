@@ -201,6 +201,10 @@ class ProviderCapabilities:
     * ``uidvalidity`` -- a folder reports the value its message UIDs are
       valid under (IMAP's UIDVALIDITY), so a UID kept from an earlier run
       can be checked before it is used.
+    * ``folder_visibility`` -- which folders the host shows its user is
+      decided by subscription, so subscribing to a folder shows it and
+      unsubscribing hides it. ``False`` means subscription shows or hides
+      nothing there, so nothing is subscribed and no hiding is offered.
     * ``specifics`` -- the namespaced keys a request's ``specifics`` may
       carry, each with its schema. An unknown key is refused.
     * ``settings`` -- which of ``config.CONNECTION_SETTINGS`` it reads, each
@@ -221,6 +225,7 @@ class ProviderCapabilities:
     mark: bool
     folder_counts: bool
     uidvalidity: bool
+    folder_visibility: bool
     specifics: Mapping[str, Specific] = field(default_factory=dict)
     declined: frozenset[str] = frozenset()
     settings: Mapping[str, str] = field(default_factory=dict)

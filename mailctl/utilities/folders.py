@@ -124,6 +124,27 @@ def _status_of(folder: str, reported: list[FolderStatus]) -> FolderStatus:
 # Folder subscription -- a setting, reported and changed like one
 # ############################################################################
 
+HIDE_CONSTRUCT = "create a folder hidden, without subscribing to it"
+
+
+# ----------------------------------------------------------------------------
+def shows_by_subscription(session: Session, subscribe: bool = True) -> bool:
+    """Whether the host shows folders by subscription; refuse hiding where
+    it does not.
+
+    ``subscribe`` false asks for a folder created hidden. A host without
+    ``folder_visibility`` cannot hide one that way, so the request is
+    refused before anything is read rather than quietly meaning nothing.
+    """
+    # ``rules`` imports this module at its top, so the import waits until
+    # both are loaded, whichever loads first.
+    from .rules import require_capability
+
+    if not subscribe:
+        require_capability(session, "folder_visibility", HIDE_CONSTRUCT)
+
+    return session.capabilities.folder_visibility
+
 
 @dataclass(frozen=True)
 class SubscriptionPlan:
@@ -170,7 +191,15 @@ def plan_subscription(
     of the folder listing works. Subscribing needs the folder to exist;
     unsubscribing does not, since a subscription can outlive its folder and
     removing that stale entry is a legitimate thing to want.
+
+    Refused before anything is read by a provider that does not declare
+    ``folder_visibility``: there, subscribing shows nothing and
+    unsubscribing hides nothing.
     """
+    from .rules import require_capability
+
+    require_capability(session, "folder_visibility")
+
     listing = session.transport.list_folders()
     folder = session.dialect.normalize(name, listing)
     subscribed_now = listing.is_subscribed(folder)
@@ -239,6 +268,10 @@ class FolderPlan:
     ``mailbox_disabled_by`` is set when the server advertises ``mailbox``
     but ``disabled_extensions`` turns it off, so ``:create`` is not used;
     it names where that setting came from.
+
+    ``by_subscription`` false means the host does not show folders by
+    subscription, so ``subscribe`` is false without the folder being
+    hidden: nothing is subscribed because subscribing would show nothing.
     """
 
     requested: str
@@ -249,6 +282,7 @@ class FolderPlan:
     subscribe: bool
     case_variants: tuple[str, ...] = ()
     mailbox_disabled_by: Source | None = None
+    by_subscription: bool = True
 
     # ------------------------------------------------------------------------
     @property
@@ -291,13 +325,21 @@ def plan_folder(
     ``disabled_extensions`` counts as not advertised: the rule stays a
     plain ``fileinto`` and IMAP, where there is a session, makes the
     folder.
+
+    On a host that does not show folders by subscription nothing is
+    subscribed, and ``subscribe`` false is refused before anything is read
+    (:func:`shows_by_subscription`).
     """
+    shown = shows_by_subscription(session, subscribe)
+    subscribe = subscribe and shown
     requested = requested or config.default_folder or ""
     transport = session.transport
     mail = transport.has_mail
 
     if not requested:
-        return FolderPlan("", "", "", False, FOLDER_NONE, subscribe)
+        return FolderPlan(
+            "", "", "", False, FOLDER_NONE, subscribe, by_subscription=shown
+        )
 
     listing = transport.list_folders() if mail else None
 
@@ -314,6 +356,7 @@ def plan_folder(
         "delimiter": assumed,
         "delimiter_assumed": not mail,
         "subscribe": subscribe,
+        "by_subscription": shown,
     }
 
     if listing is not None and listing.exists(folder):
@@ -390,7 +433,9 @@ def create_folder(session: Session, plan: FolderPlan) -> FolderCreation:
     transport.create_folder(plan.folder)
 
     if not plan.subscribe:
-        return FolderCreation(plan.folder, subscribed=False)
+        return FolderCreation(
+            plan.folder, subscribed=False, by_subscription=plan.by_subscription
+        )
 
     try:
         transport.subscribe(plan.folder)
@@ -474,7 +519,11 @@ def plan_folder_creation(
     an existing one only in case is refused rather than planned: folder
     names are case-sensitive, so it would be a second folder beside the
     one the user most likely meant (#56).
+
+    Subscribing follows :func:`plan_folder`: nothing on a host that does
+    not show folders by subscription, where declining is refused.
     """
+    shown = shows_by_subscription(session, subscribe)
     listing = session.transport.list_folders()
     folder = session.dialect.normalize(name, listing)
     delimiter = listing.delimiter
@@ -484,7 +533,8 @@ def plan_folder_creation(
         "folder": folder,
         "delimiter": delimiter,
         "delimiter_assumed": False,
-        "subscribe": subscribe,
+        "subscribe": subscribe and shown,
+        "by_subscription": shown,
     }
 
     if listing.exists(folder):

@@ -790,23 +790,34 @@ def settle_folder(sessions, plan: utilities.folders.FolderPlan, args) -> None:
 
 
 # ----------------------------------------------------------------------------
+def subscription_words(
+    plan: utilities.folders.FolderPlan, subscribed: str, declined: str
+) -> str:
+    """What creating the folder does about subscribing, as a clause.
+
+    Nothing on a host that does not show folders by subscription: nothing
+    is subscribed there, and nothing is hidden.
+    """
+    if not plan.by_subscription:
+        return ""
+
+    return subscribed if plan.subscribe else declined
+
+
+# ----------------------------------------------------------------------------
 def announce_folder_creation(
     plan: utilities.folders.FolderPlan, dry_run: bool
 ) -> None:
     """Say that the target folder will be made, before it is."""
     if dry_run:
-        then = (
-            " and subscribe to it"
-            if plan.subscribe
-            else ", not subscribed (--no-subscribe)"
+        then = subscription_words(
+            plan, " and subscribe to it", ", not subscribed (--no-subscribe)"
         )
         print(f"[dry-run] would create folder {plan.folder!r}{then}")
 
     else:
-        then = (
-            " and subscribed to"
-            if plan.subscribe
-            else ", not subscribed (--no-subscribe),"
+        then = subscription_words(
+            plan, " and subscribed to", ", not subscribed (--no-subscribe),"
         )
         print(
             f"Folder {plan.folder!r} does not exist; it will be created"
@@ -825,6 +836,11 @@ def report_folder_creation(result: FolderCreation) -> None:
     flag without knowing what it costs.
     """
     folder = result.folder
+
+    if not result.by_subscription:
+        print(f"Created folder {folder!r}")
+
+        return
 
     if result.subscribed:
         print(f"Created folder {folder!r} and subscribed to it")
@@ -1526,22 +1542,29 @@ def cmd_folders(args) -> int:
                 ),
             )
 
+        shown = sessions.capabilities.folder_visibility
+
         print(f"Hierarchy delimiter: {listing.delimiter!r}")
-        print(
-            f"{len(listing.folders)} folder(s), "
-            f"{len(listing.folders) - len(listing.unsubscribed)} subscribed "
-            f"(webmail shows only subscribed folders):"
-        )
+
+        if shown:
+            print(
+                f"{len(listing.folders)} folder(s), "
+                f"{len(listing.folders) - len(listing.unsubscribed)} "
+                f"subscribed (webmail shows only subscribed folders):"
+            )
+
+        else:
+            print(f"{len(listing.folders)} folder(s):")
 
         if counts is not None:
-            show_folder_counts(counts)
+            show_folder_counts(counts, shown)
 
             return 0
 
         width = max((len(name) for name in listing.folders), default=0)
 
         for folder in listing.folders:
-            if listing.is_subscribed(folder):
+            if not shown or listing.is_subscribed(folder):
                 print(f"  {folder}")
 
             else:
@@ -1551,10 +1574,14 @@ def cmd_folders(args) -> int:
 
 
 # ----------------------------------------------------------------------------
-def show_folder_counts(counts: utilities.folders.FolderCounts) -> None:
+def show_folder_counts(
+    counts: utilities.folders.FolderCounts, shown: bool
+) -> None:
     """The folder list as a table of counts; "-" where the host gave none.
 
-    The size column appears only when the host reports sizes.
+    The size column appears only when the host reports sizes, and an
+    unsubscribed folder is marked only where ``shown``, the host showing
+    folders by subscription.
     """
     listing = counts.listing
     columns = [("Messages", "messages"), ("Unread", "unseen")]
@@ -1583,7 +1610,7 @@ def show_folder_counts(counts: utilities.folders.FolderCounts) -> None:
     print(line("Folder", [title for title, _ in columns]))
 
     for folder, row in zip(listing.folders, rows, strict=True):
-        if listing.is_subscribed(folder):
+        if not shown or listing.is_subscribed(folder):
             print(line(folder, row))
 
         else:
@@ -1711,10 +1738,8 @@ def cmd_create_folder(args) -> int:
                 )
             )
 
-        then = (
-            " and subscribe to it"
-            if target.subscribe
-            else ", not subscribed (--no-subscribe)"
+        then = subscription_words(
+            target, " and subscribe to it", ", not subscribed (--no-subscribe)"
         )
         lead = "[dry-run] would create" if args.dry_run else "Will create"
         print(f"{lead} folder {target.folder!r}{then}")
@@ -1744,6 +1769,11 @@ def report_existing_folder(plan: utilities.folders.FolderCreationPlan) -> None:
     is pointed at rather than changed as a side effect of asking to create.
     """
     folder = plan.target.folder
+
+    if not plan.target.by_subscription:
+        print(f"{folder!r} already exists; nothing to change.")
+
+        return
 
     if plan.subscribed_now:
         print(
@@ -1846,8 +1876,9 @@ def print_folder_rename(plan) -> None:
         for move in plan.children:
             print(f"    {move.old!r} -> {move.new!r}")
 
-    shown = [move.new for move in plan.moves if move.subscribed]
-    hidden = [move.new for move in plan.moves if not move.subscribed]
+    carried = plan.moves if plan.by_subscription else ()
+    shown = [move.new for move in carried if move.subscribed]
+    hidden = [move.new for move in carried if not move.subscribed]
 
     if shown:
         print(
@@ -1997,14 +2028,21 @@ def cmd_test(args) -> int:
     with connect(config, args, rules=False, mail=True) as sessions:
         mail = utilities.reports.probe_mail(sessions)
 
+        shown = sessions.capabilities.folder_visibility
+
         print(f"\n{words.mail_service}: connected")
         print(f"  delimiter: {mail.delimiter!r}")
-        print(
-            f"  folders:   {mail.folder_count} "
-            f"({mail.folder_count - len(mail.unsubscribed)} subscribed)"
-        )
 
-        if mail.unsubscribed:
+        if shown:
+            print(
+                f"  folders:   {mail.folder_count} "
+                f"({mail.folder_count - len(mail.unsubscribed)} subscribed)"
+            )
+
+        else:
+            print(f"  folders:   {mail.folder_count}")
+
+        if shown and mail.unsubscribed:
             print(
                 f"  not subscribed (exist, but webmail will not show them): "
                 f"{', '.join(mail.unsubscribed)}"
@@ -3927,7 +3965,9 @@ def action_parser(
         dest="create_folder",
         action="store_true",
         help="create the target folder if it does not exist, and subscribe "
-        "to it so mail clients show it",
+        "to it so mail clients show it"
+        if offer.folder_visibility
+        else "create the target folder if it does not exist",
     )
     group.add_argument(
         "--no-subscribe",
@@ -3937,7 +3977,9 @@ def action_parser(
         "to it. Webmail draws its folder tree from the subscription list, "
         "so the folder will receive mail and stay hidden -- which is the "
         "point for a high-volume list you want out of the inbox and out of "
-        "the sidebar",
+        "the sidebar"
+        if offer.folder_visibility
+        else argparse.SUPPRESS,
     )
 
     # Accepted only so the failure is a clear explanation rather than an
@@ -4304,7 +4346,12 @@ def build_parser(
     senders.add_argument("--json", action="store_true", help=JSON_HELP)
     senders.set_defaults(handler=cmd_senders)
 
-    branch("folder", "list, create, rename, and subscribe to folders")
+    branch(
+        "folder",
+        "list, create, rename, and subscribe to folders"
+        if offer.folder_visibility
+        else "list, create, and rename folders",
+    )
 
     folders = command(
         "folder list",
@@ -4325,9 +4372,15 @@ def build_parser(
     create_folder = command(
         "folder create",
         parents=[common, connection, safety],
-        help="create a folder, and subscribe to it",
-        description="Create a folder and subscribe to it, so "
-        "webmail shows it. The folder name is normalized like every other: "
+        help="create a folder, and subscribe to it"
+        if offer.folder_visibility
+        else "create a folder",
+        description=(
+            "Create a folder and subscribe to it, so webmail shows it."
+            if offer.folder_visibility
+            else "Create a folder."
+        )
+        + " The folder name is normalized like every other: "
         "'Lists/GitHub' and 'INBOX.Lists.GitHub' name the same folder, and "
         "a new one goes where the server says new folders belong. What "
         "would be created is shown first, and you are asked to confirm. A "
@@ -4340,7 +4393,9 @@ def build_parser(
         dest="subscribe",
         action="store_false",
         help="create the folder without subscribing to it; webmail will not "
-        "show it until 'mailctl folder subscribe NAME'",
+        "show it until 'mailctl folder subscribe NAME'"
+        if offer.folder_visibility
+        else argparse.SUPPRESS,
     )
     create_folder.set_defaults(handler=cmd_create_folder)
 
@@ -4350,9 +4405,15 @@ def build_parser(
         help="rename a folder, and repoint the filters that file into it",
         description="Rename a folder, together with every folder under it, "
         "and repoint every filter in the active filter set that files into "
-        "any of them. A rename on the server leaves subscriptions behind, so "
-        "each moved folder that was subscribed is subscribed under its new "
-        "name, and the old name is dropped from the list. Only the folder "
+        "any of them. "
+        + (
+            "A rename on the server leaves subscriptions behind, so each "
+            "moved folder that was subscribed is subscribed under its new "
+            "name, and the old name is dropped from the list. "
+            if offer.folder_visibility
+            else ""
+        )
+        + "Only the folder "
         "names in the filters change; every other byte of the filter set is "
         "kept. What would change is shown first and you are asked to "
         "confirm; the new filter set is backed up and checked by the server "
@@ -4373,6 +4434,7 @@ def build_parser(
     ):
         toggle = command(
             name,
+            offer.folder_visibility,
             parents=[common, connection],
             help=summary,
             description=f"{summary[0].upper()}{summary[1:]}. Webmail draws "

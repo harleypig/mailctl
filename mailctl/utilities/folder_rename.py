@@ -67,6 +67,10 @@ class FolderRenamePlan:
     ``before`` and ``after`` are the active script as stored and as it
     will be; they are equal when no rule files into a folder that moves,
     and then the script is neither validated nor uploaded.
+
+    ``by_subscription`` false means the host does not show folders by
+    subscription, so no subscription is carried to the new names, none is
+    dropped from the old, and none is checked afterwards.
     """
 
     requested_old: str
@@ -82,6 +86,7 @@ class FolderRenamePlan:
     diff: DisplayDiff
     active: str | None
     activate: bool
+    by_subscription: bool = True
 
     # ------------------------------------------------------------------------
     @property
@@ -249,6 +254,7 @@ def plan_folder_rename(
         diff=dialect.raw_diff(before, after, name),
         active=active,
         activate=activates(name, active, False),
+        by_subscription=session.capabilities.folder_visibility,
     )
 
 
@@ -411,6 +417,9 @@ def execute_folder_rename(
         renamed = True
         emit(FolderRenamed(plan.old, plan.new, len(plan.children)))
 
+        if not plan.by_subscription:
+            return
+
         listing = transport.list_folders()
 
         for move in plan.moves:
@@ -477,7 +486,8 @@ def verify_folder_rename(
     list), holds at least the messages the old one did, took the folders
     under it along, and that no rule in the script still files into an
     old name. Read-only; a read that fails is a failed check, not an
-    error, so every other check is still reported.
+    error, so every other check is still reported. The subscription checks
+    are made only where the host shows folders by subscription.
     """
     transport = session.transport
     checks: list[PostCondition] = []
@@ -495,7 +505,9 @@ def verify_folder_rename(
     checks.append(PostCondition(f"{old!r} is gone", not listing.exists(old)))
     checks.append(PostCondition(f"{new!r} exists", listing.exists(new)))
 
-    if plan.subscribed:
+    carried = plan.by_subscription
+
+    if carried and plan.subscribed:
         label = f"{new!r} is subscribed, as {old!r} was"
 
         checks.append(
@@ -510,12 +522,13 @@ def verify_folder_rename(
             )
         )
 
-    checks.append(
-        PostCondition(
-            f"{old!r} is off the subscription list",
-            not listing.is_subscribed(old),
+    if carried:
+        checks.append(
+            PostCondition(
+                f"{old!r} is off the subscription list",
+                not listing.is_subscribed(old),
+            )
         )
-    )
 
     if plan.children:
         missing = [
@@ -536,13 +549,15 @@ def verify_folder_rename(
                 ", ".join(f"{name!r} is missing" for name in missing),
             )
         )
-        checks.append(
-            PostCondition(
-                "those subscribed before are subscribed now",
-                not hidden,
-                ", ".join(f"{name!r} is not" for name in hidden),
+
+        if carried:
+            checks.append(
+                PostCondition(
+                    "those subscribed before are subscribed now",
+                    not hidden,
+                    ", ".join(f"{name!r} is not" for name in hidden),
+                )
             )
-        )
 
     if listing.exists(new):
         try:

@@ -67,6 +67,7 @@ from mailctl.providers.base import (
     DriftTerms,
     Fact,
     FetchedMessage,
+    FolderCreation,
     FolderListing,
     FolderReference,
     FolderStatus,
@@ -108,6 +109,7 @@ FULL = ProviderCapabilities(
     mark=True,
     folder_counts=True,
     uidvalidity=True,
+    folder_visibility=True,
     specifics={"fake.label": Specific(str, "a label to add")},
 )
 
@@ -638,6 +640,7 @@ UNORDERED = Provider(
         mark=True,
         folder_counts=True,
         uidvalidity=True,
+        folder_visibility=True,
         declined=frozenset(("move_rule", "position", "rearrange_rules")),
     ),
     UnorderedDialect,
@@ -670,6 +673,7 @@ STOPLESS = Provider(
         mark=True,
         folder_counts=True,
         uidvalidity=True,
+        folder_visibility=True,
     ),
     StoplessDialect,
     StoplessTransport,
@@ -1732,6 +1736,14 @@ class BareTransport(FakeTransport):
     def uidvalidity(self, folder):
         """No numbering a UID is valid under."""
 
+    @declined
+    def subscribe(self, folder):
+        """Subscribing shows no folder on this host."""
+
+    @declined
+    def unsubscribe(self, folder):
+        """Unsubscribing hides no folder on this host."""
+
 
 # The fake with no connection settings, no ordering, no extensions.
 BARE = Provider(
@@ -1748,9 +1760,12 @@ BARE = Provider(
         mark=False,
         folder_counts=False,
         uidvalidity=False,
+        folder_visibility=False,
         declined=frozenset(
             (
                 "uidvalidity",
+                "subscribe",
+                "unsubscribe",
                 "move_rule",
                 "position",
                 "rearrange_rules",
@@ -2176,6 +2191,25 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         (["mail", "mark", "7", "--flag"], "'mark'"),
         (["folder", "list", "--counts"], "'folder_counts'"),
         (["mail", "view", "7", "--uidvalidity", "5"], "'uidvalidity'"),
+        (["folder", "subscribe", "INBOX.Lists"], "'folder_visibility'"),
+        (["folder", "unsubscribe", "INBOX.Lists"], "'folder_visibility'"),
+        (
+            ["folder", "create", "Quiet", "--no-subscribe", "--yes"],
+            "'folder_visibility'",
+        ),
+        (
+            [
+                "filter",
+                "add",
+                "--from",
+                GITHUB,
+                "--move-to",
+                "Quiet",
+                "--create-folder",
+                "--no-subscribe",
+            ],
+            "'folder_visibility'",
+        ),
     ],
     ids=[
         "placement",
@@ -2189,6 +2223,10 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
         "mark",
         "folder-counts",
         "uidvalidity",
+        "subscribe",
+        "unsubscribe",
+        "create-hidden",
+        "add-create-hidden",
     ],
 )
 def test_a_hidden_option_given_anyway_is_refused_by_name(
@@ -2202,6 +2240,198 @@ def test_a_hidden_option_given_anyway_is_refused_by_name(
     assert "the bare provider cannot" in error
     assert refusal in error
     assert BareTransport.opened == 0
+
+
+# ############################################################################
+# Folder visibility -- subscription shows a folder only where declared (#39)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_subscription_commands_are_listed_only_where_declared(
+    bare, capsys, monkeypatch
+):
+    """Red if 'folder subscribe' is offered on a host where subscribing
+    shows nothing."""
+    assert {"subscribe", "unsubscribe"} <= listed(capsys, "folder")
+
+    monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
+
+    assert not {"subscribe", "unsubscribe"} & listed(capsys, "folder")
+    assert {"list", "create", "rename"} <= listed(capsys, "folder")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("command", ["folder create", "filter add"])
+def test_no_subscribe_is_offered_only_where_declared(bare, capsys, command):
+    """Red if --no-subscribe, a promise to hide, is offered where it
+    hides nothing."""
+    assert "--no-subscribe" in help_text(capsys, *command.split())
+    assert "--no-subscribe" not in help_text(
+        capsys, *command.split(), "--provider", "bare"
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "work",
+    [
+        pytest.param(
+            lambda session: utilities.folders.plan_subscription(
+                session, "Lists", True
+            ),
+            id="subscribe",
+        ),
+        pytest.param(
+            lambda session: utilities.folders.plan_subscription(
+                session, "Lists", False
+            ),
+            id="unsubscribe",
+        ),
+        pytest.param(
+            lambda session: utilities.folders.plan_folder_creation(
+                session, "Quiet", subscribe=False
+            ),
+            id="create-hidden",
+        ),
+        pytest.param(
+            lambda session: utilities.folders.plan_folder(
+                session, Config(), "Quiet", create=True, subscribe=False
+            ),
+            id="target-hidden",
+        ),
+    ],
+)
+def test_hiding_or_showing_is_refused_without_folder_visibility(bare, work):
+    """The utility holds the line for any front-end, before anything is
+    read. Red if a plan reads the folders first, or accepts the request."""
+    session = fake_session(BARE)
+
+    with pytest.raises(MailctlError, match="'folder_visibility'"):
+        work(session)
+
+    assert session.opened == ()
+
+
+# ----------------------------------------------------------------------------
+def test_a_folder_is_created_unsubscribed_where_subscription_shows_nothing(
+    bare,
+):
+    """Nothing is subscribed, and nothing is reported hidden. The bare
+    transport declines subscribe, so a create that still tried would come
+    back with a subscribe_error and turn this red."""
+    session = fake_session(BARE)
+    plan = utilities.folders.plan_folder_creation(session, "Quiet")
+
+    assert not plan.target.subscribe
+    assert not plan.target.by_subscription
+
+    result = utilities.folders.execute_folder_creation(session, plan)
+
+    assert result == FolderCreation(
+        "INBOX.Quiet", subscribed=False, by_subscription=False
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_rename_carries_no_subscription_where_it_shows_nothing(
+    bare, tmp_path
+):
+    """No subscribe or unsubscribe is sent, and the read-back checks no
+    subscription. Red if either is asked of the bare transport, which
+    declines both, or if a subscription check is still made."""
+    session = fake_session(BARE)
+    transport = fake_transport(session)
+    transport.scripts["main"] = json.dumps(
+        [{"name": "lists", "from": "x", "actions": ["file:INBOX.Lists"]}]
+    )
+
+    plan = utilities.folder_rename.plan_folder_rename(
+        session, "Lists", "Archive"
+    )
+    result = utilities.folder_rename.execute_folder_rename(
+        session, Config(backup_dir=tmp_path), plan
+    )
+
+    assert not plan.by_subscription
+    assert transport.folders == ["INBOX", "INBOX.Archive"]
+    assert result.subscribed == result.unsubscribed == ()
+    assert result.subscription_errors == ()
+    assert not [
+        check for check in result.checks if "subscri" in check.label
+    ], result.checks
+    assert result.ok, result.checks
+
+
+# ----------------------------------------------------------------------------
+def one_unsubscribed(self) -> FolderListing:
+    """The fake's folders, with INBOX.Lists left off the subscribed list."""
+    return FolderListing(".", ["INBOX", "INBOX.Lists"], ["INBOX"])
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "shown", "unshown"),
+    [
+        (["folder", "list"], "INBOX.Lists  (not subscribed)", "INBOX.Lists"),
+        (
+            ["folder", "list", "--counts"],
+            "0B  (not subscribed)",
+            "INBOX.Lists",
+        ),
+        (
+            ["server", "test"],
+            "not subscribed (exist, but webmail will not show them)",
+            "folders:   2\n",
+        ),
+    ],
+    ids=["list", "counts", "server-test"],
+)
+def test_no_folder_is_called_hidden_where_subscription_shows_nothing(
+    fakes, capsys, monkeypatch, argv, shown, unshown
+):
+    """The same listing, one folder unsubscribed: marked under the fake's
+    full offer, and not marked, or counted as shown, once the offer lacks
+    ``folder_visibility``. Red if subscription wording reaches the output
+    there; the first half is the control that the wording is looked for
+    where it is printed."""
+    monkeypatch.setenv("MAILCTL_PASSWORD", "not-a-real-password")
+    monkeypatch.setattr(FakeTransport, "list_folders", one_unsubscribed)
+    monkeypatch.setitem(
+        registry.PROVIDERS,
+        "unshown",
+        replace(
+            FAKE,
+            name="unshown",
+            capabilities=replace(FULL, folder_visibility=False),
+        ),
+    )
+
+    assert cli.main([*argv, "--provider", "fake"]) == 0
+    assert shown in capsys.readouterr().out
+
+    assert cli.main([*argv, "--provider", "unshown"]) == 0
+
+    out = capsys.readouterr().out
+
+    assert unshown in out
+    assert "subscri" not in out
+    assert "webmail" not in out
+
+
+# ----------------------------------------------------------------------------
+def test_a_created_folder_is_reported_without_subscription_words(bare, capsys):
+    """Red if the CLI says 'not subscribed (--no-subscribe)' about a
+    folder nobody asked to hide."""
+    code = cli.main(
+        ["folder", "create", "Quiet", "--yes", "--provider", "bare"]
+    )
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "Will create folder 'INBOX.Quiet'\n" in out
+    assert "Created folder 'INBOX.Quiet'\n" in out
+    assert "subscri" not in out
 
 
 # ----------------------------------------------------------------------------

@@ -395,11 +395,15 @@ class FolderCreation:
     ``subscribed`` false with an empty ``subscribe_error`` means the caller
     declined to subscribe; with an error it means the attempt failed. The
     folder exists either way -- mail filed there will arrive.
+
+    ``by_subscription`` false means the host does not show folders by
+    subscription, so none was attempted and the folder is not hidden.
     """
 
     folder: str
     subscribed: bool
     subscribe_error: str = ""
+    by_subscription: bool = True
 
 
 @dataclass(frozen=True)

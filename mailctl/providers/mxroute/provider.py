@@ -43,6 +43,8 @@ MXROUTE = Provider(
         # IMAP's UIDVALIDITY, reported by SELECT and EXAMINE (RFC 9051
         # section 2.3.1.1).
         uidvalidity=True,
+        # Roundcube draws its folder tree from LSUB (RECORD.md).
+        folder_visibility=True,
         settings={
             "host": "MXRoute server hostname",
             "imap_host": "",

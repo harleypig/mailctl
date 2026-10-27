@@ -133,6 +133,15 @@ Roundcube's. And *webmail shows only subscribed folders* is how Roundcube
 behaves ([#38][i38]). Whether the in-house webmail keeps either is under
 *Unknown*.
 
+**The second is declared as a capability: `folder_visibility`**
+([#39][i39]). Because MXroute declares it, mailctl offers
+`folder subscribe`, `folder unsubscribe`, and `--no-subscribe`, subscribes
+each folder it creates, and carries subscriptions across a rename. The basis
+is Roundcube's behaviour as recorded on [#38][i38] and *Folder
+subscription* below. It is not an MXroute statement, and it has not been
+re-probed. If the in-house webmail shows everything `LIST` returns, this
+declaration is wrong for MXroute, and it should be set to `False`.
+
 ### The filtering stage before Sieve
 
 This is documented by DirectAdmin, the software, and not by MXroute. It was
@@ -652,6 +661,7 @@ with `mailctl show`.
 [i30]: https://github.com/harleypig/mailctl/issues/30
 [i5]: https://github.com/harleypig/mailctl/issues/5
 [i38]: https://github.com/harleypig/mailctl/issues/38
+[i39]: https://github.com/harleypig/mailctl/issues/39
 [i101]: https://github.com/harleypig/mailctl/issues/101
 [i102]: https://github.com/harleypig/mailctl/issues/102
 [i116]: https://github.com/harleypig/mailctl/issues/116

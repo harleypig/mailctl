@@ -167,6 +167,7 @@ def require_capability(
 CAPABILITY_CONSTRUCTS = {
     "disable": "switch a filter off or on without removing it",
     "folder_counts": "count the messages in every folder in one request",
+    "folder_visibility": "show or hide a folder by subscribing to it",
     "mark": "set or clear a message's flags",
     "ordering": "place a filter at a position in evaluation order",
     "raw_query": "search with a query in its own search language",
