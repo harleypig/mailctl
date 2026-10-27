@@ -5454,6 +5454,13 @@ ERROR_TEXT = {
     "baseline_other_provider": lambda message, fields: (
         f"{message} '{command_for(fields['operation'])}' replaces it."
     ),
+    "backup_outside_root": lambda message, fields: (
+        f"{message}. Point --output inside {fields['root']}, or leave it "
+        f"out to use the backup directory."
+        if fields["setting"] == "output"
+        else f"{message}. Leave --backup-dir, MAILCTL_BACKUP_DIR, and "
+        f"backup_dir unset, or point them inside {fields['root']}."
+    ),
 }
 
 

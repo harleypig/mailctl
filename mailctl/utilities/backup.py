@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import MailctlError
-from ..config import Config, expand_path
+from ..config import Config, check_backup_location, expand_path
 from ..engine import Session
 from ..providers.base import DisplayDiff, Provider
 from .backup_files import write_backup
@@ -39,8 +39,16 @@ class BackupPlan:
 def plan_backup(
     session: Session, config: Config, output: str | None = None
 ) -> BackupPlan:
-    """Fetch the active script and resolve where its copy goes."""
+    """Fetch the active script and resolve where its copy goes.
+
+    An ``output`` outside the backup root is refused before the server is
+    asked for anything (``check_backup_location``); a directory there
+    holds every file the default name could give.
+    """
     require_filter_sets(session)
+
+    if output is not None:
+        check_backup_location(config, Path(output), "output")
 
     name = session.transport.active_rule_set()
 
