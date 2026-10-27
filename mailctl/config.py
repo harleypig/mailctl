@@ -36,6 +36,7 @@ __all__ = [
     "Secret",
     "Source",
     "baseline_dir",
+    "check_backup_location",
     "config_dir",
     "config_path",
     "default_backup_dir",
@@ -91,6 +92,10 @@ LEGACY_ENV_NAMES = {
     "MXROUTE_BACKUP_DIR": "MAILCTL_BACKUP_DIR",
     "MXROUTE_SOURCE_FOLDER": "MAILCTL_SOURCE_FOLDER",
 }
+
+# The directory every backup must resolve inside, where it is set. Read
+# from the process environment alone: see load_config.
+BACKUP_ROOT_VAR = f"{ENV_PREFIX}BACKUP_ROOT"
 
 # The directory the tool kept its config and backups in under its old
 # name. Never read; only looked for, so its contents can be moved.
@@ -260,6 +265,10 @@ class Config:
     default_folder: str = ""
     source_folder: str = DEFAULT_SOURCE_FOLDER
     backup_dir: Path = field(default_factory=lambda: default_backup_dir())
+
+    # Where every backup must resolve, or None for anywhere
+    # (check_backup_location).
+    backup_root: Path | None = None
 
     # Rule-language extensions mailctl must not emit, lower-cased, whatever
     # the server advertises. The provider owns it: one that declares
@@ -1058,6 +1067,16 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
 
     backup_dir = setting("backup_dir", None)
 
+    # The root limits backup_dir rather than supplying a value, so no rung
+    # that sets backup_dir may set it: a flag, an env file, or config.toml
+    # that could would lift the very limit it is held to (#230). Only the
+    # environment the process was started in is read, which is what an
+    # installation such as the Docker image controls.
+    root = environ.get(BACKUP_ROOT_VAR)
+
+    if root:
+        sources["backup_root"] = Source(ENVIRONMENT, BACKUP_ROOT_VAR)
+
     # A list, but it climbs the ladder like any scalar: the highest source
     # that sets it replaces the rest, so a one-run flag can narrow or widen
     # what the config file says without the user having to unset anything.
@@ -1091,7 +1110,7 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
     if toml.is_file():
         consulted.append(Source(CONFIG_FILE, path=toml))
 
-    return Config(
+    config = Config(
         provider=provider or DEFAULT_PROVIDER,
         host=host or "",
         user=user or "",
@@ -1114,10 +1133,50 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
         backup_dir=expand_path(backup_dir)
         if backup_dir
         else default_backup_dir(),
+        backup_root=expand_path(root) if root else None,
         sources=sources,
         consulted=consulted,
         env_file=env_file,
         environ=environ,
+    )
+
+    # Here, so a run is refused before it connects or writes anything; the
+    # utilities check again where each backup is written.
+    check_backup_location(
+        config, config.backup_dir, "backup_dir", sources["backup_dir"]
+    )
+
+    return config
+
+
+# ----------------------------------------------------------------------------
+def check_backup_location(
+    config: Config, path: Path, setting: str, origin: Source | None = None
+) -> None:
+    """Refuse a backup at ``path`` unless it is inside ``config.backup_root``.
+
+    Both are resolved first, symlinks included, so neither ``..`` nor a
+    link inside the root leads a backup out of it. ``setting`` names what
+    chose ``path`` (``backup_dir``, or a utility's ``output``) and
+    ``origin`` where that came from, both for the message. Nothing is
+    checked where no root is set.
+    """
+    if config.backup_root is None:
+        return
+
+    root = config.backup_root.resolve()
+    where = Path(path).resolve()
+
+    if where.is_relative_to(root):
+        return
+
+    origin_text = f" (from {origin.describe()})" if origin else ""
+
+    raise MailctlError(
+        f"backups would be written to {where}{origin_text}, outside {root}, "
+        f"the one directory {BACKUP_ROOT_VAR} lets them go",
+        code="backup_outside_root",
+        fields={"setting": setting, "where": str(where), "root": str(root)},
     )
 
 

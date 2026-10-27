@@ -75,11 +75,13 @@ docker run --rm \
   before every change to a filter set. A backup written inside the
   container is gone when the container is, so any command other than
   `--help`, `--version`, and `help` stops with exit 2 unless
-  `/config/mailctl` is a mount. A `--backup-dir` or `MAILCTL_BACKUP_DIR`
-  outside that mount is refused the same way. A `backup_dir` in
-  `config.toml` or an env file is not read by that check; pointed outside
-  the mount it fails anyway, because a non-root user can write almost
-  nothing in the image but its mounts.
+  `/config/mailctl` is a mount. A backup anywhere outside that mount is
+  refused too, whatever set it: `--backup-dir`, `MAILCTL_BACKUP_DIR` in an
+  env file or the environment, `backup_dir` in `config.toml`, or
+  `filterset backup --output`. That refusal is mailctl's own, through
+  `MAILCTL_BACKUP_ROOT`, which the image sets to `/config/mailctl` and a
+  `docker run -e` cannot change. The path is resolved first, so `..` or a
+  symlink inside the mount cannot lead out of it.
 - **`--user "$(id -u):$(id -g)"` is what makes the password file readable.**
   The file's mode survives the mount, so a `0600` file is still `0600`
   inside and passes mailctl's mode check. What breaks without `--user` is
@@ -837,7 +839,11 @@ and save again.
   *state* rather than config; keeping it here is a deliberate departure from
   that, not something XDG endorses, because a backup you cannot find is not a
   backup. `--backup-dir`, `MAILCTL_BACKUP_DIR`, and `backup_dir` in
-  `config.toml` move it, with `~` and `$VAR` expanded in each. The file is
+  `config.toml` move it, with `~` and `$VAR` expanded in each. Where
+  `MAILCTL_BACKUP_ROOT` is set in the environment, mailctl refuses any
+  backup that would land outside that directory; the Docker image sets it.
+  It is read from the environment only, never from a flag, an env file, or
+  `config.toml`, so none of those can lift it. The file is
   written mode `0600` in a directory created `0700`: a filter set is not a
   password, but it does say who you correspond with and how you sort it.
 * **`mailctl filterset restore FILE` puts a backup back.** The backup is the

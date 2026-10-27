@@ -34,6 +34,7 @@ from mailctl.config import (
     Config,
     Secret,
     Source,
+    check_backup_location,
     config_path,
     load_config,
     read_config_file,
@@ -1636,3 +1637,177 @@ def test_the_prompt_is_the_password_origin_only_when_there_is_one():
 )
 def test_a_source_describes_itself_in_a_short_phrase(source, expected):
     assert source.describe() == expected
+
+
+# ############################################################################
+# The backup root (#230)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def backup_root(tmp_path, monkeypatch) -> Path:
+    """A root set in the process environment, as the Docker image sets it."""
+    root = tmp_path / "root"
+    root.mkdir()
+    monkeypatch.setenv("MAILCTL_BACKUP_ROOT", str(root))
+
+    return root
+
+
+# ----------------------------------------------------------------------------
+def arrange_backup_dir(rung: str, value: str, tmp_path, monkeypatch):
+    """Put ``value`` on one rung of the ladder; return the args to load."""
+    args = argparse.Namespace(backup_dir=None, env_file=None)
+
+    if rung == "flag":
+        args.backup_dir = value
+
+    elif rung == "env-file":
+        path = write_env_file(
+            tmp_path / ".env", f"MAILCTL_BACKUP_DIR={value}\n"
+        )
+        args.env_file = str(path)
+
+    elif rung == "environment":
+        monkeypatch.setenv("MAILCTL_BACKUP_DIR", value)
+
+    else:
+        write_config_file(f'backup_dir = "{value}"\n')
+
+    return args
+
+
+RUNGS = ["flag", "env-file", "environment", "config-file"]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("rung", RUNGS)
+def test_a_backup_dir_outside_the_root_is_refused_from_every_rung(
+    rung, backup_root, tmp_path, monkeypatch
+):
+    outside = tmp_path / "shm"
+    args = arrange_backup_dir(rung, str(outside), tmp_path, monkeypatch)
+
+    with pytest.raises(MailctlError) as caught:
+        load_config(args)
+
+    assert caught.value.code == "backup_outside_root"
+    assert caught.value.fields == {
+        "setting": "backup_dir",
+        "where": str(outside.resolve()),
+        "root": str(backup_root.resolve()),
+    }
+    assert not outside.exists()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("rung", RUNGS)
+def test_a_backup_dir_inside_the_root_is_accepted_from_every_rung(
+    rung, backup_root, tmp_path, monkeypatch
+):
+    inside = backup_root / "backups"
+    args = arrange_backup_dir(rung, str(inside), tmp_path, monkeypatch)
+
+    config = load_config(args)
+
+    assert config.backup_dir == inside
+    assert config.backup_root == backup_root
+    assert config.sources["backup_root"] == Source(
+        ENVIRONMENT, "MAILCTL_BACKUP_ROOT"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_dot_dot_cannot_climb_out_of_the_root(backup_root, tmp_path):
+    escape = f"{backup_root}/../shm"
+
+    with pytest.raises(MailctlError) as caught:
+        load_config(argparse.Namespace(backup_dir=escape))
+
+    assert caught.value.fields["where"] == str((tmp_path / "shm").resolve())
+
+
+# ----------------------------------------------------------------------------
+def test_a_link_inside_the_root_cannot_lead_out_of_it(backup_root, tmp_path):
+    (tmp_path / "shm").mkdir()
+    (backup_root / "link").symlink_to(tmp_path / "shm")
+
+    with pytest.raises(MailctlError, match="outside"):
+        load_config(argparse.Namespace(backup_dir=str(backup_root / "link")))
+
+
+# ----------------------------------------------------------------------------
+def test_the_default_backup_dir_is_inside_a_root_at_the_config_dir(
+    monkeypatch,
+):
+    monkeypatch.setenv("MAILCTL_BACKUP_ROOT", str(config_path().parent))
+
+    config = load_config(argparse.Namespace())
+
+    assert config.backup_dir == config_path().parent / "backups"
+
+
+# ----------------------------------------------------------------------------
+def test_with_no_root_a_backup_dir_may_be_anywhere(tmp_path):
+    config = load_config(argparse.Namespace(backup_dir=str(tmp_path / "x")))
+
+    assert config.backup_root is None
+    assert "backup_root" not in config.sources
+
+
+# ----------------------------------------------------------------------------
+def test_only_the_environment_sets_the_root(backup_root, tmp_path):
+    """A rung that could set the root could lift it, so none is read.
+
+    The env file and config.toml both name a root that would admit the
+    backup directory; the environment's root still refuses it.
+    """
+    outside = tmp_path / "shm"
+    env_file = write_env_file(
+        tmp_path / ".env",
+        f"MAILCTL_BACKUP_ROOT={tmp_path}\nMAILCTL_BACKUP_DIR={outside}\n",
+    )
+    write_config_file(f'backup_root = "{tmp_path}"\n')
+
+    with pytest.raises(MailctlError) as caught:
+        load_config(
+            argparse.Namespace(
+                backup_root=str(tmp_path), env_file=str(env_file)
+            )
+        )
+
+    assert caught.value.fields["root"] == str(backup_root.resolve())
+
+
+# ----------------------------------------------------------------------------
+def test_an_env_file_root_alone_sets_no_root(tmp_path):
+    env_file = write_env_file(
+        tmp_path / ".env", f"MAILCTL_BACKUP_ROOT={tmp_path / 'root'}\n"
+    )
+
+    config = load_config(argparse.Namespace(env_file=str(env_file)))
+
+    assert config.backup_root is None
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("setting", "advice"),
+    [
+        pytest.param("backup_dir", "Leave --backup-dir", id="backup-dir"),
+        pytest.param("output", "Point --output inside", id="output"),
+    ],
+)
+def test_the_cli_says_which_setting_to_change(setting, advice, tmp_path):
+    root = tmp_path / "root"
+    config = Config(backup_root=root)
+
+    with pytest.raises(MailctlError) as caught:
+        check_backup_location(config, tmp_path / "shm", setting)
+
+    text = error_text(caught.value)
+
+    assert text.startswith(f"backups would be written to {tmp_path / 'shm'}")
+    assert advice in text
+    assert str(root) in text

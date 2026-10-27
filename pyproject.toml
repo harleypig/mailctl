@@ -18,6 +18,9 @@ dependencies = [
 dev = [
   "ruff>=0.16",
   "pytest>=8.0",
+  # The build backend, importable, so tests/test_packaging.py can build a
+  # wheel offline; the floor matches [build-system] requires.
+  "setuptools>=68",
   # Exact, unlike the rest: each pyright release adds checks, so a newer
   # one can fail CI with no change to the code. Bump it deliberately.
   "pyright[nodejs]==1.1.414",
@@ -26,8 +29,11 @@ dev = [
 [project.scripts]
 mailctl = "mailctl.cli:main"
 
-[tool.setuptools]
-packages = ["mailctl"]
+# Every package under mailctl/, found rather than listed, so a new
+# subpackage cannot be left out of a wheel (#229). No data file is shipped:
+# nothing in the package reads one (RECORD.md is for its maintainers).
+[tool.setuptools.packages.find]
+include = ["mailctl*"]
 
 [tool.ruff]
 line-length = 79

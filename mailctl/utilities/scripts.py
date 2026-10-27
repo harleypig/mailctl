@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import MailctlError
-from ..config import Config
+from ..config import Config, check_backup_location
 from ..engine import Session
 from ..providers.base import Provider
 from .backup_files import write_backup
@@ -171,9 +171,10 @@ def upload_script(
     emit = on_event or (lambda event: None)
     transport = session.transport
 
-    path = write_backup(
-        before, session.dialect.backup_path(name, config.backup_dir)
-    )
+    target = session.dialect.backup_path(name, config.backup_dir)
+    check_backup_location(config, target, "backup_dir")
+
+    path = write_backup(before, target)
     emit(ScriptBackedUp(name, path))
 
     transport.check_rule_set(after)

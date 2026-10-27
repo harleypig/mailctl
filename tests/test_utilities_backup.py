@@ -252,3 +252,59 @@ def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
 
     assert "put_script" not in fake.names()
     assert len(list((tmp_path / "backups").iterdir())) == 1
+
+
+# ############################################################################
+# The backup root (#230)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_an_output_outside_the_root_is_refused_before_the_server_is_asked(
+    imap_config, tmp_path
+):
+    imap_config.backup_root = tmp_path / "root"
+    fake = FakeSieveSession(script="current\n")
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.backup.plan_backup(
+            mxroute(sieve=fake), imap_config, str(tmp_path / "out.sieve")
+        )
+
+    assert caught.value.code == "backup_outside_root"
+    assert caught.value.fields["setting"] == "output"
+    assert fake.calls == []
+
+
+# ----------------------------------------------------------------------------
+def test_an_output_inside_the_root_is_written(imap_config, tmp_path):
+    imap_config.backup_root = tmp_path
+    live = mxroute(sieve=FakeSieveSession(script="current\n"))
+
+    plan = utilities.backup.plan_backup(live, imap_config, f"{tmp_path}/")
+
+    assert utilities.backup.execute_backup(plan).parent == tmp_path
+
+
+# ----------------------------------------------------------------------------
+def test_an_upload_refuses_a_backup_outside_the_root_and_sends_nothing(
+    imap_config, tmp_path
+):
+    """The utilities' own check, for a Config built without load_config."""
+    imap_config.backup_root = tmp_path / "root"
+    imap_config.backup_dir = tmp_path / "elsewhere"
+    backup = tmp_path / "b.sieve"
+    backup.write_text("new\n")
+    fake = FakeSieveSession(script="old\n")
+    live = mxroute(sieve=fake)
+
+    plan = utilities.backup.plan_restore(
+        live, utilities.backup.read_backup_file(backup)
+    )
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.backup.execute_restore(live, imap_config, plan)
+
+    assert caught.value.fields["setting"] == "backup_dir"
+    assert fake.names() == ["get_script"]
+    assert not (tmp_path / "elsewhere").exists()

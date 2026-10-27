@@ -2885,6 +2885,31 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
 
 
 # ----------------------------------------------------------------------------
+def argparse_neutral(record: str) -> str:
+    """A record with what argparse words differently by version made one.
+
+    Two pieces of argparse's own text vary with the Python running it, and
+    neither is mailctl's: where a usage line wraps (3.13 lets a group
+    break across lines, and puts a subcommand's ``...`` beside its choices)
+    and whether an invalid choice's list is quoted (it is before 3.12.8).
+    So a usage block is compared as its words, and the choices unquoted;
+    which options a usage names, and in what order, still has to match.
+    """
+    record = re.sub(
+        r"^usage: .*(?:\n[ \t]+\S.*)*",
+        lambda block: " ".join(block.group().split()),
+        record,
+        flags=re.MULTILINE,
+    )
+
+    return re.sub(
+        r"\(choose from ([^)]*)\)",
+        lambda match: f"(choose from {match.group(1).replace(chr(39), '')})",
+        record,
+    )
+
+
+# ----------------------------------------------------------------------------
 @pytest.mark.parametrize("name", sorted(SCENARIOS))
 def test_cli_output_matches_its_snapshot(
     name, fake_imap, roundcube_script, monkeypatch, tmp_path
@@ -2896,14 +2921,22 @@ def test_cli_output_matches_its_snapshot(
         argv, options, fake_imap, roundcube_script, monkeypatch, tmp_path
     )
 
-    if update_requested(os.environ):
+    # Left alone when only argparse's version-dependent text differs, so
+    # regenerating under another Python does not rewrite a snapshot.
+    if update_requested(os.environ) and not (
+        snapshot.exists()
+        and argparse_neutral(snapshot.read_text(encoding="utf-8"))
+        == argparse_neutral(actual)
+    ):
         snapshot.parent.mkdir(parents=True, exist_ok=True)
         snapshot.write_text(actual, encoding="utf-8")
 
     assert snapshot.exists(), (
         f"no snapshot for {name!r}; run with MAILCTL_UPDATE_SNAPSHOTS=1"
     )
-    assert actual == snapshot.read_text(encoding="utf-8")
+    assert argparse_neutral(actual) == argparse_neutral(
+        snapshot.read_text(encoding="utf-8")
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -3180,3 +3213,57 @@ def test_snapshot_rewriting_is_refused_under_ci():
 
     with pytest.raises(pytest.fail.Exception, match="under CI"):
         update_requested(environ)
+
+
+# The same usage as Python 3.12 and 3.13 wrap it.
+USAGE_312 = """usage: mailctl view [-h] [--host HOST]
+                    [--password-file PATH | -p PASSWORD]
+                    uid
+mailctl view: error: argument --raw: not allowed with argument --json
+"""
+USAGE_313 = """usage: mailctl view [-h] [--host HOST] [--password-file PATH |
+                    -p PASSWORD]
+                    uid
+mailctl view: error: argument --raw: not allowed with argument --json
+"""
+
+
+# ----------------------------------------------------------------------------
+def test_a_usage_wrapped_another_way_is_the_same_record():
+    assert argparse_neutral(USAGE_312) == argparse_neutral(USAGE_313)
+
+
+# ----------------------------------------------------------------------------
+def test_quoted_and_unquoted_choices_are_the_same_record():
+    quoted = "invalid choice: 'x' (choose from 'size', 'sent')"
+    bare = "invalid choice: 'x' (choose from size, sent)"
+
+    assert argparse_neutral(quoted) == argparse_neutral(bare)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "changed",
+    [
+        pytest.param(USAGE_313.replace("[--host HOST] ", ""), id="option"),
+        pytest.param(
+            USAGE_313.replace("-p PASSWORD", "-P PASSWORD"), id="flag"
+        ),
+        pytest.param(USAGE_313.replace("uid", "UID"), id="positional"),
+        pytest.param(USAGE_313.replace("--raw", "--json"), id="error"),
+        pytest.param(USAGE_313.replace(" |\n", "\n"), id="group"),
+    ],
+)
+def test_a_usage_that_says_something_else_still_differs(changed):
+    """Red if the neutral form drops more than where argparse wraps."""
+    assert argparse_neutral(changed) != argparse_neutral(USAGE_312)
+
+
+# ----------------------------------------------------------------------------
+def test_text_after_a_usage_keeps_its_layout():
+    """Only the usage block is joined; an indented line after a blank one,
+    as in a help page's option list, is compared as it is."""
+    page = "usage: mailctl x [-h]\n\noptions:\n  -h, --help  show\n"
+
+    assert argparse_neutral(page) == page
+    assert argparse_neutral(page.replace("  -h", " -h")) != page
