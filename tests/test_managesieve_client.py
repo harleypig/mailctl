@@ -222,6 +222,31 @@ def test_the_name_is_sent_as_sievelib_sends_every_other_name():
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "script",
+    [
+        pytest.param("keep;\nstop;\n", id="lf"),
+        pytest.param("keep;\r\nstop;\r\n", id="crlf"),
+        pytest.param("keep;\r\nstop;\n", id="mixed"),
+    ],
+)
+def test_putscript_sends_the_script_unchanged(script):
+    """A restore or a rename uploads exactly the bytes it was given.
+
+    Red under sievelib 1.6.0, which rewrites every LF to CRLF before
+    sending, so an LF backup put back is no longer the backup.
+    """
+    sock = ScriptedSocket(b'OK "Putscript completed."\r\n')
+    open_client(sock).putscript("s", script)
+
+    body = script.encode()
+
+    assert b"".join(sock.sent) == (
+        b'PUTSCRIPT "s" {%d+}\r\n' % len(body) + body + b"\r\n"
+    )
+
+
+# ----------------------------------------------------------------------------
 def test_bytes_past_the_response_are_left_for_the_next_command():
     """The buffer is sievelib's own, so nothing read ahead is lost."""
     client = open_client(ScriptedSocket(literal(SCRIPT) + b'OK "next"\r\n'))

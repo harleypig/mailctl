@@ -10,7 +10,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
-  "sievelib>=1.5.0,<2",
+  # Below 1.6: sievelib 1.6.0 rewrites LF to CRLF in every script it
+  # uploads, so a restored backup or a renamed rule would no longer be the
+  # bytes mailctl promises. Raising this needs PUTSCRIPT to send the
+  # script unchanged (tests/test_managesieve_client.py pins it).
+  "sievelib>=1.5.0,<1.6",
   "IMAPClient>=4.1,<5",
 ]
 
