@@ -72,6 +72,12 @@ jobs:
       - run: pip install -e '.[dev]'
       - name: Test
         run: pytest -q
+      # The floor of the sievelib bound, which the install above never
+      # picks: SieveClient overrides its privates, so both ends run.
+      - name: Test on the oldest sievelib allowed
+        run: |
+          pip install 'sievelib==1.5.0'
+          pytest -q
 
   # The branch ruleset requires a check named exactly "Test", and a matrix
   # job reports one check per version under its own name. This job is that
