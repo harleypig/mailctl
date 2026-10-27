@@ -30,16 +30,19 @@ FROM ${PYTHON_IMAGE}
 
 # XDG_CONFIG_HOME puts the config directory, and with it the backups and
 # baselines, at /config/mailctl, which the entrypoint requires to be a
-# mount.
+# mount. MAILCTL_BACKUP_ROOT makes mailctl refuse a backup anywhere else;
+# the entrypoint sets it again, so it holds under `docker run -e` too, and
+# this copy holds under `--entrypoint mailctl`.
 ENV PATH=/opt/mailctl/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    XDG_CONFIG_HOME=/config
+    XDG_CONFIG_HOME=/config \
+    MAILCTL_BACKUP_ROOT=/config/mailctl
 
 # /tmp and /var/tmp lose their world-writable bit, so a non-root user can
-# write nowhere but a mount: a backup aimed anywhere the entrypoint cannot
-# see (config.toml, an env file) fails loudly instead of landing in the
-# container's ephemeral layer. mailctl itself writes no temporary files.
+# write almost nowhere but a mount: the backstop behind MAILCTL_BACKUP_ROOT.
+# /dev/shm is a run-time mount and stays writable, which is why the root is
+# the guard and this is not. mailctl itself writes no temporary files.
 RUN useradd --system --uid 10001 --user-group --no-create-home \
         --home-dir /nonexistent --shell /usr/sbin/nologin mailctl \
     && install -d -m 0755 -o root -g root /config /work \

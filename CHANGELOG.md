@@ -12,6 +12,18 @@ BUG FIXES:
   `No module named 'mailctl.providers'`; every subpackage is now found
   and installed. The Docker image installs mailctl normally rather than
   editable.
+* **The Docker image's guard on where backups go now holds for every
+  source** ([#230]). It checked only `--backup-dir` and
+  `MAILCTL_BACKUP_DIR`, so a `backup_dir` in `config.toml` or an env file
+  could point at `/dev/shm`, and the backup was lost with the container.
+  mailctl now refuses itself, before it connects, any backup outside the
+  directory named by the new `MAILCTL_BACKUP_ROOT`, whether the location
+  comes from a flag, an env file, the environment, `config.toml`, or
+  `filterset backup --output`. The path is resolved first, so `..` and
+  symlinks cannot lead out. The root is read from the environment only,
+  so none of those sources can lift it. The image sets it to
+  `/config/mailctl`, and its entrypoint no longer parses the command line.
+  Outside the image nothing changes unless you set it.
 
 ## 0.11.0
 
@@ -1460,6 +1472,7 @@ NOTES:
 [#192]: https://github.com/harleypig/mailctl/issues/192
 [#196]: https://github.com/harleypig/mailctl/issues/196
 [#10]: https://github.com/harleypig/mailctl/issues/10
+[#230]: https://github.com/harleypig/mailctl/issues/230
 [#229]: https://github.com/harleypig/mailctl/issues/229
 [#219]: https://github.com/harleypig/mailctl/issues/219
 [#216]: https://github.com/harleypig/mailctl/issues/216
