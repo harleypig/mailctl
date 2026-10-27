@@ -214,12 +214,20 @@ def test_the_transport_hands_over_the_neutral_record(fake_imap, imap_config):
 
 class ScriptedServer(imaplib.IMAP4):
     """imaplib reading a server's bytes: a greeting, then per command word
-    the lines the server sends, its tagged completion's tag filled in."""
+    the lines the server sends, its tagged completion's tag filled in.
+
+    A command asked again is answered from ``ANSWERED_AGAIN`` where it is
+    there, so each alert is sent once however often imaplib asks. Some
+    imaplib releases re-read CAPABILITY after LOGIN (3.13.18 does, 3.14.4
+    does not), which would otherwise change what the server is seen to
+    send rather than what mailctl sees of it.
+    """
 
     # ------------------------------------------------------------------------
     def __init__(self, greeting: bytes, answers: dict[bytes, list[bytes]]):
         self.greeting = greeting
         self.answers = answers
+        self.asked: set[bytes] = set()
         self._pending = b""
         super().__init__("scripted.example", 993)
 
@@ -236,7 +244,15 @@ class ScriptedServer(imaplib.IMAP4):
         while b"\r\n" in self._pending:
             line, self._pending = self._pending.split(b"\r\n", 1)
             tag, command = line.split(b" ", 2)[:2]
-            answer = self.answers.get(command.upper(), [b"TAG OK done"])
+            command = command.upper()
+
+            if command in self.asked and command in ANSWERED_AGAIN:
+                answer = ANSWERED_AGAIN[command]
+
+            else:
+                answer = self.answers.get(command, [b"TAG OK done"])
+
+            self.asked.add(command)
 
             for reply in answer:
                 self.inbound += reply.replace(b"TAG", tag) + b"\r\n"
@@ -277,6 +293,10 @@ ANSWERS = {
     ],
     b"LSUB": [b'* LSUB () "." INBOX', b"TAG NO [ALERT] Lsub alert"],
     b"LOGOUT": [b"* BYE bye", b"TAG OK done"],
+}
+
+ANSWERED_AGAIN = {
+    b"CAPABILITY": [b"* CAPABILITY IMAP4rev1 LITERAL+", b"TAG OK done"],
 }
 
 
