@@ -4,6 +4,15 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BUG FIXES:
+
+* **A non-editable install now includes the whole package** ([#229]).
+  `uv pip install .`, `uv tool install .` and `pipx install .` installed
+  only the top-level `mailctl` package, so `mailctl` failed at once with
+  `No module named 'mailctl.providers'`; every subpackage is now found
+  and installed. The Docker image installs mailctl normally rather than
+  editable.
+
 ## 0.11.0
 
 BREAKING CHANGES:
@@ -1451,6 +1460,7 @@ NOTES:
 [#192]: https://github.com/harleypig/mailctl/issues/192
 [#196]: https://github.com/harleypig/mailctl/issues/196
 [#10]: https://github.com/harleypig/mailctl/issues/10
+[#229]: https://github.com/harleypig/mailctl/issues/229
 [#219]: https://github.com/harleypig/mailctl/issues/219
 [#216]: https://github.com/harleypig/mailctl/issues/216
 [#205]: https://github.com/harleypig/mailctl/issues/205
