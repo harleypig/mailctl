@@ -520,15 +520,80 @@ def _attachment(part) -> Attachment:
 def _filename(part) -> str | None:
     """A part's file name; "" when it declares one that cannot be read.
 
-    The stdlib's RFC 2231 decoding raises TypeError on continuations
-    (``filename*0*``) mixed with a whole ``filename*``, so a malformed
-    name is reported as unnamed rather than failing the whole message.
+    A name given both whole (``filename*``) and in RFC 2231 continuations
+    (``filename*0*``) is two values, and no RFC says which one wins: the
+    stdlib raises TypeError on it before 3.13 and picks one from then on.
+    Either way is a guess, so such a name is reported as unnamed on every
+    version, rather than as a name the sender may not have meant.
     """
+    disposition = part.get("content-disposition")
+
+    if disposition is not None and _declares(str(disposition), "filename"):
+        source, param = str(disposition), "filename"
+
+    else:
+        source, param = str(part.get("content-type", "")), "name"
+
+    if _mixes_forms(source, param):
+        return ""
+
     try:
         return part.get_filename()
 
     except (TypeError, ValueError):
         return ""
+
+
+# ----------------------------------------------------------------------------
+def _param_names(value: str) -> list[str]:
+    """The parameter names in a MIME header value, lowercased, undecoded.
+
+    Read here rather than through the stdlib, whose every parameter call
+    decodes RFC 2231 first, which is the step that guesses or raises.
+    """
+    names = []
+    quoted = escaped = False
+    start = None
+
+    for index, char in enumerate(value + ";"):
+        if escaped:
+            escaped = False
+
+        elif quoted:
+            escaped = char == "\\"
+            quoted = char != '"'
+
+        elif char == '"':
+            quoted = True
+
+        elif char == ";":
+            start = index + 1
+
+        elif char == "=" and start is not None:
+            names.append(value[start:index].strip().lower())
+            start = None
+
+    return names
+
+
+# ----------------------------------------------------------------------------
+def _declares(value: str, param: str) -> bool:
+    """Whether a header value carries ``param`` in any RFC 2231 form."""
+    return any(
+        re.fullmatch(rf"{param}(\*\d*)?\*?", name)
+        for name in _param_names(value)
+    )
+
+
+# ----------------------------------------------------------------------------
+def _mixes_forms(value: str, param: str) -> bool:
+    """Whether ``param`` is given both whole and in numbered sections."""
+    names = _param_names(value)
+
+    whole = any(name in (param, f"{param}*") for name in names)
+    numbered = any(re.fullmatch(rf"{param}\*\d+\*?", name) for name in names)
+
+    return whole and numbered
 
 
 # ----------------------------------------------------------------------------

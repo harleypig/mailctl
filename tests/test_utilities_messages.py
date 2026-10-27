@@ -102,18 +102,25 @@ NUL_CHARSET = rfc822(
     body="body\r\n",
 )
 
-# RFC 2231 continuations mixed with a whole value: the stdlib's
-# decode_params sorts None against int and raises TypeError.
-MIXED_2231 = rfc822(
-    "From: a@example.com",
-    "Subject: s",
-    "MIME-Version: 1.0",
-    'Content-Type: multipart/mixed; boundary="b"',
-    body="--b\r\nContent-Type: text/plain\r\n\r\nhi\r\n"
-    "--b\r\nContent-Type: application/octet-stream\r\n"
-    "Content-Disposition: attachment; filename*0*=utf-8''a; "
-    "filename*=utf-8''b\r\n\r\nzz\r\n--b--\r\n",
-)
+
+# ----------------------------------------------------------------------------
+def with_attachment(*headers: str) -> bytes:
+    """A text body and one part carrying ``headers``, octet-stream unless
+    they give a Content-Type of their own."""
+    if not any(line.startswith("Content-Type:") for line in headers):
+        headers = ("Content-Type: application/octet-stream", *headers)
+
+    part = "\r\n".join(headers)
+
+    return rfc822(
+        "From: a@example.com",
+        "Subject: s",
+        "MIME-Version: 1.0",
+        'Content-Type: multipart/mixed; boundary="b"',
+        body="--b\r\nContent-Type: text/plain\r\n\r\nhi\r\n"
+        f"--b\r\n{part}\r\n\r\nzz\r\n--b--\r\n",
+    )
+
 
 EIGHT_BIT_HEADER = rfc822(
     "From: Jos\xe9 <jose@example.com>",
@@ -438,10 +445,24 @@ def test_a_charset_with_a_nul_falls_back_without_raising(sessions, fake_imap):
 
 
 # ----------------------------------------------------------------------------
-def test_an_unreadable_filename_leaves_the_attachment_unnamed(
-    sessions, fake_imap
+@pytest.mark.parametrize(
+    "header",
+    [
+        # Before 3.13 the stdlib raises TypeError on both of these; from
+        # 3.13 it reads the first as "a" and the second as "bc".
+        "Content-Disposition: attachment; filename*0*=utf-8''a; "
+        "filename*=utf-8''b",
+        "Content-Disposition: attachment; filename*=utf-8''b; filename*1=c",
+        "Content-Disposition: attachment; filename=b; filename*0=a",
+        # No filename, so the Content-Type's name is the one read.
+        "Content-Type: application/octet-stream; name*0=a; name=b",
+    ],
+)
+def test_a_name_given_whole_and_in_sections_is_unnamed(
+    sessions, fake_imap, header
 ):
-    fake_imap.messages = {1: MIXED_2231}
+    """Red if a name RFC 2231 gives two values for is shown as either."""
+    fake_imap.messages = {1: with_attachment(header)}
 
     content = utilities.messages.read_message(sessions, "INBOX", 1)
 
@@ -449,6 +470,41 @@ def test_an_unreadable_filename_leaves_the_attachment_unnamed(
     assert [(a.name, a.content_type) for a in content.attachments] == [
         ("", "application/octet-stream")
     ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("header", "name"),
+    [
+        (
+            "Content-Disposition: attachment; filename*0*=utf-8''a%C3%A9; "
+            "filename*1=b",
+            "a\xe9b",
+        ),
+        ("Content-Disposition: attachment; filename*=utf-8''b", "b"),
+        # The look-alike sits inside a quoted value, so is not a parameter.
+        (
+            'Content-Disposition: attachment; filename="x; filename*0=y"',
+            "x; filename*0=y",
+        ),
+        # A good filename wins over a mixed name, as the stdlib reads it.
+        (
+            (
+                "Content-Disposition: attachment; filename=f",
+                "Content-Type: application/octet-stream; name*0=a; name=b",
+            ),
+            "f",
+        ),
+    ],
+)
+def test_a_name_in_one_form_is_read(sessions, fake_imap, header, name):
+    """Red if a well-formed name, whole or in sections, is lost."""
+    headers = header if isinstance(header, tuple) else (header,)
+    fake_imap.messages = {1: with_attachment(*headers)}
+
+    content = utilities.messages.read_message(sessions, "INBOX", 1)
+
+    assert [a.name for a in content.attachments] == [name]
 
 
 # ----------------------------------------------------------------------------
