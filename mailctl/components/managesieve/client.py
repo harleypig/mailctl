@@ -6,7 +6,8 @@ ADR 0006 names closed where they are: GETSCRIPT read byte-exact (S1, mailctl
 (S5), debug output impossible (S8), and a closed connection an error rather
 than an endless loop (S9, mailctl #95); it also reads an OK's text, which
 sievelib drops, so a WARNINGS is kept and a literal is not left unread
-(mailctl #208). :class:`SieveSession` sits on it,
+(mailctl #208), and it sends a script and a name the same way under every
+sievelib it is bounded to (mailctl #232). :class:`SieveSession` sits on it,
 turns sievelib's two failure conventions -- a raised ``Error`` and a
 returned ``False`` -- into ``MailctlError`` with a readable message, and
 takes plain connection parameters so that nothing here knows which host,
@@ -14,10 +15,10 @@ which configuration, or which front-end is calling.
 
 sievelib keeps what :class:`SieveClient` needs as name-mangled privates of
 its ``Client``: the read buffer, the response reader, the capability table,
-and the STARTTLS, TLS, error, and authentication steps. Reaching them is
-why sievelib is bounded below 2 in ``pyproject.toml``; a release that
-renames one fails ``tests/test_managesieve_client.py`` rather than a
-user's backup.
+the argument and script formatters, and the STARTTLS, TLS, error, and
+authentication steps. Reaching them is why sievelib is bounded below 2 in
+``pyproject.toml``; a release that renames one fails
+``tests/test_managesieve_client.py`` rather than a user's backup.
 """
 
 import contextlib
@@ -65,11 +66,30 @@ _SIEVELIB_PRIVATE = "_Client__"
 _LITERAL = re.compile(rb"\{(\d+)\+?\}")
 _STATUS = re.compile(rb"(OK|NO|BYE)(?:\s+(.*))?", re.DOTALL)
 
+# A script as :meth:`SieveClient._Client__prepare_content` frames it.
+_CONTENT = re.compile(rb"\{(\d+)\+\}\r\n")
+
+# What no quoted string may hold (RFC 5804 section 4).
+_UNQUOTABLE = re.compile(rb"[\r\n\0]")
+
 
 class Revealable(Protocol):
     """A credential that hands its value over only when asked directly."""
 
     def reveal(self) -> str: ...
+
+
+# ----------------------------------------------------------------------------
+def _quote(value: bytes) -> bytes:
+    """``value`` as a ManageSieve quoted string, escaped as RFC 5804 asks.
+
+    Raises sievelib's ``Error`` for a CR, LF, or NUL, which no quoted
+    string can carry, as sievelib 1.6 does.
+    """
+    if _UNQUOTABLE.search(value):
+        raise SieveProtocolError(f"Invalid character in argument: {value!r}")
+
+    return b'"' + value.replace(b"\\", b"\\\\").replace(b'"', b'\\"') + b'"'
 
 
 class SieveConnectionError(MailctlError):
@@ -114,6 +134,46 @@ class SieveClient(Client):
     # ------------------------------------------------------------------------
     def _Client__dprint(self, message) -> None:
         """Print nothing, whatever sievelib's debug flag says (S8)."""
+
+    # ------------------------------------------------------------------------
+    def _Client__prepare_content(self, content: str) -> bytes:
+        """Frame a script as a literal, sending its bytes unchanged.
+
+        sievelib 1.6 rewrites every LF to CRLF here (tonioo/sievelib#141),
+        which would make a restored backup or a renamed rule other bytes
+        than mailctl promises; 1.5 sends the script as given, as this does.
+        """
+        body = content.encode("utf-8")
+
+        return b"{%d+}%s%s" % (len(body), CRLF, body)
+
+    # ------------------------------------------------------------------------
+    def _Client__prepare_args(self, args: list[Any]) -> list[bytes]:
+        """Quote and escape every string argument, as sievelib 1.6 does.
+
+        sievelib 1.5 wraps a name in quotes unescaped, and sends any
+        argument that starts like a literal's size raw. Only a whole
+        literal from :meth:`_Client__prepare_content` goes out as it is.
+        """
+        prepared = []
+
+        for arg in args:
+            if not isinstance(arg, bytes):
+                prepared.append(str(arg).encode("utf-8"))
+
+                continue
+
+            content = _CONTENT.match(arg)
+
+            if content is not None and len(arg) - content.end() == int(
+                content[1]
+            ):
+                prepared.append(arg)
+
+            else:
+                prepared.append(_quote(arg))
+
+        return prepared
 
     # ------------------------------------------------------------------------
     def _Client__read_line(self) -> bytes:
@@ -255,13 +315,13 @@ class SieveClient(Client):
         NO, with the reason in ``errcode`` / ``errmsg`` as sievelib leaves
         it.
 
-        The name is quoted as sievelib quotes it for every other command,
-        so all commands agree on which script a name means.
+        The name is quoted and escaped as every other command's is, so all
+        commands agree on which script a name means.
         """
         if not self.authenticated:
             raise SieveProtocolError("Authentication required")
 
-        self.sock.sendall(b'GETSCRIPT "' + name.encode("utf-8") + b'"' + CRLF)
+        self.sock.sendall(b"GETSCRIPT " + _quote(name.encode("utf-8")) + CRLF)
 
         first = self._read_line()
         literal = _LITERAL.fullmatch(first)

@@ -925,7 +925,10 @@ def _condition(condition: tuple, parent: commands.Command) -> commands.Command:
         test = commands.get_command_instance("body", parent, False)
         test.check_next_arg("tag", transform)
         test.check_next_arg("tag", match_type)
-        test.check_next_arg("stringlist", f"[{_quoted(value)}]")
+        # One key as one quoted string, which every sievelib renders alike:
+        # 1.6 writes a line break after a ``[...]`` string, and 1.5 cuts
+        # the closing quote off a listed key that ends in ``\"``.
+        test.check_next_arg("stringlist", _quoted(value))
 
         return test
 

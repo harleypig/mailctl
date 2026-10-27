@@ -17,6 +17,9 @@ closed here (ADR 0006 S1, S4, S5, S8, S9) live in how the wire is read:
   sievelib's own reader asks for the next line forever.
 * **#208** -- an OK's WARNINGS text is kept, and read whole when it is a
   literal; sievelib drops the text and leaves a literal unread.
+* **#232** -- a script goes out as given and a name is escaped, under
+  sievelib 1.5 and 1.6 alike; 1.6 rewrites line endings, 1.5 escapes
+  nothing.
 
 They also stand guard over sievelib's private names, which the wrapper
 reaches into; a sievelib release that renames one fails here first.
@@ -29,6 +32,7 @@ import socket
 from typing import cast
 
 import pytest
+from sievelib.managesieve import Error as SieveProtocolError
 
 from mailctl import MailctlError, cli
 from mailctl.components.managesieve import client as client_module
@@ -233,8 +237,9 @@ def test_the_name_is_sent_as_sievelib_sends_every_other_name():
 def test_putscript_sends_the_script_unchanged(script):
     """A restore or a rename uploads exactly the bytes it was given.
 
-    Red under sievelib 1.6.0, which rewrites every LF to CRLF before
-    sending, so an LF backup put back is no longer the backup.
+    Red under sievelib 1.6.0 without the client's own script formatter:
+    it rewrites every LF to CRLF before sending, so an LF backup put back
+    is no longer the backup.
     """
     sock = ScriptedSocket(b'OK "Putscript completed."\r\n')
     open_client(sock).putscript("s", script)
@@ -244,6 +249,66 @@ def test_putscript_sends_the_script_unchanged(script):
     assert b"".join(sock.sent) == (
         b'PUTSCRIPT "s" {%d+}\r\n' % len(body) + body + b"\r\n"
     )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "script",
+    [
+        pytest.param("keep;\nstop;\n", id="lf"),
+        pytest.param("keep;\r\nstop;\r\n", id="crlf"),
+        pytest.param("keep;\r\nstop;\n", id="mixed"),
+    ],
+)
+def test_checkscript_sends_the_script_unchanged(script):
+    """What is checked is what is then uploaded, byte for byte."""
+    sock = ScriptedSocket(b'OK "Script is valid."\r\n')
+    client = open_client(sock)
+    client._private("capabilities")["VERSION"] = "1.0"
+    client.checkscript(script)
+
+    body = script.encode()
+
+    assert b"".join(sock.sent) == (
+        b"CHECKSCRIPT {%d+}\r\n" % len(body) + body + b"\r\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_name_is_escaped_alike_by_getscript_and_every_other_command():
+    """A ``"`` or ``\\`` in a name is escaped (RFC 5804 section 4).
+
+    Red while GETSCRIPT quoted the name without escaping it, which sent a
+    name another command would read as a different script, or a broken
+    command. sievelib 1.5.0 escapes no name at all, so this also holds the
+    client's own argument quoting to the same rule.
+    """
+    name = 'a"b\\c'
+    quoted = b'"a\\"b\\\\c"'
+
+    sock = ScriptedSocket(literal(SCRIPT) + b'OK "Putscript completed."\r\n')
+    client = open_client(sock)
+    client.getscript_bytes(name)
+    client.putscript(name, "keep;\n")
+
+    assert sock.sent[0] == b"GETSCRIPT " + quoted + b"\r\n"
+    assert b"".join(sock.sent[1:]).startswith(b"PUTSCRIPT " + quoted + b" ")
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("bad", ["\r", "\n", "\0"], ids=["cr", "lf", "nul"])
+def test_a_name_no_quoted_string_can_carry_is_refused_unsent(bad):
+    """A quoted string cannot hold CR, LF, or NUL, so nothing is sent."""
+    sock = ScriptedSocket()
+    client = open_client(sock)
+
+    with pytest.raises(SieveProtocolError, match="Invalid character"):
+        client.getscript_bytes(f"a{bad}b")
+
+    with pytest.raises(SieveProtocolError, match="Invalid character"):
+        client.putscript(f"a{bad}b", "keep;\n")
+
+    assert sock.sent == []
 
 
 # ----------------------------------------------------------------------------
@@ -456,6 +521,13 @@ def test_sievelib_still_has_the_readers_the_client_replaces():
     """A rename upstream would bypass the S9 overrides without a word."""
     assert callable(getattr(client_module.Client, "_Client__read_line", None))
     assert callable(getattr(client_module.Client, "_Client__read_block", None))
+
+
+# ----------------------------------------------------------------------------
+def test_sievelib_still_has_the_formatters_the_client_replaces():
+    """A rename upstream would let a script or a name go out rewritten."""
+    for name in ("_Client__prepare_args", "_Client__prepare_content"):
+        assert callable(getattr(client_module.Client, name, None))
 
 
 # ----------------------------------------------------------------------------

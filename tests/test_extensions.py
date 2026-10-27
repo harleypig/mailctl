@@ -386,7 +386,7 @@ def test_a_body_rule_is_written_where_the_server_has_body(
     plan = utilities.rules.plan_rule(live, imap_config, body_request(), folder)
 
     assert '"body"' in plan.after.splitlines()[0]
-    assert 'body :contains :text ["merged"]' in plan.after
+    assert 'body :contains :text "merged"' in plan.after
 
 
 # ----------------------------------------------------------------------------

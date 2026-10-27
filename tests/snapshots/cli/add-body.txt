@@ -28,7 +28,7 @@ Note: the filter set on the server is not in mailctl's formatting, so uploading 
      stop;
  }
 +# rule:[from-noreply-github-com]
-+if anyof (header :contains "From" "noreply@github.com", body :contains :text ["merged"]) {
++if anyof (header :contains "From" "noreply@github.com", body :contains :text "merged") {
 +    fileinto "INBOX.Lists";
 +    stop;
 +}
