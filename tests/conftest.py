@@ -64,6 +64,12 @@ def isolated_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
 
+    # From 3.14 argparse colours help and errors when these ask it to,
+    # pipe or not; PYTHON_COLORS outranks NO_COLOR, so it goes as well.
+    monkeypatch.delenv("PYTHON_COLORS", raising=False)
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.setenv("NO_COLOR", "1")
+
 
 # ----------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
