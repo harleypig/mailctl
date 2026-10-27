@@ -4,6 +4,37 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 0.12.0
+
+FEATURES:
+
+* **mailctl can run from a Docker image you build yourself** ([#27]). A
+  `Dockerfile` at the top of the checkout builds it: `make image`, or
+  `docker build -t mailctl:dev .`. Nothing is published to a registry.
+  Run it with `--user "$(id -u):$(id -g)"`, your config directory mounted
+  at `/config/mailctl`, and your password in a read-only file named by
+  `MAILCTL_PASSWORD_FILE`; README › Install › *In Docker* gives the whole
+  command. Because every change to a filter set writes a backup first, the
+  image refuses with exit status 2 any command other than `--help`,
+  `--version`, and `help` when `/config/mailctl` is not a mount or when it
+  is run as root, so a backup is never lost with the container. A checkout
+  installs and runs exactly as before.
+
+ENHANCEMENTS:
+
+* **sievelib 1.6 is supported, and the bound is back to `sievelib>=1.5.0,<2`**
+  ([#232]). sievelib 1.6.0 rewrote every line ending of a script it sent to
+  CRLF, which would have broken `filterset restore` putting back the server's
+  exact bytes and `filter rename` changing no byte but the name, so for a
+  while mailctl held sievelib below 1.6. mailctl now sends a script exactly as
+  it is under either version. A filter set's name is escaped the same way by
+  every command, so a name holding `"` or `\` means the same filter set to all
+  of them, and a name with a line break or a NUL in it is refused before
+  anything is sent. A `--body` filter is now written as `body :contains :text
+  "merged"` rather than with the value in brackets, the same form header tests
+  already take; it matches the same mail, so the first upload after this
+  release shows that line changed.
+
 BUG FIXES:
 
 * **A non-editable install now includes the whole package** ([#229]).
@@ -24,6 +55,26 @@ BUG FIXES:
   so none of those sources can lift it. The image sets it to
   `/config/mailctl`, and its entrypoint no longer parses the command line.
   Outside the image nothing changes unless you set it.
+* **An attachment named twice, in two different ways, shows no name on
+  every Python version** ([#231]). Some messages give an attachment's name
+  both whole and split into numbered parts, and no standard says which
+  one wins. `mail view` showed no name for these on Python 3.11 and 3.12
+  but one of the two names on 3.13 and later, and guessed a name for some
+  of these messages even on 3.11. It now shows such an attachment with no
+  name, whichever Python runs it.
+
+NOTES:
+
+* **mailctl is tested on Python 3.11, 3.12, 3.13, and 3.14** ([#231]).
+  Every pull request now runs the test suite on all four, where only 3.12
+  was tested before.
+* **Whether subscribing to a folder shows it is now something a provider
+  declares** ([#39]). `mxroute` declares it, so nothing changes for
+  MXroute: `folder subscribe`, `folder unsubscribe`, and `--no-subscribe`
+  work as before, and `folder list` and `server test` still mark a folder
+  that webmail will not show. A provider whose own client shows every
+  folder regardless would offer none of these, and would not subscribe
+  the folders mailctl creates.
 
 ## 0.11.0
 
@@ -1474,6 +1525,9 @@ NOTES:
 [#10]: https://github.com/harleypig/mailctl/issues/10
 [#230]: https://github.com/harleypig/mailctl/issues/230
 [#229]: https://github.com/harleypig/mailctl/issues/229
+[#27]: https://github.com/harleypig/mailctl/issues/27
+[#231]: https://github.com/harleypig/mailctl/issues/231
+[#232]: https://github.com/harleypig/mailctl/issues/232
 [#219]: https://github.com/harleypig/mailctl/issues/219
 [#216]: https://github.com/harleypig/mailctl/issues/216
 [#205]: https://github.com/harleypig/mailctl/issues/205
