@@ -30,7 +30,9 @@ from a mailctl bug, so as little of it as possible is mailctl:
   from that would silently rewrite the user's script.
 * Every write -- PUTSCRIPT, SETACTIVE, DELETESCRIPT -- goes through
   sievelib's own ``Client``, and every IMAP step through IMAPClient, so no
-  mailctl write path sits between the test and the restore.
+  mailctl write path sits between the test and the restore. Only its
+  script framing is replaced (:class:`SievelibClient`), so a script goes
+  back as it was captured under every sievelib mailctl allows.
 * The confirmation reads twice: byte for byte through the same reader as
   the capture, and through sievelib's own GETSCRIPT compared with what
   sievelib returned at capture. The second is blind to line endings; it is
@@ -63,12 +65,12 @@ from typing import TypeVar, cast
 
 import pytest
 from imapclient import IMAPClient
-from sievelib.managesieve import Client as SievelibClient
+from sievelib.managesieve import Client as _SievelibBase
 
 from mailctl.components.managesieve.client import SieveClient as ByteClient
 from mailctl.config import Config, Secret
 
-_Client = TypeVar("_Client", bound=SievelibClient)
+_Client = TypeVar("_Client", bound=_SievelibBase)
 
 __all__ = [
     "SCRATCH_MARKER",
@@ -80,12 +82,30 @@ __all__ = [
     "ScratchFolder",
     "ScriptGuard",
     "ScriptGuardError",
+    "SievelibClient",
     "claim_scratch_folder",
     "guard_scripts",
     "guarded_scripts",
     "scratch_folder",
     "write_gate_reason",
 ]
+
+
+class SievelibClient(_SievelibBase):
+    """sievelib's own client, sending a script exactly as it is given.
+
+    sievelib 1.6 rewrites every LF to CRLF before PUTSCRIPT
+    (tonioo/sievelib#141), so a script put back through it would not be
+    the capture. Every command is still sievelib's; only the literal it
+    frames the script in is built here, as sievelib 1.5 builds it.
+    """
+
+    # ------------------------------------------------------------------------
+    def _Client__prepare_content(self, content: str) -> bytes:
+        body = content.encode("utf-8")
+
+        return b"{%d+}\r\n%s" % (len(body), body)
+
 
 # Every scratch folder's last component starts with this, so a folder the
 # guard did not make can never pass for one it did.
@@ -345,7 +365,7 @@ class ScriptGuard:
 
 
 # ----------------------------------------------------------------------------
-def _listing(client: SievelibClient) -> tuple[str | None, list[str]]:
+def _listing(client: _SievelibBase) -> tuple[str | None, list[str]]:
     """LISTSCRIPTS as (active, every name), the active one included."""
     result = client.listscripts()
 

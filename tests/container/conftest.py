@@ -54,7 +54,7 @@ from live_write import (  # noqa: F401 -- fixtures, registered by import
     guarded_scripts,
     scratch_folder,
 )
-from sievelib.managesieve import Client as SieveClient
+from live_write import SievelibClient as SieveClient
 
 from mailctl import cli
 from mailctl.config import Secret
