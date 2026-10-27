@@ -459,3 +459,56 @@ which nobody does. Design constraints follow from that:
 Prior art is client-side, not server-side: Thunderbird and Claws both offer
 per-folder message expiry, which is evidence the shape is right and worth
 reading before designing the config.
+
+## Move mail between accounts — not forwarding
+
+`ICEBOX:` move mail between accounts, migrate mailbox, mailbox migration,
+copy to another account, cross-account, consolidate accounts, import mail,
+transfer mail, gmail to mxroute, IMAP append, imapsync, archive migration —
+**trigger: a second account or a second provider landing.**
+
+Relocate messages from one account to another, Gmail to MXroute for example.
+It is not a filter; filters stay per-provider. Parked in the 2026-09-28 sweep
+because the config holds one account and the Gmail provider does not exist
+yet ([#23 - move mail between accounts][i23]).
+
+**The default is already taken: a one-shot move, not a sync.** A one-shot
+consolidation is a far smaller feature than a repeatable sync, and changing
+that later is expensive.
+
+**It is IMAP, not SMTP, and that is the whole feature.** Forwarding re-sends:
+a new message, new headers, a new date, a new envelope sender — the reason
+SRS exists and MXroute disables Sieve `redirect`. This is `FETCH` from the
+source and `APPEND` to the destination, so the message arrives as itself,
+with its original headers, `Message-ID`, and date. The retroactive pass
+already searches and acts on what matches; this is the same path with
+another account as the destination, and should extend it rather than run
+beside it.
+
+What it has to get right:
+
+- **Keep `INTERNALDATE` and the flags on `APPEND`.** Without the date, every
+  message arrives stamped "now" and the archive's sort order is gone, usually
+  after the source is too. Thousands of messages arriving unread is its own
+  damage.
+- **Idempotent.** A re-run, or a run cut off halfway, duplicates nothing:
+  dedupe on `Message-ID` against the destination before appending, as
+  `filter apply --keep` already does within one account.
+- **Deleting from the source is separate and opt-in.** Copy, verify, then
+  delete — never move and hope. It is the one irreversible step, needs its
+  own flag, and stops and asks.
+- **Folder mapping.** The two hierarchies differ, delimiter included, so the
+  mapping is explicit or a stated default, never a guess.
+- **The Gmail labels trap.** A label is not a folder: a message shows under
+  every label it carries, and under `[Gmail]/All Mail`. Walking Gmail's
+  folder list copies it once per label, so dedupe keys on `X-GM-MSGID` or
+  `Message-ID`, never on (folder, UID). Whether labels map to folders at all,
+  when one message can carry three and IMAP folders are exclusive, decides
+  the mapping's shape and is answered before any code.
+
+### Open
+
+- Where the credentials for **two** accounts come from, in a config built
+  around one.
+
+[i23]: https://github.com/harleypig/mailctl/issues/23
