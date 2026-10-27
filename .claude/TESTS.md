@@ -74,6 +74,11 @@ where every write path is proved first.
      `folders-alert*` snapshots.
    - `config` — the flag → env → file → default resolution order, and that a
      `Secret` renders `<redacted>` from `str()`, `repr()`, and an f-string.
+     `MAILCTL_BACKUP_ROOT` ([#230][i230]): a backup directory outside it
+     refused from every rung and one inside accepted, neither `..` nor a
+     link leading out, and the root taken from the environment only, never
+     from an env file. The utilities' half, `filterset backup --output`
+     included, is `test_utilities_backup.py`.
    - **The utilities** (`test_utilities_<module>.py` for `rules`,
      `scripts`, `backup`, `baseline`, `flags`, `folders`,
      `folder_rename`, `mail`, `messages`, `optimize`, `senders`,
@@ -123,6 +128,14 @@ where every write path is proved first.
      server call into `tests/snapshots/cli/<name>.txt`. A behaviour change
      shows up as a snapshot diff; regenerate with
      `MAILCTL_UPDATE_SNAPSHOTS=1` and read the diff before committing.
+     Both sides are compared after `argparse_neutral()`: a usage block by
+     its words rather than where argparse wraps it, and an invalid-choice
+     list unquoted, since both vary with the Python version and neither is
+     mailctl's text ([#231][i231]). Which options a usage names, and in
+     what order, still has to match, and regenerating leaves a snapshot
+     alone when only that text differs. `tests/conftest.py` clears
+     `PYTHON_COLORS` and `FORCE_COLOR` and sets `NO_COLOR` for every test,
+     since argparse colours its output from 3.14 when asked, pipe or not.
    - **The command tree** (`test_cli_help.py`, over `tests/cli_support.py`,
      which reads the groups and commands off the parser) — `mailctl help` with
      a group, or a group and an action, is the same text and exit as `--help`
@@ -137,9 +150,19 @@ where every write path is proved first.
      whole CAPABILITY response kept, the read timeout honoured, and nothing
      printed even with sievelib's debug flag forced on; an OK's `WARNINGS`,
      quoted or literal, reaching `progress`, and a literal read whole
-     ([#208][i208]); the CLI's half is the `add-warnings*` snapshots. Its
+     ([#208][i208]); the CLI's half is the `add-warnings*` snapshots. A
+     script sent by PUTSCRIPT and CHECKSCRIPT unchanged, a name escaped
+     alike by GETSCRIPT and every other command, a name holding CR, LF, or
+     NUL refused unsent, and sievelib still having the formatters the
+     client replaces — all of it under sievelib 1.5 and 1.6, which CI runs
+     both of (`Test on the oldest sievelib allowed`, [#232][i232]). Its
      server-module selection and capability parsing are
      `test_managesieve_servers.py`.
+   - **Packaging** (`test_packaging.py`, [#229][i229]) — a wheel built from
+     a copy of the source with the declared build backend, unpacked, and
+     run with nothing from the checkout on the path, so a subpackage left
+     out of it fails here rather than in a user's install. The suite
+     otherwise runs under an editable install, which reads the checkout.
    - The **presentation guard** (`test_core_no_presentation.py`) — no core
      module prints, prompts, or exits, and neither the session nor any
      utility imports a front-end or reads the terminal or the environment.
@@ -226,9 +249,14 @@ where every write path is proved first.
      `rule_sets` the `filterset` group is not listed, and its commands still
      parse and run; a connection flag the provider does not read is hidden and
      refused; a `filterset` command is refused by the utility, naming the
-     provider, before anything is read; and `filter add` and `server test`
-     under a fake say nothing about Sieve or MXroute. `mxroute`'s help hides
-     nothing but the always-hidden flags.
+     provider, before anything is read; without `folder_visibility` `folder
+     subscribe` and `folder unsubscribe` are not listed and `--no-subscribe`
+     is not offered, each refused by the utility before anything is read, a
+     created folder is not subscribed, a rename carries and checks no
+     subscription, and `folder list` and `server test` call no folder hidden
+     ([#39][i39]); and `filter add` and `server test` under a fake say
+     nothing about Sieve or MXroute. `mxroute`'s help hides nothing but the
+     always-hidden flags.
 2. **Live tests** (`MAILCTL_LIVE=1`) — stand up **real** Sieve scripts and
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
@@ -237,6 +265,8 @@ where every write path is proved first.
 3. **Container tests** (`MAILCTL_CONTAINER=1`, `tests/container/`) — every
    **write** path against a **throwaway local Dovecot + Pigeonhole** in
    Docker, never a real account. See *The container tier* below.
+   `test_image.py` sits under the same gate and builds mailctl's **own**
+   image instead (*The container tier*).
 
 The live tier and the read-only live check below are together this repo's
 **end-to-end** pass (`qa.md` dimension 8) against MXroute itself. The
@@ -309,8 +339,21 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
 - **The oracle is not mailctl.** Each test reads the server back with
   sievelib's and IMAPClient's own clients, and a byte-exact claim with the
   script file on the container's disk, so a write that mailctl both gets
-  wrong and reads back wrong still fails. Every test's docstring names the
+  wrong and reads back wrong still fails. Scripts are seeded through
+  `live_write.SievelibClient`, sievelib's `Client` with only its literal
+  framing replaced, because under sievelib 1.6 the plain `Client` turns
+  every LF into CRLF on PUTSCRIPT and the tier would stop testing an LF
+  script at all ([#232][i232]); the live tier's script guard restores
+  through it for the same reason. Every test's docstring names the
   break that turns it red, and each was seen red under that break.
+- **mailctl's own image** (`test_image.py`, [#230][i230]). It builds the
+  top-level `Dockerfile` and runs the image as a user would, with no
+  network and no Dovecot: every refusal comes before a connection. A
+  backup directory or `filterset backup --output` in `/dev/shm` is refused
+  from every source, a path through the mount cannot lead out, the run
+  cannot lift `MAILCTL_BACKUP_ROOT` with `-e` or `--entrypoint`, a run as
+  root or without the config mount is refused, and `--help` and
+  `--version` need no mount.
 - **Where the live tier's write guards are proved.** The mail store is
   disposable, so this tier needs no guard of its own; instead
   `test_live_write_guards.py` runs the live tier's guards against it
@@ -470,4 +513,8 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i208]: https://github.com/harleypig/mailctl/issues/208
 [i160]: https://github.com/harleypig/mailctl/issues/160
 [i216]: https://github.com/harleypig/mailctl/issues/216
+[i229]: https://github.com/harleypig/mailctl/issues/229
+[i230]: https://github.com/harleypig/mailctl/issues/230
+[i231]: https://github.com/harleypig/mailctl/issues/231
+[i232]: https://github.com/harleypig/mailctl/issues/232
 [i219]: https://github.com/harleypig/mailctl/issues/219

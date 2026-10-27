@@ -143,8 +143,9 @@ layer may call.
 
 - `mailctl/__init__.py` — the package docstring, `__version__`, and
   `MailctlError` (the one exception type every actionable failure raises).
-- `mailctl/config.py` — endpoint and credential resolution, and the `Secret`
-  wrapper (see *Credentials* below).
+- `mailctl/config.py` — endpoint and credential resolution, the `Secret`
+  wrapper (see *Credentials* below), and the backup-root guard
+  (`check_backup_location`, see *Rule conventions*).
 - `mailctl/criteria.py` — the shared criteria model, translated **both** to
   Sieve tests and to IMAP `SEARCH`. One model, two backends — this is what
   keeps the two halves in agreement. It is the **input model** every
@@ -254,8 +255,9 @@ layer may call.
   - `managesieve/client.py` — `SieveClient`, sievelib's client with ADR
     0006's gaps S1/S4/S5/S8 closed (byte-exact GETSCRIPT, the whole
     CAPABILITY response, a configurable read timeout, debug output
-    impossible), an OK's text read whole, and `SieveSession` on it, taking
-    plain connection parameters.
+    impossible), an OK's text read whole, a script sent unchanged and every
+    name quoted and escaped alike under sievelib 1.5 and 1.6 ([#232][i232]),
+    and `SieveSession` on it, taking plain connection parameters.
   - `managesieve/capabilities.py` — the CAPABILITY response as data.
   - `managesieve/responses.py` — `ServerWarning`, and the `WARNINGS` a
     status response carries; offline.
@@ -636,10 +638,10 @@ fails before any login or password prompt (decided on [#137][i137]).
 - **Differences are data, never a branch.** A provider declares
   `ProviderCapabilities`: `ordering`, `stop`, `rule_sets`, `disable`,
   `rename`, its `actions`, `extensions`, `raw_query`, `mark`,
-  `folder_counts`, `uidvalidity`, its namespaced `specifics` with their
-  schema, the connection `settings` it reads, and the operations it
-  `declined`. The utilities read those and never ask which provider they
-  have.
+  `folder_counts`, `uidvalidity`, `folder_visibility`, its namespaced
+  `specifics` with their schema, the connection `settings` it reads, and
+  the operations it `declined`. The utilities read those and never ask
+  which provider they have.
 - **Refused before any network work.** `utilities.rules.check_rule`
   refuses a rule the provider cannot express, through one error naming the
   provider, the construct, and why.
@@ -708,7 +710,10 @@ fails before any login or password prompt (decided on [#137][i137]).
   `filter enable`; without `rename`, `filter rename`; without `extensions`,
   `--disable-extension`; without `raw_query`, `mail search`'s `--raw`; without
   `mark`, `mail mark`; without `folder_counts`, `folder list`'s `--counts`;
-  without `uidvalidity`, `--uidvalidity`. The connection flags (`--host`,
+  without `uidvalidity`, `--uidvalidity`; without `folder_visibility`,
+  `folder subscribe`, `folder unsubscribe`, and `--no-subscribe`, and a
+  folder is created and renamed with no subscription step and listed with
+  no subscription wording ([#39][i39]). The connection flags (`--host`,
   `--imap-*`, `--sieve-*`) are offered only where
   `ProviderCapabilities.settings` names them, with the help it gives — they
   keep their names and their `MAILCTL_*` variables, being `mxroute`'s
@@ -755,6 +760,13 @@ never written. Where each setting came from is recorded on the resolved
 `Config` (`sources`, `consulted`) as data, so a front-end can report it and
 an error message can say "default" only about a default. The password is the
 exception and is handled separately (*Credentials*).
+
+**`MAILCTL_BACKUP_ROOT` is the one other exception** ([#230][i230]). It
+limits `backup_dir` rather than supplying a value, so it is read from the
+process environment only: a rung that could set it could lift it. Where it
+is set, a backup outside it is refused, coded `backup_outside_root`, before
+anything connects and again where each backup is written (*Rule
+conventions*).
 
 ### Confidence — documented, observed, and unknown
 
@@ -896,7 +908,12 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   the config is a deliberate departure from XDG, not an XDG-endorsed reading,
   and the reason is that a backup the user cannot find is not a backup. Two
   defaults for one kind of file is how somebody ends up looking in the
-  directory that does not have their backup in it.
+  directory that does not have their backup in it. **Where
+  `MAILCTL_BACKUP_ROOT` is set, every backup must resolve inside it** —
+  the Docker image sets `/config/mailctl` — whichever chose the location:
+  `--backup-dir`, `MAILCTL_BACKUP_DIR`, `backup_dir` in `config.toml`, or
+  `filterset backup --output`. Paths are resolved first, symlinks included,
+  so neither `..` nor a link leads out ([#230][i230]).
 - **A backup is the server's exact bytes.** `SieveSession` reads GETSCRIPT
   by the literal's declared length, CRLF and final newline included
   ([#90][i90]), and `write_backup` writes what it was handed, with newline
@@ -1069,8 +1086,9 @@ stops being readable.
 
 ## Toolchain & reproducibility
 
-- **Python ≥ 3.11** (`requires-python` in `pyproject.toml`), developed inside
-  a **`.venv`** at the repo root — never against the system Python.
+- **Python ≥ 3.11** (`requires-python` in `pyproject.toml`), tested on 3.11
+  through 3.14 ([#231][i231]), and developed inside a **`.venv`** at the
+  repo root — never against the system Python.
 - **`uv` provisions it** (the isolated-app rung of the global
   `toolchain-provisioning.md` ladder):
 
@@ -1085,8 +1103,17 @@ stops being readable.
   deliberate, tested change rather than something a fresh install does
   unreviewed. Adding a third runtime dependency to a tool whose whole job is
   two protocol conversations deserves an argument first.
-- Dev tooling (`ruff`, `pytest`, `pyright`) is an **optional dependency
-  group**, so a user installing the CLI never pulls the linter in.
+- Dev tooling (`ruff`, `pytest`, `pyright`, and `setuptools`, so
+  `tests/test_packaging.py` can build a wheel offline) is an **optional
+  dependency group**, so a user installing the CLI never pulls the linter
+  in.
+- **Every subpackage is found, not listed**
+  (`[tool.setuptools.packages.find]`, `include = ["mailctl*"]`), so a
+  non-editable install — a wheel, `uv tool install .`, `pipx install .` —
+  carries the whole package ([#229][i229]).
+- **A build-it-yourself Docker image** is the top-level `Dockerfile`, built
+  with `make image` and published nowhere; the README's *In Docker* section
+  says how to run it. It sets `MAILCTL_BACKUP_ROOT` (*Rule conventions*).
 
 ## QA
 
@@ -1127,13 +1154,13 @@ Full dimension status:
 | 6. Tests | **Active** — the offline tier is green (`make test` / `pytest`); see [TESTS.md](TESTS.md) |
 | 7. UI/UX & accessibility | **N/A** — a CLI with no UI. Terminal output legibility is covered by the *show, then change* convention |
 | 8. End-to-end | **Scaffolded, gated** — `tests/live/` exists and skips unless `MAILCTL_LIVE=1`; its write guards are built and proved on the container tier, and it has never written to a real account ([#9][i9]) |
-| 9. Compatibility | **N/A** — single target (CPython ≥ 3.11); no external contract we publish |
+| 9. Compatibility | **Active** — CPython 3.11 through 3.14, every one tested in CI, and sievelib at both ends of its bound (1.5.0 and the newest below 2); no external contract we publish ([#231][i231], [#232][i232]) |
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
-| 12. Build | **N/A** — pure Python, no build step (`setuptools` metadata only) |
+| 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`) is built by `tests/container/test_image.py` only, not in CI |
 | 13. Documentation | **Active** — this file, `README.md`, and `adr/`; markdownlint gates the prose |
 | 14. Code review | **Informal** — solo repo; `master` is PR-only, 0 required reviewers |
-| 15. CI | **Active** — `.github/workflows/test.yml` runs `ruff check`, `ruff format --check`, `pyright`, and `pytest` on every PR and on pushes to `master`. The live tier is deliberately excluded — it needs real credentials |
+| 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`, and one job named `Test` passes only if every version did, since that is the check the ruleset requires ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror |
 
 ## How work is dispatched
 
@@ -1329,6 +1356,10 @@ will read it.
 [i89]: https://github.com/harleypig/mailctl/issues/89
 [i10]: https://github.com/harleypig/mailctl/issues/10
 [i39]: https://github.com/harleypig/mailctl/issues/39
+[i229]: https://github.com/harleypig/mailctl/issues/229
+[i230]: https://github.com/harleypig/mailctl/issues/230
+[i231]: https://github.com/harleypig/mailctl/issues/231
+[i232]: https://github.com/harleypig/mailctl/issues/232
 [i183]: https://github.com/harleypig/mailctl/issues/183
 [i204]: https://github.com/harleypig/mailctl/issues/204
 [i216]: https://github.com/harleypig/mailctl/issues/216
