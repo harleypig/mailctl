@@ -48,6 +48,60 @@ python3 -m venv .venv
 .venv/bin/mailctl --version
 ```
 
+### In Docker
+
+The `Dockerfile` at the top of the checkout builds an image you run instead
+of installing. Nothing is published, so build it yourself:
+
+```bash
+make image                          # or: docker build -t mailctl:dev .
+docker run --rm --user "$(id -u):$(id -g)" mailctl:dev --version
+```
+
+A run that talks to the server needs two things from the host: your config
+directory, and your password in a file. This is the one pattern to use:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$HOME/.config/mailctl:/config/mailctl" \
+  -v "$HOME/.config/mailctl/password:/run/secrets/mailctl-password:ro" \
+  -e MAILCTL_PASSWORD_FILE=/run/secrets/mailctl-password \
+  mailctl:dev server test
+```
+
+- **The config directory is a mount, and the image refuses to run without
+  it.** It holds `config.toml`, the baselines, and the backup mailctl writes
+  before every change to a filter set. A backup written inside the
+  container is gone when the container is, so any command other than
+  `--help`, `--version`, and `help` stops with exit 2 unless
+  `/config/mailctl` is a mount. A `--backup-dir` or `MAILCTL_BACKUP_DIR`
+  outside that mount is refused the same way. A `backup_dir` in
+  `config.toml` or an env file is not read by that check; pointed outside
+  the mount it fails anyway, because a non-root user can write almost
+  nothing in the image but its mounts.
+- **`--user "$(id -u):$(id -g)"` is what makes the password file readable.**
+  The file's mode survives the mount, so a `0600` file is still `0600`
+  inside and passes mailctl's mode check. What breaks without `--user` is
+  ownership: the file belongs to your uid, the image's default user has a
+  different one, and it cannot read the file at all. The image also refuses
+  to run as root, which would let a backup land anywhere.
+- **Use the password file, not a command or the prompt.** `--password-cmd`
+  runs its command inside the container, where your password manager does
+  not exist. The interactive prompt has no terminal under a plain
+  `docker run`; `docker run -it` gives it one, which is fine by hand and
+  useless from cron. `MAILCTL_PASSWORD_FILE` outranks a `password_file` or
+  `password_cmd` in `config.toml`, so one `config.toml` serves both a
+  checkout and the image.
+- **On WSL or Docker Desktop, keep the password file on the Linux
+  filesystem.** A file on a Windows drive (`/mnt/c/...`, or a Windows path
+  shared into Docker Desktop) shows mode `0777` whatever you set, and
+  mailctl refuses it. That refusal is deliberate and has no exception: put
+  the file under your Linux home and `chmod 600` it there.
+
+A checkout stays the way to develop and test; the image is another way to
+run it.
+
 ## Configure
 
 Copy `.env.example` to `.env` and fill it in, then either export it

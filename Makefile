@@ -52,4 +52,11 @@ testcontainer:
 livecheck:
 	scripts/live-readonly.sh $(TESTARGS)
 
-.PHONY: default venv install fmt lint typecheck test testlive testcontainer livecheck
+# The runnable image (Dockerfile; README.md *In Docker*). Built locally and
+# never pushed. IMAGE names the tag, e.g. `make image IMAGE=mailctl:local`.
+IMAGE ?= mailctl:dev
+
+image:
+	docker build -t $(IMAGE) .
+
+.PHONY: default venv install fmt lint typecheck test testlive testcontainer livecheck image
