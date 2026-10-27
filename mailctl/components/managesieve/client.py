@@ -84,10 +84,13 @@ def _quote(value: bytes) -> bytes:
     """``value`` as a ManageSieve quoted string, escaped as RFC 5804 asks.
 
     Raises sievelib's ``Error`` for a CR, LF, or NUL, which no quoted
-    string can carry, as sievelib 1.6 does.
+    string can carry, as sievelib 1.6 does -- without the value, since an
+    AUTHENTICATE argument is the password, base64-encoded.
     """
     if _UNQUOTABLE.search(value):
-        raise SieveProtocolError(f"Invalid character in argument: {value!r}")
+        raise SieveProtocolError(
+            "Invalid character in argument: a CR, LF, or NUL"
+        )
 
     return b'"' + value.replace(b"\\", b"\\\\").replace(b'"', b'\\"') + b'"'
 
