@@ -986,6 +986,22 @@ def test_the_chunk_stays_below_the_default_message_cap():
 
 
 # ----------------------------------------------------------------------------
+def test_the_worst_case_chunk_fits_the_command_line_budget():
+    """RFC 7162 section 4: keep a command line to about 8192 octets.
+
+    IMAPClient writes a UID set as every UID joined by commas, so the
+    worst case is a chunk of the largest UID IMAP allows (2**32 - 1).
+    1000 octets are kept for the tag, the command, and a long folder
+    name. Red if the chunk is raised past what the line can carry.
+    """
+    from imapclient.imapclient import join_message_ids
+
+    worst = join_message_ids([2**32 - 1] * BULK_CHUNK)
+
+    assert len(worst) + 1000 <= 8192
+
+
+# ----------------------------------------------------------------------------
 def test_a_large_move_goes_out_in_chunks_each_flagged_first(
     imap_session, fake_imap
 ):

@@ -20,6 +20,13 @@ from .folders import same_folder
 # 2.7 KB, leaving room for a long folder name. Kept well below the default
 # --max-messages (500) so the two stay independent: the cap is a policy on
 # how much to touch, this is transport and never the user's concern.
+#
+# ICEBOX: 2026-10-28 -- UID range compression (sequence-set ranges, "1:600"
+# instead of "1,2,...,600", collapse contiguous UIDs, shorter command line,
+# bigger chunks). IMAPClient joins UIDs with commas and never collapses
+# them, so a range would have to be built here; a wrong range acts on mail
+# nobody matched, and at personal-mailbox scale the chunk is enough.
+# Revisit only if chunking itself is shown to be slow (#245).
 BULK_CHUNK = 250
 
 __all__ = [
