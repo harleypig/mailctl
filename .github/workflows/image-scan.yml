@@ -57,13 +57,18 @@ jobs:
           key: trivy-db-${{ steps.day.outputs.day }}
           restore-keys: trivy-db-
       # --exit-code 0 is the report-only switch: findings never fail the job.
+      # trivy runs as the runner's user, so the cache it writes is one the
+      # cache step can read back to save.
       - name: Scan
         run: |
           mkdir -p ~/.cache/trivy
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --group-add "$(stat -c %g /var/run/docker.sock)" \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-            "$TRIVY_IMAGE" image --severity HIGH,CRITICAL --exit-code 0 \
+            -v "$HOME/.cache/trivy:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache \
+            --severity HIGH,CRITICAL --exit-code 0 \
             --no-progress mailctl:scan | tee trivy-report.txt
           {
             echo '## Trivy image scan (report only)'
