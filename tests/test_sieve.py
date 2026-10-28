@@ -2122,6 +2122,64 @@ def test_a_merge_that_would_change_what_is_filed_is_refused(second):
         script_module.rearrange_rules(source, [(0, [1])])
 
 
+# ----------------------------------------------------------------------------
+# Keys holding a quote and a backslash, each ending in an escaped quote:
+# sievelib 1.5 cut the closing quote off such a key in a list, so the
+# script it rendered no longer parsed (#242).
+QUOTED_KEYS = '["say \\"hi\\"", "back\\\\slash \\"q\\""]'
+QUOTED_BODY = ' {\n    fileinto "Trash";\n}\n'
+LISTED_KEYS_SCRIPT = (
+    'require ["fileinto"];\n'
+    "# Filter: a\n"
+    f'if header :contains "subject" {QUOTED_KEYS}{QUOTED_BODY}'
+)
+
+
+# ----------------------------------------------------------------------------
+def test_a_merge_keeps_keys_ending_in_an_escaped_quote(reparse):
+    """Red under sievelib 1.5 without the fix: ``"say \\"hi\\"`` came out
+    with its closing quote gone."""
+    first, second = QUOTED_KEYS[1:-1].split(", ")
+    source = (
+        'require ["fileinto"];\n'
+        f'# Filter: a\nif header :contains "subject" {first}{QUOTED_BODY}'
+        f'# Filter: b\nif header :contains "subject" {second}{QUOTED_BODY}'
+    )
+
+    after = script_module.rearrange_rules(source, [(0, [1])])
+
+    reparse(after)
+    assert f'header :contains "subject" {QUOTED_KEYS}' in after
+
+
+# ----------------------------------------------------------------------------
+def test_a_listed_key_ending_in_an_escaped_quote_survives_a_render(reparse):
+    """A script that merely holds such a list is re-rendered by every
+    change, not only a merge."""
+    after = script_module.render_script(
+        script_module.parse_script(LISTED_KEYS_SCRIPT)
+    )
+
+    reparse(after)
+    assert after == LISTED_KEYS_SCRIPT.replace("\n#", "\n\n#", 1)
+
+
+# ----------------------------------------------------------------------------
+def test_disabling_keeps_a_listed_key_ending_in_an_escaped_quote(reparse):
+    """The test Roundcube keeps after ``if false`` is rendered too, and
+    switching the rule back on reads it from there."""
+    disabled = script_module.disable_rule(LISTED_KEYS_SCRIPT, "a")
+
+    reparse(disabled)
+    assert f'# header :contains "subject" {QUOTED_KEYS}\n' in disabled
+
+    restored = script_module.enable_rule(disabled, "a")
+
+    assert restored == script_module.render_script(
+        script_module.parse_script(LISTED_KEYS_SCRIPT)
+    )
+
+
 # ############################################################################
 # Rules renamed in place (#216)
 # ############################################################################

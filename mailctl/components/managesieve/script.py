@@ -12,12 +12,14 @@ is sievelib's own. A host whose scripts use another form supplies its own
 dialect; this module knows none of them.
 """
 
+import contextlib
 import difflib
+import functools
 import io
 import re
 import sys
 import unicodedata
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any, TextIO, cast
 
@@ -491,7 +493,10 @@ def _single_line_test(test: commands.Command) -> str | None:
     such a test is None.
     """
     buffer = io.StringIO()
-    test.tosieve(target=buffer)
+
+    with _whole_lists([test]):
+        test.tosieve(target=buffer)
+
     line = buffer.getvalue().strip()
 
     if "\n" in line or "\r" in line:
@@ -798,9 +803,93 @@ def render_script(
 ) -> str:
     """Render a filter set back to Sieve source, names in ``dialect``."""
     buffer = io.StringIO()
-    filters.tosieve(buffer)
+
+    with _whole_lists(entry["content"] for entry in filters.filters):
+        filters.tosieve(buffer)
 
     return dialect.write(buffer.getvalue())
+
+
+# One quoted Sieve string, its escapes included (RFC 5228 section 2.4.2).
+_QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"', re.DOTALL)
+
+
+# ----------------------------------------------------------------------------
+@functools.cache
+def _lists_lose_quotes() -> bool:
+    """Whether the installed sievelib damages a string it renders in a list.
+
+    sievelib 1.5 writes each listed string as ``'"%s"' % s.strip('"')``,
+    which takes the closing quote off one ending in ``\\"``; 1.6 keeps a
+    quoted string whole (#242). Asked of the library, not of its version.
+    """
+    probe = parser.Parser()
+    probe.parse(b'if header :is "h" ["\\""] {\n}\n')
+    buffer = io.StringIO()
+    probe.result[0]["test"].tosieve(target=buffer)
+
+    return '["\\""]' not in buffer.getvalue()
+
+
+# ----------------------------------------------------------------------------
+@contextlib.contextmanager
+def _whole_lists(roots: Iterable[commands.Command]) -> Iterator[None]:
+    """Have every string list under ``roots`` rendered as it was read.
+
+    Where sievelib would damage a listed string, each list is swapped for
+    its own source as one ``[...]`` string, which sievelib writes as it
+    stands, and put back afterwards. A string that is not quoted Sieve
+    source is written the way sievelib 1.5 writes it, so only a damaged
+    key renders differently.
+    """
+    swapped: list[tuple[dict[str, Any], str, list]] = []
+
+    if _lists_lose_quotes():
+        for root in roots:
+            for command in _every_command(root):
+                for slots in (command.arguments, command.extra_arguments):
+                    for name, value in list(slots.items()):
+                        if isinstance(value, list) and all(
+                            isinstance(item, str) for item in value
+                        ):
+                            swapped.append((slots, name, value))
+                            slots[name] = _list_source(value)
+
+    try:
+        yield
+
+    finally:
+        for slots, name, value in swapped:
+            slots[name] = value
+
+
+# ----------------------------------------------------------------------------
+def _list_source(items: list[str]) -> str:
+    """A string list as one ``[...]`` string of Sieve source."""
+    quoted = [
+        item if _QUOTED.fullmatch(item) else '"' + item.strip('"') + '"'
+        for item in items
+    ]
+
+    return "[" + ", ".join(quoted) + "]"
+
+
+# ----------------------------------------------------------------------------
+def _every_command(command: commands.Command) -> Iterable[commands.Command]:
+    """``command``, its tests, and every command inside it."""
+    yield command
+
+    for value in command.arguments.values():
+        if isinstance(value, commands.Command):
+            yield from _every_command(value)
+
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, commands.Command):
+                    yield from _every_command(item)
+
+    for child in command.children:
+        yield from _every_command(child)
 
 
 # ----------------------------------------------------------------------------
