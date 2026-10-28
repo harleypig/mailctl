@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-14
+- Amended: 2026-10-28, for [#224][i224] (see *Amendment*)
 
 ## Context
 
@@ -105,6 +106,27 @@ way. See [#26](https://github.com/harleypig/mailctl/issues/26).
   worked example this ADR exists to authorize, and it should be the test of
   whether the four conditions are the right ones.
 
+## Amendment
+
+2026-10-28, for [#224][i224], with [ADR 0008][adr8]. The decision above
+stands for components. This corrects one phrase in it.
+
+**"Every front-end stays Python" now reads "the interface the core exposes
+stays Python."** The operator's model on [#224][i224] (2026-10-27) is a
+Python workhorse that does all the work, and a UI that is presentation
+only and may be written in any language, as a client of an API the core
+exposes. The interfaces inside the package, the CLI and the API beside it
+(ADR 0008), are Python, and they are what *front-end* meant here: the
+layer that turns a request into utility calls ([ADR 0007][adr7]). A
+program that drives one of them from outside the package is a client, and
+its language is its own choice.
+
+**The four tests above do not apply to a client, because the direction is
+reversed.** They govern a component the core calls and depends on. A
+client calls the core, and the core runs, and is tested, without it: test
+3 holds by construction. What carries over is test 2's boundary: a
+process, not a linkage, exchanging versioned JSON, and no shared object.
+
 ## Based on
 
 - Survey of Sieve/mail tooling across languages, 2026-08-13/14 — the licence
@@ -113,3 +135,7 @@ way. See [#26](https://github.com/harleypig/mailctl/issues/26).
 - [ADR 0002](0002-non-destructive-script-merge.md) — anything that reads the
   active script inherits its constraint: it must cope with scripts we did not
   write. A foreign-language interpreter is no exception.
+
+[adr7]: 0007-interfaces-utilities-session-provider-layering.md
+[adr8]: 0008-json-rpc-api-interface-for-out-of-process-clients.md
+[i224]: https://github.com/harleypig/mailctl/issues/224
