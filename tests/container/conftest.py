@@ -5,7 +5,7 @@ from ``tests/container/image/``, and run mailctl against it the way a user
 would -- through ``cli.main`` -- so that PUTSCRIPT, SETACTIVE, folder
 creation, subscription, and the retroactive move/flag/discard pass are
 exercised against a real server rather than a double. Nothing here can
-reach a real account: the only host is ``localhost`` on ports Docker
+reach a real account: the only host is ``127.0.0.1`` on ports Docker
 chose, and every setting comes from the fixtures below, never from the
 developer's own ``MAILCTL_*`` variables or config file.
 
@@ -72,6 +72,12 @@ IMAGE_DIR = Path(__file__).parent / "image"
 READY_TIMEOUT = 30.0
 
 DOMAIN = "example.test"
+
+# The address Docker publishes the server on, and the only host the tier
+# connects to. An address, never ``localhost``: Debian and Ubuntu often map
+# that name to 127.0.1.1, where nothing listens (#239 - container tier and
+# 127.0.1.1). The certificate's SAN carries it (image/entrypoint.sh).
+HOST = "127.0.0.1"
 
 
 # ############################################################################
@@ -195,7 +201,7 @@ def host_port(container: str, port: int) -> int:
     """The loopback port Docker mapped the container's ``port`` to."""
     mapping = docker("port", container, f"{port}/tcp")
 
-    # One line per address family; the fixture binds 127.0.0.1 only.
+    # One line per address family; the fixture binds HOST only.
     return int(mapping.splitlines()[0].rsplit(":", 1)[1])
 
 
@@ -203,7 +209,7 @@ def host_port(container: str, port: int) -> int:
 def banner(port: int) -> bytes:
     """The first bytes a plaintext listener sends, or b"" if none yet."""
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=1) as sock:
+        with socket.create_connection((HOST, port), timeout=1) as sock:
             return sock.recv(512)
 
     except OSError:
@@ -264,11 +270,11 @@ def dovecot(tmp_path_factory) -> Iterator[Server]:
         "--name",
         name,
         "--publish",
-        "127.0.0.1::143",
+        f"{HOST}::143",
         "--publish",
-        "127.0.0.1::993",
+        f"{HOST}::993",
         "--publish",
-        "127.0.0.1::4190",
+        f"{HOST}::4190",
         IMAGE,
     )
 
@@ -366,10 +372,10 @@ class Account:
     def mailbox(self) -> Mailbox:
         """This mailbox as the write guards take one (``live_write``)."""
         return Mailbox(
-            sieve_host="localhost",
+            sieve_host=HOST,
             sieve_port=self.server.sieve_port,
             sieve_tls="starttls",
-            imap_host="localhost",
+            imap_host=HOST,
             imap_port=self.server.imap_port,
             imap_tls="ssl",
             user=self.user,
@@ -380,7 +386,7 @@ class Account:
     @contextmanager
     def sieve(self) -> Iterator[SieveClient]:
         """sievelib's own client, logged in over STARTTLS."""
-        client = SieveClient("localhost", self.server.sieve_port)
+        client = SieveClient(HOST, self.server.sieve_port)
 
         if not client.connect(self.user, self._password(), starttls=True):
             pytest.fail("the oracle's ManageSieve login failed")
@@ -396,7 +402,7 @@ class Account:
     def imap(self) -> Iterator[IMAPClient]:
         """IMAPClient itself, logged in over implicit TLS."""
         client = IMAPClient(
-            "localhost",
+            HOST,
             port=self.server.imap_port,
             ssl=True,
             ssl_context=ssl.create_default_context(),
@@ -514,8 +520,8 @@ def account(dovecot, monkeypatch, tmp_path, capsys) -> Account:
     settings = {
         "SSL_CERT_FILE": str(dovecot.cert_file),
         "MAILCTL_PROVIDER": "mxroute",
-        "MAILCTL_HOST": "localhost",
-        "MAILCTL_IMAP_HOST": "localhost",
+        "MAILCTL_HOST": HOST,
+        "MAILCTL_IMAP_HOST": HOST,
         "MAILCTL_USER": user,
         "MAILCTL_PASSWORD_FILE": str(dovecot.password_file),
         "MAILCTL_IMAP_PORT": str(dovecot.imap_port),

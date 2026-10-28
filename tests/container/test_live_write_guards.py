@@ -242,10 +242,10 @@ CHILD_CONFTEST = """
         path = Path(os.environ["GUARD_PASSWORD_FILE"])
 
         return Mailbox(
-            sieve_host="localhost",
+            sieve_host=os.environ["GUARD_HOST"],
             sieve_port=int(os.environ["GUARD_SIEVE_PORT"]),
             sieve_tls="starttls",
-            imap_host="localhost",
+            imap_host=os.environ["GUARD_HOST"],
             imap_port=int(os.environ["GUARD_IMAP_PORT"]),
             imap_tls="ssl",
             user=os.environ["GUARD_USER"],
@@ -289,6 +289,7 @@ def run_child(account, tmp_path, ending: str) -> subprocess.CompletedProcess:
     environment = {
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(TESTS), str(TESTS.parent)]),
+        "GUARD_HOST": os.environ["MAILCTL_HOST"],
         "GUARD_PASSWORD_FILE": str(account.server.password_file),
         "GUARD_SIEVE_PORT": str(account.server.sieve_port),
         "GUARD_IMAP_PORT": str(account.server.imap_port),

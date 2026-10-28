@@ -24,11 +24,12 @@ SCRIPT = 'require ["fileinto"];\n'
 
 # ----------------------------------------------------------------------------
 def baseline_file() -> Path:
+    # Keyed on the host setting, so it follows whatever the tier connects to.
     return (
         Path(os.environ["XDG_CONFIG_HOME"])
         / "mailctl"
         / "baselines"
-        / "localhost.json"
+        / f"{os.environ['MAILCTL_HOST']}.json"
     )
 
 
