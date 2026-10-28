@@ -195,9 +195,9 @@ def test_neither_given_leaves_both_unset():
 
 
 # ----------------------------------------------------------------------------
-def test_a_bare_env_file_before_the_command_means_dot_env():
+def test_a_bare_env_file_before_another_option_means_dot_env():
     args = cli.build_parser().parse_args(
-        ["--env-file", "--", "filter", "list"]
+        ["--env-file", "--verbose", "filter", "list"]
     )
 
     assert args.env_file == ".env"
