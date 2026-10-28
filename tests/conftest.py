@@ -70,6 +70,13 @@ def isolated_environment(monkeypatch, tmp_path):
     monkeypatch.delenv("FORCE_COLOR", raising=False)
     monkeypatch.setenv("NO_COLOR", "1")
 
+    # argparse wraps help to shutil.get_terminal_size(), which reads COLUMNS
+    # before the terminal, so an exported width rewraps every help page and
+    # the snapshots, recorded at 80, go red (#241 - exported COLUMNS). Set,
+    # not removed: under `pytest -s` the real terminal's width would leak
+    # in instead.
+    monkeypatch.setenv("COLUMNS", "80")
+
 
 # ----------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
