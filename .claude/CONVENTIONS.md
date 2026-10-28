@@ -105,10 +105,10 @@ it and taking ideas for functionality from it."* So a rule mailctl writes
 need not be one Roundcube's UI can edit, and nothing mailctl shows the user
 is worded the way Roundcube words it (*What the user sees is the same for
 every provider*, below). The merge still holds ([ADR 0002][adr2]): Roundcube
-may still write the same script, so the rules it wrote are kept. Rules also stay a flat list of `# rule:[NAME]` blocks, on
-grounds of their own: the name is how every command finds a rule, and
-`mailctl/rules.py` reads the rules as one ordered list, so it cannot judge a
-nested rule.
+may still write the same script, so the rules it wrote are kept. Rules also
+stay a flat list of `# rule:[NAME]` blocks, on grounds of their own: the
+name is how every command finds a rule, and `mailctl/rules.py` reads the
+rules as one ordered list, so it cannot judge a nested rule.
 
 It cuts the other way too. Scope is not *everything about email*: composing
 and sending, an address book, account provisioning, and saving or opening
@@ -130,8 +130,9 @@ Asking was the error.
 
 Built on two libraries, both of which the code wraps rather than exposes:
 
-- **`sievelib` (≥ 1.5.0, < 2)** — the ManageSieve client (`sievelib.managesieve`),
-  the Sieve parser, and the `factory.FiltersSet` script builder.
+- **`sievelib` (≥ 1.5.0, < 2)** — the ManageSieve client
+  (`sievelib.managesieve`), the Sieve parser, and the `factory.FiltersSet`
+  script builder.
 - **`IMAPClient` (≥ 4.1, < 5)** — the IMAP half.
 
 ## Layout
@@ -227,9 +228,10 @@ layer may call.
     capabilities, `MxrouteDialect`, and `MxrouteTransport`.
   - `mxroute/dialect.py` — `MxrouteDialect`, offline: a neutral rule into
     Sieve merged into the account's script and read back out, MXroute's
-    refusals and its words for the server reports, backup paths, folder names normalized against the
-    server's list, and what `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean as
-    the facts `mailctl server test` shows.
+    refusals and its words for the server reports, backup paths, folder
+    names normalized against the server's list, and what `MOVE`,
+    `UIDPLUS`, and `FILTER=SIEVE` mean as the facts `mailctl server test`
+    shows.
   - `mxroute/sieve.py` — the dialect's Sieve side, offline:
     `MXROUTE_FORBIDDEN_ACTIONS`, the Roundcube `# rule:[NAME]` name dialect
     and the script functions bound to it, the translation of an
@@ -706,10 +708,11 @@ fails before any login or password prompt (decided on [#137][i137]).
   the provider, then the parsers are built from its capabilities. Without
   `ordering`, the placement flags, `filter move`, and `filter optimize` are
   not offered; without `stop`, `--no-stop`; without `rule_sets`, `filter
-  add`'s `--filterset` and `--activate`; without `disable`, `filter disable` and
-  `filter enable`; without `rename`, `filter rename`; without `extensions`,
-  `--disable-extension`; without `raw_query`, `mail search`'s `--raw`; without
-  `mark`, `mail mark`; without `folder_counts`, `folder list`'s `--counts`;
+  add`'s `--filterset` and `--activate`; without `disable`, `filter
+  disable` and `filter enable`; without `rename`, `filter rename`; without
+  `extensions`, `--disable-extension`; without `raw_query`, `mail search`'s
+  `--raw`; without `mark`, `mail mark`; without `folder_counts`, `folder
+  list`'s `--counts`;
   without `uidvalidity`, `--uidvalidity`; without `folder_visibility`,
   `folder subscribe`, `folder unsubscribe`, and `--no-subscribe`, and a
   folder is created and renamed with no subscription step and listed with
