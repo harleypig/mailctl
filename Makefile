@@ -25,8 +25,19 @@ lint:
 
 # pyright over the package and the tests, in the mode and scope set by
 # [tool.pyright] in pyproject.toml; CI's Lint job runs the same.
+#
+# [tool.pyright] resolves imports from .venv. Without one, pyright says
+# "venv .venv subdirectory not found", falls back to whatever Python is on
+# PATH, and can report 0 errors against packages that are not mailctl's
+# (#244 - typecheck passes without .venv). So the target refuses unless
+# .venv holds the pinned pyright, and runs that one. Once .venv is found, a
+# dependency missing from it is pyright's own reportMissingImports error.
 typecheck:
-	pyright
+	@test -x .venv/bin/pyright || { \
+	  echo "make typecheck: .venv/bin/pyright not found. [tool.pyright] resolves imports from .venv at the repo root; without it pyright checks against whatever Python is on PATH. Run 'make install', or 'uv pip install -e .[dev]' where .venv already exists." >&2; \
+	  exit 1; \
+	}
+	.venv/bin/pyright
 
 test:
 	pytest
