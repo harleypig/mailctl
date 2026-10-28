@@ -2180,6 +2180,75 @@ def test_disabling_keeps_a_listed_key_ending_in_an_escaped_quote(reparse):
     )
 
 
+# ----------------------------------------------------------------------------
+# An action holding a listed string that ends in an escaped quote: the
+# renders that read a rule rather than write one (#249).
+QUOTED_FLAGS = 'addflag ["\\\\Seen", "say \\"hi\\""];'
+
+
+def flagged_rule(name: str, flags: str = QUOTED_FLAGS) -> str:
+    """A rule filing to Trash after adding ``flags``."""
+    return (
+        f'# Filter: {name}\nif header :contains "subject" "{name}" {{\n'
+        f'    {flags}\n    fileinto "Trash";\n}}\n'
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_read_rule_holds_its_actions_as_the_script_writes_them():
+    """Red under sievelib 1.5 without the fix: the effect read
+    ``"say \\"hi\\"]`` with its closing quote gone."""
+    source = 'require ["fileinto", "imap4flags"];\n' + flagged_rule("a")
+
+    (rule,) = read_rules(script_module.parse_script(source))
+
+    assert rule.effects == (QUOTED_FLAGS, 'fileinto "Trash";')
+
+
+# ----------------------------------------------------------------------------
+def test_the_merge_compares_actions_as_the_script_writes_them():
+    """Red under sievelib 1.5 without the fix, for the same reason."""
+    (entry,) = script_module.parse_script(
+        'require ["fileinto", "imap4flags"];\n' + flagged_rule("a")
+    ).filters
+
+    assert script_module._action_source(entry["content"]) == [
+        QUOTED_FLAGS,
+        'fileinto "Trash";',
+    ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("flags", "merges"),
+    [
+        (QUOTED_FLAGS, True),
+        ('addflag ["\\\\Seen", "say \\"hi\\\\"];', False),
+    ],
+    ids=["same-flags", "flag-ending-in-a-backslash"],
+)
+def test_actions_ending_in_an_escaped_quote_merge_only_when_equal(
+    flags, merges, reparse
+):
+    """A flag ending ``\\"`` and one ending ``\\\\`` stay two actions."""
+    source = (
+        'require ["fileinto", "imap4flags"];\n'
+        + flagged_rule("a")
+        + flagged_rule("b", flags)
+    )
+
+    if not merges:
+        with pytest.raises(MailctlError, match="cannot be merged"):
+            script_module.rearrange_rules(source, [(0, [1])])
+
+        return
+
+    after = script_module.rearrange_rules(source, [(0, [1])])
+
+    reparse(after)
+    assert QUOTED_FLAGS in after
+
+
 # ############################################################################
 # Rules renamed in place (#216)
 # ############################################################################

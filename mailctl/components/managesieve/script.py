@@ -324,6 +324,12 @@ class _CommentedFiltersSet(factory.FiltersSet):
 
         _write_comments(target, self.trailing_comments)
 
+    def render_command(self, command: commands.Command) -> str:
+        """One of this set's commands as Sieve source, as written to the
+        server, so a reader outside this component renders it the same
+        way without importing it."""
+        return _render_command(command)
+
     def _plain(self, entries: list, requires: list[str]) -> factory.FiltersSet:
         """A plain filter set over ``entries``, to render with sievelib."""
         plain = factory.FiltersSet(
@@ -1404,14 +1410,19 @@ def _string_list(argument: Any) -> list[str]:
 # ----------------------------------------------------------------------------
 def _action_source(command: commands.Command) -> list[str]:
     """A rule's actions, each as Sieve source."""
-    rendered = []
+    return [_render_command(child) for child in command.children]
 
-    for child in command.children:
-        buffer = io.StringIO()
-        child.tosieve(target=buffer)
-        rendered.append(buffer.getvalue().strip())
 
-    return rendered
+# ----------------------------------------------------------------------------
+def _render_command(command: commands.Command) -> str:
+    """One command as Sieve source, string lists as they were read. Only
+    the ends are trimmed: spacing inside a quoted argument is its value."""
+    buffer = io.StringIO()
+
+    with _whole_lists([command]):
+        command.tosieve(target=buffer)
+
+    return buffer.getvalue().strip()
 
 
 # ----------------------------------------------------------------------------

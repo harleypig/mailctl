@@ -26,7 +26,6 @@ message" -- is a different problem and belongs to the engine adopted in
 ADR 0004, not here.
 """
 
-import io
 from dataclasses import dataclass, field
 
 from . import MailctlError
@@ -353,29 +352,20 @@ def _read_condition(test) -> tuple[str, list[HeaderTest], list[str]]:
 
 
 # ----------------------------------------------------------------------------
-def _read_actions(children) -> tuple[list[str], bool, list[str]]:
+def _read_actions(children, render) -> tuple[list[str], bool, list[str]]:
     """Return a rule's action names, whether it ends evaluation, and each
-    action as sievelib renders it."""
+    action as ``render`` writes it."""
     actions = [getattr(child, "name", "?") for child in children]
 
-    return actions, "stop" in actions, [_render(child) for child in children]
-
-
-# ----------------------------------------------------------------------------
-def _render(command) -> str:
-    """One command as Sieve source. Only the ends are trimmed: spacing
-    inside a quoted argument is part of its value."""
-    buffer = io.StringIO()
-    command.tosieve(target=buffer)
-
-    return buffer.getvalue().strip()
+    return actions, "stop" in actions, [render(child) for child in children]
 
 
 # ----------------------------------------------------------------------------
 def read_rules(filters) -> list[Rule]:
     """Reduce a parsed filter set to Rules, in evaluation order.
 
-    ``filters`` is whatever ``parse_script`` returned. The index is
+    ``filters`` is whatever ``parse_script`` returned, and its
+    ``render_command`` writes each action's effect. The index is
     the rule's position in the script, which is the only thing that decides
     which of two overlapping rules wins.
     """
@@ -403,7 +393,7 @@ def read_rules(filters) -> list[Rule]:
             leftovers = ["a test kept in a form mailctl cannot read"]
 
         actions, stops, effects = _read_actions(
-            getattr(content, "children", []) or []
+            getattr(content, "children", []) or [], filters.render_command
         )
 
         rules.append(
