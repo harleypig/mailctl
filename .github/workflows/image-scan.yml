@@ -1,0 +1,74 @@
+# Builds the Docker image and scans it with trivy, reporting what it finds
+# without ever failing. The base image carries HIGH findings with no fix
+# released (#238 - report-only image scan), so a failing scan would be
+# permanently red. The branch ruleset requires only `Lint` and `Test`;
+# this check is not one of them.
+name: Image scan
+
+# Only changes that can alter what trivy finds: the Dockerfile, the base
+# image it pins, and the dependencies pyproject.toml declares. mailctl's own
+# source is in the image too, but trivy has nothing to report about it.
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker/**
+      - pyproject.toml
+      - .github/workflows/image-scan.yml
+  push:
+    branches:
+      - master
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker/**
+      - pyproject.toml
+      - .github/workflows/image-scan.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy:
+    name: Trivy (report only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # 0.76.1 by digest: the March 2026 supply-chain compromise pushed
+      # malicious trivy images under ordinary tags, and later advisories
+      # are patched only from 0.72.0. Never the trivy GitHub Actions.
+      TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - name: Build the image
+        run: docker build -t mailctl:scan .
+      # The vulnerability database is refreshed upstream every few hours;
+      # a cache per day saves the download on later runs that day.
+      - id: day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.day.outputs.day }}
+          restore-keys: trivy-db-
+      # --exit-code 0 is the report-only switch: findings never fail the job.
+      - name: Scan
+        run: |
+          mkdir -p ~/.cache/trivy
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image --severity HIGH,CRITICAL --exit-code 0 \
+            --no-progress mailctl:scan | tee trivy-report.txt
+          {
+            echo '## Trivy image scan (report only)'
+            echo
+            echo '```text'
+            cat trivy-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

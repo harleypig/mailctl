@@ -38,3 +38,16 @@ repos:
     rev: v0.48.0
     hooks:
       - id: markdownlint-docker
+
+  # A local hook rather than upstream's hadolint-docker, whose entry is the
+  # untagged ghcr.io/hadolint/hadolint image: this pins the version and the
+  # digest. Its settings are .hadolint.yaml. There is no fix variant.
+  - repo: local
+    hooks:
+      - id: hadolint-docker
+        name: hadolint
+        language: docker_image
+        types: [dockerfile]
+        entry: >-
+          ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
+          hadolint

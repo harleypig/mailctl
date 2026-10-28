@@ -2,6 +2,7 @@
 # committing:
 #   pre-commit run --all-files --config .pre-commit-config-fix.yaml
 # then run the check config. Never mid-session, per the global rules/pre-commit.md.
+# hadolint is in the check config only: it has no fixer.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

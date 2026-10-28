@@ -1,0 +1,11 @@
+# hadolint settings for the Dockerfile. The pre-commit hook runs hadolint in
+# a container that sees only this repository, so a user-level hadolint
+# config is never read there; this file is what the gate enforces.
+
+# Fail on warnings and errors; style and info findings are reported only.
+failure-threshold: warning
+
+# FROM images must come from one of these registries (DL3026).
+trustedRegistries:
+  - docker.io
+  - ghcr.io
