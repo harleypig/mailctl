@@ -224,6 +224,10 @@ MAILCTL_PASSWORD_CMD="printf %s not-a-real-password"
 OTHER_TOOL=ignored
 """
 
+# Only the env file says where backups go, so where one lands shows the
+# file was read (#243).
+BACKUP_ENV_FILE = "MAILCTL_BACKUP_DIR=${XDG_CONFIG_HOME}/from-env-file\n"
+
 # An inbox whose first match 'Lists' already holds a copy of, as a second
 # run of 'apply --move-to Lists --keep' finds it; the third match has no
 # Message-ID, so it cannot be looked for there.
@@ -1398,6 +1402,24 @@ SCENARIOS = {
     ),
     "test-env-file-missing": (
         ["server", "test", "--env-file", "nowhere.env"],
+        {},
+    ),
+    # #243: --env-file and --provider before the command as well as after
+    # it; the backup lands where the env file says, from either side.
+    "backup-env-file-first": (
+        ["--env-file", ".env", "filterset", "backup"],
+        {"env": BACKUP_ENV_FILE},
+    ),
+    "backup-env-file-after": (
+        ["filterset", "backup", "--env-file", ".env"],
+        {"env": BACKUP_ENV_FILE},
+    ),
+    "backup-provider-first": (
+        ["--provider", "mxroute", "filterset", "backup"],
+        {},
+    ),
+    "provider-first-unknown": (
+        ["--provider", "nosuch", "filter", "list"],
         {},
     ),
     # #61: the Password line reports the outcome of reading it, so a

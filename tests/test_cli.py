@@ -155,3 +155,100 @@ def test_build_filter_json_is_what_the_filter_loader_reads(capsys):
 
     assert code == 0
     assert load_filter(out) == expected
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        pytest.param(
+            ["--provider", "mxroute", "--env-file", "x.env", "filter", "list"],
+            id="before",
+        ),
+        pytest.param(
+            ["filter", "list", "--provider", "mxroute", "--env-file", "x.env"],
+            id="after",
+        ),
+        pytest.param(
+            ["--provider=mxroute", "--env-file=x.env", "filter", "list"],
+            id="before-with-equals",
+        ),
+        pytest.param(
+            ["--provider", "mxroute", "help", "--env-file", "x.env"],
+            id="split-around-help",
+        ),
+    ],
+)
+def test_provider_and_env_file_are_taken_on_either_side(argv):
+    """#243: both are read before the parsers are built, so they are
+    global options and are accepted before the command as well as after."""
+    args = cli.build_parser().parse_args(argv)
+
+    assert (args.provider, args.env_file) == ("mxroute", "x.env")
+
+
+# ----------------------------------------------------------------------------
+def test_neither_given_leaves_both_unset():
+    args = cli.build_parser().parse_args(["filter", "list"])
+
+    assert (args.provider, args.env_file) == (None, None)
+
+
+# ----------------------------------------------------------------------------
+def test_a_bare_env_file_before_the_command_means_dot_env():
+    args = cli.build_parser().parse_args(
+        ["--env-file", "--", "filter", "list"]
+    )
+
+    assert args.env_file == ".env"
+
+
+# ----------------------------------------------------------------------------
+def test_given_on_both_sides_the_one_after_the_command_wins():
+    """As with any option given twice, the later one is taken -- and the
+    first pass, which picks the provider's parsers, agrees with it."""
+    argv = ["--provider", "nosuch", "filter", "list", "--provider", "mxroute"]
+
+    assert cli.build_parser().parse_args(argv).provider == "mxroute"
+    assert cli.provider_offer(argv) is not None
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--provider", "mxroute", "config", "migrate"],
+        ["--env-file", "x.env", "config", "migrate"],
+    ],
+    ids=["provider", "env-file"],
+)
+def test_a_command_that_reads_no_settings_refuses_them_first(argv, capsys):
+    """'config migrate' takes neither after it, so taking one before it
+    would be a flag that looks like it took effect and did not."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(argv)
+
+    assert stopped.value.code == 2
+    assert "'config migrate' reads no settings" in capsys.readouterr().err
+
+
+# ----------------------------------------------------------------------------
+def test_an_old_name_after_a_provider_is_still_the_command(capsys):
+    """The top level now takes options with a value; the value is not
+    mistaken for the command word."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["--provider", "mxroute", "rules"])
+
+    assert stopped.value.code == 2
+    assert "'rules' is now 'mailctl filter list'" in capsys.readouterr().err
+
+
+# ----------------------------------------------------------------------------
+def test_a_bare_env_file_before_a_command_is_refused_naming_it(capsys):
+    """A bare --env-file before the command would take the command as its
+    PATH; that is refused, saying so, rather than read as a file."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["--env-file", "filter", "list"])
+
+    assert stopped.value.code == 2
+    assert "'filter' is a command, not a file" in capsys.readouterr().err

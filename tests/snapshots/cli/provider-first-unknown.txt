@@ -1,0 +1,9 @@
+$ mailctl --provider nosuch filter list
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: provider: 'nosuch' is not a known provider (from flag --provider). Known: mxroute
+
+--- sieve calls
+--- imap calls

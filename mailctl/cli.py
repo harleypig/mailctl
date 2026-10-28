@@ -3710,6 +3710,7 @@ def connection_parser(
     group = parser.add_argument_group("connection")
     group.add_argument(
         "--provider",
+        default=argparse.SUPPRESS,
         help="the mail host, by provider name; default mxroute",
     )
     group.add_argument("--host", **setting("host"))
@@ -3743,6 +3744,7 @@ def connection_parser(
         dest="env_file",
         nargs="?",
         const=".env",
+        default=argparse.SUPPRESS,
         metavar="PATH",
         help="read MAILCTL_* settings from a dotenv-style file (default "
         ".env in the current directory); they beat the environment and "
@@ -4086,6 +4088,26 @@ def build_parser(
         help="show a full traceback on failure (never prints credentials)",
     )
 
+    # Both are read ahead of the real parse (provider_offer), so they are
+    # global and may come before the command too (#243). A command's own
+    # copy defaults to SUPPRESS, so it does not overwrite the value given
+    # here; given on both sides, the later one wins, as for any option
+    # given twice.
+    parser.add_argument(
+        "--provider",
+        help="the mail host, by provider name; default mxroute",
+    )
+    parser.add_argument(
+        "--env-file",
+        dest="env_file",
+        nargs="?",
+        const=".env",
+        type=lambda path: env_file_before_command(path, levels[""].choices),
+        metavar="PATH",
+        help="read MAILCTL_* settings from a dotenv-style file (default "
+        ".env in the current directory); before the command, give the PATH",
+    )
+
     # Commands are grouped, noun first: 'mailctl filter add' (#219). Each
     # level of the tree is a subparsers action, keyed by the path above it.
     levels = {"": parser.add_subparsers(dest="group", required=True)}
@@ -4122,7 +4144,10 @@ def build_parser(
 
         offered_at[above].append((name, offered))
         sub = levels[above].add_parser(name, **kwargs)
-        sub.set_defaults(command=path)
+        sub.set_defaults(
+            command=path,
+            reads_settings=connection in kwargs.get("parents", ()),
+        )
 
         return sub
 
@@ -4912,6 +4937,7 @@ def build_parser(
     )
     helping.add_argument(
         "--provider",
+        default=argparse.SUPPRESS,
         help="show what this provider offers; default the configured one",
     )
     helping.add_argument(
@@ -4919,10 +4945,12 @@ def build_parser(
         dest="env_file",
         nargs="?",
         const=".env",
+        default=argparse.SUPPRESS,
         metavar="PATH",
         help="read MAILCTL_* settings, the provider among them, from a "
         "dotenv-style file (default .env in the current directory)",
     )
+    helping.set_defaults(reads_settings=True)
 
     # Deepest first, so a group knows whether any command under it is
     # offered before the level above it is drawn.
@@ -5146,6 +5174,16 @@ def main(argv: list[str] | None = None) -> int:
     refuse_gone_option(parser, given)
     args = parser.parse_args(argv)
 
+    # Only a value given before the command can reach one that has no use
+    # for it; after it, argparse refuses it as unrecognized.
+    if not args.reads_settings and (
+        args.provider is not None or args.env_file is not None
+    ):
+        parser.error(
+            f"'{args.command}' reads no settings, so it takes neither "
+            f"--provider nor --env-file"
+        )
+
     # The same parse as 'mailctl [GROUP [ACTION]] --help', on the parser
     # built for this run's provider, so the two cannot drift; argparse exits
     # from it, 0 with the help or 2 naming the valid commands.
@@ -5220,14 +5258,42 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # ----------------------------------------------------------------------------
+def env_file_before_command(path: str, commands) -> str:
+    """``path`` as the env file named before the command, unless it is one
+    of ``commands``: a bare --env-file there takes the next word as its
+    PATH, and that word is far likelier the command than a file."""
+    if path in commands:
+        raise argparse.ArgumentTypeError(
+            f"{path!r} is a command, not a file; before the command, give "
+            f"--env-file its PATH (--env-file .env {path} ...)"
+        )
+
+    return path
+
+
+# ----------------------------------------------------------------------------
 def refuse_gone_command(parser: argparse.ArgumentParser, argv) -> None:
     """Stop a command line that starts with a command's old name, naming
     the command it is now; there are no aliases (#219).
 
-    The top level takes no option with a value, so its first word that is
-    not an option is the command.
+    The command is the first word that is neither an option nor
+    --provider's value. --env-file's value is optional, so the word after
+    it is read as the command: the parse then refuses it as a file if it
+    is one (env_file_before_command).
     """
-    first = next((word for word in argv if not word.startswith("-")), None)
+    first = None
+    valued = False
+
+    for word in argv:
+        if valued and not word.startswith("-"):
+            valued = False
+            continue
+
+        valued = word == "--provider"
+
+        if not word.startswith("-"):
+            first = word
+            break
 
     if first in GONE_COMMANDS:
         parser.error(

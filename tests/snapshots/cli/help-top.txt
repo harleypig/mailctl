@@ -1,7 +1,8 @@
 $ mailctl --help
 exit: SystemExit(0)
 --- stdout
-usage: mailctl [-h] [--version] [--verbose] [--debug]
+usage: mailctl [-h] [--version] [--verbose] [--debug] [--provider PROVIDER]
+               [--env-file [PATH]]
                {mail,folder,filter,filterset,server,config,help} ...
 
 Read, sort, and filter the mail on your account.
@@ -22,6 +23,10 @@ options:
   --verbose, -v         step-by-step progress
   --debug               show a full traceback on failure (never prints
                         credentials)
+  --provider PROVIDER   the mail host, by provider name; default mxroute
+  --env-file [PATH]     read MAILCTL_* settings from a dotenv-style file
+                        (default .env in the current directory); before the
+                        command, give the PATH
 
 --- stderr
 

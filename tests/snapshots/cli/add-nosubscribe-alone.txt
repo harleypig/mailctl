@@ -3,7 +3,8 @@ exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mailctl [-h] [--version] [--verbose] [--debug]
+usage: mailctl [-h] [--version] [--verbose] [--debug] [--provider PROVIDER]
+               [--env-file [PATH]]
                {mail,folder,filter,filterset,server,config,help} ...
 mailctl: error: --no-subscribe only applies with --create-folder; to hide a folder that already exists, use 'mailctl folder unsubscribe FOLDER'
 

@@ -1,0 +1,13 @@
+$ mailctl --provider mxroute filterset backup
+exit: 0
+--- stdout
+wrote 2 filter(s) to <TMP>/config/mailctl/backups/managesieve-<STAMP>.sieve
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls
