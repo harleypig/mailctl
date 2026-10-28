@@ -512,3 +512,28 @@ What it has to get right:
   around one.
 
 [i23]: https://github.com/harleypig/mailctl/issues/23
+
+## argparse's "maybe you meant" default on Python 3.15
+
+`ICEBOX:` Python 3.15, argparse, suggest_on_error, maybe you meant, did you
+mean, typo suggestion, invalid choice, CLI snapshots, error wording, CI
+matrix, new Python version — **trigger: Python 3.15 enters the CI matrix.**
+
+Python 3.15 turns argparse's `suggest_on_error` on by default ([argparse
+docs][argparse-315]). An invalid choice or subcommand that is a near miss
+then gains `maybe you meant 'X'?` inside the same error line, ahead of the
+`(choose from …)` list. Parked 2026-10-27, since CI runs 3.11 to 3.14.
+
+**Nothing goes red today.** Every invalid choice the tests feed in (`from`
+for `--sort`, `tidy` for `--skip`, `nosuch` in `test_cli_help.py`) is too
+far from any choice to draw a suggestion, even with the option on. The
+risk is the first test that feeds in a near miss.
+
+**What is left to decide is the output, not the test.** An error line is
+part of the CLI's contract, so mailctl should say the same thing on every
+Python it supports: either pass `suggest_on_error` explicitly to every
+`ArgumentParser` in `mailctl/cli.py`, or let 3.15 suggest and teach
+`argparse_neutral()` in the snapshot test to drop the clause. The first
+keeps the contract stable; the second gives users the hint.
+
+[argparse-315]: https://docs.python.org/3.15/library/argparse.html#suggest-on-error
