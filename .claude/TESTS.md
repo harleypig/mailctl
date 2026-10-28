@@ -136,6 +136,8 @@ where every write path is proved first.
      alone when only that text differs. `tests/conftest.py` clears
      `PYTHON_COLORS` and `FORCE_COLOR` and sets `NO_COLOR` for every test,
      since argparse colours its output from 3.14 when asked, pipe or not.
+     It also pins `COLUMNS` to 80, since argparse wraps help to an exported
+     `COLUMNS` and the snapshots are recorded at 80 ([#241][i241]).
    - **The command tree** (`test_cli_help.py`, over `tests/cli_support.py`,
      which reads the groups and commands off the parser) — `mailctl help` with
      a group, or a group and an action, is the same text and exit as `--help`
@@ -163,6 +165,11 @@ where every write path is proved first.
      run with nothing from the checkout on the path, so a subpackage left
      out of it fails here rather than in a user's install. The suite
      otherwise runs under an editable install, which reads the checkout.
+   - **`make typecheck`** (`test_make_typecheck.py`, [#244][i244]) — the
+     target run from a copy of the Makefile alone, with a stand-in `pyright`
+     on `PATH`: refused, naming `.venv/bin/pyright`, with no `.venv` and
+     with one that lacks pyright; running the venv's pyright rather than
+     `PATH`'s; and failing when pyright fails.
    - The **presentation guard** (`test_core_no_presentation.py`) — no core
      module prints, prompts, or exits, and neither the session nor any
      utility imports a front-end or reads the terminal or the environment.
@@ -518,3 +525,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i231]: https://github.com/harleypig/mailctl/issues/231
 [i232]: https://github.com/harleypig/mailctl/issues/232
 [i219]: https://github.com/harleypig/mailctl/issues/219
+[i241]: https://github.com/harleypig/mailctl/issues/241
+[i244]: https://github.com/harleypig/mailctl/issues/244

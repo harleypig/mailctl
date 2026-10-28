@@ -499,6 +499,12 @@ flat names are a clean break, never aliases: each is refused, exit 2,
 naming the command it is now (`cli.GONE_COMMANDS`). `mailctl help [group
 [action]]` prints the same as `--help` there ([#153][i153]).
 
+**`--provider` and `--env-file` may come before the command or after it**
+([#243][i243]); given on both sides, the later wins. Before the command,
+`--env-file` needs its PATH: a bare one would take the command's name as
+its file, so that is refused, naming it. `config migrate` reads no
+settings, and refuses either given before it.
+
 **`filter add` saves a filter; `filter apply` acts on mail already
 delivered.** `filter add` writes the rule into the active script and touches
 no message; `filter apply` is the only command that acts on existing mail
@@ -1133,17 +1139,28 @@ concrete toolchain and the **status of every dimension** for this repo.
 - **Type-check:** `pyright` in `standard` mode over `mailctl` and `tests`,
   configured under `[tool.pyright]` in `pyproject.toml`; `make typecheck`
   runs it. It resolves imports from `.venv`, so it runs where the package
-  is installed. That is why it is in CI's Lint job and **not** in
+  is installed, and the target runs `.venv/bin/pyright`, never `PATH`'s,
+  refusing with the reason where it is missing: without the venv, pyright
+  checks against whatever Python is on `PATH` and can pass there
+  ([#244][i244]). That is also why it is in CI's Lint job and **not** in
   pre-commit: a pre-commit hook's own environment lacks `sievelib`,
   `IMAPClient`, and `pytest`, and supplying them would mean a second copy
   of the dependency list. Its version is pinned exactly in the dev extra,
   because each pyright release adds checks.
 - **Security:** `gitleaks` + `detect-private-key` in pre-commit (secrets).
+  The built image is scanned by `trivy` for HIGH and CRITICAL findings in
+  the *Image scan* workflow, **report only**: it never fails and is not a
+  required check, because the base image carries HIGH findings with no fix
+  released, so a failing scan would be red for good ([#238][i238]).
   Note that the *most* important security property of this repo — the password
   never being emitted — is a code-structure guarantee (`Secret`), not
   something a scanner checks; review it by reading `Secret.reveal()` call
   sites.
 - **Prose:** `markdownlint` and `yamllint` in pre-commit.
+- **Dockerfile:** `hadolint` in pre-commit, a local hook pinned by tag and
+  digest, in the check config only since it has no fixer. `.hadolint.yaml`
+  fails on warnings and errors and trusts base images from `docker.io` and
+  `ghcr.io` only ([#238][i238]).
 
 Full dimension status:
 
@@ -1153,17 +1170,17 @@ Full dimension status:
 | 2. Lint | **Active** — `ruff check` |
 | 3. Type-check | **Active** — `pyright` (standard mode) over the package and the tests, in CI's Lint job and `make typecheck` ([#10][i10]) |
 | 4. Code smell / complexity | **Active** — ruff `B`/`C4`/`SIM`/`UP`/`RUF` |
-| 5. Security | **Active (secrets only)** — `gitleaks`, `detect-private-key`. SAST is **Off**: the attack surface is two outbound TLS client sessions and no untrusted input parsing beyond the user's own Sieve script |
+| 5. Security | **Active (secrets, Dockerfile, image report-only)** — `gitleaks`, `detect-private-key`; `hadolint` on the Dockerfile; `trivy` on the built image, report only and not a required check, since the base image carries HIGH findings with no fix ([#238][i238]). SAST is **Off**: the attack surface is two outbound TLS client sessions and no untrusted input parsing beyond the user's own Sieve script |
 | 6. Tests | **Active** — the offline tier is green (`make test` / `pytest`); see [TESTS.md](TESTS.md) |
 | 7. UI/UX & accessibility | **N/A** — a CLI with no UI. Terminal output legibility is covered by the *show, then change* convention |
 | 8. End-to-end | **Scaffolded, gated** — `tests/live/` exists and skips unless `MAILCTL_LIVE=1`; its write guards are built and proved on the container tier, and it has never written to a real account ([#9][i9]) |
 | 9. Compatibility | **Active** — CPython 3.11 through 3.14, every one tested in CI, and sievelib at both ends of its bound (1.5.0 and the newest below 2); no external contract we publish ([#231][i231], [#232][i232]) |
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
-| 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`) is built by `tests/container/test_image.py` only, not in CI |
+| 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`) is built by `tests/container/test_image.py`, and in CI by the *Image scan* workflow on a PR or push touching its inputs (`Dockerfile`, `.dockerignore`, `docker/**`, `pyproject.toml`); `test_image.py` itself is not in CI |
 | 13. Documentation | **Active** — this file, `README.md`, and `adr/`; markdownlint gates the prose |
 | 14. Code review | **Informal** — solo repo; `master` is PR-only, 0 required reviewers |
-| 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`, and one job named `Test` passes only if every version did, since that is the check the ruleset requires ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror |
+| 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`, and one job named `Test` passes only if every version did, since that is the check the ruleset requires ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror. `.github/workflows/image-scan.yml` (*Image scan*, job `Trivy (report only)`) runs only when the image's inputs change, never fails on a finding, and is not a required check ([#238][i238]) |
 
 ## How work is dispatched
 
@@ -1367,6 +1384,9 @@ will read it.
 [i204]: https://github.com/harleypig/mailctl/issues/204
 [i216]: https://github.com/harleypig/mailctl/issues/216
 [i219]: https://github.com/harleypig/mailctl/issues/219
+[i238]: https://github.com/harleypig/mailctl/issues/238
+[i243]: https://github.com/harleypig/mailctl/issues/243
+[i244]: https://github.com/harleypig/mailctl/issues/244
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147
