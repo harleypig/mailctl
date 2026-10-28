@@ -126,27 +126,17 @@ cope with scripts we did not write.
 ## TUI front-end
 
 `ICEBOX:` TUI, terminal UI, interactive UI, front-end, curses, textual —
-**trigger: the operator actually requests it.**
+**no longer iceboxed: its trigger, the operator asking, fired on
+[#224][i224].**
 
-A stated longer-term direction: a terminal client that skims a message,
-creates and manages filters matching it, shows which existing filters would
-catch a given message (the entry above), and bulk-moves matching mail. It is
-**not** intended to replace MXroute's web UI, at least initially.
+The TUI is now tracked work: [#259][i259], the first client of the JSON-RPC
+API that [ADR 0008][adr8] proposes. It is a client of that API, not a second
+module beside `cli.py`, and it follows [#258][i258] (API slice 1).
 
-**None of those capabilities is the TUI's alone.** Every command is in every
-interface ([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *The core
-returns data; only the CLI prints*), so finding and viewing messages is an
-engine operation with CLI commands (`search`, `view`). What stays iceboxed
-here is the TUI itself.
-
-**Deferred, and deliberately not designed for.** No framework has been chosen
-and none should be until the feature is requested. The architecture a second
-front-end needs is **in place now**: `mailctl/engine.py` does all the work
-and knows nothing about how it was called, and every change is a read-only
-plan the front-end renders and decides on before asking the engine to execute
-it ([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *The core returns
-data; only the CLI prints*). A TUI would be a second module beside `cli.py`
-calling the same engine — nothing in the engine has to change first.
+[i224]: https://github.com/harleypig/mailctl/issues/224
+[i258]: https://github.com/harleypig/mailctl/issues/258
+[i259]: https://github.com/harleypig/mailctl/issues/259
+[adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
 
 ## Declarative rules in YAML — the `gmailctl` model
 

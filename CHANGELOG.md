@@ -4,6 +4,27 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+ENHANCEMENTS:
+
+* **`--env-file` and `--provider` may come before the command** ([#243]).
+  `mailctl --env-file .env filterset backup` was refused, because only the
+  command took either option; now both places do. Given on both sides, the
+  later one wins. Before the command, `--env-file` needs its PATH, since a
+  bare `--env-file` there would read the command's name as the file; that
+  is refused with exit status 2, naming the word as a command, not a file.
+  `config migrate` reads no settings, so it refuses either option rather
+  than ignore it.
+
+BUG FIXES:
+
+* **A filter matching any of several values now keeps one ending in `\"`
+  whole under sievelib 1.5** ([#242]). With sievelib 1.5 installed,
+  mailctl dropped that value's closing quote whenever it wrote the filter
+  set, so what it wrote no longer parsed. A merge by `filter optimize`
+  could build such a filter, and any change to a filter set already
+  holding one wrote it again, `filter disable` included. Under sievelib 1.6
+  nothing was wrong, and nothing changes.
+
 ## 0.12.0
 
 FEATURES:
@@ -1534,3 +1555,5 @@ NOTES:
 [#208]: https://github.com/harleypig/mailctl/issues/208
 [#212]: https://github.com/harleypig/mailctl/issues/212
 [#204]: https://github.com/harleypig/mailctl/issues/204
+[#243]: https://github.com/harleypig/mailctl/issues/243
+[#242]: https://github.com/harleypig/mailctl/issues/242
