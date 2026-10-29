@@ -16,7 +16,7 @@ the [issue tracker][issues], and deliberate "not now" deferrals in
 | [0005](0005-restore-may-replace-an-unparseable-script.md) | `restore` may replace a script mxfilter cannot parse |
 | [0006](0006-two-layer-component-and-provider-architecture.md) | Two layers: protocol component libraries under per-host providers |
 | [0007](0007-interfaces-utilities-session-provider-layering.md) | Four layers: interfaces, utilities, session, provider (dialect + transport) |
-| [0008](0008-json-rpc-api-interface-for-out-of-process-clients.md) | Proposed: a JSON-RPC API over stdio, so a UI in any language can drive the core |
+| [0008](0008-json-rpc-api-interface-for-out-of-process-clients.md) | A JSON-RPC API over stdio, so a UI in any language can drive the core |
 
 [madr]: https://adr.github.io/madr/
 

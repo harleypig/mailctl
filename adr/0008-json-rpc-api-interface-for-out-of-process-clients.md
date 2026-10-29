@@ -1,7 +1,8 @@
 # 8. A JSON-RPC API interface for clients in any language
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-28
+- Accepted: 2026-10-29, by the operator on [#224][i224]
 - Amends [ADR 0003][adr3] (see its *Amendment*). Builds on [ADR
   0007][adr7]. Recorded for [#224][i224].
 
