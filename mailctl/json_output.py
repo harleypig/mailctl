@@ -19,11 +19,12 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import Secret
-from .utilities import events
+from .utilities import events, rules
 
 __all__ = [
     "CHANNELS",
     "JSON_VERSION",
+    "STEP_KINDS",
     "actions",
     "activation",
     "add_plan",
@@ -47,6 +48,7 @@ __all__ = [
     "script_change_result",
     "scripts",
     "sender_report",
+    "step",
 ]
 
 JSON_VERSION = 2
@@ -58,6 +60,19 @@ RECEIVED_FORMAT = "%Y-%m-%d %H:%M:%S"
 # What a message from each half is tagged with, the same for every
 # provider: a user-facing noun, as the CLI's progress lines tag them.
 CHANNELS = {events.RULES: "filter", events.MAIL: "mail"}
+
+# What each neutral step is called in a document, the same for every
+# provider: a filter's ``steps`` say what it does in these words, never in
+# the host's own, so a client words them without knowing the host.
+STEP_KINDS = {
+    rules.FILEINTO: "file",
+    rules.DISCARD: "discard",
+    rules.FLAG: "flag",
+    rules.UNFLAG: "unflag",
+    rules.KEEP: "keep",
+    rules.STOP: "stop",
+    rules.OTHER: "other",
+}
 
 
 # ############################################################################
@@ -321,11 +336,16 @@ def message(content) -> dict:
 
 
 # ----------------------------------------------------------------------------
-def rules_report(report) -> dict:
-    """``rules``: the rules in evaluation order, and which cannot fire."""
+def rules_report(report, steps) -> dict:
+    """``rules``: the rules in evaluation order, and which cannot fire.
+    ``steps`` is what each rule does, one entry per rule in the same
+    order, as ``utilities.rules.describe_rules`` returns it."""
     return _document(
         filterset=report.script,
-        filters=[_rule(rule) for rule in report.rules],
+        filters=[
+            _rule(rule, steps)
+            for rule, steps in zip(report.rules, steps, strict=True)
+        ],
         findings=[_shadow(finding) for finding in report.findings],
     )
 
@@ -663,9 +683,10 @@ def _received(value: str) -> str | None:
 
 
 # ----------------------------------------------------------------------------
-def _rule(rule) -> dict:
+def _rule(rule, steps) -> dict:
     """A rule; ``position`` counts from 1, as ``rules`` and ``move-rule``
-    show it."""
+    show it. ``actions`` are the host's own names for what it does, and
+    ``steps`` the same in neutral terms (``step``)."""
     return {
         "position": rule.index + 1,
         "name": rule.name,
@@ -682,7 +703,23 @@ def _rule(rule) -> dict:
             for test in rule.tests
         ],
         "actions": list(rule.actions),
+        "steps": [step(item) for item in steps],
         "unmodelled": list(rule.unmodelled),
+    }
+
+
+# ----------------------------------------------------------------------------
+def step(record) -> dict:
+    """One thing a filter does: ``kind`` is a ``STEP_KINDS`` value.
+    ``argument`` is the folder filed into or the flag added or removed,
+    null where the host's listing does not carry it; for ``other`` it is
+    the action's name as the host writes it, the filter's own text, since
+    no neutral word exists for it. ``creates`` is whether a ``file`` step
+    also creates its folder as mail arrives."""
+    return {
+        "kind": STEP_KINDS[record.kind],
+        "argument": record.argument,
+        "creates": record.creates,
     }
 
 

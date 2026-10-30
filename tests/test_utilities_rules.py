@@ -26,9 +26,12 @@ from mailctl.providers.mxroute.sieve import (
     render_script,
 )
 from mailctl.utilities.rules import (
+    FILEINTO,
+    FLAG,
     PLACE_AFTER,
     PLACE_BEFORE,
     PLACE_FIRST,
+    STOP,
     ActionSpec,
     Placement,
     RuleRequest,
@@ -49,6 +52,18 @@ def test_read_rules_returns_rules_in_order_with_findings(sessions):
         "bin-the-noise",
     ]
     assert report.findings == []
+
+
+# ----------------------------------------------------------------------------
+def test_describe_rules_says_what_each_rule_does_in_neutral_steps(sessions):
+    """One entry per read rule, in its order, from the dialect (#259)."""
+    report = utilities.rules.read_rules(sessions)
+    described = utilities.rules.describe_rules(sessions, report.rules)
+
+    assert [[step.kind for step in steps] for steps in described] == [
+        [FILEINTO, FLAG, STOP],
+        [FILEINTO, STOP],
+    ]
 
 
 # ############################################################################

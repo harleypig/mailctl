@@ -501,3 +501,48 @@ def test_each_provider_function_exception_is_still_needed(given):
             ]
 
     assert matched
+
+
+# ----------------------------------------------------------------------------
+def step_kinds(snapshot: str) -> list[str]:
+    """Every ``kind`` a filter's ``steps`` carry in a snapshot's JSON. The
+    rest of a document is passed over above, its keys and the filter
+    set's own text alike; a step's kind is our word, so it is held."""
+    stdout = snapshot.split("--- stdout\n", 1)[-1].split("--- stderr", 1)[0]
+    text = stdout.strip()
+
+    if not text.startswith("{"):
+        return []
+
+    return [
+        step["kind"]
+        for doc in map(json.loads, _documents(text))
+        for item in doc.get("filters", [])
+        for step in item.get("steps", [])
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_filters_steps_are_named_in_no_providers_words():
+    """Every step kind any snapshot's document carries is free of provider
+    words, and the walk reaches the filter listings that carry them
+    (#259)."""
+    kinds = [
+        kind
+        for name in SNAPSHOT_NAMES
+        for kind in step_kinds((SNAPSHOTS / f"{name}.txt").read_text())
+    ]
+
+    assert {"file", "stop"} <= set(kinds)
+    assert [kind for kind in kinds if PROVIDER_WORDS.search(kind)] == []
+
+
+# ----------------------------------------------------------------------------
+def test_the_step_check_catches_a_planted_provider_word():
+    """The host's word for filing, planted as a step's kind, is seen."""
+    snapshot = (SNAPSHOTS / "rules-json.txt").read_text(encoding="utf-8")
+    planted = snapshot.replace('"kind": "file"', '"kind": "fileinto"', 1)
+
+    assert [
+        kind for kind in step_kinds(planted) if PROVIDER_WORDS.search(kind)
+    ]

@@ -1303,7 +1303,9 @@ def cmd_rules(args) -> int:
         report = utilities.rules.read_rules(sessions, args.script)
 
         if args.json:
-            return emit_json(args, json_output.rules_report(report))
+            steps = utilities.rules.describe_rules(sessions, report.rules)
+
+            return emit_json(args, json_output.rules_report(report, steps))
 
         print(f"Filter set {report.script!r}:\n")
         print_rules(sessions, report.rules)

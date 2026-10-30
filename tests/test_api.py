@@ -391,6 +391,20 @@ def test_filter_list_returns_the_filter_list_document(start):
 
 
 # ----------------------------------------------------------------------------
+def test_filter_list_says_what_each_filter_does_in_neutral_steps(start):
+    """Red if ``steps`` is missing, or words what the filter does in the
+    host's language, or if ``actions`` is no longer the host's (#259)."""
+    client = initialized(start)
+    (listed,) = client.request("filter.list")["result"]["filters"]
+
+    assert listed["actions"] == ["fileinto", "stop"]
+    assert listed["steps"] == [
+        {"kind": "file", "argument": None, "creates": False},
+        {"kind": "stop", "argument": None, "creates": False},
+    ]
+
+
+# ----------------------------------------------------------------------------
 def test_filter_list_refuses_a_filter_set_with_no_active_one(start):
     client = initialized(start, active=None, scripts={})
     error = refusal(client.request("filter.list"))

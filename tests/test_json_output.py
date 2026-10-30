@@ -25,8 +25,12 @@ from mailctl.config import (
     Source,
 )
 from mailctl.providers.base import FolderCreation
+from mailctl.providers.model import FILEINTO, OTHER, STOP, ActionStep
+from mailctl.providers.mxroute.sieve import _ACTION_KINDS
+from mailctl.rules import Rule
 from mailctl.utilities import events
 from mailctl.utilities.migration import ConfigDirPending
+from mailctl.utilities.rules import RulesReport
 
 SENTINEL = "s3ntinel-VALUE-never-shown-151"
 
@@ -496,3 +500,44 @@ def test_old_name_carries_names_and_places_and_null_for_no_directory():
         "new": "/c/mailctl",
         "operation": "config migrate",
     }
+
+
+# ############################################################################
+# A filter's steps
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_filter_carries_its_steps_in_neutral_words_beside_its_actions():
+    """Red if a step loses its kind, argument, or creates, if a kind is
+    written in the model's spelling rather than the document's, or if
+    ``actions`` stops being the host's own names (#259)."""
+    rule = Rule(0, "keep-boss", "anyof", actions=("fileinto", "foo", "stop"))
+    steps = (
+        ActionStep(FILEINTO, "INBOX.Boss", creates=True),
+        ActionStep(OTHER, "foo"),
+        ActionStep(STOP),
+    )
+    report = RulesReport("managesieve", [rule], [])
+
+    (listed,) = json_output.rules_report(report, [steps])["filters"]
+
+    assert listed["actions"] == ["fileinto", "foo", "stop"]
+    assert listed["steps"] == [
+        {"kind": "file", "argument": "INBOX.Boss", "creates": True},
+        {"kind": "other", "argument": "foo", "creates": False},
+        {"kind": "stop", "argument": None, "creates": False},
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_every_step_kind_a_provider_reports_has_a_document_word():
+    """The kinds are read off what mxroute's dialect reports, plus OTHER
+    for an action it has no kind for, not listed here; red if one has no
+    word, which would fail the whole document."""
+    reported = set(_ACTION_KINDS.values()) | {OTHER}
+
+    assert reported <= set(json_output.STEP_KINDS)
+    assert len(set(json_output.STEP_KINDS.values())) == len(
+        json_output.STEP_KINDS
+    )

@@ -25,6 +25,18 @@ exit: 0
         "fileinto",
         "stop"
       ],
+      "steps": [
+        {
+          "kind": "file",
+          "argument": null,
+          "creates": false
+        },
+        {
+          "kind": "stop",
+          "argument": null,
+          "creates": false
+        }
+      ],
       "unmodelled": []
     },
     {
@@ -46,6 +58,18 @@ exit: 0
       "actions": [
         "fileinto",
         "stop"
+      ],
+      "steps": [
+        {
+          "kind": "file",
+          "argument": null,
+          "creates": false
+        },
+        {
+          "kind": "stop",
+          "argument": null,
+          "creates": false
+        }
       ],
       "unmodelled": []
     }
