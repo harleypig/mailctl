@@ -1,0 +1,13 @@
+$ mailctl filterset --env-file .env backup
+exit: 0
+--- stdout
+wrote 2 filter(s) to <TMP>/config/from-env-file/managesieve-<STAMP>.sieve
+
+--- stderr
+
+--- sieve calls
+('connect',)
+('listscripts',)
+('getscript', 'managesieve')
+('logout',)
+--- imap calls

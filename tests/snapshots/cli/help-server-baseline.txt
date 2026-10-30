@@ -2,21 +2,28 @@ $ mailctl server baseline --help
 exit: SystemExit(0)
 --- stdout
 usage: mailctl server baseline [-h] [--verbose] [--debug]
+                               [--provider PROVIDER] [--env-file [PATH]]
                                {save,show,check} ...
 
 Save, show, or check a record of what the servers say.
 
 positional arguments:
   {save,show,check}
-    save             record what the servers say now, to compare against later
-    show             print the saved baseline for this host
-    check            report what has changed on the servers since the baseline
+    save               record what the servers say now, to compare against
+                       later
+    show               print the saved baseline for this host
+    check              report what has changed on the servers since the
+                       baseline
 
 options:
-  -h, --help         show this help message and exit
-  --verbose, -v      step-by-step progress
-  --debug            show a full traceback on failure (never prints
-                     credentials)
+  -h, --help           show this help message and exit
+  --verbose, -v        step-by-step progress
+  --debug              show a full traceback on failure (never prints
+                       credentials)
+  --provider PROVIDER  the mail host, by provider name; default mxroute
+  --env-file [PATH]    read MAILCTL_* settings from a dotenv-style file
+                       (default .env in the current directory); before the
+                       command, give the PATH
 
 --- stderr
 
