@@ -1422,6 +1422,15 @@ SCENARIOS = {
         ["--provider", "nosuch", "filter", "list"],
         {},
     ),
+    # #265: and between the group and the action.
+    "backup-env-file-between": (
+        ["filterset", "--env-file", ".env", "backup"],
+        {"env": BACKUP_ENV_FILE},
+    ),
+    "provider-between-unknown": (
+        ["filter", "--provider", "nosuch", "list"],
+        {},
+    ),
     # #61: the Password line reports the outcome of reading it, so a
     # refused file is not shown as "set" above its own refusal.
     "test-password-refused": (

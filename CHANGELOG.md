@@ -14,6 +14,13 @@ ENHANCEMENTS:
   is refused with exit status 2, naming the word as a command, not a file.
   `config migrate` reads no settings, so it refuses either option rather
   than ignore it.
+* **`--env-file` and `--provider` may come between a group and its
+  action** ([#265]). `mailctl filter --provider mxroute list` was refused,
+  though `--verbose` was taken there; now these two are as well, at every
+  level of a group, as in `mailctl server baseline --env-file .env save`.
+  The rules are those before the command: the later one wins, and a bare
+  `--env-file` just before the action is refused with exit status 2,
+  naming the action as a command, not a file.
 
 BUG FIXES:
 
@@ -1562,5 +1569,6 @@ NOTES:
 [#212]: https://github.com/harleypig/mailctl/issues/212
 [#204]: https://github.com/harleypig/mailctl/issues/204
 [#261]: https://github.com/harleypig/mailctl/issues/261
+[#265]: https://github.com/harleypig/mailctl/issues/265
 [#243]: https://github.com/harleypig/mailctl/issues/243
 [#242]: https://github.com/harleypig/mailctl/issues/242

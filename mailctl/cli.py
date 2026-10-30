@@ -4089,24 +4089,11 @@ def build_parser(
     )
 
     # Both are read ahead of the real parse (provider_offer), so they are
-    # global and may come before the command too (#243). A command's own
-    # copy defaults to SUPPRESS, so it does not overwrite the value given
-    # here; given on both sides, the later one wins, as for any option
-    # given twice.
-    parser.add_argument(
-        "--provider",
-        help="the mail host, by provider name; default mxroute",
-    )
-    parser.add_argument(
-        "--env-file",
-        dest="env_file",
-        nargs="?",
-        const=".env",
-        type=lambda path: env_file_before_command(path, levels[""].choices),
-        metavar="PATH",
-        help="read MAILCTL_* settings from a dotenv-style file (default "
-        ".env in the current directory); before the command, give the PATH",
-    )
+    # global and may come before the command (#243) or between its group
+    # and its action (#265). A copy further in defaults to SUPPRESS, so it
+    # does not overwrite a value given further out; given twice, the later
+    # one wins, as for any option.
+    settings_options(parser, lambda: levels[""].choices, default=None)
 
     # Commands are grouped, noun first: 'mailctl filter add' (#219). Each
     # level of the tree is a subparsers action, keyed by the path above it.
@@ -4127,6 +4114,7 @@ def build_parser(
             description=f"{summary[0].upper()}{summary[1:]}.",
         )
         offered_at[above].append((name, None))
+        settings_options(group, lambda: levels[path].choices)
         levels[path] = group.add_subparsers(dest="action", required=True)
         offered_at[path] = []
 
@@ -5174,8 +5162,8 @@ def main(argv: list[str] | None = None) -> int:
     refuse_gone_option(parser, given)
     args = parser.parse_args(argv)
 
-    # Only a value given before the command can reach one that has no use
-    # for it; after it, argparse refuses it as unrecognized.
+    # Only a value given before the command's last word can reach one that
+    # has no use for it; after it, argparse refuses it as unrecognized.
     if not args.reads_settings and (
         args.provider is not None or args.env_file is not None
     ):
@@ -5255,6 +5243,34 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         return 1
+
+
+# ----------------------------------------------------------------------------
+def settings_options(
+    parser: argparse.ArgumentParser,
+    commands,
+    default: object = argparse.SUPPRESS,
+) -> None:
+    """Add --provider and --env-file to a level of the command tree above
+    the command itself. ``commands`` returns the words that may follow at
+    that level, which a bare --env-file there must not take as its PATH.
+    """
+    parser.add_argument(
+        "--provider",
+        default=default,
+        help="the mail host, by provider name; default mxroute",
+    )
+    parser.add_argument(
+        "--env-file",
+        dest="env_file",
+        nargs="?",
+        const=".env",
+        default=default,
+        type=lambda path: env_file_before_command(path, commands()),
+        metavar="PATH",
+        help="read MAILCTL_* settings from a dotenv-style file (default "
+        ".env in the current directory); before the command, give the PATH",
+    )
 
 
 # ----------------------------------------------------------------------------

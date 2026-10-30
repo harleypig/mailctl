@@ -142,11 +142,12 @@ optional value, put `--env-file` after any positional argument, or write
 `--env-file=PATH`.
 
 `--env-file` and `--provider` may also come before the command, as in
-`mailctl --env-file .env filterset backup`. Given on both sides, the later
-one wins. Before the command, `--env-file` needs its PATH: a bare
-`--env-file` there would take the command's name as the file, so mailctl
-refuses it, saying the word is a command, not a file. `config migrate`
-reads no settings and takes neither option.
+`mailctl --env-file .env filterset backup`, or between its group and its
+action, as in `mailctl filterset --env-file .env backup`. Given more than
+once, the later one wins. Before the command or its action, `--env-file`
+needs its PATH: a bare `--env-file` there would take the next word of the
+command as the file, so mailctl refuses it, saying the word is a command,
+not a file. `config migrate` reads no settings and takes neither option.
 
 ### Folder and provider
 

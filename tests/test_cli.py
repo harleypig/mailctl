@@ -177,11 +177,24 @@ def test_build_filter_json_is_what_the_filter_loader_reads(capsys):
             ["--provider", "mxroute", "help", "--env-file", "x.env"],
             id="split-around-help",
         ),
+        pytest.param(
+            ["filter", "--provider", "mxroute", "--env-file", "x.env", "list"],
+            id="between",
+        ),
+        pytest.param(
+            ["filter", "--provider=mxroute", "--env-file=x.env", "list"],
+            id="between-with-equals",
+        ),
+        pytest.param(
+            ["--provider", "mxroute", "filter", "--env-file", "x.env", "list"],
+            id="split-before-and-between",
+        ),
     ],
 )
 def test_provider_and_env_file_are_taken_on_either_side(argv):
     """#243: both are read before the parsers are built, so they are
-    global options and are accepted before the command as well as after."""
+    global options and are accepted before the command as well as after
+    -- and, #265, between its group and its action."""
     args = cli.build_parser().parse_args(argv)
 
     assert (args.provider, args.env_file) == ("mxroute", "x.env")
@@ -217,10 +230,76 @@ def test_given_on_both_sides_the_one_after_the_command_wins():
 @pytest.mark.parametrize(
     "argv",
     [
+        pytest.param(
+            [
+                "--provider",
+                "nosuch",
+                "filter",
+                "--provider",
+                "mxroute",
+                "list",
+            ],
+            id="between-beats-before",
+        ),
+        pytest.param(
+            [
+                "filter",
+                "--provider",
+                "nosuch",
+                "list",
+                "--provider",
+                "mxroute",
+            ],
+            id="after-beats-between",
+        ),
+    ],
+)
+def test_between_group_and_action_the_later_one_wins(argv):
+    """#265: the middle position orders like the other two, and the first
+    pass agrees with the real parse about which value is taken."""
+    assert cli.build_parser().parse_args(argv).provider == "mxroute"
+    assert cli.provider_offer(argv) is not None
+
+
+# ----------------------------------------------------------------------------
+def test_env_file_given_between_and_after_takes_the_later():
+    argv = ["filter", "--env-file", "a.env", "list", "--env-file", "b.env"]
+
+    assert cli.build_parser().parse_args(argv).env_file == "b.env"
+
+
+# ----------------------------------------------------------------------------
+def test_a_bare_env_file_between_group_and_action_is_refused_naming_it(
+    capsys,
+):
+    """Between the group and the action, a bare --env-file would take the
+    action as its PATH; that is refused as it is before the command."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["filter", "--env-file", "list"])
+
+    assert stopped.value.code == 2
+    assert "'list' is a command, not a file" in capsys.readouterr().err
+
+
+# ----------------------------------------------------------------------------
+def test_a_bare_env_file_between_before_another_option_means_dot_env():
+    args = cli.build_parser().parse_args(
+        ["filter", "--env-file", "--verbose", "list"]
+    )
+
+    assert args.env_file == ".env"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
         ["--provider", "mxroute", "config", "migrate"],
         ["--env-file", "x.env", "config", "migrate"],
+        ["config", "--provider", "mxroute", "migrate"],
+        ["config", "--env-file", "x.env", "migrate"],
     ],
-    ids=["provider", "env-file"],
+    ids=["provider", "env-file", "provider-between", "env-file-between"],
 )
 def test_a_command_that_reads_no_settings_refuses_them_first(argv, capsys):
     """'config migrate' takes neither after it, so taking one before it

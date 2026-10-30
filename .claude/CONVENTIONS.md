@@ -499,11 +499,12 @@ flat names are a clean break, never aliases: each is refused, exit 2,
 naming the command it is now (`cli.GONE_COMMANDS`). `mailctl help [group
 [action]]` prints the same as `--help` there ([#153][i153]).
 
-**`--provider` and `--env-file` may come before the command or after it**
-([#243][i243]); given on both sides, the later wins. Before the command,
-`--env-file` needs its PATH: a bare one would take the command's name as
-its file, so that is refused, naming it. `config migrate` reads no
-settings, and refuses either given before it.
+**`--provider` and `--env-file` may come before the command, between a
+group and its action, or after it** ([#243][i243], [#265][i265]); given
+more than once, the later wins. Before the command or its action,
+`--env-file` needs its PATH: a bare one would take the next word of the
+command as its file, so that is refused, naming it. `config migrate` reads
+no settings, and refuses either given anywhere before `migrate`.
 
 **`filter add` saves a filter; `filter apply` acts on mail already
 delivered.** `filter add` writes the rule into the active script and touches
@@ -1427,6 +1428,7 @@ will read it.
 [i238]: https://github.com/harleypig/mailctl/issues/238
 [i243]: https://github.com/harleypig/mailctl/issues/243
 [i244]: https://github.com/harleypig/mailctl/issues/244
+[i265]: https://github.com/harleypig/mailctl/issues/265
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147
