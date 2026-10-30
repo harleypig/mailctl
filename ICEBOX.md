@@ -568,3 +568,35 @@ disabled for inactivity, is tracked as
 [da2342]: https://github.com/Harleypig-LLC/dotagents/issues/2342
 [i238]: https://github.com/harleypig/mailctl/issues/238
 [i264]: https://github.com/harleypig/mailctl/issues/264
+
+## A Go and Bubble Tea client of the API, in its own repository
+
+`ICEBOX:` Go, golang, Bubble Tea, bubbletea, charmbracelet, second client,
+other language, another language, non-Python client, separate repo, own
+repository, proof of concept, POC, JSON-RPC client, API client, TUI in Go
+— **trigger: the Python TUI's first slice lands, or the operator asks.**
+
+The first TUI is Python with Textual, in this repository, and talks to
+mailctl only through the JSON-RPC API ([harleypig/mailctl#259][go-i259]).
+The operator's ruling, 2026-10-30, set the rest aside: *"icebox using
+go/bubbletea in a separate repo as a poc"* (mirrored on
+[harleypig/mailctl#259][go-ruling]). Parked 2026-10-30.
+
+**What was deferred:** a small terminal client written in Go with Bubble
+Tea, in a repository of its own, that starts `mailctl-api`, speaks its
+JSON-RPC 2.0 over stdin and stdout, and drives a few methods, such as
+`filter.list` and `mail.search`.
+
+**Why it is worth having.** [ADR 0008][go-adr8] makes the API the
+interface a client in any language uses. A Python TUI tests that through
+a client in the same language as the server; a Go one is the first that
+shares nothing with mailctl but the protocol, so it shows the API is
+enough on its own.
+
+**Why not now.** The Python TUI is the client being built, and a second
+one before it would chase an API that its first slice is still shaping.
+It is a proof of concept, not a product: nothing here depends on it.
+
+[go-i259]: https://github.com/harleypig/mailctl/issues/259
+[go-ruling]: https://github.com/harleypig/mailctl/issues/259#issuecomment-6527684685
+[go-adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
