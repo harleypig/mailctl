@@ -59,6 +59,13 @@ pytest-venv:
 test: pytest-venv
 	$(PYTEST) $(TESTARGS)
 
+# The TUI (clients/tui/, ADR 0009): its type check and its tests, from its
+# own directory, so its pyproject.toml is the configuration both read. It
+# needs the TUI installed into .venv beside mailctl:
+#   uv pip install -e './clients/tui[dev]'
+testtui: pytest-venv
+	cd clients/tui && ../../.venv/bin/pyright && ../../$(PYTEST) $(TESTARGS)
+
 # Live tests hit a REAL MXroute account and mutate real state. They need the
 # MAILCTL_* credentials in the environment. TESTARGS passes extra flags
 # through to pytest, e.g. a run filter for a scoped pass:
@@ -87,4 +94,4 @@ IMAGE ?= mailctl:dev
 image:
 	docker build -t $(IMAGE) .
 
-.PHONY: default venv install fmt lint typecheck pytest-venv test testlive testcontainer livecheck image
+.PHONY: default venv install fmt lint typecheck pytest-venv test testtui testlive testcontainer livecheck image

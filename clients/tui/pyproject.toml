@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mailctl-tui"
+version = "0.1.0"
+description = "A terminal UI for mailctl, driving it through its API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# mailctl itself is not listed: the TUI imports nothing from it and runs
+# the mailctl-api command it finds on PATH (ADR 0009), so it needs that
+# command installed, not the package in its own environment.
+dependencies = [
+  "textual>=8.2,<9",
+  # Imported for Text, the plain-text renderable; Textual depends on it
+  # and sets the upper bound.
+  "rich>=14.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=1.0,<2",
+]
+
+[project.scripts]
+mailctl-tui = "mailctl_tui.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# No [tool.ruff] here on purpose: without one, ruff takes the repository
+# root's configuration for these files too, so the two packages share one
+# lint and format bar.
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "standard"
+# The repository's one development environment, at the root.
+venvPath = "../.."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

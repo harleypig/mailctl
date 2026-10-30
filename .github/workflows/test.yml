@@ -79,16 +79,48 @@ jobs:
           pip install 'sievelib==1.5.0'
           pytest -q
 
+  # The TUI (clients/tui/, ADR 0009), on the oldest and newest Python the
+  # package supports. mailctl is installed beside it because one of its
+  # tests drives the real API. ruff already covers it, in the Lint job.
+  tui:
+    name: TUI (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.14']
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      # Its pyright configuration resolves imports from the root .venv, as
+      # the Lint job's does.
+      - run: python -m venv .venv
+      - run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - run: pip install -e '.[dev]' -e './clients/tui[dev]'
+      - name: Type check
+        working-directory: clients/tui
+        run: pyright
+      - name: Test
+        working-directory: clients/tui
+        run: pytest -q
+
   # The branch ruleset requires a check named exactly "Test", and a matrix
   # job reports one check per version under its own name. This job is that
-  # one check. always() keeps it from being skipped when a version fails,
-  # since a skipped required check counts as passed.
+  # one check, for the unit tier and the TUI alike. always() keeps it from
+  # being skipped when a version fails, since a skipped required check
+  # counts as passed.
   test:
     name: Test
-    needs: tests
+    needs: [tests, tui]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
       - name: Every Python version passed
         run: test "${{ needs.tests.result }}" = success
+      - name: The TUI passed
+        run: test "${{ needs.tui.result }}" = success

@@ -17,6 +17,7 @@ the [issue tracker][issues], and deliberate "not now" deferrals in
 | [0006](0006-two-layer-component-and-provider-architecture.md) | Two layers: protocol component libraries under per-host providers |
 | [0007](0007-interfaces-utilities-session-provider-layering.md) | Four layers: interfaces, utilities, session, provider (dialect + transport) |
 | [0008](0008-json-rpc-api-interface-for-out-of-process-clients.md) | A JSON-RPC API over stdio, so a UI in any language can drive the core |
+| [0009](0009-python-textual-tui-as-a-separate-package.md) | The TUI is a Python and Textual package in this repository, a client of the API |
 
 [madr]: https://adr.github.io/madr/
 
