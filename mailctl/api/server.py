@@ -25,7 +25,7 @@ from typing import Any, TextIO
 
 from .. import MailctlError, __version__, engine, json_output, utilities
 from ..config import SIEVE_TLS_MODES, Config, Secret, load_config
-from ..criteria import Criteria, load_filter
+from ..criteria import Criteria, dump_filter, load_filter
 from ..utilities.events import ServerAlert
 from ..utilities.messages import DEFAULT_LIST_LIMIT, SortOrder
 from ..utilities.rules import (
@@ -505,14 +505,37 @@ def filter_list(server: Server, params: Params, _ident: object) -> dict:
 def mail_search(server: Server, params: Params, _ident: object) -> dict:
     """``mail search``: the newest messages in ``folder`` that ``filter``
     (a filter document) or ``raw`` (the host's own query) selects, at most
-    ``limit`` of them (null for all), or in the order ``sort`` names."""
+    ``limit`` of them (null for all), or in the order ``sort`` names.
+
+    ``like`` (``uid``, and ``uidvalidity`` where the UID was listed under
+    one) adds criteria derived from that message in ``folder``, merged
+    with ``filter`` as ``mail search --like`` merges them. With
+    ``build_filter`` true the result is the filter document the criteria
+    make, as ``filter.add.plan`` takes it, and nothing is listed or saved.
+    """
     session, config = server._open()
     folder = params.take("folder", str, config.source_folder)
     document = params.take("filter", dict, None)
     raw = params.take("raw", str, None)
     limit = params.take("limit", int, DEFAULT_LIST_LIMIT, null=None)
     sort = params.take("sort", dict, None)
+    like = params.take("like", dict, None)
+    build_filter = params.take("build_filter", bool, False)
     params.done()
+
+    if raw is not None and (build_filter or like is not None):
+        raise RpcError(
+            INVALID_PARAMS,
+            "'raw' is a query, not criteria; it cannot be combined with "
+            "'like' or 'build_filter'",
+        )
+
+    if sort is not None and build_filter:
+        raise RpcError(
+            INVALID_PARAMS,
+            "'sort' orders a listing; 'build_filter' returns a filter, "
+            "which has no order",
+        )
 
     order = None
 
@@ -523,10 +546,31 @@ def mail_search(server: Server, params: Params, _ident: object) -> dict:
         )
         given.done()
 
+    criteria = None if document is None else filter_criteria(document)
+
+    if like is not None:
+        given = Params(like)
+        uid = given.take("uid", int)
+        uidvalidity = given.take("uidvalidity", int, None)
+        given.done()
+
+        if uid < 1:
+            raise RpcError(INVALID_PARAMS, "'uid' must be at least 1")
+
+        derived = utilities.mail.criteria_like(
+            session, folder, uid, criteria, uidvalidity=uidvalidity
+        )
+        derived.criteria.require_terms()
+        folder, criteria = derived.message.folder, derived.criteria
+
+    if build_filter:
+        # dump_filter refuses an empty set, coded, as the CLI's does.
+        return json.loads(dump_filter(criteria or Criteria()))
+
     listing = utilities.messages.list_messages(
         session,
         folder,
-        criteria=None if document is None else filter_criteria(document),
+        criteria=criteria,
         raw=raw,
         limit=limit,
         order=order,

@@ -460,6 +460,106 @@ def test_mail_search_refuses_what_the_utility_refuses_and_a_wrong_type(start):
 
 
 # ----------------------------------------------------------------------------
+def test_mail_search_like_finds_mail_like_a_message(start):
+    """Red if ``like`` is not taken, or derives nothing from the message."""
+    client = initialized(start)
+    result = client.request("mail.search", {"like": {"uid": 1}})["result"]
+
+    assert [item["uid"] for item in result["messages"]] == [1]
+
+
+# ----------------------------------------------------------------------------
+def test_mail_search_like_merges_with_a_filter_as_the_cli_does(start):
+    """A header the filter gives replaces what was derived for it, and
+    its ``match`` governs: red if ``like`` overrides the filter, or the
+    two are not merged at all."""
+    client = initialized(start)
+    merged = client.request(
+        "mail.search", {"like": {"uid": 2}, "filter": GITHUB_FILTER}
+    )["result"]
+    built = client.request(
+        "mail.search",
+        {"like": {"uid": 2}, "filter": GITHUB_FILTER, "build_filter": True},
+    )["result"]
+
+    assert [item["uid"] for item in merged["messages"]] == [1]
+    assert built == GITHUB_FILTER
+
+
+# ----------------------------------------------------------------------------
+def test_mail_search_builds_the_filter_add_takes_and_saves_nothing(start):
+    """Red if ``build_filter`` lists messages instead, returns anything
+    but the filter document, or writes."""
+    client = initialized(start)
+    built = client.request(
+        "mail.search", {"like": {"uid": 2}, "build_filter": True}
+    )["result"]
+
+    assert built == {
+        "version": 1,
+        "criteria": {
+            "match": "any",
+            "compare": "contains",
+            "terms": [{"header": "From", "value": "boss@example.com"}],
+        },
+    }
+    assert [
+        item["name"]
+        for item in client.request("filter.list")["result"]["filters"]
+    ] == ["keep-boss"]
+
+    plan = client.request(
+        "filter.add.plan",
+        {"filter": built, "actions": {"move_to": "INBOX.Boss"}},
+    )["result"]
+
+    assert plan["document"]["plan"]["criteria"] == built["criteria"]
+
+
+# ----------------------------------------------------------------------------
+def test_mail_search_like_refuses_a_uid_from_a_renumbered_folder(start):
+    client = initialized(start, uidvalidity={"INBOX": 7})
+    stale = {"like": {"uid": 2, "uidvalidity": 6}}
+
+    assert refusal(client.request("mail.search", stale))["code"] == (
+        "uidvalidity_changed"
+    )
+    assert refusal(
+        client.request("mail.search", {**stale, "build_filter": True})
+    )["code"] == ("uidvalidity_changed")
+
+
+# ----------------------------------------------------------------------------
+def test_mail_search_like_and_build_filter_refuse_what_the_cli_refuses(start):
+    """A UID below 1, a UID the folder lacks, no criteria to build from,
+    and the combinations ``mail search`` refuses: ``raw`` with ``like``
+    or ``build_filter``, and ``sort`` with ``build_filter``."""
+    client = initialized(start)
+
+    def error(params: dict) -> dict:
+        return client.request("mail.search", params)["error"]
+
+    assert error({"like": {"uid": 0}})["code"] == -32602
+    assert error({"like": {}})["code"] == -32602
+    assert error({"like": {"uid": 1, "folder": "x"}})["code"] == -32602
+    assert (
+        "uid 9"
+        in refusal(client.request("mail.search", {"like": {"uid": 9}}))[
+            "message"
+        ]
+    )
+    assert refusal(client.request("mail.search", {"build_filter": True}))[
+        "code"
+    ] == ("no_criteria")
+    assert error({"raw": "ALL", "like": {"uid": 1}})["code"] == -32602
+    assert error({"raw": "ALL", "build_filter": True})["code"] == -32602
+    assert (
+        error({"sort": {"key": "size"}, "build_filter": True})["code"]
+        == -32602
+    )
+
+
+# ----------------------------------------------------------------------------
 def test_mail_view_returns_one_message(start):
     client = initialized(start)
     message = client.request("mail.view", {"uid": 2})["result"]["message"]
