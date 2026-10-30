@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from mailctl import MailctlError
+from mailctl import config as config_module
 from mailctl.cli import build_parser, configure, error_text
 from mailctl.config import (
     CONFIG_FILE,
@@ -195,6 +196,45 @@ def test_an_empty_secret_from_the_prompter_is_refused():
 
     with pytest.raises(MailctlError, match="no password available"):
         config.password()
+
+
+# ----------------------------------------------------------------------------
+def test_a_forgotten_prompted_password_is_asked_for_again():
+    """What a front-end does when the server refused the answer."""
+    calls = []
+    config = Config(prompter=lambda _p: calls.append(1) or MARKER)
+
+    config.password()
+    config.forget_prompted_password()
+    config.password()
+
+    assert len(calls) == 2
+
+
+# ----------------------------------------------------------------------------
+def test_a_password_from_anywhere_but_the_prompt_is_not_forgotten(
+    monkeypatch,
+):
+    """Asking again cannot change it, and a password command run again
+    could have side effects, so it is kept as resolved."""
+    runs = []
+
+    def command(argv):
+        runs.append(1)
+
+        return Secret(MARKER)
+
+    monkeypatch.setattr(config_module, "run_password_command", command)
+    config = Config(
+        password_cmd="pass show mail",
+        prompter=lambda _p: pytest.fail("the prompt was reached"),
+    )
+
+    first = config.password()
+    config.forget_prompted_password()
+
+    assert config.password() is first
+    assert len(runs) == 1
 
 
 # ----------------------------------------------------------------------------

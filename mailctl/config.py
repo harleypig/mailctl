@@ -511,6 +511,20 @@ class Config:
         return self._password
 
     # ------------------------------------------------------------------------
+    def forget_prompted_password(self) -> None:
+        """Drop a password the prompt supplied, so the next connection asks
+        again; a server that refused it would otherwise refuse every retry.
+
+        One from a file, a command, or a setting is kept: asking again
+        cannot change it, and re-running a command could have side effects.
+        """
+        origin = self._password_origin
+
+        if origin is not None and origin.kind == PROMPT:
+            self._password = None
+            self._password_origin = None
+
+    # ------------------------------------------------------------------------
     def _resolve_source(self, kind: str, value: str | Secret) -> Secret:
         """Turn one ``(kind, value)`` source into a credential."""
         if isinstance(value, Secret):

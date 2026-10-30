@@ -78,7 +78,8 @@ def imap_session(
             f"IMAP authentication failed for {config.user!r} (password "
             f"{config.password_state()}). MXRoute expects the FULL "
             f"email address as the username, e.g. you@yourdomain.com. "
-            f"[{exc.reason}]"
+            f"[{exc.reason}]",
+            code="auth_failed",
         ) from exc
 
     except ImapTLSError as exc:

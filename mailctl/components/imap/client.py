@@ -209,6 +209,20 @@ class ImapSession:
         except LoginError as exc:
             raise ImapAuthenticationError(self.username, str(exc)) from exc
 
+        except UnicodeEncodeError:
+            # imaplib sends LOGIN's arguments as ASCII, and its error names
+            # the character it could not encode and where -- one of the
+            # password's, unless the username is the one. So the error is
+            # neither quoted nor chained, or a traceback would show it.
+            which = "username" if not self.username.isascii() else "password"
+
+            raise MailctlError(
+                f"the {which} holds a character outside ASCII, and IMAP's "
+                f"LOGIN sends ASCII only, so nothing was sent",
+                code="credentials_not_ascii",
+                fields={"which": which},
+            ) from None
+
         except ssl.SSLError as exc:
             raise ImapTLSError(
                 f"TLS failure against {where} -- {exc}."

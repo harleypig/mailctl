@@ -106,6 +106,27 @@ def test_an_unexpected_failure_under_json_is_a_json_line(monkeypatch, capsys):
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize("machine", [[], ["--json"]])
+def test_an_unexpected_failure_names_its_type_and_not_its_text(
+    monkeypatch, capsys, machine
+):
+    """An exception nothing expected may carry anything: imaplib's
+    encoding error quoted a character of the password it could not send."""
+
+    def fail(args):
+        raise RuntimeError(SENTINEL)
+
+    monkeypatch.setattr(cli, "cmd_folders", fail)
+
+    assert cli.main(["folder", "list", *machine]) == 1
+
+    captured = capsys.readouterr()
+
+    assert "unexpected RuntimeError" in captured.err
+    assert SENTINEL not in captured.out + captured.err
+
+
+# ----------------------------------------------------------------------------
 def test_an_interrupt_under_json_is_a_json_line(monkeypatch, capsys):
     def interrupted(args):
         raise KeyboardInterrupt

@@ -39,6 +39,14 @@ ENHANCEMENTS:
 
 BUG FIXES:
 
+* **A password with a character outside ASCII no longer shows part of
+  itself** ([#258]). IMAP's login sends ASCII only, and the error it
+  raised named the character it could not send, which mailctl printed as
+  an unexpected failure. It is now refused before anything is sent,
+  saying the password holds such a character and quoting none of it. An
+  unexpected failure is now reported by its type alone; `--debug` still
+  shows the traceback.
+
 * **`mail mark` reads a long list of messages a page at a time** ([#261]).
   Given many UIDs, `mail mark` read all their flags in one request, which
   could make a command longer than an IMAP server is asked to accept.
