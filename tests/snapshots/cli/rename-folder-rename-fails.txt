@@ -44,6 +44,8 @@ mailctl: could not rename folder 'INBOX.Lists' to 'INBOX.Archive' -- NO [INUSE]
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('checkscript',)
 ('logout',)
 --- imap calls

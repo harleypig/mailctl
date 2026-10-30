@@ -25,6 +25,8 @@ Uploaded and activated filter set 'managesieve'
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('checkscript',)
 ('putscript', 'managesieve', 'require ["fileinto","imap4flags"];\n# rule:[The boss]\nif header :contains "from" "boss@example.com"\n{\n\tfileinto "INBOX.Boss";\n\tsetflag "\\\\Flagged";\n\tstop;\n}\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter"\n{\n\tfileinto "INBOX.Noise";\n\tstop;\n}\n')
 ('setactive', 'managesieve')

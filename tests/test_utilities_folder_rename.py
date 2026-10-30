@@ -300,6 +300,24 @@ def test_a_checkscript_refusal_stops_before_any_write(
 
 
 # ----------------------------------------------------------------------------
+def test_a_changed_filter_set_stops_the_rename_before_any_write(
+    live, sieve, mailbox, imap_config
+):
+    """Red if the rename uploads the plan's script over an edit made since
+    (#257), or wraps the refusal so its code is lost."""
+    planned = plan(live)
+    sieve.script += "# rule:[made-elsewhere]\r\nif true { keep; }\r\n"
+
+    with pytest.raises(MailctlError) as caught:
+        execute_folder_rename(live, imap_config, planned)
+
+    assert caught.value.code == "filterset_changed"
+    assert "rename_folder" not in mailbox.names()
+    assert "check_script" not in sieve.names()
+    assert "put_script" not in sieve.names()
+
+
+# ----------------------------------------------------------------------------
 def test_a_rename_refused_by_the_server_uploads_nothing(
     live, sieve, mailbox, imap_config
 ):

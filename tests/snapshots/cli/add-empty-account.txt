@@ -33,6 +33,7 @@ Mail already delivered was not touched; to act on it, run 'mailctl filter apply'
 ('connect',)
 ('listscripts',)
 ('listscripts',)
+('listscripts',)
 ('checkscript',)
 ('putscript', 'mailctl', 'require ["fileinto"];\n\n# rule:[from-noreply-github-com]\nif anyof (header :contains "From" "noreply@github.com") {\n    fileinto "INBOX.Lists";\n    stop;\n}\n')
 ('setactive', 'mailctl')

@@ -58,6 +58,8 @@ Checked after the rename:
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('checkscript',)
 ('putscript', 'managesieve', 'require ["fileinto"];\n# rule:[lists]\nif header :contains "list-id" "lists.example.com"\n{\n\tfileinto "INBOX.Archive";\n\tstop;\n}\n# my own note\n# rule:[keep-boss]\nif header :contains "from" "boss@example.com"\n{\n\tfileinto "INBOX.Boss";\n}\n# rule:[github]\nif false # header :contains "from" "noreply@github.com"\n{\n\tfileinto "INBOX.Archive.GitHub";\n}\n')
 ('setactive', 'managesieve')

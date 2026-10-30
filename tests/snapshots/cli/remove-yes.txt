@@ -31,6 +31,8 @@ Uploaded and activated filter set 'managesieve'
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('checkscript',)
 ('putscript', 'managesieve', 'require ["fileinto", "imap4flags"];\n\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter" {\n    fileinto "INBOX.Noise";\n    stop;\n}\n')
 ('setactive', 'managesieve')
