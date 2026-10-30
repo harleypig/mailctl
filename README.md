@@ -648,7 +648,7 @@ mailctl folder rename Lists/Old Lists/Archive
 Folder names are normalized against the server's own: `Lists/GitHub` and
 `INBOX.Lists.GitHub` name the same folder. `INBOX` cannot be renamed, and
 the new name must not exist yet. A name that differs from an existing
-folder only in case is refused by `create-folder` and `rename-folder`.
+folder only in case is refused by `folder create` and `folder rename`.
 
 ### Manage the filters
 
@@ -744,17 +744,17 @@ this account:
   migration — or any other capability or endpoint changed.
 
 The baseline **records and never decides**. Nothing refuses to run because
-of drift; `check-baseline` reports it, and `mailctl server test` adds one line
-saying whether there is any. Refreshing the baseline is `save-baseline`
-again, which shows what changed and the file's diff and asks first
-(`--yes` skips the question, `--dry-run` stops before it).
+of drift; `server baseline check` reports it, and `mailctl server test` adds
+one line saying whether there is any. Refreshing the baseline is `server
+baseline save` again, which shows what changed and the file's diff and asks
+first (`--yes` skips the question, `--dry-run` stops before it).
 
-`check-baseline` exits **0** with no drift, **3** with informational drift
-only, and **4** with serious drift, so a scheduled run can alert on either;
-**1** is a failure (no baseline saved, one that cannot be read, no
+`server baseline check` exits **0** with no drift, **3** with informational
+drift only, and **4** with serious drift, so a scheduled run can alert on
+either; **1** is a failure (no baseline saved, one that cannot be read, no
 connection). `--json` prints the report as a versioned document, and
-`show-baseline`, which does not contact the server, prints the saved file
-as it is with `--json`.
+`server baseline show`, which does not contact the server, prints the saved
+file as it is with `--json`.
 
 The file is `$XDG_CONFIG_HOME/mailctl/baselines/<host>.json`, one per
 `host` setting, written mode 0600 in a directory created 0700. What
