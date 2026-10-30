@@ -37,6 +37,14 @@ ENHANCEMENTS:
   The rules are those before the command: the later one wins, and a bare
   `--env-file` just before the action is refused with exit status 2,
   naming the action as a command, not a file.
+* **The API names what the rename from `mxfilter` left behind**
+  ([#307]). `initialize`'s result gains `old_name`, telling a client what
+  the command line warns about on stderr: each old `MXROUTE_*` setting
+  set without its `MAILCTL_*` name, with the new name and where it was
+  found, and the old config directory while it exists and the new one
+  does not, pointing at `config migrate`. It sends names and places only;
+  no old value is read, so none is sent. With nothing left behind,
+  `settings` is `[]` and `config_dir` is `null`.
 
 BUG FIXES:
 
@@ -73,6 +81,17 @@ BUG FIXES:
   uploading and stops if it differs at all, sending nothing and naming
   `mailctl filterset show` to see it; run the command again to plan
   against what is there now.
+* **A switch of the active filter set after a change was planned is no
+  longer undone** ([#308]). The check above compared only the filter
+  set being changed. A change planned against the filter set that was
+  active made it active again on upload, so a switch made in between by
+  another client was silently reversed; and a change planned for a filter
+  set that was not active went live if another client had activated it
+  meanwhile. Every command that changes a filter set now also stops when
+  the active filter set differs from the one the plan was made against,
+  sending nothing, backing nothing up, and keeping the switch, and names
+  `mailctl filterset list` to see which is active. The refusal is the
+  same `filterset_changed` as above.
 
 ## 0.12.0
 
@@ -1611,3 +1630,5 @@ NOTES:
 [#265]: https://github.com/harleypig/mailctl/issues/265
 [#243]: https://github.com/harleypig/mailctl/issues/243
 [#242]: https://github.com/harleypig/mailctl/issues/242
+[#307]: https://github.com/harleypig/mailctl/issues/307
+[#308]: https://github.com/harleypig/mailctl/issues/308
