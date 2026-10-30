@@ -559,7 +559,12 @@ scan"`. The pages above do not say what counts as repository activity, and
 do not say whether GitHub sends a notice before or after disabling a
 workflow; check both before building anything on either.
 
+The general case, a cadence check that catches any scheduled workflow GitHub
+disabled for inactivity, is tracked as
+[Harleypig-LLC/dotagents#2342][da2342].
+
 [gh-disable]: https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows
 [gh-schedule]: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
+[da2342]: https://github.com/Harleypig-LLC/dotagents/issues/2342
 [i238]: https://github.com/harleypig/mailctl/issues/238
 [i264]: https://github.com/harleypig/mailctl/issues/264
