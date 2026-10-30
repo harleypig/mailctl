@@ -51,12 +51,19 @@ async def test_lists_the_filters_as_the_document_has_them(scene):
         await settle(pilot, lambda: len(cells(app)) == 2)
 
         assert cells(app) == [
-            ["1", "all-lists", "To contains '@lists.example.com'", "stop"],
+            [
+                "1",
+                "all-lists",
+                "To contains '@lists.example.com'",
+                "files the message into a folder; stops",
+                "stop",
+            ],
             [
                 "2",
                 "announce",
                 "To contains 'announce@lists.example.com' AND "
                 "Subject is 'news' | 'update'",
+                "files the message into a folder",
                 "disabled",
             ],
         ]
@@ -66,6 +73,38 @@ async def test_lists_the_filters_as_the_document_has_them(scene):
         )
 
     assert scene.seen()["methods"][:2] == ["initialize", "filter.list"]
+
+
+# ----------------------------------------------------------------------------
+async def test_what_a_filter_does_is_its_steps_never_its_actions(scene):
+    """``actions`` are the host's own words and never shown; ``steps`` are
+    worded here, an unknown action's own name escaped. A document from an
+    API without ``steps`` shows the column empty. Break: word the column
+    from ``actions`` and this goes red."""
+    item = {
+        **FILTERS["filters"][0],
+        "actions": ["fileinto", "addflag", "vnd.x\x1b"],
+        "steps": [
+            {"kind": "file", "argument": "INBOX.Lists", "creates": True},
+            {"kind": "flag", "argument": "\\Seen", "creates": False},
+            {"kind": "other", "argument": "vnd.x\x1b", "creates": False},
+        ],
+    }
+    older = {key: value for key, value in item.items() if key != "steps"}
+    scene.write(
+        capabilities={},
+        filters={**FILTERS, "filters": [item, older], "findings": []},
+    )
+    app = scene.app()
+
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(pilot, lambda: len(cells(app)) == 2)
+
+        assert [row[3] for row in cells(app)] == [
+            "files the message into 'INBOX.Lists', creating it if it is "
+            "missing; adds the flag \\Seen; does 'vnd.x\\x1b'",
+            "",
+        ]
 
 
 # ----------------------------------------------------------------------------

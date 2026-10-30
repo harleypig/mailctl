@@ -1,15 +1,18 @@
-"""The TUI: mailctl's filters on one screen, read through its API.
+"""The TUI: mailctl's filters, its mail, and a filter added like a
+message, read and changed through its API.
 
 Presentation only (ADR 0008, ADR 0009). It starts ``mailctl-api`` with
 whatever arguments it was given beyond its own, calls ``initialize``, and
-shows the document ``filter.list`` returns. Every fact on the screen is
-one of the API's documents rendered, never worked out here.
+shows the document ``filter.list`` returns; the other screens are in
+:mod:`.screens`. Every fact on the screen is one of the API's documents
+rendered, never worked out here.
 """
 
 import argparse
 import asyncio
 import shlex
 import sys
+from collections.abc import Callable
 from typing import ClassVar
 
 from rich.text import Text
@@ -29,7 +32,9 @@ from textual.widgets import (
 )
 
 from .client import ApiClient, ApiError, ApiGone, Declined
-from .offer import COMMANDS, offered
+from .offer import COMMANDS, FILTERS, bindings, offered
+from .render import alert_line, condition, failure, findings, marks, steps
+from .screens import SearchScreen
 from .text import one_line
 
 __all__ = ["MailctlApp", "PasswordScreen", "main"]
@@ -100,17 +105,15 @@ class PasswordScreen(ModalScreen[str | None]):
 
 
 class MailctlApp(App[None]):
-    """The filter list, the server's alerts, and a password prompt."""
+    """The filter list, the server's alerts, and a password prompt; the
+    search, the message, and adding a filter are screens over it."""
 
     TITLE = "mailctl"
     # The palette's own commands are not ours to gate, so it is off: every
     # command reaches the user through offer.COMMANDS.
     ENABLE_COMMAND_PALETTE = False
 
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding(command.key, command.action, command.description)
-        for command in COMMANDS
-    ]
+    BINDINGS: ClassVar[list[BindingType]] = [*bindings(FILTERS)]
 
     DEFAULT_CSS = """
     #status {
@@ -141,6 +144,10 @@ class MailctlApp(App[None]):
     def __init__(self, command: list[str], env: dict[str, str] | None = None):
         super().__init__()
         self.capabilities: dict = {}
+        self.filter_names: list[str] = []
+        # Where an ``event`` notification goes: the screen carrying a plan
+        # out, while it does.
+        self.event_sink: Callable[[dict], None] | None = None
         self.client = ApiClient(
             command,
             on_notification=self.on_api_notification,
@@ -160,17 +167,20 @@ class MailctlApp(App[None]):
     # ------------------------------------------------------------------------
     def on_mount(self) -> None:
         table = self.query_one("#filters", DataTable)
-        table.add_columns("#", "Filter", "When", "Marks")
+        table.add_columns("#", "Filter", "When", "Does", "Marks")
         self.start()
 
     # ------------------------------------------------------------------------
     def check_action(
         self, action: str, parameters: tuple[object, ...]
     ) -> bool | None:
-        """Hide a command the provider's capabilities do not allow."""
+        """Hide a command the provider's capabilities do not allow, and the
+        filter list's own commands while another screen is over it."""
         for command in COMMANDS:
-            if command.action == action:
-                return offered(command, self.capabilities)
+            if command.screen == FILTERS and command.action == action:
+                return offered(command, self.capabilities) and (
+                    len(self.screen_stack) == 1
+                )
 
         return True
 
@@ -214,6 +224,7 @@ class MailctlApp(App[None]):
     def show_filters(self, document: dict) -> None:
         """Lay out ``filter.list``'s document, as it is."""
         filters = document.get("filters", [])
+        self.filter_names = [str(item.get("name", "")) for item in filters]
         name = one_line(str(document.get("filterset") or ""))
         table = self.query_one("#filters", DataTable)
         table.clear()
@@ -223,6 +234,7 @@ class MailctlApp(App[None]):
                 Text(str(item.get("position", ""))),
                 Text(one_line(str(item.get("name", "")))),
                 Text(condition(item)),
+                Text(steps(item)),
                 Text(marks(item)),
             )
 
@@ -236,7 +248,12 @@ class MailctlApp(App[None]):
             )
 
         self.query_one("#findings", Static).update(
-            Text(findings(document.get("findings", [])))
+            Text(
+                findings(
+                    document.get("findings", []),
+                    "Filters that cannot fire where they are:",
+                )
+            )
         )
 
     # ------------------------------------------------------------------------
@@ -249,19 +266,37 @@ class MailctlApp(App[None]):
         await self.load_filters()
 
     # ------------------------------------------------------------------------
+    def action_search(self) -> None:
+        self.push_screen(SearchScreen())
+
+    # ------------------------------------------------------------------------
+    def back_to_filters(self) -> None:
+        """Close every screen over the filter list and read it again, as a
+        change has just been saved."""
+        while len(self.screen_stack) > 1:
+            self.pop_screen()
+
+        self.reload()
+
+    # ------------------------------------------------------------------------
     async def action_quit(self) -> None:
         await self.client.close()
         self.exit()
 
     # ------------------------------------------------------------------------
     def on_api_notification(self, method: str, params: dict) -> None:
-        """``server.alert`` is shown as it arrives; the API sends each
-        once per session, so each is shown once."""
-        if method != "server.alert":
+        """``server.alert`` is shown as it arrives, whichever screen is
+        up; the API sends each once per session, so each is shown once. An
+        ``event`` goes to the screen carrying a plan out."""
+        document = params.get("document", {})
+
+        if method == "event" and self.event_sink is not None:
+            self.event_sink(document if isinstance(document, dict) else {})
+
+        if method != "server.alert" or not isinstance(document, dict):
             return
 
-        alert = params.get("document", {}).get("alert", {})
-        words = alert_line(alert)
+        words = alert_line(document.get("alert", {}))
         log = self.query_one("#alerts", RichLog)
         log.add_class("shown")
         log.write(Text(words))
@@ -294,89 +329,6 @@ class MailctlApp(App[None]):
     # ------------------------------------------------------------------------
     async def on_unmount(self) -> None:
         await self.client.close()
-
-
-# ############################################################################
-# Rendering a document's fields
-# ############################################################################
-
-
-# ----------------------------------------------------------------------------
-def condition(item: dict) -> str:
-    """A filter's tests on one line, as the CLI's ``filter list`` words
-    them: header, match type, keys, joined by the filter's combinator."""
-    tests = item.get("tests", [])
-    unmodelled = [one_line(str(name)) for name in item.get("unmodelled", [])]
-
-    if not tests and unmodelled:
-        return f"({', '.join(unmodelled)} -- not modelled)"
-
-    joiner = " OR " if item.get("combinator") == "anyof" else " AND "
-    parts = [
-        f"{one_line(str(test.get('header', '')))} "
-        f"{one_line(str(test.get('match_type', '')))} "
-        + " | ".join(repr(one_line(str(key))) for key in test.get("keys", []))
-        for test in tests
-    ]
-    line = joiner.join(parts) or "(no condition)"
-
-    if unmodelled:
-        line += f"  [+ {', '.join(unmodelled)}: not modelled]"
-
-    return line
-
-
-# ----------------------------------------------------------------------------
-def marks(item: dict) -> str:
-    words = []
-
-    if item.get("disabled"):
-        words.append("disabled")
-
-    if item.get("stops"):
-        words.append("stop")
-
-    return ", ".join(words)
-
-
-# ----------------------------------------------------------------------------
-def findings(items: list) -> str:
-    """The filters that cannot fire, decided ones marked ``!`` and
-    suspected ones ``?``, as the CLI shows them."""
-    if not items:
-        return ""
-
-    lines = ["Filters that cannot fire where they are:"]
-
-    for item in items:
-        certain = item.get("certainty") == "certain"
-        mark, verb = ("!", "never runs") if certain else ("?", "may never run")
-        narrow = one_line(str(item.get("narrow", "")))
-        reason = one_line(str(item.get("reason", "")))
-        lines.append(f"  {mark} {narrow!r} {verb} -- {reason}")
-
-    return "\n".join(lines)
-
-
-# ----------------------------------------------------------------------------
-def alert_line(alert: dict) -> str:
-    kind = one_line(str(alert.get("kind", "alert")))
-    channel = one_line(str(alert.get("channel", "mail")))
-    text = one_line(str(alert.get("text", "")))
-
-    return f"{kind.capitalize()} from the {channel} server: {text}"
-
-
-# ----------------------------------------------------------------------------
-def failure(exc: ApiError | ApiGone) -> str:
-    """An error as the API worded it; its message names no front-end's
-    control, so it reads right here (ADR 0008 *Errors keep their codes*)."""
-    if isinstance(exc, ApiError):
-        message = exc.data.get("message") or exc.message
-
-        return f"mailctl refused: {one_line(str(message))}"
-
-    return one_line(str(exc))
 
 
 # ############################################################################
