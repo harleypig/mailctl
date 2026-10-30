@@ -15,7 +15,8 @@ API says. ``STUB_SCENE`` names a JSON file holding:
   SHA-256 is this one;
 - ``listing``: the ``mail.search`` document, and ``like``: what
   ``mail.search`` returns for ``like`` with ``build_filter``; null or
-  absent refuses those parameters, as an API without them does;
+  absent refuses those parameters, as an API without them does, and
+  ``like_refusal`` refuses with that -32602 message instead;
 - ``message``: the ``mail.view`` document;
 - ``plan``: the ``filter.add.plan`` document, kept under the id ``p-1``;
 - ``events`` and ``result``: the ``event`` documents
@@ -68,14 +69,12 @@ def refusal(ident: object, message: str, code: str) -> dict:
 
 
 # ----------------------------------------------------------------------------
-def invalid_params(ident: object, names: list[str]) -> dict:
+def invalid_params(ident: object, message: str) -> dict:
+    """A -32602 as mailctl/api/server.py words one: no data."""
     return {
         "jsonrpc": "2.0",
         "id": ident,
-        "error": {
-            "code": -32602,
-            "message": f"unknown parameter(s) {', '.join(names)}",
-        },
+        "error": {"code": -32602, "message": message},
     }
 
 
@@ -163,8 +162,17 @@ def main() -> int:
             result = scene["filters"]
 
         elif method == "mail.search" and "build_filter" in params:
+            if scene.get("like_refusal"):
+                send(invalid_params(ident, scene["like_refusal"]))
+
+                continue
+
             if scene.get("like") is None:
-                send(invalid_params(ident, ["build_filter", "like"]))
+                send(
+                    invalid_params(
+                        ident, "unknown parameter(s) build_filter, like"
+                    )
+                )
 
                 continue
 

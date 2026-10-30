@@ -64,8 +64,13 @@ FILTER_VERSION = 1
 SEARCH_HEADERS = ("From", "Subject")
 FORM_HEADERS = ("From", "To", "Subject", "List-Id")
 
-# The API's code for a parameter it does not take (JSON-RPC's own).
+# The API's code for parameters it refuses (JSON-RPC's own), and how its
+# refusal of a parameter it does not know begins (mailctl/api/server.py,
+# ``Params.done``). Only that refusal, naming a ``like`` parameter, means
+# an API from before ``like``; any other is a refusal to show.
 INVALID_PARAMS = -32602
+UNKNOWN_PARAMETERS = "unknown parameter(s) "
+LIKE_PARAMETERS = ("like", "build_filter")
 
 
 # ############################################################################
@@ -429,7 +434,7 @@ async def like_filter(
         document = await app.client.request("mail.search", params)
 
     except ApiError as exc:
-        if exc.code == INVALID_PARAMS:
+        if predates_like(exc):
             return None, (
                 "This mailctl cannot fill a filter in from a message yet, "
                 "so the criteria are empty."
@@ -446,6 +451,20 @@ async def like_filter(
         return None, "mailctl sent no filter for this message."
 
     return document, "Filled in from the message, as mailctl reads it."
+
+
+# ----------------------------------------------------------------------------
+def predates_like(exc: ApiError) -> bool:
+    """Whether ``exc`` is an API from before ``like`` refusing it as a
+    parameter it does not know, rather than refusing what was sent."""
+    if exc.code != INVALID_PARAMS or not exc.message.startswith(
+        UNKNOWN_PARAMETERS
+    ):
+        return False
+
+    named = exc.message.removeprefix(UNKNOWN_PARAMETERS).split(", ")
+
+    return any(name in LIKE_PARAMETERS for name in named)
 
 
 # ############################################################################

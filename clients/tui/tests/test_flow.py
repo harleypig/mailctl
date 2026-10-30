@@ -288,6 +288,37 @@ async def test_an_api_without_like_opens_an_empty_form_and_says_so(scene):
 
 
 # ----------------------------------------------------------------------------
+async def test_any_other_invalid_parameter_is_shown_as_the_api_said(scene):
+    """A -32602 from a current API is a refusal of what was sent, shown in
+    its own words, never an empty form passed off as "not yet". Break: take
+    every -32602 for an older API and this goes red."""
+    scene.flow(like_refusal="'uid' must be at least 1")
+    app = scene.app()
+
+    async with app.run_test(size=SIZE) as pilot:
+        await open_form(pilot, app)
+
+        assert shown(app, ".note") == (
+            "mailctl refused: 'uid' must be at least 1"
+        )
+
+
+# ----------------------------------------------------------------------------
+async def test_an_unknown_parameter_other_than_like_is_a_refusal(scene):
+    """Only an unknown ``like`` or ``build_filter`` means an older API.
+    Break: test the message's prefix alone and this goes red."""
+    scene.flow(like_refusal="unknown parameter(s) colour")
+    app = scene.app()
+
+    async with app.run_test(size=SIZE) as pilot:
+        await open_form(pilot, app)
+
+        assert shown(app, ".note") == (
+            "mailctl refused: unknown parameter(s) colour"
+        )
+
+
+# ----------------------------------------------------------------------------
 async def test_plan_decide_execute(scene):
     """The plan is shown as the document has it; saving sends the plan's
     id and nothing else; each step is shown as it arrives, then where the
