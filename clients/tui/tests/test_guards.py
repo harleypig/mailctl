@@ -21,6 +21,14 @@ from conftest import FILTERS, SIZE, settle
 from mailctl_tui import app as app_module
 from mailctl_tui.app import MailctlApp, PasswordScreen
 from mailctl_tui.offer import COMMANDS, Command, offered
+from mailctl_tui.offer import FILTERS as FILTER_LIST
+from mailctl_tui.screens import (
+    AddScreen,
+    Gated,
+    MessageScreen,
+    PlanScreen,
+    SearchScreen,
+)
 from textual.binding import Binding
 
 PACKAGE = Path(mailctl_tui.__file__).parent
@@ -139,18 +147,32 @@ def test_the_import_guard_lets_the_tuis_own_name_through():
 # ############################################################################
 
 
+SCREENS = (SearchScreen, MessageScreen, AddScreen, PlanScreen)
+
+
+# ----------------------------------------------------------------------------
+def screen_of(widget) -> str:
+    return FILTER_LIST if issubclass(widget, MailctlApp) else widget.SCREEN
+
+
 # ----------------------------------------------------------------------------
 def stray_bindings(*classes) -> list[str]:
-    """Every binding on ``classes`` whose action is not an offered
-    command's, by class and key."""
-    commands = {command.action for command in COMMANDS}
+    """Every binding on ``classes`` that is not one of its own screen's
+    commands, with that command's key, by class and key."""
     stray = []
 
     for widget in classes:
+        screen = screen_of(widget)
+        commands = {
+            (command.key, command.action)
+            for command in COMMANDS
+            if command.screen == screen
+        }
+
         for binding in widget.BINDINGS:
             assert isinstance(binding, Binding)
 
-            if binding.action not in commands:
+            if (binding.key, binding.action) not in commands:
                 stray.append(f"{widget.__name__}: {binding.key}")
 
     return stray
@@ -158,7 +180,30 @@ def stray_bindings(*classes) -> list[str]:
 
 # ----------------------------------------------------------------------------
 def test_every_binding_is_an_offered_command():
-    assert stray_bindings(MailctlApp) == []
+    assert stray_bindings(MailctlApp, *SCREENS) == []
+
+
+# ----------------------------------------------------------------------------
+def test_every_screen_is_gated_and_named():
+    """A screen outside ``Gated`` would run its keys untested."""
+    screens = {widget.SCREEN for widget in SCREENS}
+
+    assert all(issubclass(widget, Gated) for widget in SCREENS)
+    assert {command.screen for command in COMMANDS} == screens | {FILTER_LIST}
+
+
+# ----------------------------------------------------------------------------
+def test_the_binding_guard_catches_another_screens_command():
+    """A key from the filter list bound on the search screen is stray
+    there. Break: compare actions alone and this goes red."""
+
+    class Planted(SearchScreen):
+        BINDINGS = [  # noqa: RUF012 -- a class built to break the guard
+            *SearchScreen.BINDINGS,
+            Binding("s", "search", "Search mail"),
+        ]
+
+    assert stray_bindings(Planted) == ["Planted: s"]
 
 
 # ----------------------------------------------------------------------------
@@ -191,13 +236,25 @@ def test_the_password_screen_binds_only_its_own_cancel():
 
 # ----------------------------------------------------------------------------
 def test_offered_reads_the_capability_and_fails_closed():
-    command = Command("m", "mark", "Mark", requires="mark")
+    command = Command(FILTER_LIST, "m", "mark", "Mark", requires="mark")
 
     assert offered(command, {"mark": True})
     assert not offered(command, {"mark": False})
     assert not offered(command, {})
     assert not offered(command, {"mark": "yes"})
-    assert offered(Command("r", "reload", "Reload"), {})
+    assert offered(Command(FILTER_LIST, "r", "reload", "Reload"), {})
+
+
+# ----------------------------------------------------------------------------
+def test_offered_reads_the_actions_list_and_fails_closed():
+    command = Command(
+        FILTER_LIST, None, "move_to", "Move", needs_action="fileinto"
+    )
+
+    assert offered(command, {"actions": ["fileinto", "flag"]})
+    assert not offered(command, {"actions": ["flag"]})
+    assert not offered(command, {})
+    assert not offered(command, {"actions": "fileinto"})
 
 
 # ----------------------------------------------------------------------------
@@ -209,7 +266,7 @@ async def test_a_command_is_hidden_unless_its_capability_is_declared(
 
     Break: have ``check_action`` return True for every action and the
     first half goes red."""
-    planted = Command("m", "mark", "Mark", requires="mark")
+    planted = Command(FILTER_LIST, "m", "mark", "Mark", requires="mark")
     monkeypatch.setattr(app_module, "COMMANDS", (*COMMANDS, planted))
 
     class Planted(MailctlApp):
