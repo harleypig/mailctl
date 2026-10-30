@@ -5,11 +5,17 @@ for ``IMAPClient`` at the module boundary -- it is never a stand-in for
 anything mailctl owns, so a test that passes against it is still testing
 mailctl's logic rather than its own mock.
 
-Two hazards this file exists to remove:
+Three hazards this file exists to remove:
 
 * The real user's ``config.toml`` and ``MAILCTL_*`` variables would
   otherwise leak into ``load_config`` and make the resolution-order tests
   depend on the machine they run on.
+* The terminal would otherwise shape argparse's output: ``PYTHON_COLORS``
+  or ``FORCE_COLOR`` colour it from 3.14, and an exported ``COLUMNS``
+  rewraps every help page, so the CLI snapshots, recorded uncoloured at 80
+  columns, would pass or fail by shell. ``isolated_environment`` removes
+  the first two, sets ``NO_COLOR``, and pins ``COLUMNS`` to 80 (#241 -
+  exported COLUMNS).
 * A test that forgot to patch ``IMAPClient`` would open a socket. The
   ``no_network`` fixture below turns that into an immediate named failure
   rather than a slow, flaky pass against a real host.
