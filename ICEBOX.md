@@ -527,3 +527,44 @@ Python it supports: either pass `suggest_on_error` explicitly to every
 keeps the contract stable; the second gives users the hint.
 
 [argparse-315]: https://docs.python.org/3.15/library/argparse.html#suggest-on-error
+
+## The weekly image scan stopping after 60 quiet days
+
+`ICEBOX:` scheduled workflow disabled, inactivity, 60 days, cron stopped,
+schedule stopped running, image scan, trivy, keep-alive, workflow
+auto-disabled, scan ran recently, stale scan — **trigger: the repository has
+been quiet for about 60 days, or GitHub reports the workflow disabled.**
+
+In a public repository GitHub turns a scheduled workflow off automatically
+once the repository has seen no activity for 60 days ([disabling and
+enabling a workflow][gh-disable]; [the `schedule` event][gh-schedule], both
+read 2026-10-30). The *Image scan* workflow
+(`.github/workflows/image-scan.yml`) runs weekly on cron `17 6 * * 1`, so
+that it reports a CVE published against the unchanged base image
+([harleypig/mailctl#264][i264]). Once disabled, those weekly runs stop and
+nothing in this repository fails or warns. Parked 2026-10-30.
+
+**What was deferred:** a keep-alive that stops the workflow being disabled,
+or a check that fails or warns when the last scan is too old.
+
+**Why not now.** The repository is active, and any pull request or push to
+`master` that touches the image's inputs runs the scan anyway, schedule or
+not. The scan is also report-only and not a required check
+([harleypig/mailctl#238][i238]), so a missed week costs a late report, never
+a wrong merge.
+
+**Turning it back on** is documented as a manual step: **Enable workflow** on
+the workflow's Actions page, the REST API, or `gh workflow enable "Image
+scan"`. The pages above do not say what counts as repository activity, and
+do not say whether GitHub sends a notice before or after disabling a
+workflow; check both before building anything on either.
+
+The general case, a cadence check that catches any scheduled workflow GitHub
+disabled for inactivity, is tracked as
+[Harleypig-LLC/dotagents#2342][da2342].
+
+[gh-disable]: https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows
+[gh-schedule]: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
+[da2342]: https://github.com/Harleypig-LLC/dotagents/issues/2342
+[i238]: https://github.com/harleypig/mailctl/issues/238
+[i264]: https://github.com/harleypig/mailctl/issues/264
