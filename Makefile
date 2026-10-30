@@ -54,8 +54,10 @@ pytest-venv:
 	  exit 1; \
 	}
 
+# TESTARGS passes flags through, as for the tiers below, e.g.
+#   make test TESTARGS='-k sieve'
 test: pytest-venv
-	$(PYTEST)
+	$(PYTEST) $(TESTARGS)
 
 # Live tests hit a REAL MXroute account and mutate real state. They need the
 # MAILCTL_* credentials in the environment. TESTARGS passes extra flags

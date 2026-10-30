@@ -16,10 +16,11 @@ from .folders import same_folder
 
 # UIDs per IMAP command. Every UID goes into the command line, and servers
 # cap line length -- RFC 7162 section 4 asks clients to keep command lines
-# under 8192 octets. 250 UIDs of up to ten digits plus separators is about
-# 2.7 KB, leaving room for a long folder name. Kept well below the default
-# --max-messages (500) so the two stay independent: the cap is a policy on
-# how much to touch, this is transport and never the user's concern.
+# under 8192 octets. That budget is the only limit on this number: 250 UIDs
+# of up to ten digits plus separators is about 2.7 KB, leaving room for a
+# long folder name. Chunking is safe whatever --max-messages is, above or
+# below this: the cap is a policy on how much to touch, this is transport
+# and never the user's concern.
 #
 # ICEBOX: 2026-10-28 -- UID range compression (sequence-set ranges, "1:600"
 # instead of "1,2,...,600", collapse contiguous UIDs, shorter command line,

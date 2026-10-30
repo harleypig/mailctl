@@ -14,8 +14,8 @@ What turns them red:
   wrong marker;
 - a target losing what it passes: `testlive` its `MAILCTL_LIVE=1`,
   `testcontainer` its `MAILCTL_CONTAINER=1` or `tests/container`, either
-  its `-v` or `TESTARGS`: the venv test sees different arguments or
-  environment;
+  its `-v`, or any of the three `TESTARGS`: the venv test sees different
+  arguments or environment;
 - a target swallowing pytest's exit status: the failing stand-in test
   sees make succeed.
 """
@@ -33,10 +33,9 @@ MAKE = shutil.which("make")
 REFUSAL = ".venv/bin/pytest not found"
 
 # target -> (the arguments its pytest gets, the gate it sets). TESTARGS is
-# given to every target as `-k probe`; `test` takes none, so it must not
-# pass it on.
+# given to every target as `-k probe`, and every target passes it on.
 TARGETS = {
-    "test": ("", ""),
+    "test": ("-k probe", ""),
     "testlive": ("-v -k probe", "MAILCTL_LIVE=1"),
     "testcontainer": ("-v tests/container -k probe", "MAILCTL_CONTAINER=1"),
 }
