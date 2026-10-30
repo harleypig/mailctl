@@ -220,5 +220,6 @@ def execute_restore(
         plan.before,
         plan.after,
         on_event,
+        active=plan.active,
         activate=plan.activate,
     )

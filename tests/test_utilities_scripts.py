@@ -167,6 +167,85 @@ def test_a_filter_set_created_since_the_plan_is_refused(imap_config, tmp_path):
     assert "put_script" not in fake.names()
 
 
+# ############################################################################
+# The active filter set switched between plan and execute (#308)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("kind", sorted(SCRIPT_PLANS))
+def test_an_active_filter_set_switched_since_the_plan_is_refused_unsent(
+    kind, sessions, imap_config, fake_sieve, tmp_path
+):
+    """Red if an execute path checks only the named filter set's bytes:
+    the plan made the set it edits active, so the upload would make it
+    active again and undo the switch another client made, and nothing
+    would say so."""
+    imap_config.backup_dir = tmp_path / "backups"
+    plan = SCRIPT_PLANS[kind](sessions, imap_config)
+
+    assert plan.active == "managesieve"
+
+    fake_sieve.active = "elsewhere"
+    fake_sieve.others = ["managesieve"]
+    fake_sieve.calls.clear()
+
+    with pytest.raises(MailctlError) as caught:
+        _execute(sessions, imap_config, plan)
+
+    assert caught.value.code == "filterset_changed"
+    assert "put_script" not in fake_sieve.names()
+    assert "set_active" not in fake_sieve.names()
+    assert not (tmp_path / "backups").exists()
+
+
+# ----------------------------------------------------------------------------
+def test_a_filter_set_activated_since_a_plan_made_with_none_is_refused(
+    imap_config, tmp_path
+):
+    """With nothing active the plan activates the set it creates; one
+    another client activated meanwhile would be switched off for it."""
+    imap_config.backup_dir = tmp_path / "backups"
+    fake = FakeSieveSession(active=None)
+    session = mxroute(sieve=fake)
+    request = RuleRequest(criteria(), ActionSpec(discard=True))
+    folder = utilities.folders.plan_folder(session, imap_config, None)
+    plan = utilities.rules.plan_rule(session, imap_config, request, folder)
+
+    assert plan.activate
+
+    fake.active = "elsewhere"
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.rules.execute_script_change(session, imap_config, plan)
+
+    assert caught.value.code == "filterset_changed"
+    assert "put_script" not in fake.names()
+    assert "set_active" not in fake.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_set_edited_while_another_runs_is_refused_once_it_runs(
+    sessions, imap_config, fake_sieve, tmp_path
+):
+    """A plan for a set that does not run says the edit is not live; once
+    another client activates that set, it would go live unannounced."""
+    imap_config.backup_dir = tmp_path / "backups"
+    fake_sieve.others = ["other"]
+    plan = utilities.rules.plan_removal(sessions, "keep-boss", script="other")
+
+    assert (plan.active, plan.activate) == ("managesieve", False)
+
+    fake_sieve.active = "other"
+    fake_sieve.others = ["managesieve"]
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.rules.execute_script_change(sessions, imap_config, plan)
+
+    assert caught.value.code == "filterset_changed"
+    assert "put_script" not in fake_sieve.names()
+
+
 # ----------------------------------------------------------------------------
 def test_the_refusal_names_the_filter_set_and_the_cli_how_to_see_it(
     sessions, fake_sieve
@@ -176,11 +255,35 @@ def test_the_refusal_names_the_filter_set_and_the_cli_how_to_see_it(
     fake_sieve.script += EDIT
 
     with pytest.raises(MailctlError) as caught:
-        utilities.scripts.require_unchanged(sessions, "managesieve", "")
+        utilities.scripts.require_unchanged(
+            sessions, "managesieve", "", "managesieve"
+        )
 
     assert error_text(caught.value) == (
         "the filter set 'managesieve' changed on the server after this "
         "change was planned, so nothing was sent and the change made there "
         "is kept. Plan the change again against what it holds now. "
         "'mailctl filterset show managesieve' shows it."
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_switch_refusal_says_what_ran_and_the_cli_how_to_see_it(
+    sessions, fake_sieve
+):
+    """Red if the switch is refused in words that point at one filter
+    set's text, which would not show it, rather than at the listing."""
+    fake_sieve.active = "elsewhere"
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.scripts.require_unchanged(
+            sessions, "managesieve", fake_sieve.script, "managesieve"
+        )
+
+    assert error_text(caught.value) == (
+        "the active filter set changed on the server after this change was "
+        "planned (it was 'managesieve' then and is 'elsewhere' now), so "
+        "nothing was sent and the switch made there is kept. Plan the "
+        "change again against what it runs now. 'mailctl filterset list' "
+        "shows it."
     )

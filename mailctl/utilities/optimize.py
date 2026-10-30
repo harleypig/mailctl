@@ -526,5 +526,6 @@ def execute_optimize(
         plan.before,
         plan.after,
         on_event,
+        active=plan.active,
         activate=plan.activate,
     )

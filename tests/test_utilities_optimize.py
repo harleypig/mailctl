@@ -452,6 +452,27 @@ def test_a_rearrangement_of_a_changed_filter_set_is_refused_unsent(
 
 
 # ----------------------------------------------------------------------------
+def test_a_rearrangement_after_the_active_set_switched_is_refused_unsent(
+    trio, imap_config, tmp_path
+):
+    """Red if ``execute_optimize`` does not hand the plan's active filter
+    set to the check: the upload would activate the plan's set again and
+    undo the switch another client made (#308)."""
+    imap_config.backup_dir = tmp_path / "backups"
+    session = mxroute(sieve=trio)
+    plan = plan_optimize(session)
+    trio.active = "elsewhere"
+    trio.others = ["managesieve"]
+
+    with pytest.raises(MailctlError) as caught:
+        execute_optimize(session, imap_config, plan)
+
+    assert caught.value.code == "filterset_changed"
+    assert "put_script" not in trio.names()
+    assert "set_active" not in trio.names()
+
+
+# ----------------------------------------------------------------------------
 def test_a_rejected_rearrangement_leaves_the_backup(
     trio, imap_config, tmp_path
 ):

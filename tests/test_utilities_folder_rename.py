@@ -318,6 +318,26 @@ def test_a_changed_filter_set_stops_the_rename_before_any_write(
 
 
 # ----------------------------------------------------------------------------
+def test_a_switched_active_filter_set_stops_the_rename_before_any_write(
+    live, sieve, mailbox, imap_config
+):
+    """Red if the rename does not hand the plan's active filter set to the
+    check: it would repoint the rules of a set that no longer runs, and
+    activate it again over the switch made since (#308)."""
+    planned = plan(live)
+    sieve.active = "elsewhere"
+    sieve.others = ["managesieve"]
+
+    with pytest.raises(MailctlError) as caught:
+        execute_folder_rename(live, imap_config, planned)
+
+    assert caught.value.code == "filterset_changed"
+    assert "rename_folder" not in mailbox.names()
+    assert "put_script" not in sieve.names()
+    assert "set_active" not in sieve.names()
+
+
+# ----------------------------------------------------------------------------
 def test_a_rename_refused_by_the_server_uploads_nothing(
     live, sieve, mailbox, imap_config
 ):

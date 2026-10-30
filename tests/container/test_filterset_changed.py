@@ -81,3 +81,59 @@ def test_add_refuses_a_filter_set_edited_after_it_was_planned(
         folders = [name for _, _, name in client.list_folders()]
 
     assert "Lists.GitHub" not in folders
+
+
+# What another client makes active while mailctl's plan waits (#308).
+ELSEWHERE = (
+    '# rule:[elsewhere]\nif header :contains "subject" "x"\n{\n\tkeep;\n}\n'
+)
+
+
+# ----------------------------------------------------------------------------
+def test_add_refuses_after_another_client_switched_the_active_filter_set(
+    account, monkeypatch
+):
+    """Red if ``filter add`` checks only the planned filter set's bytes:
+    the upload would store the merge in ``managesieve`` and make it active
+    again, undoing the switch the other client made, and a backup would be
+    on disk. Red too if the target folder is created before the refusal."""
+    account.seed_script("managesieve", ROUNDCUBE)
+    account.seed_script("elsewhere", ELSEWHERE, activate=False)
+
+    execute = utilities.rules.execute_script_change
+
+    def switch_then_execute(*args, **kwargs):
+        with account.sieve() as client:
+            assert client.setactive("elsewhere"), "SETACTIVE refused"
+
+        return execute(*args, **kwargs)
+
+    monkeypatch.setattr(
+        utilities.rules, "execute_script_change", switch_then_execute
+    )
+
+    result = account.run(
+        "filter",
+        "add",
+        "--from",
+        "noreply@github.com",
+        "--name",
+        "github",
+        "--move-to",
+        "Lists/GitHub",
+        "--create-folder",
+    )
+
+    assert result.code != 0
+    assert "the active filter set changed on the server" in result.err
+    assert "'mailctl filterset list' shows it." in result.err
+    assert account.active_script() == "elsewhere"
+    assert account.script_bytes("managesieve") == ROUNDCUBE.encode()
+    assert not account.backup_dir.exists() or not any(
+        account.backup_dir.iterdir()
+    )
+
+    with account.imap() as client:
+        folders = [name for _, _, name in client.list_folders()]
+
+    assert "Lists.GitHub" not in folders

@@ -237,6 +237,7 @@ def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
         "managesieve",
         CRLF_SCRIPT,
         'require ["fileinto"];\r\n',
+        active="managesieve",
         activate=True,
     )
 
