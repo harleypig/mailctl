@@ -16,9 +16,17 @@ import pytest
 from cli_support import command_parsers
 
 from mailctl import MailctlError, cli, engine, json_output
-from mailctl.config import Config, Secret
+from mailctl.config import (
+    ENV_FILE,
+    ENVIRONMENT,
+    Config,
+    LegacySetting,
+    Secret,
+    Source,
+)
 from mailctl.providers.base import FolderCreation
 from mailctl.utilities import events
+from mailctl.utilities.migration import ConfigDirPending
 
 SENTINEL = "s3ntinel-VALUE-never-shown-151"
 
@@ -445,4 +453,46 @@ def test_an_execute_result_names_what_it_did_and_where_the_backup_is():
             "activated": True,
             "backup": "/b/managesieve.sieve",
         },
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_old_name_carries_names_and_places_and_null_for_no_directory():
+    """Red if a finding loses its new name or its place, or the directory
+    is reported where there is none to report (#307)."""
+    found = [
+        LegacySetting(
+            "MXROUTE_PASSWORD",
+            "MAILCTL_PASSWORD",
+            Source(ENV_FILE, "MXROUTE_PASSWORD", Path("/x/mailctl.env")),
+        ),
+        LegacySetting(
+            "MXROUTE_HOST", "MAILCTL_HOST", Source(ENVIRONMENT, "MXROUTE_HOST")
+        ),
+    ]
+
+    assert json_output.old_name(found, None) == {
+        "settings": [
+            {
+                "old": "MXROUTE_PASSWORD",
+                "new": "MAILCTL_PASSWORD",
+                "where": "env file",
+                "path": "/x/mailctl.env",
+            },
+            {
+                "old": "MXROUTE_HOST",
+                "new": "MAILCTL_HOST",
+                "where": "environment",
+                "path": None,
+            },
+        ],
+        "config_dir": None,
+    }
+
+    pending = ConfigDirPending(Path("/c/mxfilter"), Path("/c/mailctl"))
+
+    assert json_output.old_name([], pending)["config_dir"] == {
+        "old": "/c/mxfilter",
+        "new": "/c/mailctl",
+        "operation": "config migrate",
     }
