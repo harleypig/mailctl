@@ -17,6 +17,12 @@ ENHANCEMENTS:
 
 BUG FIXES:
 
+* **`mail mark` reads a long list of messages a page at a time** ([#261]).
+  Given many UIDs, `mail mark` read all their flags in one request, which
+  could make a command longer than an IMAP server is asked to accept.
+  It now reads them 250 at a time, as listing and `mail senders` already
+  did. What it marks, and what it prints, are unchanged.
+
 * **A filter matching any of several values now keeps one ending in `\"`
   whole under sievelib 1.5** ([#242]). With sievelib 1.5 installed,
   mailctl dropped that value's closing quote whenever it wrote the filter
@@ -1555,5 +1561,6 @@ NOTES:
 [#208]: https://github.com/harleypig/mailctl/issues/208
 [#212]: https://github.com/harleypig/mailctl/issues/212
 [#204]: https://github.com/harleypig/mailctl/issues/204
+[#261]: https://github.com/harleypig/mailctl/issues/261
 [#243]: https://github.com/harleypig/mailctl/issues/243
 [#242]: https://github.com/harleypig/mailctl/issues/242

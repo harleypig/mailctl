@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from .. import MailctlError
 from ..engine import Session
+from .messages import LIST_PAGE
 from .rules import require_capability
 from .uids import check_uidvalidity, require_pinnable
 
@@ -175,9 +176,14 @@ def plan_mark(
     folder = session.dialect.normalize(folder, transport.list_folders())
     validity = check_uidvalidity(session, folder, uidvalidity)
 
+    # A page per FETCH keeps a long UID list inside the command-length
+    # budget RFC 7162 section 4 recommends, as every other bulk read does.
     held = {
         item.summary.uid: item.summary.flags
-        for item in transport.fetch_summaries(wanted, folder)
+        for start in range(0, len(wanted), LIST_PAGE)
+        for item in transport.fetch_summaries(
+            wanted[start : start + LIST_PAGE], folder
+        )
     }
     missing = [uid for uid in wanted if uid not in held]
 
