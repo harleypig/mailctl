@@ -2731,20 +2731,7 @@ def cmd_add(args) -> int:
         )
 
         if args.json:
-            return emit_json(
-                args,
-                json_output.plan(
-                    "filter add",
-                    **json_output.change(plan.before != plan.after, plan.diff),
-                    filter=plan.name,
-                    criteria=criteria.to_dict(),
-                    actions=json_output.actions(spec),
-                    folder=json_output.folder_plan(folder),
-                    missing_extensions=list(missing),
-                    placement=json_output.placement(plan.placement),
-                    **json_output.activation(plan),
-                ),
-            )
+            return emit_json(args, json_output.add_plan(plan, spec, missing))
 
         print(f"\nFilter {plan.name!r} in filter set {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")

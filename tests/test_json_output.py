@@ -9,12 +9,16 @@ commands offer --json at all.
 
 import argparse
 import json
+from dataclasses import fields, is_dataclass
+from pathlib import Path
 
 import pytest
 from cli_support import command_parsers
 
-from mailctl import MailctlError, cli, json_output
-from mailctl.config import Secret
+from mailctl import MailctlError, cli, engine, json_output
+from mailctl.config import Config, Secret
+from mailctl.providers.base import FolderCreation
+from mailctl.utilities import events
 
 SENTINEL = "s3ntinel-VALUE-never-shown-151"
 
@@ -243,3 +247,181 @@ def test_a_report_for_a_person_offers_none():
 # ----------------------------------------------------------------------------
 def test_search_offers_uids_only():
     assert "uids_only" in dests(command_parsers()["mail search"])
+
+
+# ############################################################################
+# The documents the API adds
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_an_error_carries_its_fields_as_plain_json_and_only_when_given():
+    """The CLI never passes fields, so its failure line is as it was."""
+    assert json_output.error("gone") == {
+        "version": json_output.JSON_VERSION,
+        "error": {"message": "gone"},
+    }
+
+    document = json_output.error(
+        "changed",
+        "filterset_changed",
+        {
+            "arguments": ("managesieve",),
+            "where": Path("/x/y"),
+            "known": frozenset({"b", "a"}),
+            "count": 3,
+        },
+    )
+
+    assert document["error"]["fields"] == {
+        "arguments": ["managesieve"],
+        "where": "/x/y",
+        "known": ["a", "b"],
+        "count": 3,
+    }
+    assert json.loads(json_output.dumps(document)) == document
+
+
+# ----------------------------------------------------------------------------
+def test_a_secret_in_an_error_field_is_still_refused():
+    document = json_output.error("x", "y", {"value": Secret(SENTINEL)})
+
+    with pytest.raises(TypeError, match="credential"):
+        json_output.dumps(document)
+
+
+# ----------------------------------------------------------------------------
+def test_the_capabilities_name_every_field_the_provider_declares():
+    """Red if a capability is added to the record and not to the
+    document: a client would never be offered it."""
+    offer = engine.capabilities_for(Config())
+    document = json_output.capabilities(offer)
+
+    assert set(document) == {item.name for item in fields(offer)}
+    assert json.loads(json_output.dumps(document)) == document
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("record", "expected"),
+    [
+        (
+            events.ScriptBackedUp("managesieve", Path("/b/managesieve.sieve")),
+            {
+                "kind": "filterset_backed_up",
+                "filterset": "managesieve",
+                "path": "/b/managesieve.sieve",
+            },
+        ),
+        (
+            events.ScriptUploaded("managesieve", True),
+            {
+                "kind": "filterset_uploaded",
+                "filterset": "managesieve",
+                "activated": True,
+            },
+        ),
+        (
+            events.FolderCreated(FolderCreation("INBOX.Lists", False, "NO")),
+            {
+                "kind": "folder_created",
+                "folder": "INBOX.Lists",
+                "subscribed": False,
+                "subscribe_error": "NO",
+                "by_subscription": True,
+            },
+        ),
+        (
+            events.FolderCreated(FolderCreation("INBOX.Lists", True)),
+            {
+                "kind": "folder_created",
+                "folder": "INBOX.Lists",
+                "subscribed": True,
+                "subscribe_error": None,
+                "by_subscription": True,
+            },
+        ),
+        (
+            events.FolderRenamed("INBOX.A", "INBOX.B", 2),
+            {
+                "kind": "folder_renamed",
+                "old": "INBOX.A",
+                "new": "INBOX.B",
+                "children": 2,
+            },
+        ),
+        (
+            events.SubscriptionChanged("INBOX.B", False),
+            {
+                "kind": "subscription_changed",
+                "folder": "INBOX.B",
+                "subscribed": False,
+            },
+        ),
+    ],
+)
+def test_every_event_has_a_document(record, expected):
+    assert json_output.event(record) == {
+        "version": json_output.JSON_VERSION,
+        "event": expected,
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_every_event_type_is_mapped():
+    """Derived from the module, so an event added there without a mapping
+    is caught here rather than by a client's first change."""
+    kinds = [
+        value
+        for name in events.__all__
+        if isinstance(value := getattr(events, name), type)
+        and is_dataclass(value)
+        and value is not events.ServerAlert
+    ]
+
+    assert len(kinds) == 5
+
+    for kind in kinds:
+        record = kind(*(None for _ in fields(kind)))
+
+        try:
+            json_output.event(record)
+
+        except AttributeError:
+            # Mapped: the mapping read a field the placeholder lacks.
+            continue
+
+        except TypeError as error:
+            pytest.fail(f"{kind.__name__} has no event mapping: {error}")
+
+
+# ----------------------------------------------------------------------------
+def test_an_alert_is_tagged_with_its_channel_in_the_user_facing_noun():
+    alert = events.ServerAlert("Mailbox is 95% full", "alert")
+
+    assert json_output.alert(events.RULES, alert)["alert"] == {
+        "channel": "filter",
+        "kind": "alert",
+        "text": "Mailbox is 95% full",
+    }
+    assert json_output.alert(events.MAIL, alert)["alert"]["channel"] == "mail"
+
+
+# ----------------------------------------------------------------------------
+def test_an_execute_result_names_what_it_did_and_where_the_backup_is():
+    record = argparse.Namespace(
+        name="github", script="managesieve", activate=True
+    )
+
+    assert json_output.script_change_result(
+        "filter add", record, Path("/b/managesieve.sieve")
+    ) == {
+        "version": json_output.JSON_VERSION,
+        "result": {
+            "command": "filter add",
+            "filter": "github",
+            "filterset": "managesieve",
+            "activated": True,
+            "backup": "/b/managesieve.sieve",
+        },
+    }
