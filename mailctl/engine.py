@@ -16,9 +16,15 @@ The session never touches a protocol. It works against one ``Provider``
 asks which provider it has: what it does around each call -- connect,
 serialise, re-connect -- it reads from the transport interface's own
 classification of that call.
+
+A session that lives long has halves that sit idle, and a server may log
+an idle client out. So before a write on a half that has been idle, the
+session sends that half's probe -- a read, and so retried on a fresh
+connection -- and the write goes out on a connection known to be live.
 """
 
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any, cast
@@ -30,6 +36,7 @@ from .providers.base import (
     READ,
     RULES,
     TRANSPORT_KINDS,
+    WRITE,
     Dialect,
     Operation,
     Progress,
@@ -40,6 +47,20 @@ from .providers.base import (
     refuse,
 )
 from .providers.registry import provider_for
+
+# Seconds a half may go without an exchange before a write on it is
+# preceded by its probe. Far under any logout the protocols allow -- IMAP's
+# autologout is at least 30 minutes (RFC 9051 section 5.4) -- and under a
+# typical NAT's idle timeout, yet longer than a command's own reads take to
+# reach its write, so a write made at once costs no extra round trip.
+IDLE_PROBE_AFTER = 60.0
+
+# Each half's probe, by name, as the transport interface declares it.
+PROBES: dict[str, str] = {
+    cast(str, operation.half): name
+    for name, operation in TRANSPORT_KINDS.items()
+    if operation.probe
+}
 
 # ############################################################################
 # The session
@@ -57,7 +78,9 @@ class Session:
     it may have landed; the failure is the caller's to report.
 
     ``rules`` and ``mail`` say which halves this session may connect; a
-    half it may not behaves as one that is not there.
+    half it may not behaves as one that is not there. ``idle_after`` is
+    how many seconds of ``clock`` a connected half may go without an
+    exchange before a write on it is preceded by the half's probe.
     """
 
     # ------------------------------------------------------------------------
@@ -68,6 +91,8 @@ class Session:
         *,
         rules: bool = True,
         mail: bool = True,
+        idle_after: float = IDLE_PROBE_AFTER,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.provider = provider
         self.connection = transport
@@ -75,6 +100,9 @@ class Session:
         self._allowed = {RULES: rules, MAIL: mail}
         self._locks = {RULES: threading.RLock(), MAIL: threading.RLock()}
         self._opened: list[str] = []
+        self._idle_after = idle_after
+        self._clock = clock
+        self._last_exchange: dict[str, float] = {}
 
     # ------------------------------------------------------------------------
     @property
@@ -134,6 +162,7 @@ class Session:
 
         self.connection.connect(half)
         self._opened.append(half)
+        self._last_exchange[half] = self._clock()
 
     # ------------------------------------------------------------------------
     def _has(self, half: str) -> bool:
@@ -156,16 +185,23 @@ class Session:
         requests at once shares one connection per half, and IMAP and
         ManageSieve are both one command after another. A read the server
         cut off is re-sent once on a fresh connection; a second failure,
-        like any write's, is raised.
+        like any write's, is raised. A write on a half left idle waits for
+        the half's probe first (:meth:`_probe_if_idle`).
         """
         half = cast(str, operation.half)
 
         with self._locks[half]:
+            if operation.kind == WRITE:
+                self._probe_if_idle(half)
+
             for attempt in (1, 2):
                 self._open(half)
 
                 try:
-                    return getattr(self.connection, name)(*args, **kwargs)
+                    result = getattr(self.connection, name)(*args, **kwargs)
+                    self._last_exchange[half] = self._clock()
+
+                    return result
 
                 except Exception as error:
                     if not self.connection.dropped(error):
@@ -181,6 +217,24 @@ class Session:
                         raise
 
         raise AssertionError("unreachable")
+
+    # ------------------------------------------------------------------------
+    def _probe_if_idle(self, half: str) -> None:
+        """Send ``half``'s probe if it is connected and has been idle.
+
+        A dropped connection then surfaces on the probe, which is a read
+        and is sent again on a fresh connection, rather than on the write,
+        which never is. A half not yet connected needs none: its write
+        connects it first.
+        """
+        if half not in self._opened:
+            return
+
+        if self._clock() - self._last_exchange[half] < self._idle_after:
+            return
+
+        probe = PROBES[half]
+        self.call(probe, TRANSPORT_KINDS[probe])
 
     # ------------------------------------------------------------------------
     def close(self) -> None:

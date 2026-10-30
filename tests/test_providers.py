@@ -488,6 +488,9 @@ class FakeTransport(Transport):
     def mail_capabilities(self):
         return list(self.mail_caps)
 
+    def mail_noop(self):
+        pass
+
     def list_folders(self):
         return FolderListing(".", list(self.folders), list(self.subscribed))
 

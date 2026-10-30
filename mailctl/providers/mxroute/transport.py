@@ -215,6 +215,10 @@ class MxrouteTransport(Transport):
         return self._imap().capabilities()
 
     # ------------------------------------------------------------------------
+    def mail_noop(self) -> None:
+        self._imap().noop()
+
+    # ------------------------------------------------------------------------
     def list_folders(self) -> FolderListing:
         imap = self._imap()
 

@@ -668,6 +668,22 @@ class ImapSession:
         return int(status[b"MESSAGES"])
 
     # ------------------------------------------------------------------------
+    def noop(self) -> None:
+        """Send NOOP, which changes nothing, to learn the connection still
+        answers: a server that has logged an idle client out says BYE.
+
+        Nothing cached will do instead -- IMAPClient keeps the capability
+        list it read at login -- so this is one real exchange.
+        """
+        client = self._require_client()
+
+        try:
+            client.noop()
+
+        except IMAPClientError as exc:
+            raise MailctlError(f"NOOP failed -- {exc}") from exc
+
+    # ------------------------------------------------------------------------
     def search_uids(self, criteria: SearchCriteria, folder: str) -> list[int]:
         """Return the UIDs the server matches for ``criteria`` in ``folder``.
 

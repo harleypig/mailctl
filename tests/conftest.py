@@ -385,6 +385,13 @@ class FakeIMAPClient:
         return self.namespace_response
 
     # ------------------------------------------------------------------------
+    def noop(self):
+        self._maybe_fail("noop")
+        self.calls.append(("noop",))
+
+        return (b"NOOP completed", [])
+
+    # ------------------------------------------------------------------------
     def create_folder(self, folder: str) -> None:
         self._maybe_fail("create_folder")
         self.calls.append(("create_folder", folder))
