@@ -13,6 +13,7 @@ from imapclient.exceptions import IMAPClientError
 from mailctl import MailctlError
 from mailctl.utilities import flags
 from mailctl.utilities.flags import FLAGGED, SEEN
+from mailctl.utilities.messages import LIST_PAGE
 
 WRITES = {"add_flags", "remove_flags", "move", "copy", "expunge"}
 
@@ -185,6 +186,27 @@ def test_repeated_uids_are_planned_once(sessions, mailbox):
     plan = flags.plan_mark(sessions, "INBOX", [3, 1, 3], (FLAGGED,), ())
 
     assert [m.uid for m in plan.messages] == [3, 1]
+
+
+# ----------------------------------------------------------------------------
+def test_a_long_uid_list_is_read_a_page_per_fetch(sessions, mailbox):
+    """Red if every UID goes in one FETCH, whose command line can outrun
+    the length budget RFC 7162 section 4 recommends (harleypig/mailctl#261
+    - mark reads in one FETCH)."""
+    count = LIST_PAGE * 2 + 1
+    mailbox.messages = {uid: mail(uid) for uid in range(1, count + 1)}
+
+    plan = flags.plan_mark(
+        sessions, "INBOX", list(range(1, count + 1)), (FLAGGED,), ()
+    )
+
+    fetches = [call[1] for call in mailbox.calls if call[0] == "fetch"]
+
+    assert [len(uids) for uids in fetches] == [LIST_PAGE, LIST_PAGE, 1]
+    assert [uid for uids in fetches for uid in uids] == list(
+        range(1, count + 1)
+    )
+    assert len(plan.messages) == count
 
 
 # ----------------------------------------------------------------------------
