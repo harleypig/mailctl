@@ -170,6 +170,16 @@ where every write path is proved first.
      on `PATH`: refused, naming `.venv/bin/pyright`, with no `.venv` and
      with one that lacks pyright; running the venv's pyright rather than
      `PATH`'s; and failing when pyright fails.
+   - **`make install` and the test targets** (`test_make_install.py`,
+     `test_make_pytest.py`, [#262][i262]) — the same shape, from a copy of
+     the Makefile alone. `make install` with a stand-in `uv` that refuses
+     `uv venv` over an existing `.venv`, as uv does: installing into one
+     that exists, making one where none does, and failing when the install
+     fails. `test`, `testlive`, and `testcontainer` with a stand-in
+     `pytest` on `PATH`: each refused, naming `.venv/bin/pytest`, with no
+     `.venv` and with one that lacks pytest; each running the venv's
+     pytest with its own arguments and gate, passing `TESTARGS` where it
+     takes them; and each failing when pytest fails.
    - The **presentation guard** (`test_core_no_presentation.py`) — no core
      module prints, prompts, or exits, and neither the session nor any
      utility imports a front-end or reads the terminal or the environment.
@@ -527,3 +537,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i219]: https://github.com/harleypig/mailctl/issues/219
 [i241]: https://github.com/harleypig/mailctl/issues/241
 [i244]: https://github.com/harleypig/mailctl/issues/244
+[i262]: https://github.com/harleypig/mailctl/issues/262
