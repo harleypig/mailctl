@@ -525,6 +525,11 @@ diff exactly when it proposes a change, and uploaded nothing
 ([#21][i21]). `uidvalidity` is a third: the newest UID and its
 UIDVALIDITY from one `mail search --json`, a `mail view` pinned to that value,
 and a `mail view` pinned to another, which must be refused ([#204][i204]).
+`reread-bytes` is a fourth: the active filter set read twice by `filterset
+backup --output`, a pause apart, into the run's own temp directory, and the
+two files compared byte for byte; any difference fails it ([#299][i299]). It
+is skipped where `MAILCTL_BACKUP_ROOT` keeps a backup out of that directory.
+Its first run against the real account is [#298][i298].
 
 ## Live-test credentials & safety
 
@@ -624,3 +629,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i257]: https://github.com/harleypig/mailctl/issues/257
 [i258]: https://github.com/harleypig/mailctl/issues/258
 [i294]: https://github.com/harleypig/mailctl/issues/294
+[i298]: https://github.com/harleypig/mailctl/issues/298
+[i299]: https://github.com/harleypig/mailctl/issues/299
