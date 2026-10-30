@@ -4,8 +4,11 @@ default: fmt lint typecheck test
 # setuptools metadata, so there is nothing to compile or bundle (the Build QA
 # dimension is N/A — see .claude/CONVENTIONS.md).
 
+# uv refuses `uv venv` over an existing .venv (exit 2), and a .venv without
+# the dev extra is the checkout `make typecheck` sends people here from, so
+# an existing one is kept and installed into (harleypig/mailctl#262).
 venv:
-	uv venv
+	@test -d .venv || uv venv
 
 install: venv
 	uv pip install -e '.[dev]'
@@ -39,22 +42,34 @@ typecheck:
 	}
 	.venv/bin/pyright
 
-test:
-	pytest
+# The test targets run .venv's pytest, never PATH's: another environment's
+# pytest runs against packages that are not mailctl's (harleypig/mailctl#262,
+# the shape #244 fixed for typecheck above). Each refuses, naming the fix,
+# where .venv lacks it.
+PYTEST := .venv/bin/pytest
+
+pytest-venv:
+	@test -x $(PYTEST) || { \
+	  echo "make: $(PYTEST) not found. The test targets run the pytest in .venv at the repo root, not whichever is first on PATH. Run 'make install', or 'uv pip install -e .[dev]' where .venv already exists." >&2; \
+	  exit 1; \
+	}
+
+test: pytest-venv
+	$(PYTEST)
 
 # Live tests hit a REAL MXroute account and mutate real state. They need the
 # MAILCTL_* credentials in the environment. TESTARGS passes extra flags
 # through to pytest, e.g. a run filter for a scoped pass:
 #   make testlive TESTARGS='-k sieve'
-testlive:
-	MAILCTL_LIVE=1 pytest -v $(TESTARGS)
+testlive: pytest-venv
+	MAILCTL_LIVE=1 $(PYTEST) -v $(TESTARGS)
 
 # The container tier: every write path against a throwaway local Dovecot +
 # Pigeonhole in Docker (tests/container/). Never a real account, so it is
 # safe to run any time Docker is up. TESTARGS passes flags through, e.g.
 #   make testcontainer TESTARGS='-k restore'
-testcontainer:
-	MAILCTL_CONTAINER=1 pytest -v tests/container $(TESTARGS)
+testcontainer: pytest-venv
+	MAILCTL_CONTAINER=1 $(PYTEST) -v tests/container $(TESTARGS)
 
 # Read-only checks against the configured account, as TAP: only read-only
 # subcommands and --dry-run are sent. TESTARGS names the checks to run
@@ -70,4 +85,4 @@ IMAGE ?= mailctl:dev
 image:
 	docker build -t $(IMAGE) .
 
-.PHONY: default venv install fmt lint typecheck test testlive testcontainer livecheck image
+.PHONY: default venv install fmt lint typecheck pytest-venv test testlive testcontainer livecheck image
