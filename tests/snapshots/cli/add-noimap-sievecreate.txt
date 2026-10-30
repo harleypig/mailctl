@@ -43,6 +43,8 @@ warning: no mail connection: assuming delimiter '.', target folder 'INBOX.Lists.
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('checkscript',)
 ('putscript', 'managesieve', 'require ["fileinto", "imap4flags", "mailbox"];\n\n# rule:[keep-boss]\nif header :contains "from" "boss@example.com" {\n    fileinto "INBOX.Boss";\n    setflag "\\\\Flagged";\n    stop;\n}\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter" {\n    fileinto "INBOX.Noise";\n    stop;\n}\n# rule:[from-noreply-github-com]\nif anyof (header :contains "From" "noreply@github.com") {\n    fileinto :create "INBOX.Lists.GitHub";\n    stop;\n}\n')
 ('setactive', 'managesieve')

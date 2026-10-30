@@ -5512,6 +5512,11 @@ ERROR_TEXT = {
         f"{message} '{command_for(fields['operation'])}' moves mail out of "
         f"INBOX by criteria."
     ),
+    "filterset_changed": lambda message, fields: (
+        f"{message} "
+        f"'{command_for(fields['operation'], fields['arguments'])}' shows "
+        f"it."
+    ),
     "rename_not_activated": lambda _, fields: (
         f"{fields['before']} '{command_for(fields['operation'])}' shows which "
         f"filter set is active.{fields['saved']}"

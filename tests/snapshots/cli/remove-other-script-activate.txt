@@ -30,6 +30,8 @@ Uploaded and activated filter set 'spare'
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'spare')
+('listscripts',)
+('getscript', 'spare')
 ('checkscript',)
 ('putscript', 'spare', 'require ["fileinto", "imap4flags"];\n\n')
 ('setactive', 'spare')

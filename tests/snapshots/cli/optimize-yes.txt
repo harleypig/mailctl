@@ -81,6 +81,8 @@ Uploaded and activated filter set 'managesieve'
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('checkscript',)
 ('putscript', 'managesieve', 'require ["fileinto"];\n\n# rule:[Github billing]\nif allof (header :contains "from" "billing@github.com") {\n    fileinto "INBOX.Github.Billing";\n    stop;\n}\n# rule:[Github catchall]\nif allof (header :contains "from" "github.com") {\n    fileinto "INBOX.Github";\n    stop;\n}\n# rule:[Herrschners Spam]\nif allof (header :contains "to" ["herrschners@example.com", "rumble@example.com", "aur-general@lists.example.org"]) {\n    fileinto "Trash";\n    stop;\n}\n# rule:[Old list]\nif false # allof (header :contains "to" "old@example.com")\n{\n    fileinto "Trash";\n    stop;\n}\n# rule:[Any shop]\nif allof (header :matches "from" "*shop*") {\n    fileinto "INBOX.Shops";\n    stop;\n}\n# rule:[Bike shop]\nif allof (header :contains "from" "bikeshop.example") {\n    fileinto "INBOX.Bikes";\n    stop;\n}\n')
 ('setactive', 'managesieve')

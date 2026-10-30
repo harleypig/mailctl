@@ -37,6 +37,18 @@ BUG FIXES:
   could build such a filter, and any change to a filter set already
   holding one wrote it again, `filter disable` included. Under sievelib 1.6
   nothing was wrong, and nothing changes.
+* **A filter set changed after a change was planned is no longer
+  overwritten** ([#257]). Every command that changes a filter set
+  (`filter add`, `filter remove`, `filter move`, `filter enable`, `filter
+  disable`, `filter rename`, `filter optimize`, `folder rename`, and
+  `filterset restore`) read it once, showed
+  what it would change, and then uploaded its result. Anything changed in
+  between -- in the webmail's filter page, by another mailctl run, or by
+  another client -- was overwritten, and the backup held the earlier copy,
+  not what was lost. Each now reads the filter set again just before
+  uploading and stops if it differs at all, sending nothing and naming
+  `mailctl filterset show` to see it; run the command again to plan
+  against what is there now.
 
 ## 0.12.0
 
@@ -1568,6 +1580,7 @@ NOTES:
 [#208]: https://github.com/harleypig/mailctl/issues/208
 [#212]: https://github.com/harleypig/mailctl/issues/212
 [#204]: https://github.com/harleypig/mailctl/issues/204
+[#257]: https://github.com/harleypig/mailctl/issues/257
 [#261]: https://github.com/harleypig/mailctl/issues/261
 [#265]: https://github.com/harleypig/mailctl/issues/265
 [#243]: https://github.com/harleypig/mailctl/issues/243

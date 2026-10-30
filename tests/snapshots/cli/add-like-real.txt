@@ -42,6 +42,8 @@ Mail already delivered was not touched; to act on it, run 'mailctl filter apply'
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('checkscript',)
 ('putscript', 'managesieve', 'require ["fileinto", "imap4flags"];\n\n# rule:[keep-boss]\nif header :contains "from" "boss@example.com" {\n    fileinto "INBOX.Boss";\n    setflag "\\\\Flagged";\n    stop;\n}\n# rule:[bin-the-noise]\nif header :contains "subject" "newsletter" {\n    fileinto "INBOX.Noise";\n    stop;\n}\n# rule:[list-id-dev-lists-example-com]\nif anyof (header :contains "List-Id" "dev.lists.example.com") {\n    fileinto "INBOX.Lists";\n    stop;\n}\n')
 ('setactive', 'managesieve')

@@ -322,6 +322,11 @@ def _interrupted(
     account is in, and how to finish or undo it. Nothing is retried."""
     saved = f" The filter set was backed up to {backup}." if backup else ""
 
+    # Refused before anything was sent, and already saying so; wrapped, it
+    # would lose the code a front-end renders its advice from.
+    if error.code == "filterset_changed":
+        return error
+
     if not renamed:
         return MailctlError(
             f"{error}\nNothing was renamed, and the filter set on the server "

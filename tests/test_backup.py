@@ -224,6 +224,8 @@ def test_the_pre_upload_backup_lands_in_the_config_dir(monkeypatch, tmp_path):
     uploaded = []
 
     session = SimpleNamespace(
+        list_scripts=lambda: ("managesieve", []),
+        get_script=lambda name: CRLF_SCRIPT,
         check_script=lambda content: uploaded.append(("check", content)),
         put_script=lambda name, content: uploaded.append(("put", name)),
         set_active=lambda name: uploaded.append(("active", name)),

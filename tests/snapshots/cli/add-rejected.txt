@@ -33,6 +33,8 @@ mailctl: the server rejected the filter set when checking it; nothing was upload
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('checkscript',)
 ('logout',)
 --- imap calls

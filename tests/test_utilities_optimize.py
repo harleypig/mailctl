@@ -433,6 +433,25 @@ def test_applying_backs_up_first_then_uploads(trio, imap_config, tmp_path):
 
 
 # ----------------------------------------------------------------------------
+def test_a_rearrangement_of_a_changed_filter_set_is_refused_unsent(
+    trio, imap_config, tmp_path
+):
+    """Red if ``execute_optimize`` uploads without reading the filter set
+    again: the rearrangement would overwrite the edit made since (#257)."""
+    imap_config.backup_dir = tmp_path / "backups"
+    session = mxroute(sieve=trio)
+    plan = plan_optimize(session)
+    trio.script += "# rule:[made-elsewhere]\nif true { keep; }\n"
+
+    with pytest.raises(MailctlError) as caught:
+        execute_optimize(session, imap_config, plan)
+
+    assert caught.value.code == "filterset_changed"
+    assert "check_script" not in trio.names()
+    assert "put_script" not in trio.names()
+
+
+# ----------------------------------------------------------------------------
 def test_a_rejected_rearrangement_leaves_the_backup(
     trio, imap_config, tmp_path
 ):
