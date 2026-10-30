@@ -98,12 +98,23 @@ class Params:
         self._values = dict(values)
 
     # ------------------------------------------------------------------------
-    def take(self, name: str, kind: type, default: Any = _ABSENT) -> Any:
-        """``name``'s value, of ``kind``; null or absent is ``default``,
-        and refused where there is none."""
-        value = self._values.pop(name, None)
+    def take(
+        self,
+        name: str,
+        kind: type,
+        default: Any = _ABSENT,
+        *,
+        null: Any = _ABSENT,
+    ) -> Any:
+        """``name``'s value, of ``kind``; absent is ``default``, and refused
+        where there is none. An explicit null is ``null`` where one is
+        given, and otherwise the same as absent."""
+        value = self._values.pop(name, _ABSENT)
 
-        if value is None:
+        if value is None and null is not _ABSENT:
+            return null
+
+        if value is None or value is _ABSENT:
             if default is _ABSENT:
                 raise RpcError(INVALID_PARAMS, f"{name!r} is required")
 
@@ -491,7 +502,7 @@ def mail_search(server: Server, params: Params, _ident: object) -> dict:
     folder = params.take("folder", str, config.source_folder)
     document = params.take("filter", dict, None)
     raw = params.take("raw", str, None)
-    limit = params.take("limit", int, DEFAULT_LIST_LIMIT)
+    limit = params.take("limit", int, DEFAULT_LIST_LIMIT, null=None)
     sort = params.take("sort", dict, None)
     params.done()
 

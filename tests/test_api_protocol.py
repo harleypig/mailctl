@@ -191,6 +191,13 @@ def test_an_error_answer_raises_and_the_end_of_input_is_named():
 
 
 # ----------------------------------------------------------------------------
+def test_null_has_its_own_meaning_only_where_one_is_given():
+    assert Params({"x": None}).take("x", int, 4, null=None) is None
+    assert Params({}).take("x", int, 4, null=None) == 4
+    assert Params({"x": 7}).take("x", int, 4, null=None) == 7
+
+
+# ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
     ("kind", "value"),
     [(int, SENTINEL), (int, True), (str, 3), (bool, SENTINEL), (list, [1])],

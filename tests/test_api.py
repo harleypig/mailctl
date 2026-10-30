@@ -318,6 +318,19 @@ def test_mail_search_finds_what_a_filter_document_selects(start):
 
 
 # ----------------------------------------------------------------------------
+def test_mail_search_lists_every_match_for_a_null_limit_and_20_for_none(start):
+    """Red if an explicit null ``limit`` is read as an absent one (#303)."""
+    many = {str(uid): GITHUB_MAIL for uid in range(1, 26)}
+    client = initialized(start, messages=many)
+
+    every = client.request("mail.search", {"limit": None})["result"]
+    default = client.request("mail.search", {})["result"]
+
+    assert len(every["messages"]) == 25
+    assert len(default["messages"]) == 20
+
+
+# ----------------------------------------------------------------------------
 def test_mail_search_refuses_what_the_utility_refuses_and_a_wrong_type(start):
     client = initialized(start)
 

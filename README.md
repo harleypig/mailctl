@@ -1018,7 +1018,7 @@ tell one refusal from another without reading the message: for example
 | 0 | done, including "nothing to change" |
 | 1 | a failure or a refusal, with the reason on stderr (one JSON line under `--json`) |
 | 2 | the argument parser rejected the command line — an unknown command or flag, a value it cannot read, `--no-subscribe` without `--create-folder`; the message is plain text, even under `--json` |
-| 3, 4 | `check-baseline` only: informational, or serious, drift |
+| 3, 4 | `server baseline check` only: informational, or serious, drift |
 | 130 | interrupted |
 
 ## API
@@ -1089,8 +1089,9 @@ refused. A `?` marks one that may be left out or sent as `null`.
   for `log` notifications.
 * **`mail.search`.** `filter` is a filter document (see *Filter
   documents*), and `raw` a query in the host's own search language.
-  `limit` is the most messages to list, 20 unless given. `sort` is
-  `{"key", "reverse"?}`, with the keys `mail search --sort` takes.
+  `limit` is the most messages to list: 20 unless given, and every
+  match where it is null. `sort` is `{"key", "reverse"?}`, with the
+  keys `mail search --sort` takes.
 * **`filter.add.plan`** takes `filter`, a filter document, and `actions`,
   both required; then `name?`, `filterset?`, `replace?`, `activate?`,
   `create_folder?`, and `subscribe?` (true unless given, and false only
