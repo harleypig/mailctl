@@ -102,7 +102,16 @@ where every write path is proved first.
      refused before any write, and before its flags are read; `mail view` and
      `--like` refusing one, a UID lost in the renumbering included; a plan's
      own value checked again at execute; and reading it costing no SELECT
-     of its own. The fakes they share are `tests/utilities_support.py`.
+     of its own. A filter set changed since the plan ([#257][i257]):
+     `test_utilities_scripts.py` takes every kind of script plan (add,
+     remove, move, switch, rename, restore) and refuses each, coded
+     `filterset_changed`, with nothing sent and no backup of the plan's
+     copy, lets each through unchanged with the server read before the
+     upload begins, and refuses a filter set created since a plan made
+     from none; `test_utilities_optimize.py` refuses a rearrangement, and
+     `test_utilities_folder_rename.py` stops a rename before any write, the
+     code passed through unwrapped. The fakes they share are
+     `tests/utilities_support.py`.
    - **The session** (`test_engine.py`) — only what is about the
      connection: a half opens the first time a utility uses it and never if
      the command did not ask for it; a read the server cut off is sent once
@@ -111,7 +120,13 @@ where every write path is proved first.
      on both halves; calls on one connection wait their turn under the
      session's lock; two sessions share nothing; and every transport
      operation is classified, with each operation's kind pinned so a change
-     of kind is a deliberate diff.
+     of kind is a deliberate diff. The idle preflight ([#258][i258]): each
+     half has one probe and it is a read on that half; a write on a half
+     idle past `IDLE_PROBE_AFTER` sends the probe first (`NOOP` on mail,
+     the script listing on rules), and one soon after an exchange, a half
+     not yet connected, or a second write in a row sends none; an idle half
+     the server dropped reconnects before the write, and a probe the server
+     refused stops it.
    - **Sieve extensions** (`test_extensions.py`) — the emit table checked
      against sievelib's `require` line over every rule shape, and
      `disabled_extensions` refusing, falling back, and doing nothing where
@@ -146,6 +161,54 @@ where every write path is proved first.
      wherever it is the command word and never as an argument ([#219][i219]).
    - **`--json`** (`test_json_output.py`) — a `Secret` refused rather than
      serialised, failures as one JSON line, and which commands offer it.
+     The mappings the API shares ([#258][i258]): an error carrying its
+     fields as plain JSON, and only when given, with a `Secret` among them
+     still refused; an unexpected failure named by its type, never its
+     text; the capabilities naming every field the provider declares; a
+     document for every event type; an alert tagged with its channel in
+     the user-facing noun; and an execute's result naming what it did and
+     where the backup is.
+   - **The API** (`test_api.py`, [#258][i258]) — driven across a real
+     process boundary by a plain line-reading client
+     (`tests/api_support.py`), as a client in any language would drive
+     it. It starts `tests/api_child.py`, the real API with the two protocol
+     clients replaced by doubles that keep their state in a file the test
+     can change between a plan and its execute, and holding only the
+     password's SHA-256. Covered: `initialize` connecting nothing, refusing
+     a bad setting and a second `initialize`, and a method before it;
+     `shutdown` and the end of input both ending the process; what is not
+     a request answered as the specification says; `filter.list`,
+     `mail.search`, and `mail.view` returning their `--json` documents and
+     refusing what the utilities refuse; a plan that writes nothing, runs
+     once, sends its events before its answer, and is refused once
+     discarded, or at execute once the filter set changed; and `log` only
+     where `initialize` asked, `server.alert` always and once per session.
+     The password bar: a sentinel given through `credentials.prompt` logs
+     in on both halves and appears on no line of stdout and nowhere on
+     stderr, `--debug`'s tracebacks included; a login the server refuses,
+     on each half, coded `auth_failed` and quoting nothing; a non-ASCII
+     password logging in on ManageSieve and refused on IMAP as
+     `credentials_not_ascii`, with neither the password nor the encoding
+     error in any output; a declined prompt, a reply that does not parse,
+     and an answer holding no password each refused; the prompt asked again
+     after a decline or a refused login, never for a refused password from
+     a file; and a request sent while the prompt waits answered after it.
+     Parameters: an action the provider will not emit, criteria a delivered
+     message cannot meet, a malformed parameter, and a plan's own content
+     sent to its execute are each refused, every value refusal with a code.
+     And two structural checks: every method but the
+     protocol's own is a CLI command path, a `.plan` with its `.execute`;
+     and the API takes the CLI's connection settings except `--password`.
+   - **The API's framing** (`test_api_protocol.py`) — what is easier to pin
+     in-process: every string `password` a `Secret` as the line is parsed,
+     a line that does not parse refused without quoting it, each message
+     one ASCII line and never carrying a credential, messages arriving
+     while a server-to-client request waits received after it in order, a
+     line that does not parse while an answer waits taken as a decline,
+     no parameter refusal naming the value, no method taking a password,
+     another command's plan refused and left waiting, and a result that
+     cannot be sent answered as an internal error with serving going
+     on.
    - **The ManageSieve wrapper** (`test_managesieve_client.py`) — the real
      `SieveClient` against a scripted socket that replays a server's bytes:
      GETSCRIPT byte-exact whatever the script ends with ([#90][i90]), the
@@ -163,8 +226,10 @@ where every write path is proved first.
    - **Packaging** (`test_packaging.py`, [#229][i229]) — a wheel built from
      a copy of the source with the declared build backend, unpacked, and
      run with nothing from the checkout on the path, so a subpackage left
-     out of it fails here rather than in a user's install. The suite
-     otherwise runs under an editable install, which reads the checkout.
+     out of it fails here rather than in a user's install. The wheel
+     declares both commands, and its `mailctl-api` entry point runs
+     ([#258][i258]). The suite otherwise runs under an editable install,
+     which reads the checkout.
    - **`make typecheck`** (`test_make_typecheck.py`, [#244][i244]) — the
      target run from a copy of the Makefile alone, with a stand-in `pyright`
      on `PATH`: refused, naming `.venv/bin/pyright`, with no `.venv` and
@@ -178,8 +243,8 @@ where every write path is proved first.
      fails. `test`, `testlive`, and `testcontainer` with a stand-in
      `pytest` on `PATH`: each refused, naming `.venv/bin/pytest`, with no
      `.venv` and with one that lacks pytest; each running the venv's
-     pytest with its own arguments and gate, passing `TESTARGS` where it
-     takes them; and each failing when pytest fails.
+     pytest with its own arguments and gate, passing `TESTARGS` through
+     ([#294][i294]); and each failing when pytest fails.
    - The **presentation guard** (`test_core_no_presentation.py`) — no core
      module prints, prompts, or exits, and neither the session nor any
      utility imports a front-end or reads the terminal or the environment.
@@ -223,6 +288,13 @@ where every write path is proved first.
        `upload_script`), each of which must still be seen to write. The
        check is static, so every branch is seen, and reach is followed
        through other utilities to a fixed point.
+
+     The interfaces are derived as every module outside the core, so the
+     API is under the interface guard unlisted; a test pins that the walk
+     reaches `api/`, and violations planted in `api/server.py` (a provider
+     or a component imported, an engine call beyond the opening ones, the
+     session's transport reached) are each caught, its relative imports
+     resolved from `mailctl.api` ([#258][i258]).
 
      The component, session-and-utilities, neutral-model, half, and
      read/write guards each carry a case built to break them, so each is
@@ -352,7 +424,18 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   in the same folders, a reorder moves only the starved rule's mail, and a dry
   run stores nothing. New mail is also handed to `dovecot-lda`, which runs the
   uploaded script, so the going-forward half is seen filing it too — by
-  header, and by body through a `filter add --body` rule.
+  header, and by body through a `filter add --body` rule. A filter set
+  edited between plan and execute in `test_filterset_changed.py`
+  ([#257][i257]): another client stores an edit while `filter add` runs,
+  and the upload is refused naming `filterset show`, the edit kept as that
+  client stored it, no backup written, and the target folder not made. The
+  API in `test_api_filter_add.py` ([#258][i258]): started as `python -m
+  mailctl.api` with the password left out of its settings, so it asks for
+  it through `credentials.prompt`, once; a filter added through plan and
+  execute sends its events in order (backup, then folder, then upload),
+  the backup holds the script's exact bytes, the stored script keeps the
+  Roundcube rule beside the new one, new mail is filed by it on delivery,
+  and the password is on no line of stdout and not on stderr.
 - **The oracle is not mailctl.** Each test reads the server back with
   sievelib's and IMAPClient's own clients, and a byte-exact claim with the
   script file on the container's disk, so a write that mailctl both gets
@@ -423,8 +506,8 @@ It is **not** the pytest live tier above, and the difference is the point:
 - **It drives the CLI end to end**, as a user or an automation script would —
   the installed `mailctl` command, not the package from inside Python. The
   CLI is the automation surface (CONVENTIONS.md › *The core returns data;
-  only the CLI prints*), so this is the check that its commands work against
-  a real server.
+  only the interfaces print*), so this is the check that its commands work
+  against a real server.
 - **It uses the normal mailctl config** — the same settings, env file, and
   password source the user runs with, not a test-only set.
 - **It paces itself.** The account is real, so there are no loops over the
@@ -538,3 +621,6 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i241]: https://github.com/harleypig/mailctl/issues/241
 [i244]: https://github.com/harleypig/mailctl/issues/244
 [i262]: https://github.com/harleypig/mailctl/issues/262
+[i257]: https://github.com/harleypig/mailctl/issues/257
+[i258]: https://github.com/harleypig/mailctl/issues/258
+[i294]: https://github.com/harleypig/mailctl/issues/294
