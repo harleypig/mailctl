@@ -14,6 +14,13 @@ faults to inject, so a test can watch a check go red:
 - ``bad-marker``      -- a ``# rule:[`` marker ``show`` cannot close
 - ``backup-writes``   -- ``backup --dry-run`` writes its file anyway
 - ``backup-writes-elsewhere`` -- it writes some other file beside it
+- ``reread-differs`` -- a second ``backup --output`` writes the same
+  script with LF where the first had CRLF, as a server renormalising
+  line endings between reads would
+- ``backup-root-refused`` -- ``backup --output`` is refused, the path
+  lying outside ``MAILCTL_BACKUP_ROOT``
+- ``backup-writes-nothing`` -- ``backup --output`` exits 0 and writes
+  no file
 - ``like-drops-source`` -- ``search --like`` does not list its own message
 - ``unread-lists-read`` -- ``search --unread`` lists a message already read
 - ``filter-on-stdout`` -- ``--build-filter --json`` shows the message on
@@ -371,6 +378,38 @@ def mark() -> str:
 
 
 # ----------------------------------------------------------------------------
+def backup_output(path: str) -> int:
+    """``backup --output PATH`` for real: the filter set's bytes, CRLF as
+    the live server sends them, written to PATH."""
+    if "backup-root-refused" in BREAK:
+        print(
+            f"mailctl: backups would be written to {path} (from --output), "
+            f"outside /config/mailctl, the one directory MAILCTL_BACKUP_ROOT "
+            f"lets them go. Point --output inside /config/mailctl, or leave "
+            f"it out to use the backup directory.",
+            file=sys.stderr,
+        )
+
+        return 1
+
+    reads = STATE.with_suffix(".reads")
+    count = int(reads.read_text()) + 1 if reads.exists() else 1
+    reads.write_text(str(count))
+
+    body = "\n".join(SCRIPT.splitlines()[1:-1]) + "\n"
+
+    if not ("reread-differs" in BREAK and count > 1):
+        body = body.replace("\n", "\r\n")
+
+    if "backup-writes-nothing" not in BREAK:
+        Path(path).write_bytes(body.encode())
+
+    print(f"wrote 2 filter(s) to {path}")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
 def backup() -> str:
     target = Path(os.environ["STUB_BACKUP_DIR"]) / "managesieve-1.sieve"
 
@@ -677,6 +716,9 @@ def main() -> int:
 
     elif command == "view":
         out = view()
+
+    elif command == "backup" and "--dry-run" not in ARGV:
+        return backup_output(option("--output") or "")
 
     elif command == "backup":
         out = backup()
