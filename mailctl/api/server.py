@@ -445,6 +445,8 @@ def initialize(server: Server, params: Params, _ident: object) -> dict:
     """Resolve the configuration and open the session; connect nothing.
 
     ``log`` asks for the protocol chatter as ``log`` notifications.
+    ``old_name`` is what the rename from ``mxfilter`` left behind, by name
+    and place, as the CLI warns of it before every command.
     """
     log = params.take("log", bool, False)
     params.done()
@@ -470,6 +472,10 @@ def initialize(server: Server, params: Params, _ident: object) -> dict:
         "mailctl": __version__,
         "provider": session.name,
         "capabilities": json_output.capabilities(offer),
+        "old_name": json_output.old_name(
+            utilities.migration.check_legacy_settings(config),
+            utilities.migration.check_config_dir(),
+        ),
     }
 
 

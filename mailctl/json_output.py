@@ -39,6 +39,7 @@ __all__ = [
     "mark_plan",
     "message",
     "message_listing",
+    "old_name",
     "optimize_plan",
     "placement",
     "plan",
@@ -171,6 +172,37 @@ def capabilities(offer) -> dict:
         },
         "settings": sorted(offer.settings),
         "declined": sorted(offer.declined),
+    }
+
+
+# ----------------------------------------------------------------------------
+def old_name(settings, pending) -> dict:
+    """What the rename from ``mxfilter`` left behind: each old setting name
+    present without its new one, and the old config directory where the new
+    one does not exist (null where it does, or neither is there).
+
+    Names and places only. An old setting's value is never read, so it
+    cannot be here; one of them is the password's.
+    """
+    return {
+        "settings": [
+            {
+                "old": item.old,
+                "new": item.new,
+                "where": item.where.kind,
+                "path": None
+                if item.where.path is None
+                else str(item.where.path),
+            }
+            for item in settings
+        ],
+        "config_dir": None
+        if pending is None
+        else {
+            "old": str(pending.old),
+            "new": str(pending.new),
+            "operation": "config migrate",
+        },
     }
 
 

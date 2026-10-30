@@ -222,9 +222,101 @@ def test_initialize_reports_the_versions_and_the_offer_and_connects_nothing(
     assert result["capabilities"] == json_output.capabilities(
         engine.capabilities_for(Config())
     )
+    assert result["old_name"] == {"settings": [], "config_dir": None}
     assert client.read_state().get("logins", 0) == 0
     assert client.request("shutdown")["result"] is None
     assert client.close()[0] == 0
+
+
+# ----------------------------------------------------------------------------
+def assert_sentinel_absent(client: ChildClient) -> None:
+    """The sentinel is on no line of stdout and nowhere on stderr."""
+    code, stderr = client.close()
+
+    assert code == 0
+    assert client.lines
+    assert all(SENTINEL.encode() not in line for line in client.lines)
+    assert SENTINEL.encode() not in stderr
+
+
+# ----------------------------------------------------------------------------
+def test_initialize_names_an_old_setting_in_the_env_file_never_its_value(
+    start, tmp_path
+):
+    """Red if initialize does not report an old name the env file sets, or
+    if the old password's value reaches any output (#307)."""
+    env_file = tmp_path / "mailctl.env"
+    env_file.write_text(f"MXROUTE_PASSWORD={SENTINEL}\n", encoding="utf-8")
+    env_file.chmod(0o600)
+
+    client = start("--debug", "--env-file", str(env_file))
+    result = client.request("initialize")["result"]
+
+    assert result["old_name"] == {
+        "settings": [
+            {
+                "old": "MXROUTE_PASSWORD",
+                "new": "MAILCTL_PASSWORD",
+                "where": "env file",
+                "path": str(env_file),
+            }
+        ],
+        "config_dir": None,
+    }
+
+    # The old name is not read: the password still comes from the
+    # configured file, and logs in.
+    assert "result" in client.request("filter.list")
+
+    assert_sentinel_absent(client)
+
+
+# ----------------------------------------------------------------------------
+def test_initialize_names_an_old_setting_in_the_environment(
+    start, monkeypatch
+):
+    monkeypatch.setenv("MXROUTE_PASSWORD", SENTINEL)
+
+    client = start("--debug")
+    result = client.request("initialize")["result"]
+
+    assert result["old_name"]["settings"] == [
+        {
+            "old": "MXROUTE_PASSWORD",
+            "new": "MAILCTL_PASSWORD",
+            "where": "environment",
+            "path": None,
+        }
+    ]
+
+    assert_sentinel_absent(client)
+
+
+# ----------------------------------------------------------------------------
+def test_initialize_names_an_old_config_dir_with_no_new_one(start, tmp_path):
+    """Red if initialize does not report the old directory, or if anything
+    in it reaches any output (#307)."""
+    home = Path(os.environ["XDG_CONFIG_HOME"])
+    old = home / "mxfilter"
+    old.mkdir(parents=True)
+    (old / "config.toml").write_text(
+        f'password_cmd = "echo {SENTINEL}"\n', encoding="utf-8"
+    )
+
+    client = start("--debug")
+    result = client.request("initialize")["result"]
+
+    assert result["old_name"] == {
+        "settings": [],
+        "config_dir": {
+            "old": str(old),
+            "new": str(home / "mailctl"),
+            "operation": "config migrate",
+        },
+    }
+    assert "result" in client.request("filter.list")
+
+    assert_sentinel_absent(client)
 
 
 # ----------------------------------------------------------------------------
