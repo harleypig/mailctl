@@ -19,6 +19,16 @@ FEATURES:
   program for it rather than taking one in a request. `--password` is not
   among its settings. `mail.search` lists every match where `limit` is
   null, and 20 where it is not given ([#303]).
+* **A terminal UI, `mailctl-tui`, the API's first client** ([#259]).
+  A package of its own, in `clients/tui/`, installed beside mailctl with
+  `uv tool install ./clients/tui`. It starts `mailctl-api` and shows the
+  filters in the active filter set, in the order they run, with the ones
+  that cannot fire where they are; `r` reads them again. An alert from the
+  mail server is shown as it arrives, and where no password is configured
+  the TUI asks for it in a masked field and keeps no copy. It takes
+  mailctl's settings, passing any argument it does not know to
+  `mailctl-api`, and `--api COMMAND` starts another command in its place.
+  This first slice changes nothing on the server.
 
 ENHANCEMENTS:
 
@@ -1624,6 +1634,7 @@ NOTES:
 [#212]: https://github.com/harleypig/mailctl/issues/212
 [#204]: https://github.com/harleypig/mailctl/issues/204
 [#258]: https://github.com/harleypig/mailctl/issues/258
+[#259]: https://github.com/harleypig/mailctl/issues/259
 [#303]: https://github.com/harleypig/mailctl/issues/303
 [#257]: https://github.com/harleypig/mailctl/issues/257
 [#261]: https://github.com/harleypig/mailctl/issues/261
