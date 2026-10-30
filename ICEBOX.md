@@ -440,8 +440,8 @@ which nobody does. Design constraints follow from that:
   way — cron or a timer driving the CLI, not a daemon
   ([`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) › *The CLI comes
   first*). The config and reporting shape it decides is still open.
-- **Age from what?** `INTERNALDATE` (when the server received it) or the `Date:`
-  header (what the sender claimed)? They differ, and the header is
+- **Age from what?** `INTERNALDATE` (when the server received it) or the
+  `Date:` header (what the sender claimed)? They differ, and the header is
   attacker-controlled. `INTERNALDATE` is almost certainly right, and is what
   `BEFORE` uses.
 - Whether "keep the newest N" is wanted as well as "keep the last N days".
