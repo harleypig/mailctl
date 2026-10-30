@@ -1113,6 +1113,19 @@ What an agent does set, on every issue it files:
   them), or `infra/CI` or `docs`;
 - **the milestone.**
 
+**Two kinds of issue carry fewer, by design** ([#287][i287]):
+
+- **A milestone's introspection issue carries no Layer.** It is about how
+  the work went, not about a layer of the code, and no Layer option
+  describes it; it still carries a Size and its milestone.
+- **An epic carries no Size, Layer, or milestone.** Its sub-issues carry
+  them, and they can span milestones, so the epic's own fields would only
+  repeat theirs or contradict them.
+
+So an issue missing a field is a gap unless it is one of these. A new
+Layer option for the introspection issues was weighed and declined: it
+would describe nothing else.
+
 Role and type stay labels, and the board does not repeat them.
 
 **Four views, each for one question.** *Milestone* is a table grouped by
@@ -1218,10 +1231,10 @@ Full dimension status:
 | 9. Compatibility | **Active** — CPython 3.11 through 3.14, every one tested in CI, and sievelib at both ends of its bound (1.5.0 and the newest below 2); no external contract we publish ([#231][i231], [#232][i232]) |
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
-| 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`) is built by `tests/container/test_image.py`, and in CI by the *Image scan* workflow on a PR or push touching its inputs (`Dockerfile`, `.dockerignore`, `docker/**`, `pyproject.toml`); `test_image.py` itself is not in CI |
+| 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`) is built by `tests/container/test_image.py`, and in CI by the *Image scan* workflow on a PR or push touching its inputs (`Dockerfile`, `.dockerignore`, `docker/**`, `pyproject.toml`), weekly on a schedule, and on manual dispatch; `test_image.py` itself is not in CI |
 | 13. Documentation | **Active** — this file, `README.md`, and `adr/`; markdownlint gates the prose |
 | 14. Code review | **Informal** — solo repo; `master` is PR-only, 0 required reviewers |
-| 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`, and one job named `Test` passes only if every version did, since that is the check the ruleset requires ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror. `.github/workflows/image-scan.yml` (*Image scan*, job `Trivy (report only)`) runs only when the image's inputs change, never fails on a finding, and is not a required check ([#238][i238]) |
+| 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`, and one job named `Test` passes only if every version did, since that is the check the ruleset requires ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror. `.github/workflows/image-scan.yml` (*Image scan*, job `Trivy (report only)`) runs when the image's inputs change, weekly on a schedule (Monday 06:17 UTC) so a CVE published against the unchanged base image is still reported, and on manual dispatch; it never fails on a finding and is not a required check ([#238][i238], [#264][i264]) |
 
 ## How work is dispatched
 
@@ -1428,6 +1441,8 @@ will read it.
 [i238]: https://github.com/harleypig/mailctl/issues/238
 [i243]: https://github.com/harleypig/mailctl/issues/243
 [i244]: https://github.com/harleypig/mailctl/issues/244
+[i264]: https://github.com/harleypig/mailctl/issues/264
+[i287]: https://github.com/harleypig/mailctl/issues/287
 [i265]: https://github.com/harleypig/mailctl/issues/265
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
