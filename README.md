@@ -1021,6 +1021,179 @@ tell one refusal from another without reading the message: for example
 | 3, 4 | `check-baseline` only: informational, or serious, drift |
 | 130 | interrupted |
 
+## API
+
+`mailctl-api` offers mailctl's operations to a program written in any
+language. The program starts it as a child process and talks JSON-RPC 2.0
+to it over its standard input and output. It is meant for a client such as
+a TUI: the client shows things and asks the user, and mailctl does the work
+through the same code, and the same safety checks, as the command line. Why
+it is built this way is [ADR 0008][adr8].
+
+### Starting it
+
+```bash
+mailctl-api --host mail.example.com --user you@example.com
+python -m mailctl.api --env-file      # the same program
+```
+
+It takes the settings `mailctl` takes, resolved the same way (see
+*Configure*): `--provider`, `--env-file`, `--host`, `--user`,
+`--password-file` or `--password-cmd`, `--imap-host`, `--imap-port`,
+`--sieve-port`, `--sieve-tls`, `--backup-dir`, and `--disable-extension`.
+`--password` is left out, since an argument can be read from the process
+list. Two settings are its own:
+
+* `--folder` is the folder the mail methods read when a request names
+  none. It defaults to `source_folder` from the config, else `INBOX`.
+* `--debug` writes a failed request's traceback to stderr. It names the
+  request by its id and method, never by its parameters.
+
+`mailctl-api --help` lists them all. The Docker image runs `mailctl` only,
+and does not start the API.
+
+### The stream
+
+* Each message is one JSON object on one line, ended by a newline, in both
+  directions. mailctl's lines are ASCII; a client's must be UTF-8.
+* stdout carries the protocol and nothing else. stderr is diagnostics, for
+  the client to show or log.
+* Requests are answered one at a time, in the order they came. A batch (a
+  JSON array) is refused.
+* Send `initialize` first. It reads the settings and connects nothing: each
+  server is connected the first time a method needs it, so a bad setting is
+  reported before any login.
+* The process exits 0 once it has answered `shutdown`, or when its input
+  ends.
+
+### Methods
+
+Parameters are passed by name, and one the method does not know is
+refused. A `?` marks one that may be left out or sent as `null`.
+
+| Method | Parameters | Result |
+|--------|------------|--------|
+| `initialize` | `log?` | `{"protocol", "json_version", "mailctl", "provider", "capabilities"}` |
+| `shutdown` | | `null` |
+| `filter.list` | `filterset?` | the `filter list --json` document |
+| `mail.search` | `folder?`, `filter?`, `raw?`, `limit?`, `sort?` | the `mail search --json` document |
+| `mail.view` | `uid`, `folder?`, `uidvalidity?` | the `mail view --json` document |
+| `filter.add.plan` | see below | `{"plan_id", "document"}` |
+| `filter.add.execute` | `plan_id` | `{"version", "result": {"command", "filter", "filterset", "activated", "backup"}}` |
+| `plan.discard` | `plan_id` | `null` |
+
+* **`initialize`.** `protocol` versions the methods and the envelope;
+  `json_version` versions the documents inside, as in *Output for
+  scripts*. `capabilities` is what the provider declares, so a client
+  offers only what it lists, as the command line does. `log: true` asks
+  for `log` notifications.
+* **`mail.search`.** `filter` is a filter document (see *Filter
+  documents*), and `raw` a query in the host's own search language.
+  `limit` is the most messages to list, 20 unless given. `sort` is
+  `{"key", "reverse"?}`, with the keys `mail search --sort` takes.
+* **`filter.add.plan`** takes `filter`, a filter document, and `actions`,
+  both required; then `name?`, `filterset?`, `replace?`, `activate?`,
+  `create_folder?`, and `subscribe?` (true unless given, and false only
+  with `create_folder`). `placement?` is `{"where", "filter"?}`: `where` is
+  `first`, `last`, `before`, or `after`, and `filter` names the filter the
+  last two are relative to. `actions` is `{"move_to"?, "discard"?,
+  "flags"?, "mark_read"?, "keep"?, "stop"?}`, meaning what the same
+  actions mean to `filter add`. `redirect`, `notify`, and `vacation` are
+  taken as strings and refused, with the same pointer the command line
+  gives.
+
+**A change is plan, decide, execute.** `filter.add.plan` changes nothing.
+Its `document` is the plan `filter add --dry-run --json` prints: show it,
+let the user decide, then send `filter.add.execute` with the `plan_id` and
+nothing else. The plan's content is never sent back, so what was shown is
+what runs.
+
+* A plan id is used once. After an execute, whether it worked or failed,
+  or a `plan.discard`, the id is refused with `plan_unknown`. Plans live in
+  the process and end with it.
+* If the filter set changed on the server after the plan was made (in
+  webmail, say), execute is refused with `filterset_changed` and nothing
+  is uploaded. Make a new plan.
+
+### The password
+
+No method takes a password, and a request with a `password` parameter is
+refused with `-32602`. The password comes from the settings, as for
+`mailctl` (see *The password*); started with `--password-cmd`, the API
+never shows the client the password at all. Where no setting gives one,
+mailctl asks the client, with a request of its own, the first time a
+server needs it:
+
+```text
+< {"jsonrpc": "2.0", "id": "mailctl-1", "method": "credentials.prompt", "params": {"request": 2, "prompt": "Password for you@example.com: "}}
+> {"jsonrpc":"2.0","id":"mailctl-1","result":{"password":"..."}}
+```
+
+* mailctl's request ids are the strings `mailctl-1`, `mailctl-2`, and so
+  on, so they cannot be mistaken for the client's. `request` is the id of
+  the client's request that needed the password.
+* To decline, answer with an error. The request that needed the password
+  is then refused with `password_declined`. An answer that does not parse
+  is answered `-32700` and counts as declining, and so does input ending.
+* When a server refuses a prompted password (`auth_failed`), mailctl
+  forgets it and asks again on the next request.
+* The client is holding the user's password. Never log it.
+
+### Notifications
+
+mailctl sends three notifications, which take no reply. `request` is the
+id of the client's request each belongs to, and `channel` says which server
+it came from: `filter` or `mail`.
+
+| Method | Parameters | Sent |
+|--------|------------|------|
+| `event` | `{"request", "document": {"version", "event": {"kind", ...}}}` | for each step of a change as it lands. `kind` is `filterset_backed_up` (with the backup's `path`), `filterset_uploaded`, `folder_created`, `folder_renamed`, or `subscription_changed` |
+| `server.alert` | `{"request", "document": {"version", "alert": {"channel", "kind", "text"}}}` | always, for an alert or warning a server sent; the same one once per session |
+| `log` | `{"request", "channel", "message"}` | for the protocol exchange `--verbose` shows, only after `initialize` with `log: true` |
+
+### Errors
+
+| Code | Means |
+|------|-------|
+| `-32700` | a line that is not UTF-8 JSON; answered with id `null` |
+| `-32600` | not a request: not an object, no `"jsonrpc": "2.0"`, no method name, an id that is not a string or a number, or a batch |
+| `-32601` | no such method |
+| `-32602` | a parameter missing, unknown, or of the wrong type, or a `password` |
+| `-32603` | an unexpected failure; the message names its type only, and `--debug` shows the rest on stderr |
+| `1` | mailctl refused the request |
+
+A refusal's `data` is the error document from *Output for scripts*,
+`{"version", "error": {"message", "code", "fields"}}`, where `code` names
+the condition. Branch on it, never on the message. Among them are
+`not_initialized`, `already_initialized`, `plan_unknown`,
+`password_declined`, `filterset_changed`, `auth_failed`,
+`credentials_not_ascii`, `subscribe_needs_create`, and `unknown_sort_key`,
+beside the command line's own.
+
+### An exchange
+
+Adding a filter, with the password left out of the settings so that
+mailctl asks for it. Lines the client sends start `>`, lines mailctl sends
+start `<`, and `…` marks what is left out.
+
+```text
+> {"jsonrpc":"2.0","id":1,"method":"initialize"}
+< {"jsonrpc": "2.0", "id": 1, "result": {"protocol": 1, "json_version": 2, "mailctl": "…", "provider": "mxroute", "capabilities": {…}}}
+> {"jsonrpc":"2.0","id":2,"method":"filter.add.plan","params":{"filter":{"version":1,"criteria":{"match":"all","compare":"contains","terms":[{"header":"From","value":"noreply@github.com"}]}},"actions":{"move_to":"Lists/GitHub"},"name":"github","create_folder":true}}
+< {"jsonrpc": "2.0", "id": "mailctl-1", "method": "credentials.prompt", "params": {"request": 2, "prompt": "Password for you@example.com: "}}
+> {"jsonrpc":"2.0","id":"mailctl-1","result":{"password":"…"}}
+< {"jsonrpc": "2.0", "id": 2, "result": {"plan_id": "1cf4f027f29155b8", "document": {"version": 2, "plan": {"command": "filter add", …}}}}
+> {"jsonrpc":"2.0","id":3,"method":"filter.add.execute","params":{"plan_id":"1cf4f027f29155b8"}}
+< {"jsonrpc": "2.0", "method": "event", "params": {"request": 3, "document": {"version": 2, "event": {"kind": "filterset_backed_up", …}}}}
+< {"jsonrpc": "2.0", "method": "event", "params": {"request": 3, "document": {"version": 2, "event": {"kind": "folder_created", …}}}}
+< {"jsonrpc": "2.0", "method": "event", "params": {"request": 3, "document": {"version": 2, "event": {"kind": "filterset_uploaded", …}}}}
+< {"jsonrpc": "2.0", "id": 3, "result": {"version": 2, "result": {"command": "filter add", "filter": "github", …}}}
+> {"jsonrpc":"2.0","id":4,"method":"filter.add.execute","params":{"plan_id":"1cf4f027f29155b8"}}
+< {"jsonrpc": "2.0", "id": 4, "error": {"code": 1, "message": "no plan with that id is waiting: …", "data": {"version": 2, "error": {"message": "no plan with that id is waiting: …", "code": "plan_unknown", "fields": {"plan_id": "1cf4f027f29155b8"}}}}}
+> {"jsonrpc":"2.0","id":5,"method":"shutdown"}
+< {"jsonrpc": "2.0", "id": 5, "result": null}
+```
+
 ## MXRoute specifics
 
 MXRoute documents very little of its Sieve surface, so what mailctl knows
@@ -1152,6 +1325,7 @@ filters need domain-owner credentials, and mailctl logs in as a mailbox. So:
 
 [adr2]: adr/0002-non-destructive-script-merge.md
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
+[adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
 [reader]: docs/MAIL-READER-REQUIREMENTS.md
 [record]: mailctl/providers/mxroute/RECORD.md
 [verify]: docs/VERIFYING.md
