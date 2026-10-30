@@ -140,18 +140,38 @@ def _stored_source(
 
 
 # ----------------------------------------------------------------------------
-def require_unchanged(session: Session, name: str, before: str) -> str:
-    """Refuse unless the server still holds ``before`` as ``name``.
+def require_unchanged(
+    session: Session, name: str, before: str, active: str | None
+) -> str:
+    """Refuse unless the server still holds ``before`` as ``name``, and
+    still runs ``active``.
 
     A plan is made from the script as it was read; anything that changed
     it since -- the webmail's filter UI, another run, a second client --
     would be overwritten by the upload and missing from the backup, which
     is ADR 0002's failure by another road. Byte-identical, so no parse is
     needed and a restore over an unparseable script is held to it too.
-    Returns what was read.
+
+    ``active`` is the script the server ran when the plan was made, and
+    whether the upload activates ``name`` was decided from it
+    (:func:`activates`). A switch made since would be undone by that
+    activation, or an edit planned as not live would go live, and neither
+    plan said so (#308). Returns what was read.
     """
-    active, others = session.transport.list_rule_sets()
-    current = _stored_source(session, name, active, others)
+    now, others = session.transport.list_rule_sets()
+
+    if now != active:
+        raise MailctlError(
+            f"the active filter set changed on the server after this "
+            f"change was planned (it was {_named(active)} then and is "
+            f"{_named(now)} now), so nothing was sent and the switch made "
+            f"there is kept. Plan the change again against what it runs "
+            f"now.",
+            code="filterset_changed",
+            fields={"operation": "filterset list", "arguments": ()},
+        )
+
+    current = _stored_source(session, name, now, others)
 
     if current != before:
         raise MailctlError(
@@ -164,6 +184,11 @@ def require_unchanged(session: Session, name: str, before: str) -> str:
         )
 
     return current
+
+
+# ----------------------------------------------------------------------------
+def _named(active: str | None) -> str:
+    return "none" if active is None else repr(active)
 
 
 # ----------------------------------------------------------------------------
@@ -189,6 +214,7 @@ def upload_script(
     on_event: EventSink | None = None,
     before_put: Callable[[], object] | None = None,
     *,
+    active: str | None,
     activate: bool,
 ) -> Path:
     """Back up, validate, and upload a script; activate it if asked.
@@ -197,9 +223,13 @@ def upload_script(
     script the server runs is decided by the plan (``activates``), and a
     caller that forgot to pass it would otherwise switch it silently.
 
+    ``active``, the script the server ran when the plan was made, has no
+    default for the same reason: it is what the check below compares.
+
     The server's copy is read again first and the upload refused, coded
-    ``filterset_changed``, unless it is still ``before`` byte for byte
-    (:func:`require_unchanged`); what was read is what is backed up.
+    ``filterset_changed``, unless it is still ``before`` byte for byte and
+    the server still runs ``active`` (:func:`require_unchanged`); what was
+    read is what is backed up.
 
     The backup is written, and announced, before the server sees anything,
     so a rejected upload still leaves the user knowing where the copy is.
@@ -214,7 +244,7 @@ def upload_script(
     target = session.dialect.backup_path(name, config.backup_dir)
     check_backup_location(config, target, "backup_dir")
 
-    current = require_unchanged(session, name, before)
+    current = require_unchanged(session, name, before, active)
     path = write_backup(current, target)
     emit(ScriptBackedUp(name, path))
 

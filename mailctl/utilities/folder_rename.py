@@ -456,6 +456,7 @@ def execute_folder_rename(
                 plan.after,
                 record,
                 move_folders,
+                active=plan.active,
                 activate=plan.activate,
             )
 

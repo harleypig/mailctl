@@ -740,5 +740,6 @@ def execute_script_change(
         plan.after,
         on_event,
         before_put,
+        active=plan.active,
         activate=plan.activate,
     )
