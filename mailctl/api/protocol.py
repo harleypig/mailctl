@@ -228,6 +228,14 @@ class Channel:
             if message is None:
                 raise ClientGone(method)
 
+            # A line that does not parse may be the answer, mistyped. Held,
+            # it would leave both sides waiting on each other; so it is
+            # answered as any such line is, and taken as a declined answer.
+            if isinstance(message, RpcError):
+                self.fail(None, message)
+
+                raise RpcError(message.code, "")
+
             if is_response(message) and message.get("id") == ident:
                 error = message.get("error")
 

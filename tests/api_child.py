@@ -125,6 +125,11 @@ def imap_double() -> FakeIMAPClient:
     client.uidvalidity.update(state.get("uidvalidity", {}))
 
     def login(user, password):
+        # As imaplib's _command sends LOGIN's arguments, so a password it
+        # cannot send fails here as it does there, naming the character.
+        bytes(user, "ascii")
+        bytes(password, "ascii")
+
         if not accepted(password):
             raise LoginError("[AUTHENTICATIONFAILED] Authentication failed.")
 

@@ -6,10 +6,14 @@ is parsed, what a server-to-client request does with the messages that
 arrive while it waits, and that no refusal quotes what the client sent.
 """
 
+import argparse
 import io
+import json
 
 import pytest
 
+from mailctl import MailctlError
+from mailctl.api import server as server_module
 from mailctl.api.protocol import (
     INVALID_PARAMS,
     PARSE_ERROR,
@@ -18,7 +22,7 @@ from mailctl.api.protocol import (
     RpcError,
     parse,
 )
-from mailctl.api.server import Params
+from mailctl.api.server import Params, Server
 from mailctl.config import Secret
 
 SENTINEL = "sentinel-value-3b81d0"
@@ -111,7 +115,6 @@ def test_what_arrives_while_a_request_waits_is_received_after_in_order():
     link, out = channel(
         b'{"jsonrpc": "2.0", "id": 7, "method": "filter.list"}\n',
         b"\n",
-        b"not json\n",
         b'{"jsonrpc": "2.0", "id": "mailctl-1", "result": {"ok": true}}\n',
         b'{"jsonrpc": "2.0", "id": 8, "method": "shutdown"}\n',
     )
@@ -123,12 +126,36 @@ def test_what_arrives_while_a_request_waits_is_received_after_in_order():
         "id": 7,
         "method": "filter.list",
     }
-
-    with pytest.raises(RpcError):
-        link.receive()
-
     assert link.receive() == {"jsonrpc": "2.0", "id": 8, "method": "shutdown"}
     assert link.receive() is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_line_that_does_not_parse_while_an_answer_waits_declines_it():
+    """It may be the answer, mistyped, so holding it would leave both
+    sides waiting. It is answered as any bad line is, with a null id, and
+    the wait ends as a declined answer; what follows is received next."""
+    link, out = channel(
+        b'{"jsonrpc": "2.0", "id": "mailctl-1", "result": {"password": "x"\n',
+        b'{"jsonrpc": "2.0", "id": 8, "method": "shutdown"}\n',
+    )
+
+    with pytest.raises(RpcError) as caught:
+        link.request("credentials.prompt", {})
+
+    assert caught.value.code == PARSE_ERROR
+
+    sent = [json.loads(line) for line in out.getvalue().splitlines()]
+
+    assert sent[-1] == {
+        "jsonrpc": "2.0",
+        "id": None,
+        "error": {
+            "code": PARSE_ERROR,
+            "message": "a message must be one JSON value on one line",
+        },
+    }
+    assert link.receive() == {"jsonrpc": "2.0", "id": 8, "method": "shutdown"}
 
 
 # ----------------------------------------------------------------------------
@@ -200,3 +227,58 @@ def test_a_parameter_not_taken_is_refused_by_name():
 def test_no_method_takes_a_password():
     with pytest.raises(RpcError, match="no method takes a password"):
         Params({"password": Secret(SENTINEL)})
+
+
+# ############################################################################
+# The server, in-process
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def served(*lines: bytes) -> tuple[Server, io.BytesIO]:
+    link, out = channel(*lines)
+
+    return Server(argparse.Namespace(debug=False), link), out
+
+
+# ----------------------------------------------------------------------------
+def test_a_plan_of_another_command_is_refused_and_left_waiting():
+    """Checked before it is taken: an execute of the wrong command must
+    not cost the plan its right one."""
+    server, _out = served()
+    plan_id = server._keep("filter add", object())
+
+    with pytest.raises(MailctlError) as caught:
+        server._take_plan(plan_id, "filter remove")
+
+    assert caught.value.code == "plan_unknown"
+    assert server._take_plan(plan_id, "filter add").command == "filter add"
+
+
+# ----------------------------------------------------------------------------
+def test_a_result_that_cannot_be_sent_is_an_internal_error_and_serving_goes_on(
+    monkeypatch,
+):
+    """The response is built outside the method's own handling; a value
+    no document maps -- a credential above all -- must not end the loop."""
+    monkeypatch.setitem(
+        server_module.METHODS, "plan.discard", lambda *_: Secret(SENTINEL)
+    )
+    server, out = served(
+        b'{"jsonrpc": "2.0", "id": 1, "method": "plan.discard"}\n',
+        b'{"jsonrpc": "2.0", "id": 2, "method": "shutdown"}\n',
+    )
+
+    server.run()
+
+    answers = [json.loads(line) for line in out.getvalue().splitlines()]
+
+    assert answers == [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {"code": -32603, "message": "unexpected TypeError"},
+        },
+        {"jsonrpc": "2.0", "id": 2, "result": None},
+    ]
+    assert SENTINEL.encode() not in out.getvalue()

@@ -100,14 +100,14 @@ def start(tmp_path):
 
     ``password`` is the one the account takes, and the one configured
     through a password file unless ``configured`` is false, which leaves a
-    prompt the only way to it.
+    prompt the only way to it, or names another password for the file.
     """
     started: list[ChildClient] = []
 
     def launch(
         *argv: str,
         password: str = PASSWORD,
-        configured: bool = True,
+        configured: bool | str = True,
         scripts: dict | None = None,
         active: str | None = "managesieve",
         **state,
@@ -139,7 +139,10 @@ def start(tmp_path):
 
         if configured:
             secret = tmp_path / "password"
-            secret.write_text(password, encoding="utf-8")
+            secret.write_text(
+                configured if isinstance(configured, str) else password,
+                encoding="utf-8",
+            )
             secret.chmod(0o600)
             env["MAILCTL_PASSWORD_FILE"] = str(secret)
 
@@ -495,15 +498,35 @@ def test_a_plan_id_is_the_only_thing_execute_takes(start):
 
 
 # ----------------------------------------------------------------------------
+def nowhere(client: ChildClient, stderr: bytes, *texts: str) -> None:
+    """None of ``texts`` in any line on stdout or anywhere on stderr: as
+    written, as JSON escapes it, or as Python's repr escapes it."""
+    out = b"".join(client.lines)
+
+    for text in texts:
+        for form in {
+            text,
+            json.dumps(text)[1:-1],
+            repr(text)[1:-1],
+        }:
+            assert form.encode("utf-8") not in out, form
+            assert form.encode("utf-8") not in stderr, form
+
+
+# ----------------------------------------------------------------------------
 def test_a_password_given_through_the_prompt_is_used_and_never_echoed(start):
-    """The sentinel reaches the connection -- the double logs in only on
+    """The sentinel logs in on both halves -- each double logs in only on
     its hash -- and appears in no line on stdout and nothing on stderr,
-    through a success, a refusal, and ``--debug``'s tracebacks."""
+    through reads on both halves with the protocol chatter on, refusals,
+    and ``--debug``'s tracebacks. Red under a progress line that names the
+    password after either login."""
     client = start("--debug", password=SENTINEL, configured=False)
     client.answer = {"result": {"password": SENTINEL}}
     client.request("initialize", {"log": True})
 
     listed = client.request("filter.list")
+    found = client.request("mail.search", {"filter": GITHUB_FILTER})
+    viewed = client.request("mail.view", {"uid": 1})
     refused = client.request("mail.search", {"limit": 0})
     client.request("mail.search", {"filter": {"version": 99}})
     client.request("mail.view", {"uid": 2, "password": SENTINEL})
@@ -511,12 +534,63 @@ def test_a_password_given_through_the_prompt_is_used_and_never_echoed(start):
     code, stderr = client.close()
 
     assert "result" in listed
+    assert [item["uid"] for item in found["result"]["messages"]] == [1]
+    assert viewed["result"]["message"]["uid"] == 1
+    assert any(note["method"] == "log" for note in found["notes"])
     assert refused["error"]["code"] == 1
     assert client.prompted == 1
+    assert client.read_state()["logins"] == 2
     assert code == 0
     assert stderr, "--debug wrote no traceback, so stderr proves nothing"
-    assert SENTINEL.encode() not in b"".join(client.lines)
-    assert SENTINEL.encode() not in stderr
+    nowhere(client, stderr, SENTINEL)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("method", ["filter.list", "mail.search"])
+def test_a_login_the_server_refuses_never_echoes_the_password(start, method):
+    """The sentinel as the wrong password, on each half: refused, coded
+    ``auth_failed`` so a client can tell it from the rest, and quoted
+    nowhere, ``--debug``'s tracebacks included."""
+    client = start("--debug", password=PASSWORD, configured=False)
+    client.answer = {"result": {"password": SENTINEL}}
+    client.request("initialize", {"log": True})
+
+    error = refusal(client.request(method))
+    client.request("shutdown")
+    _code, stderr = client.close()
+
+    assert error["code"] == "auth_failed"
+    nowhere(client, stderr, SENTINEL)
+
+
+# ----------------------------------------------------------------------------
+def test_a_password_imap_cannot_send_is_refused_without_quoting_it(start):
+    """imaplib sends LOGIN as ASCII, and its encoding error names the
+    character it could not send and where. ManageSieve sends UTF-8, so the
+    same password logs in there. Red if the encoding error reaches any
+    output, by its text or by a traceback's chained cause."""
+    secret = "sentinel-p\u00e4ss-\u00f8rd-41c2"
+    client = start("--debug", password=secret, configured=False)
+    client.answer = {"result": {"password": secret}}
+    client.request("initialize", {"log": True})
+
+    listed = client.request("filter.list")
+    error = refusal(client.request("mail.search"))
+    client.request("shutdown")
+    _code, stderr = client.close()
+
+    assert "result" in listed
+    assert error["code"] == "credentials_not_ascii"
+    assert error["fields"] == {"which": "password"}
+    nowhere(
+        client,
+        stderr,
+        secret,
+        "\u00e4",
+        "\u00f8",
+        "can't encode",
+        "ordinal not in range",
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -532,6 +606,63 @@ def test_a_declined_prompt_is_refused_and_asked_again_next_time(start):
 
     assert "result" in client.request("filter.list")
     assert client.prompted == 2
+
+
+# ----------------------------------------------------------------------------
+def test_a_refused_prompted_password_is_asked_for_again(start):
+    """A server that refused the answer refuses it on every retry, so it
+    is forgotten: wrong, refused and coded, asked again, right, done."""
+    client = start(configured=False)
+    client.answer = {"result": {"password": "not-this-one"}}
+    client.request("initialize")
+
+    assert refusal(client.request("filter.list"))["code"] == "auth_failed"
+    assert client.prompted == 1
+
+    client.answer = {"result": {"password": PASSWORD}}
+
+    assert "result" in client.request("filter.list")
+    assert client.prompted == 2
+    assert "result" in client.request("mail.search")
+    assert client.prompted == 2
+
+
+# ----------------------------------------------------------------------------
+def test_a_refused_password_from_a_file_is_not_asked_for(start):
+    """Only a prompted password is forgotten: asking cannot change one the
+    configuration names, so there is no prompt and the refusal stands."""
+    client = start(configured="not-the-account-password")
+    client.request("initialize")
+
+    with_file = client.request("filter.list")
+    again = client.request("filter.list")
+
+    assert refusal(with_file)["code"] == "auth_failed"
+    assert refusal(again)["code"] == "auth_failed"
+    assert client.prompted == 0
+
+
+# ----------------------------------------------------------------------------
+def test_a_reply_to_the_prompt_that_does_not_parse_is_declined_at_once(start):
+    """Held, it would leave both sides waiting on each other. It is
+    answered as a bad line, the request is refused as declined, and the
+    next request asks again."""
+    client = start(configured=False)
+    client.request("initialize")
+    client.send({"jsonrpc": "2.0", "id": "list", "method": "filter.list"})
+    prompt = client.receive()
+
+    client.send_line(
+        b'{"jsonrpc": "2.0", "id": "%s", "result": {"password": "x"\n'
+        % prompt["id"].encode()
+    )
+
+    assert client.receive()["error"]["code"] == -32700
+    assert refusal(client.until("list"))["code"] == "password_declined"
+
+    client.answer = {"result": {"password": PASSWORD}}
+
+    assert "result" in client.request("filter.list")
 
 
 # ----------------------------------------------------------------------------
@@ -659,3 +790,39 @@ def test_the_api_takes_the_cli_connection_settings_but_the_inline_password():
     }
 
     assert api_side == cli_side - {"-p", "--password"}
+
+
+# ############################################################################
+# Parameters the API refuses as parameters
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_malformed_parameters_are_refused_as_parameters(start):
+    """Each was an internal error once: an action the CLI refuses by name
+    given as a list, and a filter document holding a password, which the
+    parser had wrapped."""
+    client = initialized(start)
+
+    as_list = add_plan(client, actions={"redirect": [1]})["error"]
+    with_password = client.request(
+        "mail.search", {"filter": {**GITHUB_FILTER, "password": SENTINEL}}
+    )["error"]
+
+    assert as_list == {
+        "code": -32602,
+        "message": "'redirect' must be a string",
+    }
+    assert with_password["code"] == -32602
+    assert SENTINEL not in with_password["message"]
+
+
+# ----------------------------------------------------------------------------
+def test_every_refusal_of_a_parameter_value_carries_a_code(start):
+    client = initialized(start)
+
+    unsubscribed = add_plan(client, subscribe=False)
+    unsorted = client.request("mail.search", {"sort": {"key": "colour"}})
+
+    assert refusal(unsubscribed)["code"] == "subscribe_needs_create"
+    assert refusal(unsorted)["code"] == "unknown_sort_key"

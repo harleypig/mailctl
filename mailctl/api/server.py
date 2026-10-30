@@ -114,7 +114,7 @@ class Params:
             kind is int and isinstance(value, bool)
         )
 
-        if isinstance(value, list) and not wrong:
+        if kind is list and isinstance(value, list) and not wrong:
             wrong = not all(isinstance(item, str) for item in value)
 
         if wrong:
@@ -249,6 +249,12 @@ class Server:
 
         except MailctlError as exc:
             self._diagnose(ident, name)
+
+            # A server that refused a prompted password refuses it on every
+            # retry, so the next connection asks again.
+            if exc.code == "auth_failed" and self.config is not None:
+                self.config.forget_prompted_password()
+
             data = json_output.error(str(exc), exc.code, exc.fields)
 
             return self._answer(
@@ -258,19 +264,20 @@ class Server:
         except Exception as exc:
             self._diagnose(ident, name)
 
-            return self._answer(
-                notification,
-                ident,
-                RpcError(
-                    INTERNAL_ERROR, f"unexpected {type(exc).__name__}: {exc}"
-                ),
-            )
+            return self._answer(notification, ident, unexpected(exc))
 
         finally:
             self._current = None
 
         if not notification:
-            self.channel.respond(ident, result)
+            try:
+                self.channel.respond(ident, result)
+
+            except (TypeError, ValueError) as exc:
+                # Nothing was written: the line is built whole before it
+                # is sent, and a value no document maps is refused first.
+                self._diagnose(ident, name)
+                self.channel.fail(ident, unexpected(exc))
 
         return name == "shutdown"
 
@@ -402,7 +409,7 @@ class Server:
         never made, or was executed, failed, or discarded already -- or
         where ``command`` is given and the plan is another command's.
         """
-        entry = self._plans.pop(plan_id, None)
+        entry = self._plans.get(plan_id)
 
         if entry is None or (command is not None and entry.command != command):
             raise MailctlError(
@@ -411,6 +418,8 @@ class Server:
                 code="plan_unknown",
                 fields={"plan_id": plan_id},
             )
+
+        del self._plans[plan_id]
 
         return entry
 
@@ -535,7 +544,9 @@ def filter_add_plan(server: Server, params: Params, _ident: object) -> dict:
     session, config = server._open()
     criteria = filter_criteria(params.take("filter", dict))
     given = Params(params.take("actions", dict))
-    refused = [name for name in REFUSED_ACTIONS if given.take(name, object, 0)]
+    # Each takes an address on the CLI, so a string here too; given one, it
+    # is the provider that refuses it, with its pointer.
+    refused = [name for name in REFUSED_ACTIONS if given.take(name, str, "")]
     flags = ["\\Seen"] if given.take("mark_read", bool, False) else []
 
     for flag in given.take("flags", list, []):
@@ -567,7 +578,8 @@ def filter_add_plan(server: Server, params: Params, _ident: object) -> dict:
     if not subscribe and not create:
         raise MailctlError(
             "subscribe only shapes a folder this change creates; it needs "
-            "create_folder"
+            "create_folder",
+            code="subscribe_needs_create",
         )
 
     utilities.rules.reject_actions(config, refused)
@@ -613,9 +625,18 @@ def filter_criteria(document: dict) -> Criteria:
     """A filter document's criteria, as ``filter add --filter`` reads one.
 
     Re-serialised for the one reader there is, so the API and a filter
-    file are refused for the same things in the same words.
+    file are refused for the same things in the same words. A ``password``
+    member was wrapped as the line was parsed, and no filter has one.
     """
-    return load_filter(json.dumps(document))
+    try:
+        text = json.dumps(document)
+
+    except TypeError as exc:
+        raise RpcError(
+            INVALID_PARAMS, "'filter' holds a password, which no filter has"
+        ) from exc
+
+    return load_filter(text)
 
 
 # ----------------------------------------------------------------------------
@@ -647,6 +668,13 @@ def placement(given: dict | None) -> Placement | None:
         )
 
     return Placement(where, anchor)
+
+
+# ----------------------------------------------------------------------------
+def unexpected(exc: Exception) -> RpcError:
+    """A failure nothing expected, named by its type alone: its text may
+    carry anything, a credential included. ``--debug`` shows the rest."""
+    return RpcError(INTERNAL_ERROR, f"unexpected {type(exc).__name__}")
 
 
 # Every method, by name. A command's name is its path in the CLI's tree,
