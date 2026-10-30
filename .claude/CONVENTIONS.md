@@ -1217,9 +1217,14 @@ Role and type stay labels, and the board does not repeat them.
 **Four views, each for one question.** *Milestone* is a table grouped by
 milestone, with Size and Layer: what each milestone still holds. *Status*
 is a board by Status: what is in flight. *Needs You* is the issues
-labelled `needs-answers` or `needs-shaping`: what waits on the operator.
-*Bugs* is the open bugs. There is no Roadmap layout
+labelled `needs-answers`, `needs-shaping`, or `needs-action`: what waits
+on the operator. *Bugs* is the open bugs. There is no Roadmap layout
 ([dotagents#2322][da2322]).
+
+**`needs-action` is waiting on the operator to do something** — a run, a
+setting, an approval — where `needs-answers` waits on an answer and
+`needs-shaping` on requirements not yet settled. The operator asked for it
+([dotagents#2358][da2358]).
 
 **Milestones are numbered `M0`, `M1`, and on.** Each description is a
 one-line goal and a *Done when:* line, and each milestone carries an
@@ -1229,9 +1234,18 @@ introspection issue reporting to [dotagents#2312][da2312].
 entries ever, since a deferral is not an issue (above).
 
 **Workflows are changed in the web UI.** The API can read them and delete
-one, but cannot turn one on or set what it does. Views are changed there
-too; the GraphQL schema has `createProjectV2View` and
-`updateProjectV2View` (seen 2026-10-30), untried here.
+one, but cannot turn one on or set what it does. **Views can be changed
+over the API**: GraphQL's `updateProjectV2View` takes a view's name,
+layout, filter, and configuration, and set the *Needs You* filter on
+2026-10-30.
+
+**Set Size and Layer over REST, not GraphQL.** Projects v2 has REST
+endpoints for a user's project too: `/users/harleypig/projectsV2/4/items`
+and `.../fields` read the board, and a `PATCH` on one item sets its
+fields, a single-select value by its option's ID. REST spends the core
+budget; GraphQL's has run out four times in M1 and M2, so where GraphQL is
+needed, send several mutations as one aliased request
+([dotagents#2359][da2359]).
 
 ## Toolchain & reproducibility
 
@@ -1557,3 +1571,5 @@ will read it.
 [i278]: https://github.com/harleypig/mailctl/issues/278
 [da2312]: https://github.com/Harleypig-LLC/dotagents/issues/2312
 [da2322]: https://github.com/Harleypig-LLC/dotagents/issues/2322
+[da2358]: https://github.com/Harleypig-LLC/dotagents/issues/2358
+[da2359]: https://github.com/Harleypig-LLC/dotagents/issues/2359
