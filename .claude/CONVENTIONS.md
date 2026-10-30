@@ -155,8 +155,23 @@ layer may call.
 - `mailctl/cli.py` — **interface**: the CLI front-end. Argument parsing,
   turning flags into utility inputs, opening a session for the command, and
   rendering and confirming what the utilities return.
-- `mailctl/json_output.py` — **interface**: the documents the CLI's
-  `--json` prints, one explicit mapping per neutral record.
+- `mailctl/json_output.py` — **interface**: the interface layer's shared
+  module. The documents the CLI's `--json` prints and the API returns, one
+  explicit mapping per neutral record, built by the same functions so the
+  two are one contract.
+- `mailctl/api/` — **interface**: the API, mailctl's operations over
+  JSON-RPC 2.0 for a client in any language ([ADR 0008][adr8]). A client
+  starts `mailctl-api` with the settings it would give `mailctl`.
+  - `__init__.py` — `main`: one client served on stdin and stdout until
+    `shutdown` or the end of its input, with anything else printed sent to
+    stderr.
+  - `protocol.py` — the framing, one JSON message per line, and the
+    envelope. A client's lines are read here and nowhere else, so this is
+    where a `password` it sends is wrapped in `Secret`, as the line is
+    parsed.
+  - `server.py` — the session, the methods, and the plan table between a
+    `.plan` and its `.execute`.
+  - `__main__.py` — `python -m mailctl.api`.
 - `mailctl/utilities/` — **utilities**: every piece of work the tool does,
   host-independent, for any front-end and against any provider, one module
   per subject. The safety policy lives here.
@@ -212,7 +227,9 @@ layer may call.
   package per host, each composing layer-1 components, in two halves (see
   *Providers* below).
   - `base.py` — the interface: `Dialect` (the offline half), `Transport`
-    (the communication half, every operation classified), `Provider` (the
+    (the communication half, every operation classified, and one read per
+    half marked its probe by `Operation.probe`: `list_rule_sets` on rules,
+    `mail_noop`, an IMAP `NOOP`, on mail), `Provider` (the
     record naming a host's capabilities, dialect, and transport), and
     `ProviderCapabilities`; it re-exports the model so one import reaches
     both.
@@ -317,26 +334,33 @@ generation, folder-name normalization, script merging) is exercisable with no
 server at all. Keep new logic on the offline side of that line wherever it can
 live there.
 
-## The core returns data; only the CLI prints
+## The core returns data; only the interfaces print
 
 **`config`, `criteria`, `rules`, `components/`, `providers/`, the session
 in `engine.py`, and the `utilities/` that do the work return structured
 values and raise `MailctlError`. Every piece of rendering, prompting,
-confirmation, and progress output lives in `cli.py`.** Two reasons, both
-cashing out now: the core stays testable without capturing stdout, and a
-future front-end can sit on the same core instead of requiring it to be torn
-apart first.
+confirmation, and progress output lives in an interface: `cli.py`, or the
+API in `mailctl/api/`.** Two reasons, both cashing out now: the core stays
+testable without capturing stdout, and a second front-end sits on the same
+core instead of requiring it to be torn apart first — the API did
+([ADR 0008][adr8]).
 
 **Four layers, and each calls only the one below it** (operator,
 2026-09-28, [#137][i137]; [ADR 0007][adr7] holds the reasoning):
 
 ```text
-interfaces  cli · tui · gui · web   parse input, render output, ask
+interfaces  cli · api               parse input, render output, ask
 utilities   mailctl/utilities/      the work, and the safety policy
 session     engine.py               config → provider → open, keep, close
 provider    dialect                 offline: neutral model ⇄ host language
             transport               communication only
 ```
+
+**The API is the second interface, and a UI is its client.** A TUI, GUI,
+or web UI is presentation only, may be written in any language, and lives
+outside the package, calling the API rather than the utilities
+([ADR 0008][adr8]). Over stdio its one peer is the process that started
+it, so the client is not authenticated: it already runs as the same user.
 
 **Three kinds of operation, and each has one home.**
 
@@ -368,11 +392,12 @@ hand it to a utility. It never reaches the session's transport, connection,
 or dialect itself, and imports no provider and no component. That is what
 puts every write behind the safety policy, whichever front-end asked for
 it. `tests/test_layer_purity.py` holds the lines: a component imports no
-layer above it; the session, the utilities, and the CLI import no
+layer above it; the session, the utilities, and the interfaces import no
 component; the session and the utilities reach a provider only through
 `providers.base` and `providers.registry` and never name one; and the
 interface guard holds a front-end to utilities, the session's opening
-calls, and the neutral model.
+calls, and the neutral model. An interface is whatever module is not the
+core, so the API is under the guard without being listed.
 
 **The utilities do not know how they were called.** The operator's
 instruction, 2026-09-27: *"the engine, the code that does the actual work,
@@ -385,7 +410,15 @@ function is read-only and returns what would change (a diff, placement
 findings, a message preview, counts); the front-end renders it and makes
 the decision (`--dry-run`, `--yes`, a confirmation prompt); an
 execute-style call carries the plan out. New work goes into the utilities
-first; `cli.py` should only gain parsing and rendering.
+first; an interface should only gain parsing and rendering.
+
+**Across the API the plan stays in the API process.** A `.plan` method
+keeps the plan record in the session's plan table under a fresh id and
+returns the id beside the plan's document; the `.execute` method takes the
+id and nothing the plan already holds, so what was shown is what runs. An
+id is used once: executed, failed, or discarded (`plan.discard`), it is
+gone, and using it again is refused, coded `plan_unknown`. That is the
+session's *a write is never sent again* held across a lost response.
 
 **Nothing below the front-end writes to the terminal, progress included.**
 `--verbose` protocol chatter leaves `SieveSession` and `ImapSession` through
@@ -396,18 +429,25 @@ callback; the CLI decides whether and how to show either. The same
 `ALERT` (`providers.base.Progress`), or a ManageSieve server a PUTSCRIPT
 `WARNINGS` (RFC 5804 section 1.3; CHECKSCRIPT's are verbose progress), and
 the CLI shows each one on stderr with or without `--verbose`, the same text
-once per run. Do not add a second output path beside them.
+once per run. The API sends the same three to its client as JSON-RPC
+notifications: each step of a change as `event`, a server's alert as
+`server.alert`, always and the same text once per session, and the
+protocol chatter as `log`, only where `initialize` asked for it. Do not add
+a second output path beside them.
 
 **A core message names no front-end's flag or command.** It states the
 condition and carries a `MailctlError` code, which the front-end renders
 with its own controls (`cli.ERROR_TEXT`, [#51][i51]). Where it points at
 another operation, an error or a record names the operation in a field
 (`operation`), never `mailctl <command>`; the CLI renders the command line
-(`cli.command_for`, [#183][i183]).
+(`cli.command_for`, [#183][i183]). The API hands its client the error
+document in the JSON-RPC error's `data`, and the client branches on its
+`code`, never on the message.
 
 **Safety policy lives in the utilities, not the front-end or the
 provider**: the backup before every upload (`scripts.upload_script`, the
-one upload path), merge-never-overwrite, the `--max-messages` ceiling
+one upload path) and the refusal of a filter set changed since the plan
+(*Rule conventions*), merge-never-overwrite, the `--max-messages` ceiling
 (re-checked when a mail plan is executed), and the UIDVALIDITY check on a
 UID before it is used (checked again when a mark or mail plan is executed)
 hold whichever front-end calls them.
@@ -425,13 +465,22 @@ availability may not.** A capability wanted for one front-end is built into
 the utilities and exposed in all of them; a feature only one front-end has
 is a gap in the others, not a design choice.
 
+**An API method is named by its command path, dotted** — `filter.list`,
+`mail.search`, and a write command as a pair, `filter.add.plan` and
+`filter.add.execute` — so the API and the help name an operation alike;
+`initialize`, `shutdown`, and `plan.discard` are the protocol's own.
+`tests/test_api.py` holds every other method to a command of the CLI. The
+first slice ([#258][i258]) offers `filter list`, `mail search`, `mail
+view`, and `filter add`; every other command is a gap in the API under
+this rule, left to the later slices [ADR 0008][adr8] names.
+
 **An interface may leave out an operation that does not fit its medium**
 (operator, 2026-09-28, [#145][i145]). "Next message" is a stateless
 utility: a TUI stepping through a folder calls it, and the one-shot CLI
 does not expose it. What is left out is left out for the medium, never
-because the work was built into one front-end. The CLI is the only
-front-end today, so today this means the CLI exposes every utility
-operation that fits a command line.
+because the work was built into one front-end. The CLI is the one
+front-end that offers every operation today, so today this means the CLI
+exposes every utility operation that fits a command line.
 
 **The CLI comes first, and it is the baseline.** The operator, 2026-09-28:
 
@@ -608,8 +657,12 @@ parsed script becomes `Rule` values.
 **Every transport operation is classified**, once, on the `Transport`
 interface in `base.py`: which half it uses (`rules` or `mail`) and whether
 it is a **read**, a **write**, or a **connection** operation (`open`,
-`connect`, `disconnect`, `dropped`, the `has_*` answers). The session reads
-that classification and never asks which provider it has.
+`connect`, `disconnect`, `dropped`, the `has_*` answers). One read per half
+is also marked that half's **probe** (`Operation.probe`): `list_rule_sets`
+on rules and `mail_noop`, an IMAP `NOOP`, on mail. A probe must be a real
+exchange with the server, never an answer cached at login, which is why
+neither capability read serves and the mail half has `mail_noop`. The
+session reads that classification and never asks which provider it has.
 
 **The session is lazy, and what it does around each call it reads from the
 classification** (`engine.Session`):
@@ -623,6 +676,14 @@ classification** (`engine.Session`):
 - **A write is never sent again.** It may have landed before the
   connection went; a retry could land it twice, and would hide the failure
   the user needs to see. A failed write is final for that command.
+- **A write on a half idle for a minute is preceded by its probe**
+  (`engine.IDLE_PROBE_AFTER`, 60 seconds). A server may log an idle client
+  out, and a long-lived front-end's first call after a while may be a
+  write, which would then fail for nothing. The probe is a read, so a
+  connection dropped while idle is found by a call that may be sent again,
+  and the write goes out on a connection known to be live. A half not yet
+  connected, or used within the minute, sends none; a probe the server
+  refuses stops the write.
 - **One call at a time per half**, under a lock, since IMAP and
   ManageSieve are both one command after another; and each mail call names
   its folder rather than trusting the one a previous call left selected.
@@ -633,6 +694,10 @@ classification** (`engine.Session`):
 **The CLI keeps its shape**: one command opens a session with the halves it
 needs, runs, and closes it. It uses the session's lazy open, so bad input
 fails before any login or password prompt (decided on [#137][i137]).
+**The API holds one session for its process**: `initialize` resolves the
+configuration from the process's own arguments, as the CLI does, and opens
+the session, connecting nothing; `shutdown` or the end of input closes it.
+Requests are handled one at a time, in order.
 
 **How a provider is chosen, declared, and held to its interface:**
 
@@ -656,7 +721,8 @@ fails before any login or password prompt (decided on [#137][i137]).
   provider, the construct, and why.
 - **Every provider answers every operation.** Each half implements or
   explicitly declines (`@declined`) every operation of its interface —
-  `Dialect` or `Transport` — and what the two decline matches the
+  `Dialect` or `Transport`, `mail_noop` among them — and what the two
+  decline matches the
   provider's capabilities. `tests/test_providers.py` holds this. It also
   drives a fake second provider through the utilities to show the calls
   match `mxroute`'s.
@@ -924,6 +990,16 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   `--backup-dir`, `MAILCTL_BACKUP_DIR`, `backup_dir` in `config.toml`, or
   `filterset backup --output`. Paths are resolved first, symlinks included,
   so neither `..` nor a link leads out ([#230][i230]).
+- **An upload is refused if the filter set changed since the plan**
+  ([#257][i257]). Before the backup, `upload_script` reads the server's
+  copy again, and on any byte difference from what the plan was made from
+  it sends nothing and refuses, coded `filterset_changed`; what it read is
+  what it backs up. Otherwise an edit made in between — the webmail's
+  filter UI, another run, a second client — would be overwritten and
+  missing from the backup, which is ADR 0002's failure by another road.
+  Every execute that uploads goes through it, `filterset restore` and
+  `folder rename` included, and a byte compare needs no parse, so a
+  restore over an unparseable script ([ADR 0005][adr5]) is held to it too.
 - **A backup is the server's exact bytes.** `SieveSession` reads GETSCRIPT
   by the literal's declared length, CRLF and final newline included
   ([#90][i90]), and `write_backup` writes what it was handed, with newline
@@ -1042,6 +1118,16 @@ and it is enforced by construction rather than by care:
   visible in the process list and saved to shell history. The warning is
   presentation and stays in the CLI; the mode refusal is behaviour and stays
   in the core.
+- **The API takes the same ladder without `--password`, and its prompt is
+  a request to its client.** Where no rung supplies the password, the API
+  sends `credentials.prompt`, and the reply's `password` is wrapped in
+  `Secret` as its line is parsed (`api/protocol.py`), before anything
+  dispatches or logs it. No method takes a password. A login the server
+  refuses, coded `auth_failed`, makes `Config.forget_prompted_password`
+  drop a prompted password so the next request asks again; one from a
+  file, a command, or a setting is kept. On either interface, a password
+  IMAP cannot send, since imaplib sends `LOGIN` as ASCII, is refused as
+  `credentials_not_ascii`, quoting nothing.
 - The same bar binds test doubles and throwaway debug shims. To tell two
   credentials apart, emit a non-reversible discriminator (a literal
   `set`/`unset`, a length, a short hash prefix) — never the value. See the
@@ -1418,6 +1504,9 @@ will read it.
 [provider]: https://github.com/harleypig/terraform-provider-mxroute
 [i9]: https://github.com/harleypig/mailctl/issues/9
 [adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
+[adr8]: ../adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
+[i257]: https://github.com/harleypig/mailctl/issues/257
+[i258]: https://github.com/harleypig/mailctl/issues/258
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
 [adr7]: ../adr/0007-interfaces-utilities-session-provider-layering.md
 [i137]: https://github.com/harleypig/mailctl/issues/137
