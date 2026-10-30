@@ -31,6 +31,7 @@ ALL_TESTS = [
     "folders",
     "folder-counts",
     "backup",
+    "reread-bytes",
     "search",
     "search-unread",
     "search-sort",
@@ -215,6 +216,8 @@ def test_a_missing_binary_bails_out(tmp_path):
         ("drift", "unchanged"),
         ("backup-writes", "backup"),
         ("backup-writes-elsewhere", "backup"),
+        ("reread-differs", "reread-bytes"),
+        ("backup-writes-nothing", "reread-bytes"),
         ("like-drops-source", "search-like"),
         ("unread-lists-read", "search-unread"),
         ("sort-unordered", "search-sort"),
@@ -477,8 +480,22 @@ def test_every_mutating_call_carries_dry_run_and_none_carries_yes(tmp_path):
     for call in calls:
         assert "--yes" not in call
 
+        if is_work_backup(call):
+            continue
+
         if " ".join(call[:2]) in MUTATING or " ".join(call[:3]) in MUTATING:
             assert "--dry-run" in call, call
+
+
+# ----------------------------------------------------------------------------
+def is_work_backup(call):
+    """The one write the guard allows (#298): a backup into the run's own
+    temp directory, which only the reread-bytes check sends."""
+    return (
+        call[:3] == ["filterset", "backup", "--output"]
+        and len(call) == 4
+        and Path(call[3]).name in ("reread-1.sieve", "reread-2.sieve")
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -694,3 +711,139 @@ def test_optimize_rules_names_a_plan_without_its_diff(tmp_path):
     assert proc.stdout.splitlines()[2] == (
         "# filter optimize --json: changes but no diff"
     )
+
+
+# ############################################################################
+# reread-bytes (#298)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_reread_bytes_backs_up_twice_into_its_own_dir_and_passes(tmp_path):
+    """Two backups, each to a file of its own in the run's temp directory,
+    and nothing else sent; the sizes are reported, and the files are gone
+    once the run ends. Red if the check reads once, writes anywhere else,
+    or leaves its files behind."""
+    proc, calls = run(tmp_path, "reread-bytes")
+
+    assert proc.returncode == 0, proc.stdout
+    assert proc.stdout.splitlines()[:2] == ["1..1", "ok 1 - reread-bytes"]
+    assert re.fullmatch(
+        r"# two reads match: (\d+) and \1 bytes", proc.stdout.splitlines()[2]
+    )
+    assert [call[:3] for call in calls] == [
+        ["filterset", "backup", "--output"]
+    ] * 2
+
+    first, second = (Path(call[3]) for call in calls)
+
+    assert first.parent == second.parent
+    assert first != second
+    assert not first.parent.exists()
+
+
+# ----------------------------------------------------------------------------
+def test_reread_bytes_names_the_sizes_when_the_reads_differ(tmp_path):
+    """CRLF then LF: the same script to a parser, not to require_unchanged."""
+    proc, _ = run(tmp_path, "reread-bytes", breaks=["reread-differs"])
+
+    assert proc.returncode == 1
+    assert re.fullmatch(
+        r"# two reads of the unchanged filter set differ: \d+ and \d+ bytes",
+        proc.stdout.splitlines()[2],
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_reread_bytes_never_prints_the_filter_set(tmp_path):
+    """Pass or fail, only sizes: the script says who the user mails."""
+    for breaks in ((), ("reread-differs",)):
+        proc, _ = run(tmp_path, "reread-bytes", breaks=breaks)
+
+        assert "boss@example.com" not in proc.stdout + proc.stderr
+
+
+# ----------------------------------------------------------------------------
+def test_reread_bytes_skips_where_the_backup_root_refuses_it(tmp_path):
+    proc, calls = run(tmp_path, "reread-bytes", breaks=["backup-root-refused"])
+
+    assert proc.returncode == 0
+    assert proc.stdout.splitlines() == [
+        "1..1",
+        "ok 1 - reread-bytes # SKIP MAILCTL_BACKUP_ROOT keeps the backups "
+        "out of the run's temp directory",
+    ]
+    assert len(calls) == 1
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("output", "verdict"),
+    [
+        ("/w/reread-1.sieve", "allowed\n"),
+        ("/elsewhere/reread-1.sieve", "refused\n"),
+        ("/wx/reread-1.sieve", "refused\n"),
+        ("/w/sub/reread-1.sieve", "refused\n"),
+        ("/w/../reread-1.sieve", "refused\n"),
+        ("/w/..", "refused\n"),
+        ("/w/", "refused\n"),
+    ],
+)
+def test_the_guard_allows_a_backup_only_into_the_runs_own_dir(
+    tmp_path, output, verdict
+):
+    """The guard's one exception, read with WORK=/w: a file directly in the
+    run's temp directory, and nowhere else, not even below it."""
+    proc = subprocess.run(
+        [
+            str(SCRIPT),
+            "--selftest-guard",
+            "filterset",
+            "backup",
+            "--output",
+            output,
+        ],
+        env={"PATH": os.environ["PATH"], "WORK": "/w"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.stdout == verdict
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["filterset", "backup", "-o", "/w/reread-1.sieve"],
+        ["filterset", "backup", "--output=/w/reread-1.sieve"],
+        ["filterset", "backup", "--output", "/w/a", "--backup-dir", "/x"],
+        ["filterset", "restore", "--output", "/w/a"],
+    ],
+)
+def test_the_guards_exception_is_one_argv_shape(tmp_path, argv):
+    proc = subprocess.run(
+        [str(SCRIPT), "--selftest-guard", *argv],
+        env={"PATH": os.environ["PATH"], "WORK": "/w"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.stdout == "refused\n"
+
+
+# ----------------------------------------------------------------------------
+def test_the_guards_exception_needs_a_work_dir(tmp_path):
+    """No WORK, no exception: the hidden self-test runs before one is made."""
+    proc, _ = run(
+        tmp_path,
+        "--selftest-guard",
+        "filterset",
+        "backup",
+        "--output",
+        "/reread-1.sieve",
+    )
+
+    assert proc.stdout == "refused\n"

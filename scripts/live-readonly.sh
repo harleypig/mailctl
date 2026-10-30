@@ -37,6 +37,7 @@ readonly TESTS=(
   folders
   folder-counts
   backup
+  reread-bytes
   search
   search-unread
   search-sort
@@ -385,6 +386,8 @@ guard_allows() {
     [[ $arg == --dry-run ]] && dry=1
   done
 
+  work_backup "$@" && return 0
+
   for ((i = 0; i < ${#argv[@]}; i++)); do
     in_list "${argv[i]} ${argv[i + 1]:-}" "${MUTATING[@]}" && mutating=1
     in_list "${argv[i]} ${argv[i + 1]:-} ${argv[i + 2]:-}" "${MUTATING[@]}" \
@@ -394,6 +397,26 @@ guard_allows() {
   ((mutating && !dry)) && return 1
 
   return 0
+}
+
+#-----------------------------------------------------------------------------
+# The one write the guard lets through: exactly `filterset backup --output
+# PATH`, with PATH a file directly in this run's own $WORK, which the EXIT
+# trap removes. It writes nothing on the server -- a backup only reads the
+# filter set -- and nothing outside a directory the run made and deletes.
+# Any other argument, a PATH with a `/` or `..` below $WORK, the `-o` or
+# `--output=` spellings, and an empty $WORK are all refused, so this widens
+# the guard by one argv shape and no more.
+work_backup() {
+  local name
+
+  (($# == 4)) || return 1
+  [[ $1 == filterset && $2 == backup && $3 == --output ]] || return 1
+  [[ -n ${WORK:-} && $4 == "$WORK"/* ]] || return 1
+
+  name=${4#"$WORK"/}
+
+  [[ -n $name && $name != */* && $name != . && $name != .. ]]
 }
 
 #-----------------------------------------------------------------------------
@@ -732,6 +755,66 @@ t_backup() {
   written=$(find "$dir" -mindepth 1 -maxdepth 1 -newer "$WORK/marker" | wc -l)
 
   ((written == 0)) || fail "$written new file(s) in the backup directory"
+}
+
+#-----------------------------------------------------------------------------
+# #298: every upload reads the filter set again and refuses, coded
+# filterset_changed, unless it is the plan's bytes exactly. A server that
+# hands back an unchanged script with different bytes -- line endings or
+# trailing whitespace renormalised between reads -- would refuse every
+# write. Two backups of the active filter set, each its own connection,
+# then cmp. `filterset show` is not enough: it escapes control characters
+# and adds a final newline where there is none, so two reads differing in
+# exactly those bytes would print alike. The files are this run's own, in
+# $WORK, removed before returning; only their sizes are reported, never
+# their text. Red when the two reads differ by any byte, or either cannot
+# be taken; a skip where MAILCTL_BACKUP_ROOT keeps --output out of $WORK.
+t_reread_bytes() {
+  local first=$WORK/reread-1.sieve second=$WORK/reread-2.sieve file sizes
+  local status=0
+
+  for file in "$first" "$second"; do
+    run_mailctl filterset backup --output "$file"
+
+    if ((RC != 0)) && grep -q 'MAILCTL_BACKUP_ROOT lets them go' "$ERR"; then
+      SKIP_REASON="MAILCTL_BACKUP_ROOT keeps the backups out of the run's"
+      SKIP_REASON+=" temp directory"
+      status=2
+
+      break
+    fi
+
+    expect_ok 'filterset backup --output' || {
+      status=1
+
+      break
+    }
+
+    [[ -f $file ]] || {
+      fail "filterset backup exited 0 but wrote no file"
+      status=1
+
+      break
+    }
+
+    [[ $file == "$first" ]] && sleep "$PAUSE"
+  done
+
+  if ((status == 0)); then
+    sizes="$(wc -c < "$first") and $(wc -c < "$second") bytes"
+
+    if cmp -s -- "$first" "$second"; then
+      diag "two reads match: $sizes"
+
+    else
+      diag "two reads of the unchanged filter set differ: $sizes"
+      status=1
+    fi
+  fi
+
+  rm -f -- "$first" "$second"
+
+  return "$status"
 }
 
 #-----------------------------------------------------------------------------
