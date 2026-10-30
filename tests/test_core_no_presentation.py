@@ -1,4 +1,4 @@
-"""The core returns data; only the CLI prints.
+"""The core returns data; only the interfaces print.
 
 ``config``, ``criteria``, ``rules``, every module under
 ``components/``, ``providers/``, and ``utilities/``, and the ``engine``

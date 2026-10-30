@@ -17,7 +17,8 @@ FEATURES:
   `--json` prints. The steps of a change and any server alert arrive as
   notifications, and where no password is configured the API asks the
   program for it rather than taking one in a request. `--password` is not
-  among its settings.
+  among its settings. `mail.search` lists every match where `limit` is
+  null, and 20 where it is not given ([#303]).
 
 ENHANCEMENTS:
 
@@ -1604,6 +1605,7 @@ NOTES:
 [#212]: https://github.com/harleypig/mailctl/issues/212
 [#204]: https://github.com/harleypig/mailctl/issues/204
 [#258]: https://github.com/harleypig/mailctl/issues/258
+[#303]: https://github.com/harleypig/mailctl/issues/303
 [#257]: https://github.com/harleypig/mailctl/issues/257
 [#261]: https://github.com/harleypig/mailctl/issues/261
 [#265]: https://github.com/harleypig/mailctl/issues/265
