@@ -91,7 +91,10 @@ root `pytest` (*The TUI*).
      policy is pinned here, since it lives here: an upload backs up first
      and still leaves the backup when the server rejects the script, a
      rule is merged rather than written over, and a mail plan over the
-     `--max-messages` ceiling is refused whole. `test_utilities_mail.py`
+     `--max-messages` ceiling is refused whole. `test_utilities_rules.py`
+     also holds `describe_rules`: what each read rule does, as the
+     dialect's neutral steps, one entry per rule in its order
+     ([#259][i259]). `test_utilities_mail.py`
      also holds the re-check narrowing the host's search to what the rule
      matches, and a rule that keeps its mail copying it rather than moving
      it ([#188][i188]), with a second run copying only what the folder
@@ -173,8 +176,13 @@ root `pytest` (*The TUI*).
      text; the capabilities naming every field the provider declares; a
      document for every event type; an alert tagged with its channel in
      the user-facing noun; what the rename left behind as names and
-     places, with null for no old directory ([#307][i307]); and an
-     execute's result naming what it did and where the backup is.
+     places, with null for no old directory ([#307][i307]); an
+     execute's result naming what it did and where the backup is; and
+     each filter's `steps` beside its unchanged `actions` ([#259][i259]),
+     every step with its `kind`, `argument`, and `creates`, the kind in
+     the document's word and never the model's, and every kind the
+     `mxroute` dialect reports (read off its table, not listed) with a
+     word of its own.
    - **The API** (`test_api.py`, [#258][i258]) — driven across a real
      process boundary by a plain line-reading client
      (`tests/api_support.py`), as a client in any language would drive
@@ -191,8 +199,17 @@ root `pytest` (*The TUI*).
      `shutdown` and the end of input both ending the process; what is not
      a request answered as the specification says; `filter.list`,
      `mail.search`, and `mail.view` returning their `--json` documents and
-     refusing what the utilities refuse; a plan that writes nothing, runs
-     once, sends its events before its answer, and is refused once
+     refusing what the utilities refuse, with `filter.list` carrying each
+     filter's neutral `steps` and its `actions` unchanged ([#259][i259]);
+     `mail.search`'s `like` ([#259][i259]) finding mail like a message,
+     merged with a `filter` as the CLI's `--like` merges them, and
+     refusing a UID from a renumbered folder, with `build_filter` or
+     without, before the UID is used; `build_filter` returning the filter
+     document `filter.add.plan` takes, listing and saving nothing; and a
+     UID below 1 or missing, an unknown `like` key, empty criteria, and
+     each combination the CLI refuses all refused; a plan that writes
+     nothing, runs once, sends its events before its answer, and is
+     refused once
      discarded, or at execute once the filter set changed; and `log` only
      where `initialize` asked, `server.alert` always and once per session.
      The password bar: a sentinel given through `credentials.prompt` logs
@@ -324,6 +341,10 @@ root `pytest` (*The TUI*).
      action. Option names and metavars are taken out first. Each walk is
      seen to reach what it allows, each exception to be needed, and a
      planted word, and each line printed before #219, to turn it red.
+     A filter's step `kind` is our word inside a JSON document, so it is
+     held all the same ([#259][i259]): every kind any snapshot carries is
+     free of provider words, the walk is seen to reach `file` and `stop`,
+     and a planted `fileinto` kind is caught.
    - **Providers** (`test_providers.py`) — each half of every registered
      provider implements or explicitly declines every operation of its
      interface (`Dialect`, `Transport`), and the two decline exactly what
@@ -525,15 +546,39 @@ needs the TUI installed into `.venv` beside mailctl (CONVENTIONS.md ›
   `mailctl-api` as a real child process, so the TUI's framing, its reader,
   and its answers to the API's requests are the ones a user runs. Each
   test writes a scene file (`STUB_SCENE`) saying what `initialize`,
-  `filter.list`, and any `server.alert` return, and whether the stub asks
-  for the password; the stub writes back what it saw, never the password
-  itself, only whether one was given and matched. Driven headless with
-  Textual's Pilot: the filters listed as the document has them, an empty
+  `filter.list`, `mail.search` (with and without `like`), `mail.view`,
+  `filter.add.plan` and `.execute`, and any `server.alert` return, which
+  method to refuse, and whether the stub asks for the password; the stub
+  writes back the methods called and their parameters, never the
+  password itself, only whether one was given and matched. Driven
+  headless with Textual's Pilot: the filters listed as the document has
+  them, what each does worded from its neutral `steps` and never its
+  host-word `actions` ([#259][i259]), an empty
   filter set said so, server text shown as plain characters and never as
   markup or control, an alert shown as it arrives and the panel hidden
   without one, the password asked in a masked field and afterwards held by
   no container the app keeps, a declined prompt answered as declined, and
   an API that will not start reported.
+- **The first scope, against the stub** (`test_flow.py`, [#259][i259]) —
+  search, read, and add a filter like a message, through plan, decide,
+  execute. A search sends what was typed, leaves an empty folder to the
+  API, and names the folder as the API spelt it; a message is read in
+  the listing's folder under its UIDVALIDITY, its text keeping its lines
+  with markup shown as characters and control characters escaped; an
+  alert reaches the panel over another screen. The form is filled in by
+  `mail.search`'s `like`, never from the message's headers, with criteria
+  it has no field for carried as sent; an API refusing `like` or
+  `build_filter` as unknown opens an empty form that says so, and any
+  other -32602 is shown in the API's own words. The plan is shown as the
+  document has it, saving sends `filter.add.execute` the plan's id alone
+  and shows each `event` and where the backup went, Escape sends
+  `plan.discard`, a plan that changes nothing offers no save, and a
+  refused plan or a failed save says so. The form offers only what the
+  provider declares, one capability withheld at a time removing exactly
+  its options; the filter list's keys are not offered over another
+  screen; `subscribe` is sent only beside `create_folder`, and what the
+  user left alone is not sent; and the form opens focused on the first
+  field there is something to give.
 - **Against the real API** (`test_real_api.py`) — the TUI started on
   mailctl's own `tests/api_child.py`, the real API with its two protocol
   clients replaced by doubles, so this is the stub's contract checked
@@ -541,18 +586,35 @@ needs the TUI installed into `.venv` beside mailctl (CONVENTIONS.md ›
   `filter.list` document, and the real `credentials.prompt`. It also
   checks that every capability a command is gated on is one `initialize`
   returns, since a misspelt one would hide its command under every
-  provider. Only the child process imports mailctl.
+  provider. And it runs the first scope end to end ([#259][i259]):
+  search, read, a form filled in by the real `like`, plan and execute,
+  a backup on disk holding the filter set as it was, the new filter
+  stored beside the webmail's, the password asked once, and afterwards
+  no container the app holds it (a `gc` scan). Only the child process
+  imports mailctl.
 - **The guards** (`test_guards.py`) — the two lines ADR 0009 holds the TUI
   to. **It imports nothing from mailctl**: every module of the package is
   walked, not listed, and an `import` of `mailctl` or anything under it,
   static or by name at run time (`import_module`, `__import__`), fails;
   `mailctl_tui` is not `mailctl`. **It offers only what the capabilities
-  allow**: every key binding is a command from `offer.COMMANDS`, the
-  command palette is off, the password screen binds only its own cancel,
-  and a command whose capability `initialize` did not declare true is
-  hidden and will not run. Each guard carries a planted case it is seen to
-  catch — each kind of import, a stray binding — so neither passes for
-  reading nothing, and the walk is checked to reach every module.
+  allow**: every key binding is a command from `offer.COMMANDS` on its
+  own screen, every screen is gated and named there, the command palette
+  is off, the password screen binds only its own cancel, `offered` fails
+  closed on a capability or an action not declared, and a command whose
+  capability `initialize` did not declare true is hidden and will not
+  run. Each guard carries a planted case it is seen to catch — each kind
+  of import, a stray binding, another screen's command — so neither
+  passes for reading nothing, and the walk is checked to reach every
+  module.
+- **The wording guard** (`test_wording.py`, [#259][i259]) — no provider
+  word, and no *rule* outside a quoted name, in anything the TUI writes
+  on any screen of the first scope: labels, statuses, table cells, form
+  options, the footer, notices, and what saving did. What the server
+  wrote (the diff, a message's headers and body) is left out, and the
+  pattern is the CLI's (*Neutral wording* above), so a backup's `.sieve`
+  suffix is content. The walk is seen to reach every kind of text on
+  every screen, a planted "script" line turns it red, and the pattern is
+  checked against each word and against the user's words and content.
 
 ## The read-only live check
 
@@ -693,6 +755,7 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i262]: https://github.com/harleypig/mailctl/issues/262
 [i257]: https://github.com/harleypig/mailctl/issues/257
 [i258]: https://github.com/harleypig/mailctl/issues/258
+[i259]: https://github.com/harleypig/mailctl/issues/259
 [i294]: https://github.com/harleypig/mailctl/issues/294
 [i298]: https://github.com/harleypig/mailctl/issues/298
 [i299]: https://github.com/harleypig/mailctl/issues/299
