@@ -1210,6 +1210,40 @@ start `<`, and `…` marks what is left out.
 < {"jsonrpc": "2.0", "id": 5, "result": null}
 ```
 
+## TUI
+
+`mailctl-tui` is a terminal UI for mailctl, and the API's first client. It
+starts `mailctl-api` and shows only what the API returns. It is a package
+of its own, in `clients/tui/`, so installing mailctl never pulls in its
+terminal library; why it is built this way is [ADR 0009][adr9].
+
+This first slice shows three things:
+
+* **the filters** in the active filter set, in the order they run, and the
+  ones that cannot fire where they are; `r` reads them again and `q`
+  quits;
+* **an alert from the mail server**, as it arrives;
+* **a password prompt**, in a masked field, where mailctl has no password
+  configured. The TUI hands the password to mailctl and keeps no copy.
+
+It changes nothing on the server yet.
+
+```bash
+uv tool install .                   # mailctl, for the mailctl-api command
+uv tool install ./clients/tui       # the TUI
+mailctl-tui
+mailctl-tui --env-file ~/.config/mailctl/work.env
+```
+
+The TUI runs the `mailctl-api` it finds on `PATH`, so mailctl has to be
+installed as well. It takes mailctl's settings from the same places: any
+argument it does not know itself is passed on to `mailctl-api`, as
+`--env-file` is above. `--api COMMAND` starts another command in place of
+`mailctl-api`.
+
+Installing it for development, and `make testtui`, which type-checks it
+and runs its tests, are in [clients/tui/README.md][tui].
+
 ## MXRoute specifics
 
 MXRoute documents very little of its Sieve surface, so what mailctl knows
@@ -1342,6 +1376,8 @@ filters need domain-owner credentials, and mailctl logs in as a mailbox. So:
 [adr2]: adr/0002-non-destructive-script-merge.md
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
 [adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
+[adr9]: adr/0009-python-textual-tui-as-a-separate-package.md
 [reader]: docs/MAIL-READER-REQUIREMENTS.md
 [record]: mailctl/providers/mxroute/RECORD.md
+[tui]: clients/tui/README.md
 [verify]: docs/VERIFYING.md
