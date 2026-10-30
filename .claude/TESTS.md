@@ -14,7 +14,9 @@ before anything writes to one are built and proved on the container tier
 ([#9](https://github.com/harleypig/mailctl/issues/9)); nothing has yet
 written to the real account. The container tier
 (`tests/container/`) is written and green against a local server; it is
-where every write path is proved first.
+where every write path is proved first. The TUI's tests are a separate
+suite with their own configuration, run by `make testtui` and never by the
+root `pytest` (*The TUI*).
 
 ## Three tiers
 
@@ -505,6 +507,53 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   reliable enough to gate a merge on without first watching it run.
   Revisit once it has a history of passing locally.
 
+## The TUI
+
+The TUI (`clients/tui/`, [ADR 0009][adr9]) is a distribution of its own,
+and its tests are a suite of their own: `clients/tui/tests/`, under
+`clients/tui/pyproject.toml`'s pytest configuration (`asyncio_mode =
+auto`, for `pytest-asyncio`). **The root `pytest` does not collect
+them** — its `testpaths` is `tests` — so `make test` needs nothing of
+Textual's. Run them with **`make testtui`**, which type-checks the TUI
+with its own `pyright` and then runs its `pytest`, both from
+`clients/tui/`; `TESTARGS` passes through as for the other targets. It
+needs the TUI installed into `.venv` beside mailctl (CONVENTIONS.md ›
+*Toolchain & reproducibility*). CI runs the same two steps as `TUI
+(3.11)` and `TUI (3.14)`, and the required `Test` check waits on them.
+
+- **Against a stub API** (`test_app.py`) — `stub_api.py` stands in for
+  `mailctl-api` as a real child process, so the TUI's framing, its reader,
+  and its answers to the API's requests are the ones a user runs. Each
+  test writes a scene file (`STUB_SCENE`) saying what `initialize`,
+  `filter.list`, and any `server.alert` return, and whether the stub asks
+  for the password; the stub writes back what it saw, never the password
+  itself, only whether one was given and matched. Driven headless with
+  Textual's Pilot: the filters listed as the document has them, an empty
+  filter set said so, server text shown as plain characters and never as
+  markup or control, an alert shown as it arrives and the panel hidden
+  without one, the password asked in a masked field and afterwards held by
+  no container the app keeps, a declined prompt answered as declined, and
+  an API that will not start reported.
+- **Against the real API** (`test_real_api.py`) — the TUI started on
+  mailctl's own `tests/api_child.py`, the real API with its two protocol
+  clients replaced by doubles, so this is the stub's contract checked
+  against what it stands in for: the real `initialize`, the real
+  `filter.list` document, and the real `credentials.prompt`. It also
+  checks that every capability a command is gated on is one `initialize`
+  returns, since a misspelt one would hide its command under every
+  provider. Only the child process imports mailctl.
+- **The guards** (`test_guards.py`) — the two lines ADR 0009 holds the TUI
+  to. **It imports nothing from mailctl**: every module of the package is
+  walked, not listed, and an `import` of `mailctl` or anything under it,
+  static or by name at run time (`import_module`, `__import__`), fails;
+  `mailctl_tui` is not `mailctl`. **It offers only what the capabilities
+  allow**: every key binding is a command from `offer.COMMANDS`, the
+  command palette is off, the password screen binds only its own cancel,
+  and a command whose capability `initialize` did not declare true is
+  hidden and will not run. Each guard carries a planted case it is seen to
+  catch — each kind of import, a stray binding — so neither passes for
+  reading nothing, and the walk is checked to reach every module.
+
 ## The read-only live check
 
 `scripts/live-readonly.sh`, run by `make livecheck`, is a bash script that
@@ -601,6 +650,7 @@ make testlive          # live (MAILCTL_LIVE=1; needs MAILCTL_* in the env)
 MAILCTL_LIVE_WRITE=1 make testlive TESTARGS=tests/live/test_live_write_smoke.py
                        # the one live test that writes, behind the guards
 make testcontainer     # write paths against a local Dovecot (needs Docker)
+make testtui           # the TUI: its pyright, then its own pytest suite
 make livecheck         # read-only live check (normal mailctl config)
 scripts/live-readonly.sh --list        # the read-only check's test names
 scripts/live-readonly.sh list rules    # run only the named checks
@@ -616,6 +666,7 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i90]: https://github.com/harleypig/mailctl/issues/90
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
 [adr7]: ../adr/0007-interfaces-utilities-session-provider-layering.md
+[adr9]: ../adr/0009-python-textual-tui-as-a-separate-package.md
 [i99]: https://github.com/harleypig/mailctl/issues/99
 [i135]: https://github.com/harleypig/mailctl/issues/135
 [i152]: https://github.com/harleypig/mailctl/issues/152
