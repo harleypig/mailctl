@@ -224,6 +224,15 @@ def describe_actions(
     return session.dialect.describe_actions(actions)
 
 
+# ----------------------------------------------------------------------------
+def describe_rules(
+    session: Session, rules: Iterable[Rule]
+) -> list[tuple[ActionStep, ...]]:
+    """What each read rule does, in neutral terms: one entry per rule, in
+    the order given, as :func:`describe_actions` reads its ``actions``."""
+    return [describe_actions(session, rule.actions) for rule in rules]
+
+
 # ############################################################################
 # Actions
 # ############################################################################

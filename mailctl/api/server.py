@@ -494,8 +494,10 @@ def filter_list(server: Server, params: Params, _ident: object) -> dict:
     filterset = params.take("filterset", str, None)
     params.done()
 
+    report = utilities.rules.read_rules(session, filterset)
+
     return json_output.rules_report(
-        utilities.rules.read_rules(session, filterset)
+        report, utilities.rules.describe_rules(session, report.rules)
     )
 
 
