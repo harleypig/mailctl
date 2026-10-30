@@ -58,7 +58,8 @@ def sieve_session(
             f"ManageSieve authentication failed for {config.user!r} "
             f"(password {config.password_state()}). MXRoute expects the "
             f"FULL email address as the username, e.g. "
-            f"you@yourdomain.com."
+            f"you@yourdomain.com.",
+            code="auth_failed",
         ) from exc
 
     try:

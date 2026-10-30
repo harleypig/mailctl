@@ -298,8 +298,12 @@ class Config:
 
     # Supplied by the front-end (the CLI passes getpass). Left None by
     # anything that cannot prompt, which then gets a clean error instead of
-    # a process blocked on a terminal read that will never be answered.
-    prompter: Callable[[str], str] | None = field(default=None, repr=False)
+    # a process blocked on a terminal read that will never be answered. One
+    # that reads the answer off a wire returns it already wrapped, so the
+    # plain value never leaves the parser.
+    prompter: Callable[[str], str | Secret] | None = field(
+        default=None, repr=False
+    )
 
     # Where each setting came from, keyed by field name, and the places
     # that were read at all, highest priority first. Filled by
@@ -492,8 +496,9 @@ class Config:
             self._password_origin = origin
 
         elif self.prompter is not None:
-            self._password = Secret(
-                self.prompter(f"Password for {self.user or 'account'}: ")
+            answer = self.prompter(f"Password for {self.user or 'account'}: ")
+            self._password = (
+                answer if isinstance(answer, Secret) else Secret(answer)
             )
             self._password_origin = Source(PROMPT)
 
@@ -504,6 +509,20 @@ class Config:
             raise _no_password()
 
         return self._password
+
+    # ------------------------------------------------------------------------
+    def forget_prompted_password(self) -> None:
+        """Drop a password the prompt supplied, so the next connection asks
+        again; a server that refused it would otherwise refuse every retry.
+
+        One from a file, a command, or a setting is kept: asking again
+        cannot change it, and re-running a command could have side effects.
+        """
+        origin = self._password_origin
+
+        if origin is not None and origin.kind == PROMPT:
+            self._password = None
+            self._password_origin = None
 
     # ------------------------------------------------------------------------
     def _resolve_source(self, kind: str, value: str | Secret) -> Secret:

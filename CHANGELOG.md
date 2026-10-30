@@ -4,6 +4,21 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **An API, for a program in any language to drive mailctl** ([#258]).
+  `mailctl-api` (or `python -m mailctl.api`), started with the settings
+  `mailctl` takes, speaks JSON-RPC 2.0 over its standard input and output,
+  one message per line, so a terminal or web front-end need not be written
+  in Python. This first slice offers listing filters, searching and
+  viewing mail, and adding a filter: a plan is returned with an id and
+  carried out only when that id is sent back, once, after a fresh read
+  confirms the filter set has not changed. Results are the documents
+  `--json` prints. The steps of a change and any server alert arrive as
+  notifications, and where no password is configured the API asks the
+  program for it rather than taking one in a request. `--password` is not
+  among its settings.
+
 ENHANCEMENTS:
 
 * **`--env-file` and `--provider` may come before the command** ([#243]).
@@ -23,6 +38,14 @@ ENHANCEMENTS:
   naming the action as a command, not a file.
 
 BUG FIXES:
+
+* **A password with a character outside ASCII no longer shows part of
+  itself** ([#258]). IMAP's login sends ASCII only, and the error it
+  raised named the character it could not send, which mailctl printed as
+  an unexpected failure. It is now refused before anything is sent,
+  saying the password holds such a character and quoting none of it. An
+  unexpected failure is now reported by its type alone; `--debug` still
+  shows the traceback.
 
 * **`mail mark` reads a long list of messages a page at a time** ([#261]).
   Given many UIDs, `mail mark` read all their flags in one request, which
@@ -1580,6 +1603,7 @@ NOTES:
 [#208]: https://github.com/harleypig/mailctl/issues/208
 [#212]: https://github.com/harleypig/mailctl/issues/212
 [#204]: https://github.com/harleypig/mailctl/issues/204
+[#258]: https://github.com/harleypig/mailctl/issues/258
 [#257]: https://github.com/harleypig/mailctl/issues/257
 [#261]: https://github.com/harleypig/mailctl/issues/261
 [#265]: https://github.com/harleypig/mailctl/issues/265

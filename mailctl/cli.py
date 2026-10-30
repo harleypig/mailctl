@@ -2731,20 +2731,7 @@ def cmd_add(args) -> int:
         )
 
         if args.json:
-            return emit_json(
-                args,
-                json_output.plan(
-                    "filter add",
-                    **json_output.change(plan.before != plan.after, plan.diff),
-                    filter=plan.name,
-                    criteria=criteria.to_dict(),
-                    actions=json_output.actions(spec),
-                    folder=json_output.folder_plan(folder),
-                    missing_extensions=list(missing),
-                    placement=json_output.placement(plan.placement),
-                    **json_output.activation(plan),
-                ),
-            )
+            return emit_json(args, json_output.add_plan(plan, spec, missing))
 
         print(f"\nFilter {plan.name!r} in filter set {plan.script!r}:")
         print(f"  when:  {criteria.describe()}")
@@ -5236,9 +5223,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.debug:
             traceback.print_exc()
 
+        # The type and not the text: an exception nothing expected may
+        # carry anything, a credential included -- imaplib's encoding error
+        # quoted the character it could not send. --debug shows the rest.
         report_failure(
             args,
-            f"unexpected {type(exc).__name__}: {exc} "
+            f"unexpected {type(exc).__name__} "
             f"(re-run with --debug for a traceback)",
         )
 
@@ -5407,6 +5397,10 @@ ERROR_TEXT = {
         f"{message} -- use --read, --unread, --flag, --unflag, --keyword, "
         f"or --no-keyword"
     ),
+    # The message says all there is: no flag of this front-end acts on it.
+    "auth_failed": lambda message, _: message,
+    "credentials_not_ascii": lambda message, _: message,
+    "unknown_sort_key": lambda message, _: message,
     "no_password": lambda _, fields: (
         f"no password available -- pass --password-file, --password-cmd, "
         f"or --password, {fields['settings']}"

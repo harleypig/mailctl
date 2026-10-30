@@ -114,3 +114,47 @@ def test_wheel_holds_every_package_and_runs(tmp_path):
 
     assert Path(where).is_relative_to(installed)
     assert version.endswith(mailctl.__version__)
+
+
+# ----------------------------------------------------------------------------
+def test_wheel_declares_both_commands_and_the_api_one_runs(tmp_path):
+    """``mailctl-api`` is how a client starts the API from an install, so
+    a wheel without its entry point leaves a client nothing to run."""
+    wheel = _build_wheel(tmp_path)
+
+    with zipfile.ZipFile(wheel) as archive:
+        (points,) = [
+            name
+            for name in archive.namelist()
+            if name.endswith(".dist-info/entry_points.txt")
+        ]
+        declared = archive.read(points).decode()
+        archive.extractall(tmp_path / "installed")
+
+    assert "mailctl = mailctl.cli:main" in declared
+    assert "mailctl-api = mailctl.api:main" in declared
+
+    dependencies = {
+        str(_directory(module).parent) for module in (imapclient, sievelib)
+    }
+    path = os.pathsep.join(
+        [str(tmp_path / "installed"), *sorted(dependencies)]
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            "-c",
+            "import sys, mailctl.api;"
+            " sys.exit(mailctl.api.main(['--version']))",
+        ],
+        cwd=tmp_path,
+        env={"PYTHONPATH": path, "PATH": os.environ.get("PATH", "")},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith(mailctl.__version__)

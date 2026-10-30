@@ -1,28 +1,38 @@
-"""The documents ``--json`` prints, one explicit mapping per record.
+"""The documents the interfaces hand over, one explicit mapping per record.
 
-Part of the CLI front-end: a document is built from the neutral records
-the utilities return, never from the text the CLI renders, so values are
-whole, flags are raw, and nothing is clipped or rewritten for a terminal.
-Every document is an object carrying ``version`` beside what its command
-reports; README.md > *Output for scripts* lists the shapes.
+The interface layer's shared module: what the CLI's ``--json`` prints and
+what the API returns are built here by the same functions, so the two are
+one contract and cannot drift. A document is built from the neutral
+records the utilities return, never from the text a front-end renders, so
+values are whole, flags are raw, and nothing is clipped or rewritten for a
+terminal. Every document is an object carrying ``version`` beside what its
+command reports; README.md > *Output for scripts* lists the shapes.
 
 The mappings are a contract a script depends on (CONVENTIONS.md > The
-core returns data). Adding a key is compatible; renaming or removing one,
-or changing what a value means, raises ``JSON_VERSION``.
+core returns data). Adding a document or a key is compatible; renaming or
+removing one, or changing what a value means, raises ``JSON_VERSION``.
 """
 
 import json
+from collections.abc import Mapping
 from datetime import datetime
+from pathlib import Path
 
 from .config import Secret
+from .utilities import events
 
 __all__ = [
+    "CHANNELS",
     "JSON_VERSION",
     "actions",
     "activation",
+    "add_plan",
+    "alert",
+    "capabilities",
     "change",
     "dumps",
     "error",
+    "event",
     "folder_listing",
     "folder_plan",
     "mail_plan",
@@ -33,6 +43,7 @@ __all__ = [
     "placement",
     "plan",
     "rules_report",
+    "script_change_result",
     "scripts",
     "sender_report",
 ]
@@ -42,6 +53,10 @@ JSON_VERSION = 2
 # How the IMAP component writes a message's INTERNALDATE: local time, the
 # zone already dropped, so the ISO form carries no offset either.
 RECEIVED_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# What a message from each half is tagged with, the same for every
+# provider: a user-facing noun, as the CLI's progress lines tag them.
+CHANNELS = {events.RULES: "filter", events.MAIL: "mail"}
 
 
 # ############################################################################
@@ -85,18 +100,78 @@ def _document(**body) -> dict:
 
 
 # ----------------------------------------------------------------------------
-def error(message: str, code: str | None = None) -> dict:
-    """A failure, as ``main`` reports it on stderr under ``--json``.
+def error(
+    message: str,
+    code: str | None = None,
+    fields: Mapping[str, object] | None = None,
+) -> dict:
+    """A failure, as ``main`` reports it on stderr under ``--json``, and
+    as the API's error ``data``.
 
     ``code`` names the condition, where the failure has one, so a script
     can tell one refusal from another without reading the message.
+    ``fields`` are the values a coded error carries (``MailctlError``),
+    given by the API; the CLI renders its advice from them instead.
     """
-    body = {"message": message}
+    body: dict = {"message": message}
 
     if code is not None:
         body["code"] = code
 
+    if fields is not None:
+        body["fields"] = {key: _plain(value) for key, value in fields.items()}
+
     return _document(error=body)
+
+
+# ----------------------------------------------------------------------------
+def _plain(value):
+    """A field's value as JSON holds it: a sequence as a list, a path as
+    its text. Anything else is left for ``dumps`` to write or refuse."""
+    if isinstance(value, tuple | list | frozenset | set):
+        items = [_plain(item) for item in value]
+
+        return items if isinstance(value, tuple | list) else sorted(items)
+
+    if isinstance(value, Path):
+        return str(value)
+
+    return value
+
+
+# ############################################################################
+# What a provider offers
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def capabilities(offer) -> dict:
+    """``ProviderCapabilities``, by the names the provider declares them
+    under, so a front-end offers only what the provider can do.
+
+    ``settings`` names the connection settings it reads; ``specifics``
+    gives each provider-only parameter's type name and description.
+    """
+    return {
+        "ordering": offer.ordering,
+        "stop": offer.stop,
+        "rule_sets": offer.rule_sets,
+        "disable": offer.disable,
+        "rename": offer.rename,
+        "actions": sorted(offer.actions),
+        "extensions": offer.extensions,
+        "raw_query": offer.raw_query,
+        "mark": offer.mark,
+        "folder_counts": offer.folder_counts,
+        "uidvalidity": offer.uidvalidity,
+        "folder_visibility": offer.folder_visibility,
+        "specifics": {
+            key: {"type": item.kind.__name__, "description": item.description}
+            for key, item in sorted(offer.specifics.items())
+        },
+        "settings": sorted(offer.settings),
+        "declined": sorted(offer.declined),
+    }
 
 
 # ############################################################################
@@ -325,6 +400,25 @@ def mail_plan(record) -> dict:
 
 
 # ----------------------------------------------------------------------------
+def add_plan(record, spec, missing) -> dict:
+    """``filter add``: the rule merged into the filter set, not yet
+    uploaded. ``actions`` is ``spec``, the actions as asked for;
+    ``missing_extensions`` is what the rule needs that the server does
+    not list."""
+    return plan(
+        "filter add",
+        **change(record.before != record.after, record.diff),
+        filter=record.name,
+        criteria=record.criteria.to_dict(),
+        actions=actions(spec),
+        folder=folder_plan(record.folder),
+        missing_extensions=list(missing),
+        placement=placement(record.placement),
+        **activation(record),
+    )
+
+
+# ----------------------------------------------------------------------------
 def mark_plan(record) -> dict:
     """``mark``: the flags asked for, and what each message would gain and
     lose -- only what would really change, so both are empty for a message
@@ -414,6 +508,89 @@ def optimize_plan(record) -> dict:
             for item in proposals.uncertain
         ],
         **activation(record),
+    )
+
+
+# ############################################################################
+# Carrying a plan out
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def script_change_result(command: str, record, backup: Path) -> dict:
+    """What a filter-set change did once carried out: the filter, the
+    filter set, whether it is now the active one, and where the copy
+    taken before the upload was written."""
+    return _document(
+        result={
+            "command": command,
+            "filter": record.name,
+            "filterset": record.script,
+            "activated": record.activate,
+            "backup": str(backup),
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def event(record) -> dict:
+    """One step of a change, as it lands; ``kind`` says which, and the
+    rest of the keys are that kind's."""
+    if isinstance(record, events.ScriptBackedUp):
+        body = {
+            "kind": "filterset_backed_up",
+            "filterset": record.script,
+            "path": str(record.path),
+        }
+
+    elif isinstance(record, events.ScriptUploaded):
+        body = {
+            "kind": "filterset_uploaded",
+            "filterset": record.script,
+            "activated": record.activated,
+        }
+
+    elif isinstance(record, events.FolderCreated):
+        result = record.result
+        body = {
+            "kind": "folder_created",
+            "folder": result.folder,
+            "subscribed": result.subscribed,
+            "subscribe_error": result.subscribe_error or None,
+            "by_subscription": result.by_subscription,
+        }
+
+    elif isinstance(record, events.FolderRenamed):
+        body = {
+            "kind": "folder_renamed",
+            "old": record.old,
+            "new": record.new,
+            "children": record.children,
+        }
+
+    elif isinstance(record, events.SubscriptionChanged):
+        body = {
+            "kind": "subscription_changed",
+            "folder": record.folder,
+            "subscribed": record.subscribed,
+        }
+
+    else:
+        raise TypeError(f"no JSON mapping for {type(record).__name__}")
+
+    return _document(event=body)
+
+
+# ----------------------------------------------------------------------------
+def alert(half: str, record: events.ServerAlert) -> dict:
+    """An alert or a warning a server sent; ``channel`` is the half it
+    came from, and ``text`` the server's own words."""
+    return _document(
+        alert={
+            "channel": CHANNELS.get(half, half),
+            "kind": record.kind,
+            "text": record.text,
+        }
     )
 
 

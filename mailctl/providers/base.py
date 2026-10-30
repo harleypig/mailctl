@@ -634,6 +634,12 @@ class Operation:
     kind: str
     half: str | None = None
 
+    # The one read per half the session sends before a write on a half
+    # left idle, to find a dropped connection by a read it may retry
+    # rather than by the write (ADR 0008). It must be a real exchange with
+    # the server, never an answer cached at login.
+    probe: bool = False
+
 
 # ----------------------------------------------------------------------------
 def classified(operation: Operation) -> Callable[[Callable], Callable]:
@@ -717,7 +723,7 @@ class Transport(ABC):
         """What the rule half advertises, as the host names it."""
 
     @abstractmethod
-    @classified(Operation(READ, RULES))
+    @classified(Operation(READ, RULES, probe=True))
     def list_rule_sets(self) -> tuple[str | None, list[str]]:
         """``(active, others)``."""
 
@@ -930,6 +936,12 @@ class Transport(ABC):
     @classified(Operation(READ, MAIL))
     def message_count(self, folder: str) -> int:
         """How many messages ``folder`` holds, without selecting it."""
+
+    @abstractmethod
+    @classified(Operation(READ, MAIL, probe=True))
+    def mail_noop(self) -> None:
+        """One exchange that changes nothing, answered only by a live
+        connection."""
 
 
 # ############################################################################

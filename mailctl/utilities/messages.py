@@ -200,7 +200,9 @@ def list_messages(
     if order is not None and order.key not in SORT_KEYS:
         raise MailctlError(
             f"cannot sort by {order.key!r}; sort by one of "
-            f"{', '.join(SORT_KEYS)}"
+            f"{', '.join(SORT_KEYS)}",
+            code="unknown_sort_key",
+            fields={"known": SORT_KEYS},
         )
 
     transport = session.transport

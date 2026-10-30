@@ -926,6 +926,49 @@ def test_the_walk_finds_the_interfaces_and_only_them():
 
 
 # ----------------------------------------------------------------------------
+def test_the_api_is_held_to_the_interface_line():
+    """ADR 0008: the API is an interface beside the CLI. Derived like the
+    rest, so this is red only if the walk stopped reaching it -- the API
+    named a core package, say, and was let off the line."""
+    api = {name for name in INTERFACE_FILES if name.startswith("api/")}
+
+    assert {"api/__init__", "api/protocol", "api/server"} <= api
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("planted", "guard"),
+    [
+        ("from ..providers.mxroute import MXROUTE\n", "below"),
+        ("from ..components.imap import ImapSession\n", "below"),
+        ("from .. import engine\nengine.check_settings(p, c)\n", "engine"),
+        ("x = session.transport.store_rule_set\n", "internals"),
+    ],
+)
+def test_a_violation_planted_in_the_api_is_caught(planted, guard):
+    """The API is a package one level down, so its relative imports
+    resolve from ``mailctl.api``: a guard that resolved them from
+    ``mailctl`` would read ``..providers`` as outside the package and
+    miss it. Clean as it stands, red with the line planted."""
+    path = INTERFACE_FILES["api/server"]
+    source = path.read_text(encoding="utf-8")
+    package = package_of(path)
+
+    def caught(text: str) -> bool:
+        if guard == "below":
+            return bool(below_the_session(text, package))
+
+        if guard == "engine":
+            return not engine_names(text, package) <= INTERFACE_ENGINE_NAMES
+
+        return bool(session_internals(text))
+
+    assert package == "mailctl.api"
+    assert not caught(source)
+    assert caught(source + planted)
+
+
+# ----------------------------------------------------------------------------
 def test_every_named_core_module_exists():
     """A stale name here would let nothing through, silently."""
     for name in CORE_MODULES | {SESSION_MODULE}:

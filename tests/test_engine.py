@@ -47,6 +47,9 @@ class FakeSieveClient:
         self.calls: list[str] = []
         self.drops: list[str] = []
 
+        # What the server's last OK warned of; this one never warns.
+        self.warning = None
+
     # ------------------------------------------------------------------------
     def _call(self, name: str):
         self.calls.append(name)
@@ -72,6 +75,11 @@ class FakeSieveClient:
 
     def putscript(self, name, content):
         self._call("putscript")
+
+        return True
+
+    def setactive(self, name):
+        self._call("setactive")
 
         return True
 
@@ -333,6 +341,210 @@ def test_a_lost_connection_is_told_from_a_refusal():
 
 
 # ############################################################################
+# A write on an idle half is preceded by a read
+# ############################################################################
+
+
+class Clock:
+    """A clock a test moves by hand."""
+
+    # ------------------------------------------------------------------------
+    def __init__(self):
+        self.now = 1000.0
+
+    # ------------------------------------------------------------------------
+    def __call__(self) -> float:
+        return self.now
+
+
+# ----------------------------------------------------------------------------
+def clocked_session(config, clock: Clock, **halves) -> engine.Session:
+    """A session on ``mxroute`` whose idleness ``clock`` decides."""
+    return engine.Session(
+        MXROUTE, MxrouteTransport.open(config), clock=clock, **halves
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_each_half_has_one_probe_and_it_is_a_read_on_that_half():
+    """A probe classified write would never be retried, so it could not
+    find a dropped connection; and the capability reads are answered from
+    what was cached at login, so they cannot either."""
+    assert engine.PROBES == {RULES: "list_rule_sets", MAIL: "mail_noop"}
+
+    for half, name in engine.PROBES.items():
+        assert TRANSPORT_KINDS[name].kind == READ
+        assert TRANSPORT_KINDS[name].half == half
+
+
+# ----------------------------------------------------------------------------
+def test_a_write_on_an_idle_mail_half_sends_a_noop_first(
+    fake_imap, imap_config
+):
+    clock = Clock()
+    live = clocked_session(imap_config, clock, rules=False)
+
+    utilities.folders.list_folders(live)
+    clock.now += engine.IDLE_PROBE_AFTER
+
+    live.transport.create_folder("INBOX.New")
+    live.close()
+
+    names = fake_imap.names()
+
+    assert names.index("noop") == names.index("create_folder") - 1
+    assert names.count("noop") == 1
+
+
+# ----------------------------------------------------------------------------
+def test_a_write_soon_after_an_exchange_sends_no_probe(fake_imap, imap_config):
+    """Red if every write is preceded by a probe: a round trip for
+    nothing, and a server call more in every CLI snapshot."""
+    clock = Clock()
+    live = clocked_session(imap_config, clock, rules=False)
+
+    utilities.folders.list_folders(live)
+    clock.now += engine.IDLE_PROBE_AFTER - 1
+
+    live.transport.create_folder("INBOX.New")
+    live.close()
+
+    assert "noop" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_the_last_exchange_is_what_counts_not_the_login(
+    fake_imap, imap_config
+):
+    """A half in steady use is not idle, however long ago it connected."""
+    clock = Clock()
+    live = clocked_session(imap_config, clock, rules=False)
+
+    utilities.folders.list_folders(live)
+    clock.now += engine.IDLE_PROBE_AFTER - 1
+    live.transport.mail_capabilities()
+    clock.now += engine.IDLE_PROBE_AFTER - 1
+
+    live.transport.create_folder("INBOX.New")
+    live.close()
+
+    assert "noop" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_a_write_on_a_half_not_yet_connected_sends_no_probe(
+    fake_imap, imap_config
+):
+    """Connecting is the exchange that shows the connection is live."""
+    clock = Clock()
+    live = clocked_session(imap_config, clock, rules=False)
+    clock.now += 10 * engine.IDLE_PROBE_AFTER
+
+    live.transport.create_folder("INBOX.New")
+    live.close()
+
+    assert "noop" not in fake_imap.names()
+
+
+# ----------------------------------------------------------------------------
+def test_an_idle_half_the_server_dropped_reconnects_before_the_write(
+    fake_imap, imap_config, monkeypatch
+):
+    """The case the probe exists for: the server logged the idle client
+    out. Without the probe the write meets the dead connection and fails,
+    and is never sent again; with it the write goes out once, on a fresh
+    login."""
+    healthy_on_login(fake_imap, monkeypatch)
+    creates = attempts(fake_imap, monkeypatch, "create_folder")
+    clock = Clock()
+    live = clocked_session(imap_config, clock, rules=False)
+
+    utilities.folders.list_folders(live)
+    clock.now += engine.IDLE_PROBE_AFTER
+    fake_imap.failures["noop"] = DROP
+
+    live.transport.create_folder("INBOX.New")
+    live.close()
+
+    assert len(creates) == 1
+    assert fake_imap.names().count("login") == 2
+
+
+# ----------------------------------------------------------------------------
+def test_a_probe_the_server_refused_stops_the_write(
+    fake_imap, imap_config, monkeypatch
+):
+    """A refusal is the server's answer, not a lost connection: raised, and
+    the write is not sent."""
+    creates = attempts(fake_imap, monkeypatch, "create_folder")
+    clock = Clock()
+    live = clocked_session(imap_config, clock, rules=False)
+
+    utilities.folders.list_folders(live)
+    clock.now += engine.IDLE_PROBE_AFTER
+    fake_imap.failures["noop"] = IMAPClientError("NO not now")
+
+    with pytest.raises(MailctlError, match="not now"):
+        live.transport.create_folder("INBOX.New")
+
+    live.close()
+
+    assert creates == []
+
+
+# ----------------------------------------------------------------------------
+def test_an_idle_rule_half_lists_its_scripts_before_a_write(
+    imap_config, fake_sieve_client
+):
+    """The same over ManageSieve, where LISTSCRIPTS is the probe; dropped,
+    it reconnects and the store is sent once."""
+    clock = Clock()
+    live = clocked_session(imap_config, clock, mail=False)
+
+    live.transport.active_rule_set()
+    clock.now += engine.IDLE_PROBE_AFTER
+    fake_sieve_client.drops = ["listscripts"]
+    fake_sieve_client.calls.clear()
+
+    live.transport.store_rule_set("managesieve", "keep;\n")
+    live.close()
+
+    assert fake_sieve_client.calls == [
+        "listscripts",
+        "logout",
+        "connect",
+        "listscripts",
+        "putscript",
+        "logout",
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_writes_in_a_row_need_no_probe_between_them(
+    imap_config, fake_sieve_client
+):
+    """A store then an activation, as an upload sends them: the store is
+    an exchange, so the activation does not find the half idle."""
+    clock = Clock()
+    live = clocked_session(imap_config, clock, mail=False)
+
+    live.transport.active_rule_set()
+    clock.now += engine.IDLE_PROBE_AFTER
+    fake_sieve_client.calls.clear()
+
+    live.transport.store_rule_set("managesieve", "keep;\n")
+    live.transport.activate_rule_set("managesieve")
+    live.close()
+
+    assert fake_sieve_client.calls == [
+        "listscripts",
+        "putscript",
+        "setactive",
+        "logout",
+    ]
+
+
+# ############################################################################
 # Serialised, one session per user
 # ############################################################################
 
@@ -443,6 +655,7 @@ EXPECTED_KINDS = {
     "sort_messages": (READ, MAIL),
     "rename_folder": (WRITE, MAIL),
     "message_count": (READ, MAIL),
+    "mail_noop": (READ, MAIL),
     "open": (CONNECTION, None),
     "connect": (CONNECTION, None),
     "disconnect": (CONNECTION, None),
