@@ -179,6 +179,25 @@ def test_the_prompter_is_the_last_resort():
 
 
 # ----------------------------------------------------------------------------
+def test_a_prompter_may_answer_with_a_secret():
+    """Taken as it is, not wrapped again: a Secret inside a Secret would
+    hand the connection a Secret where it needs the text."""
+    answer = Secret(MARKER)
+    config = Config(prompter=lambda _prompt: answer)
+
+    assert config.password() is answer
+    assert config.password().reveal() == MARKER
+
+
+# ----------------------------------------------------------------------------
+def test_an_empty_secret_from_the_prompter_is_refused():
+    config = Config(prompter=lambda _prompt: Secret(""))
+
+    with pytest.raises(MailctlError, match="no password available"):
+        config.password()
+
+
+# ----------------------------------------------------------------------------
 def test_the_resolved_password_is_cached():
     """Resolving twice would prompt twice, or run the helper twice."""
     calls = []
