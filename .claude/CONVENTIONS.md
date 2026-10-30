@@ -184,7 +184,8 @@ layer may call.
   - `rules.py` — checking a rule against what the provider declares
     (`check_rule`, `resolve_stop`), reading the rules in a script, planning
     a rule into it or a change to one (removed, moved, switched, renamed),
-    and uploading it.
+    and uploading it; and what each read rule does, in the dialect's
+    neutral steps (`describe_rules`).
   - `scripts.py` — rule sets as the server stores them: read, chosen, and
     uploaded. `upload_script` is the one upload path, and takes the backup
     first.
@@ -340,7 +341,8 @@ layer may call.
   ([ADR 0009][adr9]). It depends on Textual, not on `mailctl`: it starts
   the `mailctl-api` command and imports nothing from the package. The
   layer guards walk `mailctl/` only, so they do not reach it; its own
-  guards are `clients/tui/tests/test_guards.py` (TESTS.md › *The TUI*).
+  guards are `clients/tui/tests/test_guards.py`, and its wording guard
+  `test_wording.py` beside it (TESTS.md › *The TUI*).
 
 The split is deliberate: the **offline** logic (criteria translation, Sieve
 generation, folder-name normalization, script merging) is exercisable with no
@@ -487,8 +489,12 @@ is a gap in the others, not a design choice.
 `filter.add.execute` — so the API and the help name an operation alike;
 `initialize`, `shutdown`, and `plan.discard` are the protocol's own.
 `tests/test_api.py` holds every other method to a command of the CLI. The
-first slice ([#258][i258]) offers `filter list`, `mail search`, `mail
-view`, and `filter add`; every other command is a gap in the API under
+API offers `filter list`, `mail search`, `mail view`, and `filter add`
+([#258][i258]). `mail.search` takes `like` and `build_filter`, the CLI's
+`--like` and `--build-filter`, and each filter in `filter.list` carries
+its neutral `steps` beside its `actions` ([#259][i259]), so a client
+fills a filter in from a message and words what a filter does without
+deriving either itself. Every other command is a gap in the API under
 this rule, left to the later slices [ADR 0008][adr8] names.
 
 **An interface may leave out an operation that does not fit its medium**
@@ -1565,6 +1571,7 @@ will read it.
 [adr9]: ../adr/0009-python-textual-tui-as-a-separate-package.md
 [i257]: https://github.com/harleypig/mailctl/issues/257
 [i258]: https://github.com/harleypig/mailctl/issues/258
+[i259]: https://github.com/harleypig/mailctl/issues/259
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
 [adr7]: ../adr/0007-interfaces-utilities-session-provider-layering.md
 [i137]: https://github.com/harleypig/mailctl/issues/137
