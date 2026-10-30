@@ -958,7 +958,7 @@ exit status. `server probe --json` prints its own versioned document (see
 | `mail search` | `{"version", "folder", "uidvalidity", "more", "sort", "messages": [{"uid", "received", "size", "flags", "has_attachments", "from", "subject", "folder"}]}` |
 | `mail senders` | `{"version", "folder", "by", "messages", "unread", "groups", "senders": [{"key", "name", "total", "unread", "unread_percent"}]}` — busiest first; `messages`, `unread`, and `groups` count everything matched, rows `--top` and `--min` left out included; `key` is `null` for mail with no address or no List-Id |
 | `mail view` | `{"version", "message": {"uid", "folder", "uidvalidity", "size", "flags", "headers": [{"name", "value"}], "body", "body_from_html", "attachments": [{"name", "content_type", "size"}]}}` |
-| `filter list` | `{"version", "filterset", "filters": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
+| `filter list` | `{"version", "filterset", "filters": [{"position", "name", "disabled", "stops", "combinator", "tests", "actions", "steps": [{"kind", "argument", "creates"}], "unmodelled"}], "findings": [{"certainty", "broad", "narrow", "reason"}]}` |
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — `command` is the command's path, such as `"filter add"`; what else a plan holds depends on the command |
 | `server baseline check` | `{"version", "host", "baseline", "baseline_taken", "taken", "account_recorded", "requires_known", "serious", "informational", "drift": [{"severity", "kind", "half", "name", "before", "after"}]}` |
 | `server baseline show` | the saved file as stored (see *Watch the servers for change*) |
@@ -1005,6 +1005,16 @@ exit status. `server probe --json` prints its own versioned document (see
   checked before it is used.
 * `search --build-filter --json` prints a filter document instead (see
   *Filter documents*).
+* A `filter list` filter's `actions` are the host's own names for what it
+  does (`fileinto`, `setflag` on MXRoute); its `steps` say the same in
+  words that are the same for every provider, one step per action, in
+  order. `kind` is `file`, `discard`, `flag`, `unflag`, `keep`, `stop`, or
+  `other`, an action with no such word, whose `argument` is then its name
+  as the filter set writes it. `creates` is whether a `file` step also
+  creates its folder. In a listing `argument` is otherwise `null` and
+  `creates` is `false`, since a filter is read back by its action names
+  alone: the same limit as the text listing's *files the message into a
+  folder*.
 
 **An error's `code`** is a short name for the condition, so a script can
 tell one refusal from another without reading the message: for example
@@ -1077,7 +1087,7 @@ refused. A `?` marks one that may be left out or sent as `null`.
 | `initialize` | `log?` | `{"protocol", "json_version", "mailctl", "provider", "capabilities", "old_name"}` |
 | `shutdown` | | `null` |
 | `filter.list` | `filterset?` | the `filter list --json` document |
-| `mail.search` | `folder?`, `filter?`, `raw?`, `limit?`, `sort?` | the `mail search --json` document |
+| `mail.search` | `folder?`, `filter?`, `raw?`, `limit?`, `sort?`, `like?`, `build_filter?` | the `mail search --json` document, or with `build_filter` a filter document |
 | `mail.view` | `uid`, `folder?`, `uidvalidity?` | the `mail view --json` document |
 | `filter.add.plan` | see below | `{"plan_id", "document"}` |
 | `filter.add.execute` | `plan_id` | `{"version", "result": {"command", "filter", "filterset", "activated", "backup"}}` |
@@ -1107,6 +1117,25 @@ refused. A `?` marks one that may be left out or sent as `null`.
   `limit` is the most messages to list: 20 unless given, and every
   match where it is null. `sort` is `{"key", "reverse"?}`, with the
   keys `mail search --sort` takes.
+* **`mail.search`'s `like`** is `{"uid", "uidvalidity"?}`, and does what
+  `mail search --like UID --uidvalidity N` does: it adds criteria taken
+  from that message in `folder`, its List-Id, else its From, and merges
+  them with `filter` (a header `filter` gives replaces the one taken, and
+  `filter`'s `match` and `compare` apply). The listing is of the
+  message's folder, as the server spells it. There is no counterpart to
+  `--derive` yet. With `uidvalidity` given and the folder renumbered
+  since, it is refused with `uidvalidity_changed` before the UID is used.
+* **`build_filter: true`** returns the filter document the criteria make,
+  `{"version": 1, "criteria": {…}}`, in place of the listing: the
+  document `filter.add.plan` takes as `filter`, so `like` and
+  `build_filter` together fill a new filter in from a message. Nothing is
+  listed or saved. With no criteria, or a message with nothing to take
+  them from, it is refused with `no_criteria`.
+* `mail.search` refuses with `-32602`: a `like` with no `uid`, a `uid`
+  below 1, or a key it does not know; `raw` with `like` or `build_filter`;
+  and `sort` with `build_filter`. These are the combinations `mail search`
+  refuses. A `uid` the folder does not hold is refused too, with no
+  `code` yet, as `mail.view` refuses one.
 * **`filter.add.plan`** takes `filter`, a filter document, and `actions`,
   both required; then `name?`, `filterset?`, `replace?`, `activate?`,
   `create_folder?`, and `subscribe?` (true unless given, and false only
@@ -1217,16 +1246,30 @@ starts `mailctl-api` and shows only what the API returns. It is a package
 of its own, in `clients/tui/`, so installing mailctl never pulls in its
 terminal library; why it is built this way is [ADR 0009][adr9].
 
-This first slice shows three things:
+It shows **the filters** in the active filter set, in the order they run,
+what each one does, and the ones that cannot fire where they are. From
+there it can find a message and make a filter for mail like it:
 
-* **the filters** in the active filter set, in the order they run, and the
-  ones that cannot fire where they are; `r` reads them again and `q`
-  quits;
-* **an alert from the mail server**, as it arrives;
-* **a password prompt**, in a masked field, where mailctl has no password
-  configured. The TUI hands the password to mailctl and keeps no copy.
+* **Search** (`s`) a folder, or your default one when the field is left
+  empty, optionally for mail whose From or Subject holds some text.
+* **Read** a message by choosing it with Enter. It stays unread, and an
+  attachment is named, never saved.
+* **Add a filter like it** (`a`). mailctl fills the criteria in from the
+  message, its List-Id, else its From, as `mail search --like` does, and
+  you choose what the filter does. The form offers only what your
+  provider declares: where the filter goes, letting later filters see the
+  mail, showing a new folder in webmail, and each action.
+* **See what would change** (`Ctrl+S`): what the filter matches and does,
+  any filter that would keep it from firing, the folder it would create,
+  and the diff. `y` saves it, backing the filter set up first and saying
+  where; Escape cancels, and nothing is saved. The mail already
+  delivered is left alone; `mailctl filter apply` acts on that.
 
-It changes nothing on the server yet.
+`r` reads the filters again, Escape goes back a screen, and `q` quits; the
+keys on each screen are in [clients/tui/README.md][tui]. An alert from the
+mail server is shown as it arrives, whichever screen is up. Where mailctl
+has no password configured, the TUI asks for it in a masked field, hands
+it to mailctl, and keeps no copy.
 
 ```bash
 uv tool install .                   # mailctl, for the mailctl-api command

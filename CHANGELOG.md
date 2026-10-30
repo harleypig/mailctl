@@ -28,7 +28,13 @@ FEATURES:
   the TUI asks for it in a masked field and keeps no copy. It takes
   mailctl's settings, passing any argument it does not know to
   `mailctl-api`, and `--api COMMAND` starts another command in its place.
-  This first slice changes nothing on the server.
+  Each filter is listed with what it does, and from the list `s` searches
+  a folder, Enter reads a message without marking it read, and `a` makes
+  a filter for mail like it: the criteria are filled in from the message
+  by mailctl, the form offers only what the provider declares, `Ctrl+S`
+  shows the plan and its diff, and `y` saves it, backing the filter set up
+  first and saying where, while Escape discards the plan. The mail
+  already delivered is left alone.
 
 ENHANCEMENTS:
 
@@ -55,6 +61,22 @@ ENHANCEMENTS:
   does not, pointing at `config migrate`. It sends names and places only;
   no old value is read, so none is sent. With nothing left behind,
   `settings` is `[]` and `config_dir` is `null`.
+* **`filter list --json` says what each filter does in the same words
+  for every provider** ([#259]). Each filter gains `steps`, one per
+  action, as `{"kind", "argument", "creates"}`, with `kind` one of
+  `file`, `discard`, `flag`, `unflag`, `keep`, `stop`, and `other`; the
+  API's `filter.list` returns the same. `actions`, the host's own names,
+  is unchanged. In a listing `argument` is `null` except for `other`,
+  where it is the action's name, and `creates` is `false`, since a
+  filter is read back by its action names alone.
+* **The API's `mail.search` can take its criteria from a message**
+  ([#259]). `like: {"uid", "uidvalidity"?}` does what `mail search
+  --like` does, merged with `filter` the same way, and `build_filter:
+  true` returns the filter document `filter.add.plan` takes instead of
+  a listing, saving nothing. A renumbered folder is refused with
+  `uidvalidity_changed`, nothing to build a filter from with
+  `no_criteria`, and the combinations `mail search` refuses with
+  `-32602`.
 
 BUG FIXES:
 

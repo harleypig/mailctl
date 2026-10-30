@@ -126,17 +126,17 @@ cope with scripts we did not write.
 ## TUI front-end
 
 `ICEBOX:` TUI, terminal UI, interactive UI, front-end, curses, textual —
-**no longer iceboxed: its trigger, the operator asking, fired on
-[#224][i224].**
+**no longer iceboxed: built.** Its trigger, the operator asking, fired on
+[#224][i224].
 
-The TUI is now tracked work: [#259][i259], the first client of the JSON-RPC
-API that [ADR 0008][adr8] proposes. It is a client of that API, not a second
-module beside `cli.py`, and it follows [#258][i258] (API slice 1).
+The TUI is `mailctl-tui`, in `clients/tui/`, tracked on [#259][i259]. It
+is a client of the JSON-RPC API ([ADR 0008][adr8]); why it is Python and
+Textual, in a package of its own, is [ADR 0009][adr9].
 
 [i224]: https://github.com/harleypig/mailctl/issues/224
-[i258]: https://github.com/harleypig/mailctl/issues/258
 [i259]: https://github.com/harleypig/mailctl/issues/259
 [adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
+[adr9]: adr/0009-python-textual-tui-as-a-separate-package.md
 
 ## Declarative rules in YAML — the `gmailctl` model
 
