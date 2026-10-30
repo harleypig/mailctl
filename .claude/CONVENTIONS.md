@@ -36,7 +36,7 @@ compatibility:
 - **The old directory is a finding.** While it exists and the new one does
   not, `utilities.migration.check_config_dir` returns `ConfigDirPending`
   and the CLI warns loudly on stderr before every command, naming `mailctl
-  migrate-config`. That command is the switch the scoping rule asks for: a
+  config migrate`. That command is the switch the scoping rule asks for: a
   plan/execute pair in the migration utility (`plan_config_migration` /
   `execute_config_migration`) that lists what moves, honours `--dry-run` and
   `--yes`, moves by rename so every file keeps its mode, merges into a new
@@ -53,6 +53,12 @@ compatibility:
   and drops its value, because one of these is the password. An old
   `MXROUTE_PASSWORD` is therefore also never held to the env-file mode
   check — it is never used.
+- **The API reports the same two findings** ([#307][i307]), as `old_name`
+  in `initialize`'s result. `settings` lists each old name with its new
+  one, where it was found (`environment` or `env file`), and the env
+  file's path; `config_dir` is null, or the old directory, the new one,
+  and the operation that moves it, `config migrate`. Names and places
+  only: no old value is read, so none can be sent.
 - **The script created under the old name is still ours.** A new account
   gets a script called `mailctl` (`utilities.scripts.DEFAULT_SCRIPT_NAME`);
   with nothing active, an existing `mxfilter` script
@@ -446,11 +452,11 @@ document in the JSON-RPC error's `data`, and the client branches on its
 
 **Safety policy lives in the utilities, not the front-end or the
 provider**: the backup before every upload (`scripts.upload_script`, the
-one upload path) and the refusal of a filter set changed since the plan
-(*Rule conventions*), merge-never-overwrite, the `--max-messages` ceiling
-(re-checked when a mail plan is executed), and the UIDVALIDITY check on a
-UID before it is used (checked again when a mark or mail plan is executed)
-hold whichever front-end calls them.
+one upload path) and the refusal of a filter set changed or switched
+since the plan (*Rule conventions*), merge-never-overwrite, the
+`--max-messages` ceiling (re-checked when a mail plan is executed), and
+the UIDVALIDITY check on a UID before it is used (checked again when a
+mark or mail plan is executed) hold whichever front-end calls them.
 
 **Every command is in every interface.** The operator, 2026-09-27:
 
@@ -1000,6 +1006,12 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   Every execute that uploads goes through it, `filterset restore` and
   `folder rename` included, and a byte compare needs no parse, so a
   restore over an unparseable script ([ADR 0005][adr5]) is held to it too.
+  **So is an upload once the active filter set is not the one the plan
+  was made against** ([#308][i308]): the same code, nothing backed up or
+  sent, and the refusal points at `filterset list` rather than at one
+  set's text. The plan decided from the active set whether the upload
+  activates its own, so a switch made since would be undone, or an edit
+  planned as not live would go live, and the plan shown said neither.
 - **A backup is the server's exact bytes.** `SieveSession` reads GETSCRIPT
   by the literal's declared length, CRLF and final newline included
   ([#90][i90]), and `write_backup` writes what it was handed, with newline
@@ -1552,6 +1564,8 @@ will read it.
 [i264]: https://github.com/harleypig/mailctl/issues/264
 [i287]: https://github.com/harleypig/mailctl/issues/287
 [i265]: https://github.com/harleypig/mailctl/issues/265
+[i307]: https://github.com/harleypig/mailctl/issues/307
+[i308]: https://github.com/harleypig/mailctl/issues/308
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147

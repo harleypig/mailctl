@@ -110,8 +110,12 @@ where every write path is proved first.
      upload begins, and refuses a filter set created since a plan made
      from none; `test_utilities_optimize.py` refuses a rearrangement, and
      `test_utilities_folder_rename.py` stops a rename before any write, the
-     code passed through unwrapped. The fakes they share are
-     `tests/utilities_support.py`.
+     code passed through unwrapped. An active filter set switched since
+     the plan ([#308][i308]) is refused the same way, unsent, for every
+     kind of script plan, for a rearrangement, and for a rename; so is a
+     set activated since a plan made with none active, and a set planned
+     as not running that another client has since activated. The fakes
+     they share are `tests/utilities_support.py`.
    - **The session** (`test_engine.py`) — only what is about the
      connection: a half opens the first time a utility uses it and never if
      the command did not ask for it; a read the server cut off is sent once
@@ -166,8 +170,9 @@ where every write path is proved first.
      still refused; an unexpected failure named by its type, never its
      text; the capabilities naming every field the provider declares; a
      document for every event type; an alert tagged with its channel in
-     the user-facing noun; and an execute's result naming what it did and
-     where the backup is.
+     the user-facing noun; what the rename left behind as names and
+     places, with null for no old directory ([#307][i307]); and an
+     execute's result naming what it did and where the backup is.
    - **The API** (`test_api.py`, [#258][i258]) — driven across a real
      process boundary by a plain line-reading client
      (`tests/api_support.py`), as a client in any language would drive
@@ -176,6 +181,11 @@ where every write path is proved first.
      can change between a plan and its execute, and holding only the
      password's SHA-256. Covered: `initialize` connecting nothing, refusing
      a bad setting and a second `initialize`, and a method before it;
+     `initialize` naming what the rename left behind ([#307][i307]) — an
+     old setting from the env file, one from the environment, and an old
+     config directory with no new one — each with a sentinel (the old
+     `MXROUTE_PASSWORD`'s value, or text in the old `config.toml`) on no
+     line of stdout and nowhere on stderr, under `--debug`;
      `shutdown` and the end of input both ending the process; what is not
      a request answered as the specification says; `filter.list`,
      `mail.search`, and `mail.view` returning their `--json` documents and
@@ -428,8 +438,12 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   edited between plan and execute in `test_filterset_changed.py`
   ([#257][i257]): another client stores an edit while `filter add` runs,
   and the upload is refused naming `filterset show`, the edit kept as that
-  client stored it, no backup written, and the target folder not made. The
-  API in `test_api_filter_add.py` ([#258][i258]): started as `python -m
+  client stored it, no backup written, and the target folder not made. In
+  the same file ([#308][i308]), another client makes a second filter set
+  active while `filter add` runs, and the upload is refused naming
+  `filterset list`, the switch kept, the planned set's bytes unchanged,
+  no backup written, and the target folder not made. The API in
+  `test_api_filter_add.py` ([#258][i258]): started as `python -m
   mailctl.api` with the password left out of its settings, so it asks for
   it through `credentials.prompt`, once; a filter added through plan and
   execute sends its events in order (backup, then folder, then upload),
@@ -631,3 +645,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i294]: https://github.com/harleypig/mailctl/issues/294
 [i298]: https://github.com/harleypig/mailctl/issues/298
 [i299]: https://github.com/harleypig/mailctl/issues/299
+[i307]: https://github.com/harleypig/mailctl/issues/307
+[i308]: https://github.com/harleypig/mailctl/issues/308
