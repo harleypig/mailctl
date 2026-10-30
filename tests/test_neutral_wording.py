@@ -343,16 +343,46 @@ def _documents(text: str) -> list[str]:
 
 
 # ----------------------------------------------------------------------------
+# The global options that take a value, so a word after them is that value,
+# not the command (#243, #263).
+GLOBAL_OPTIONS_WITH_VALUE = {"--provider", "--env-file"}
+
+
+def command_word(argv: list[str]) -> str | None:
+    """The first word that is not an option or an option's value (#263).
+
+    Global options may come before the command (#243), so the group is not
+    always ``argv[1]``: ``mailctl --provider mxroute server test`` names
+    ``server``, and its report is exempt from the generic-wording rule.
+    """
+    frame = iter(argv[1:])
+
+    for word in frame:
+        if word.startswith("-"):
+            if word in GLOBAL_OPTIONS_WITH_VALUE:
+                next(frame, None)
+
+            continue
+
+        return word
+
+    return None
+
+
+# ----------------------------------------------------------------------------
 def generic_output(name: str) -> bool:
     """Whether a snapshot's command is held to generic words: not a server
     report, and not a help page (the help check above has those)."""
-    argv, _ = shown_text((SNAPSHOTS / f"{name}.txt").read_text())
+    return generic_output_text((SNAPSHOTS / f"{name}.txt").read_text())
 
-    return (
-        argv[1:2] != [REPORTS]
-        and argv[1:2] != ["help"]
-        and "--help" not in argv
-    )
+
+# ----------------------------------------------------------------------------
+def generic_output_text(snapshot: str) -> bool:
+    """``generic_output``, for a snapshot given as text rather than by name."""
+    argv, _ = shown_text(snapshot)
+    command = command_word(argv)
+
+    return command != REPORTS and command != "help" and "--help" not in argv
 
 
 # ----------------------------------------------------------------------------
@@ -383,6 +413,19 @@ def test_the_snapshot_walk_reads_every_snapshot():
     assert len(SNAPSHOT_NAMES) > 300
     assert {"add-dry-sievecreate", "rules", "show", "restore-yes"} <= set(held)
     assert "test" not in held
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "option", ["--env-file .env", "--provider mxroute", "--verbose"]
+)
+def test_an_option_before_the_command_keeps_a_server_report_exempt(option):
+    """A global option in front does not hide what the command is (#263)."""
+    report = f"$ mailctl {option} server test\nexit: 0\n--- stdout\n"
+    held = f"$ mailctl {option} filter list\nexit: 0\n--- stdout\n"
+
+    assert not generic_output_text(report)
+    assert generic_output_text(held)
 
 
 # ----------------------------------------------------------------------------
