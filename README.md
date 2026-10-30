@@ -271,7 +271,8 @@ contents — `config.toml`, the backups, anything else — across, keeping modes
 and overwriting nothing (`--dry-run` shows what would move). An old
 `MXROUTE_*` variable still set, with no `MAILCTL_*` counterpart, is named in
 a warning; rename it. [CHANGELOG.md](CHANGELOG.md) lists every old and new
-name.
+name. The API tells its client the same in `initialize`'s `old_name` (see
+*API*).
 
 ```bash
 mailctl config migrate --dry-run
@@ -1073,7 +1074,7 @@ refused. A `?` marks one that may be left out or sent as `null`.
 
 | Method | Parameters | Result |
 |--------|------------|--------|
-| `initialize` | `log?` | `{"protocol", "json_version", "mailctl", "provider", "capabilities"}` |
+| `initialize` | `log?` | `{"protocol", "json_version", "mailctl", "provider", "capabilities", "old_name"}` |
 | `shutdown` | | `null` |
 | `filter.list` | `filterset?` | the `filter list --json` document |
 | `mail.search` | `folder?`, `filter?`, `raw?`, `limit?`, `sort?` | the `mail search --json` document |
@@ -1087,6 +1088,20 @@ refused. A `?` marks one that may be left out or sent as `null`.
   scripts*. `capabilities` is what the provider declares, so a client
   offers only what it lists, as the command line does. `log: true` asks
   for `log` notifications.
+* **`initialize`'s `old_name`** is what the rename from `mxfilter` left
+  behind, which the command line warns about on stderr (see *Coming from
+  mxfilter*): `{"settings", "config_dir"}`. `settings` lists each old
+  `MXROUTE_*` name set without its `MAILCTL_*` name, as `{"old", "new",
+  "where", "path"}`. `where` is `env file` or `environment`, and `path`
+  is the env file as given (it may be relative), or `null`. mailctl reads
+  no old name, so its setting comes from somewhere else or is unset.
+  `config_dir` is `null`, or `{"old", "new", "operation"}` while the old
+  config directory exists and the new one does not; `operation` is
+  `config migrate`, the command that moves it, which the API does not
+  offer. Names and places only: no old value is read, so none is sent.
+  With nothing left behind, `settings` is `[]` and `config_dir` is
+  `null`. It describes the settings the session started with, so it
+  holds until `shutdown`.
 * **`mail.search`.** `filter` is a filter document (see *Filter
   documents*), and `raw` a query in the host's own search language.
   `limit` is the most messages to list: 20 unless given, and every
@@ -1179,7 +1194,7 @@ start `<`, and `…` marks what is left out.
 
 ```text
 > {"jsonrpc":"2.0","id":1,"method":"initialize"}
-< {"jsonrpc": "2.0", "id": 1, "result": {"protocol": 1, "json_version": 2, "mailctl": "…", "provider": "mxroute", "capabilities": {…}}}
+< {"jsonrpc": "2.0", "id": 1, "result": {"protocol": 1, "json_version": 2, "mailctl": "…", "provider": "mxroute", "capabilities": {…}, "old_name": {"settings": [], "config_dir": null}}}
 > {"jsonrpc":"2.0","id":2,"method":"filter.add.plan","params":{"filter":{"version":1,"criteria":{"match":"all","compare":"contains","terms":[{"header":"From","value":"noreply@github.com"}]}},"actions":{"move_to":"Lists/GitHub"},"name":"github","create_folder":true}}
 < {"jsonrpc": "2.0", "id": "mailctl-1", "method": "credentials.prompt", "params": {"request": 2, "prompt": "Password for you@example.com: "}}
 > {"jsonrpc":"2.0","id":"mailctl-1","result":{"password":"…"}}

@@ -3,6 +3,8 @@
 - Status: accepted
 - Date: 2026-10-28
 - Accepted: 2026-10-29, by the operator on [#224][i224]
+- Amended: 2026-10-30, for [#258][i258] and again for [#307][i307] (see
+  *Amendment*)
 - Amends [ADR 0003][adr3] (see its *Amendment*). Builds on [ADR
   0007][adr7]. Recorded for [#224][i224].
 
@@ -403,6 +405,31 @@ commands that confirm before they upload: `filter remove`, `filter move`,
 `filter rename`, `filter enable` and `filter disable`, `filter optimize`,
 `folder rename`, and `filterset restore`.
 
+### `initialize` names what the rename left behind (#307)
+
+Added on 2026-10-30, for [#307][i307]. §5 has `initialize` return the
+two versions and the capabilities. Its result also carries `old_name`
+(`json_output.old_name`): each old `MXROUTE_*` setting present without
+its new name, as `{old, new, where, path}`, and the old `mxfilter`
+config directory where the new one does not exist, as `{old, new,
+operation}`, else null. That is what the CLI warns about on stderr
+before every command (CONVENTIONS *The old name*), and it is names and
+places only: no old value is read, so none can be sent.
+
+**A result member, not a notification.** The findings describe the
+configuration the session started with, and they stay true for its
+life; §5 already has `initialize` describe the session. §6's
+notifications are for what happens during a request, and each names the
+request it belongs to. And a client must read `initialize`'s answer to
+go on, where it may ignore every notification, so a notification is the
+one place a client could miss the finding without choosing to.
+
+**The cost: a refused `initialize` carries no findings.** An old name
+is ignored, which at worst leaves its setting unset, and `initialize`
+refuses nothing for that, so in practice the findings arrive whenever a session does. Where
+`initialize` is refused for another reason, the client learns of the
+old names only from an `initialize` that succeeds.
+
 ## Sources
 
 Fetched 2026-10-28.
@@ -439,6 +466,7 @@ Fetched 2026-10-28.
 [i224]: https://github.com/harleypig/mailctl/issues/224
 [i257]: https://github.com/harleypig/mailctl/issues/257
 [i258]: https://github.com/harleypig/mailctl/issues/258
+[i307]: https://github.com/harleypig/mailctl/issues/307
 [ice-tui]: ../ICEBOX.md#tui-front-end
 [jsonrpc]: https://www.jsonrpc.org/specification
 [mcp]: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports
