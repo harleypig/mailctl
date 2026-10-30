@@ -1093,6 +1093,46 @@ relevant code. Issues are for work someone intends to do; the icebox is for
 decisions taken and parked. Filing a deferral as an issue is how a tracker
 stops being readable.
 
+### The board
+
+**Every open issue and pull request is on the [Mail Control][board]
+board**, user project 4, private (decided on [#277][i277] and
+[#278][i278]). It shows what is next and what state it is in; the issue
+stays the record.
+
+**Workflows add and move items, so an agent never adds one or sets Status
+by hand.** A new issue, pull request, or sub-issue is added as Todo;
+linking a pull request to an issue sets it In Progress; closing an issue
+or merging a pull request sets it Done, and the merge closes the issue.
+What an agent does set, on every issue it files:
+
+- **Size** — `XS`, `S`, `M`, or `L`;
+- **Layer** — `interface`, `utilities`, `session`, `provider`, or
+  `component` (the layers of [ADR 0007][adr7] and the components under
+  them), or `infra/CI` or `docs`;
+- **the milestone.**
+
+Role and type stay labels, and the board does not repeat them.
+
+**Four views, each for one question.** *Milestone* is a table grouped by
+milestone, with Size and Layer: what each milestone still holds. *Status*
+is a board by Status: what is in flight. *Needs You* is the issues
+labelled `needs-answers` or `needs-shaping`: what waits on the operator.
+*Bugs* is the open bugs. There is no Roadmap layout
+([dotagents#2322][da2322]).
+
+**Milestones are numbered `M0`, `M1`, and on.** Each description is a
+one-line goal and a *Done when:* line, and each milestone carries an
+introspection issue reporting to [dotagents#2312][da2312].
+
+**Not on the board:** closed history from before v0.12.0, and ICEBOX
+entries ever, since a deferral is not an issue (above).
+
+**Workflows are changed in the web UI.** The API can read them and delete
+one, but cannot turn one on or set what it does. Views are changed there
+too; the GraphQL schema has `createProjectV2View` and
+`updateProjectV2View` (seen 2026-10-30), untried here.
+
 ## Toolchain & reproducibility
 
 - **Python ≥ 3.11** (`requires-python` in `pyproject.toml`), tested on 3.11
@@ -1401,3 +1441,8 @@ will read it.
 [i160]: https://github.com/harleypig/mailctl/issues/160
 [icebox-retention]: ../ICEBOX.md#per-folder-retention--expire-mail-after-n-days
 [da495]: https://github.com/harleypig/dotagents/issues/495
+[board]: https://github.com/users/harleypig/projects/4
+[i277]: https://github.com/harleypig/mailctl/issues/277
+[i278]: https://github.com/harleypig/mailctl/issues/278
+[da2312]: https://github.com/Harleypig-LLC/dotagents/issues/2312
+[da2322]: https://github.com/Harleypig-LLC/dotagents/issues/2322
