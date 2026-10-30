@@ -364,6 +364,45 @@ The web carrier, the remaining commands' methods, and a fuller message
 reader (HTML bodies, threading; [#224][i224] *Related gaps*) are later
 issues, each with its own spec.
 
+## Amendment
+
+2026-10-30, made with the first API slice, [#258][i258]. The decision
+above stands. This corrects three things in it that building the slice
+showed to be wrong.
+
+### The idle preflight needed a probe of its own
+
+§3 has the session send *"one read the transport already has (a
+capability query or `NOOP`)"* before a write on an idle half. On the mail
+half no existing read would do. The capability reads are cached, so they
+reach no server. `mail_namespaces` answers empty when the connection has
+gone, rather than raising, so the session would never see the drop and
+never reconnect. So the transport gained an operation of its own,
+`mail_noop`, an IMAP `NOOP`, classified a read and marked as the mail
+half's probe (`Operation.probe`). On the rules half the probe is
+`list_rule_sets`, an existing read. A half counts as idle after 60 s
+without an exchange (`engine.IDLE_PROBE_AFTER`).
+
+### The channels are `filter` and `mail`
+
+§6 names a `server.alert`'s channel `rules` or `mail`. It is `filter` or
+`mail`, on `server.alert` and on `log` alike, because the user-facing noun
+is *filter* (CONVENTIONS *What the user sees is the same for every
+provider*). The session's halves keep their code names, `rules` and
+`mail`, and `json_output.CHANNELS` maps one to the other.
+
+### `filter add` has no confirmation prompt
+
+*Consequences* says that, with the staleness check, *"a filter set edited
+during a `filter add` confirmation prompt is refused instead of
+overwritten."* `filter add` asks nothing (CONVENTIONS *The command
+surface*), so there is no such prompt. The check, built in [#257][i257],
+sits in `scripts.upload_script` and so covers every command that uploads
+a filter set. On the command line the window it closes is widest on the
+commands that confirm before they upload: `filter remove`, `filter move`,
+`filter rename`, `filter enable` and `filter disable`, `filter optimize`,
+`folder rename`, and `filterset restore`.
+
 ## Sources
 
 Fetched 2026-10-28.
@@ -398,6 +437,8 @@ Fetched 2026-10-28.
 [adr7]: 0007-interfaces-utilities-session-provider-layering.md
 [i137]: https://github.com/harleypig/mailctl/issues/137
 [i224]: https://github.com/harleypig/mailctl/issues/224
+[i257]: https://github.com/harleypig/mailctl/issues/257
+[i258]: https://github.com/harleypig/mailctl/issues/258
 [ice-tui]: ../ICEBOX.md#tui-front-end
 [jsonrpc]: https://www.jsonrpc.org/specification
 [mcp]: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports
