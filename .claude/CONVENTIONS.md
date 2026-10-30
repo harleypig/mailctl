@@ -334,6 +334,13 @@ layer may call.
   directions); offline.
 - `mailctl/__main__.py` — `python -m mailctl`.
 - `tests/` — pytest, mirroring the package layout ([TESTS.md](TESTS.md)).
+- `clients/tui/` — **outside the package**: the TUI, the API's first
+  client, a distribution of its own (`mailctl-tui`) with its own
+  `pyproject.toml` and its package under `src/mailctl_tui/`
+  ([ADR 0009][adr9]). It depends on Textual, not on `mailctl`: it starts
+  the `mailctl-api` command and imports nothing from the package. The
+  layer guards walk `mailctl/` only, so they do not reach it; its own
+  guards are `clients/tui/tests/test_guards.py` (TESTS.md › *The TUI*).
 
 The split is deliberate: the **offline** logic (criteria translation, Sieve
 generation, folder-name normalization, script merging) is exercisable with no
@@ -367,6 +374,10 @@ or web UI is presentation only, may be written in any language, and lives
 outside the package, calling the API rather than the utilities
 ([ADR 0008][adr8]). Over stdio its one peer is the process that started
 it, so the client is not authenticated: it already runs as the same user.
+**The first client is the TUI** in `clients/tui/`, in Python on Textual
+([ADR 0009][adr9]): it starts `mailctl-api`, imports nothing from
+`mailctl`, offers only what `initialize`'s capabilities allow, and
+renders the API's documents rather than re-deriving them.
 
 **Three kinds of operation, and each has one home.**
 
@@ -1290,6 +1301,20 @@ needed, send several mutations as one aliased request
   (`[tool.setuptools.packages.find]`, `include = ["mailctl*"]`), so a
   non-editable install — a wheel, `uv tool install .`, `pipx install .` —
   carries the whole package ([#229][i229]).
+- **The TUI is installed for development into the same `.venv`**, beside
+  mailctl, and `make install` does not do it:
+
+  ```sh
+  make install                            # mailctl and its dev tools
+  uv pip install -e './clients/tui[dev]'  # the TUI and its test tools
+  ```
+
+  Its dependencies — `textual` and `rich`, and in its dev extra `pytest`
+  and `pytest-asyncio` — are in `clients/tui/pyproject.toml`, so mailctl's
+  own runtime dependencies stay the two above ([ADR 0009][adr9]). For use
+  rather than development, `uv tool install ./clients/tui` gives it an
+  environment of its own; it needs `mailctl-api` on `PATH`, not mailctl
+  in that environment.
 - **A build-it-yourself Docker image** is the top-level `Dockerfile`, built
   with `make image` and published nowhere; the README's *In Docker* section
   says how to run it. It sets `MAILCTL_BACKUP_ROOT` (*Rule conventions*).
@@ -1304,6 +1329,8 @@ concrete toolchain and the **status of every dimension** for this repo.
   fix-then-check split (`.pre-commit-config-fix.yaml` runs the auto-fixers
   once as a prep step; `.pre-commit-config.yaml` is the non-modifying gate).
   Do **not** wire black/isort/flake8 alongside ruff (`python.md`).
+  `clients/tui/` has no `[tool.ruff]` of its own, deliberately, so the
+  root's configuration covers it and the two packages share one bar.
 - **Code smell / complexity:** ruff's `B` (bugbear), `C4`, `SIM`, `UP`, and
   `RUF` rule sets, inside the same `ruff check`.
 - **Type-check:** `pyright` in `standard` mode over `mailctl` and `tests`,
@@ -1316,7 +1343,11 @@ concrete toolchain and the **status of every dimension** for this repo.
   pre-commit: a pre-commit hook's own environment lacks `sievelib`,
   `IMAPClient`, and `pytest`, and supplying them would mean a second copy
   of the dependency list. Its version is pinned exactly in the dev extra,
-  because each pyright release adds checks.
+  because each pyright release adds checks. **The TUI is type-checked
+  separately**: the root run covers `mailctl` and `tests` only, and
+  `clients/tui/pyproject.toml` has its own `[tool.pyright]` over the TUI's
+  `src` and `tests`, standard mode, resolving from the same root `.venv`.
+  `make testtui` and CI's *TUI* job run it from `clients/tui/`.
 - **Security:** `gitleaks` + `detect-private-key` in pre-commit (secrets).
   The built image is scanned by `trivy` for HIGH and CRITICAL findings in
   the *Image scan* workflow, **report only**: it never fails and is not a
@@ -1338,19 +1369,19 @@ Full dimension status:
 |-----------|--------|
 | 1. Format | **Active** — `ruff format` |
 | 2. Lint | **Active** — `ruff check` |
-| 3. Type-check | **Active** — `pyright` (standard mode) over the package and the tests, in CI's Lint job and `make typecheck` ([#10][i10]) |
+| 3. Type-check | **Active** — `pyright` (standard mode) over the package and the tests, in CI's Lint job and `make typecheck` ([#10][i10]); over the TUI by its own configuration, in CI's *TUI* job and `make testtui` ([ADR 0009][adr9]) |
 | 4. Code smell / complexity | **Active** — ruff `B`/`C4`/`SIM`/`UP`/`RUF` |
 | 5. Security | **Active (secrets, Dockerfile, image report-only)** — `gitleaks`, `detect-private-key`; `hadolint` on the Dockerfile; `trivy` on the built image, report only and not a required check, since the base image carries HIGH findings with no fix ([#238][i238]). SAST is **Off**: the attack surface is two outbound TLS client sessions and no untrusted input parsing beyond the user's own Sieve script |
-| 6. Tests | **Active** — the offline tier is green (`make test` / `pytest`); see [TESTS.md](TESTS.md) |
-| 7. UI/UX & accessibility | **N/A** — a CLI with no UI. Terminal output legibility is covered by the *show, then change* convention |
+| 6. Tests | **Active** — the offline tier is green (`make test` / `pytest`), and the TUI's suite (`make testtui`) beside it; see [TESTS.md](TESTS.md) |
+| 7. UI/UX & accessibility | **Active (TUI behaviour); accessibility Missing** — the TUI's screen is driven headless with Textual's Pilot (`clients/tui/tests/`): the masked password field, server text shown as plain characters, an alert shown as it arrives, and a command hidden without its capability. Nothing checks accessibility (contrast, colour-only meaning, screen-reader output), and no decision to build that check has been taken. The CLI's terminal output is covered by the *show, then change* convention |
 | 8. End-to-end | **Scaffolded, gated** — `tests/live/` exists and skips unless `MAILCTL_LIVE=1`; its write guards are built and proved on the container tier, and it has never written to a real account ([#9][i9]) |
-| 9. Compatibility | **Active** — CPython 3.11 through 3.14, every one tested in CI, and sievelib at both ends of its bound (1.5.0 and the newest below 2); no external contract we publish ([#231][i231], [#232][i232]) |
+| 9. Compatibility | **Active** — CPython 3.11 through 3.14, every one tested in CI, and sievelib at both ends of its bound (1.5.0 and the newest below 2); the TUI on 3.11 and 3.14 only, the oldest and newest; no external contract we publish ([#231][i231], [#232][i232]) |
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
 | 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`) is built by `tests/container/test_image.py`, and in CI by the *Image scan* workflow on a PR or push touching its inputs (`Dockerfile`, `.dockerignore`, `docker/**`, `pyproject.toml`, and the workflow file itself), weekly on a schedule until 60 quiet days turn it off ([ICEBOX.md][icebox-scan]), and on manual dispatch; `test_image.py` itself is not in CI |
 | 13. Documentation | **Active** — this file, `README.md`, and `adr/`; markdownlint gates the prose |
 | 14. Code review | **Informal** — solo repo; `master` is PR-only, 0 required reviewers |
-| 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`, and one job named `Test` passes only if every version did, since that is the check the ruleset requires ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror. `.github/workflows/image-scan.yml` (*Image scan*, job `Trivy (report only)`) runs when the image's inputs change, weekly on a schedule (Monday 06:17 UTC) so a CVE published against the unchanged base image is still reported, and on manual dispatch. GitHub turns that schedule off after 60 days with no activity in the repository, and nothing here warns when it does ([ICEBOX.md][icebox-scan]). The scan never fails on a finding and is not a required check ([#238][i238], [#264][i264]) |
+| 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`. `TUI (3.x)` runs on 3.11 and 3.14, with mailctl installed beside the TUI so its real-API test runs: the TUI's `pyright`, then its `pytest`, both from `clients/tui/` ([ADR 0009][adr9]). One job named `Test` waits on both matrices and passes only if every version of each did, since that is the check the ruleset requires, so a red TUI blocks a merge ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror. `.github/workflows/image-scan.yml` (*Image scan*, job `Trivy (report only)`) runs when the image's inputs change, weekly on a schedule (Monday 06:17 UTC) so a CVE published against the unchanged base image is still reported, and on manual dispatch. GitHub turns that schedule off after 60 days with no activity in the repository, and nothing here warns when it does ([ICEBOX.md][icebox-scan]). The scan never fails on a finding and is not a required check ([#238][i238], [#264][i264]) |
 
 ## How work is dispatched
 
@@ -1531,6 +1562,7 @@ will read it.
 [i9]: https://github.com/harleypig/mailctl/issues/9
 [adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
 [adr8]: ../adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
+[adr9]: ../adr/0009-python-textual-tui-as-a-separate-package.md
 [i257]: https://github.com/harleypig/mailctl/issues/257
 [i258]: https://github.com/harleypig/mailctl/issues/258
 [adr6]: ../adr/0006-two-layer-component-and-provider-architecture.md
