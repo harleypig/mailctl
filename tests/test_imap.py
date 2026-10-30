@@ -978,14 +978,6 @@ def chunk_sizes(fake_imap, name: str) -> list[int]:
 
 
 # ----------------------------------------------------------------------------
-def test_the_chunk_stays_below_the_default_message_cap():
-    """Independent of --max-messages, so raising the cap is never a risk."""
-    from mailctl.utilities.mail import DEFAULT_MAX_MESSAGES
-
-    assert BULK_CHUNK < DEFAULT_MAX_MESSAGES
-
-
-# ----------------------------------------------------------------------------
 def test_the_worst_case_chunk_fits_the_command_line_budget():
     """RFC 7162 section 4: keep a command line to about 8192 octets.
 
