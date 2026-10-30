@@ -28,6 +28,7 @@ dev = [
 
 [project.scripts]
 mailctl = "mailctl.cli:main"
+mailctl-api = "mailctl.api:main"
 
 # Every package under mailctl/, found rather than listed, so a new
 # subpackage cannot be left out of a wheel (#229). No data file is shipped:
