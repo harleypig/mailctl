@@ -343,6 +343,9 @@ those (in the standard order). The `unchanged` test compares the active
 script and the folder list against a baseline taken before the first test.
 
 Only read-only subcommands and --dry-run are ever sent; --yes never is.
+The one exception is `filterset backup --output FILE`, with FILE directly
+in the temporary directory this run makes and removes on exit: it reads
+the filter set and writes nothing on the server.
 
 Options:
   --list      print the test names and exit
