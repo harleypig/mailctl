@@ -26,8 +26,13 @@ def backup_path(name: str, backup_dir: Path) -> Path:
     alphanumeric, ``-``, ``_``, or ``.`` becomes an underscore. That is
     what stops a name containing ``/`` or ``..`` from writing outside the
     backup directory.
+
+    The stamp is UTC to the millisecond, so names sort by the time they
+    were taken. It makes a name unlikely to be taken already, never
+    certain to be: the writer refuses or renumbers a name that exists.
     """
-    stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
+    now = datetime.datetime.now(datetime.UTC)
+    stamp = f"{now:%Y%m%dT%H%M%S}.{now.microsecond // 1000:03d}Z"
 
     safe_name = "".join(
         char if char.isalnum() or char in "-_." else "_" for char in name

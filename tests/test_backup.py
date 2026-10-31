@@ -12,6 +12,7 @@ The rest is the handling around it: the file is the owner's to read
 ``config.toml`` where somebody can find it, and ``--dry-run`` writes nothing.
 """
 
+import datetime
 import os
 import stat
 from pathlib import Path
@@ -20,11 +21,12 @@ from types import SimpleNamespace
 import pytest
 from utilities_support import mxroute
 
-from mailctl import cli, utilities
+from mailctl import MailctlError, cli, utilities
+from mailctl.components.managesieve import backup as backup_module
 from mailctl.components.managesieve import backup_path, resolve_backup_target
 from mailctl.components.managesieve import client as sieve_client
 from mailctl.config import Config, default_backup_dir, load_config
-from mailctl.utilities.backup_files import write_backup
+from mailctl.utilities.backup_files import write_backup, write_private
 
 # A script whose bytes are awkward on purpose: CRLF endings, as the CRLF
 # protocol that fetched it produces, and no trailing newline. A text-mode
@@ -348,16 +350,180 @@ def test_an_existing_directory_keeps_the_mode_the_user_gave_it(tmp_path):
 
 
 # ----------------------------------------------------------------------------
-def test_overwriting_a_world_readable_file_closes_it(tmp_path):
-    """``O_CREAT``'s mode is ignored for a file that already exists."""
-    target = tmp_path / "copy.sieve"
+def test_replacing_a_world_readable_file_closes_it(tmp_path):
+    """``O_CREAT``'s mode is ignored for a file that already exists.
+
+    A backup never replaces a file, but a saved baseline does, through the
+    same writer.
+    """
+    target = tmp_path / "host.json"
     target.write_text("stale")
     target.chmod(0o644)
 
-    write_backup(CRLF_SCRIPT, target)
+    write_private("{}\n", target, "baseline")
 
     assert mode_of(target) == 0o600
-    assert target.read_bytes() == CRLF_SCRIPT.encode("utf-8")
+    assert target.read_text() == "{}\n"
+
+
+# ############################################################################
+# A backup never replaces a file (#330)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def freeze_clock(monkeypatch, *instants):
+    """Make ``backup_path`` read the clock as ``instants``, one per call;
+    the last repeats."""
+    times = list(instants)
+
+    class Clock(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return times.pop(0) if len(times) > 1 else times[0]
+
+    monkeypatch.setattr(
+        backup_module,
+        "datetime",
+        SimpleNamespace(datetime=Clock, UTC=datetime.UTC),
+    )
+
+
+NOON = datetime.datetime(2026, 10, 31, 12, 0, 0, 250000, tzinfo=datetime.UTC)
+
+
+# ----------------------------------------------------------------------------
+def changing_server(scripts: list[str]) -> SimpleNamespace:
+    """A ManageSieve session whose one script is whatever was put last."""
+    state = {"script": scripts[0]}
+
+    def put_script(name, content):
+        state["script"] = content
+
+    return SimpleNamespace(
+        list_scripts=lambda: ("managesieve", []),
+        get_script=lambda name: state["script"],
+        check_script=lambda content: None,
+        put_script=put_script,
+        set_active=lambda name: None,
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_two_backups_in_one_second_leave_two_files(monkeypatch, tmp_path):
+    """Two uploads at one instant each keep the set as it was before them.
+
+    Red when a backup's name is reused and the file truncated: the second
+    upload's backup replaces the first, and the original script is gone.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    freeze_clock(monkeypatch, NOON)
+
+    first, second, third = "# one\r\n", "# two\r\n", "# three\r\n"
+    session = mxroute(sieve=changing_server([first]))
+    config = load_config(SimpleNamespace())
+
+    for before, after in ((first, second), (second, third)):
+        utilities.scripts.upload_script(
+            session,
+            config,
+            "managesieve",
+            before,
+            after,
+            active="managesieve",
+            activate=False,
+        )
+
+    written = sorted(
+        (tmp_path / "cfg" / "mailctl" / "backups").iterdir(),
+        key=lambda path: path.stat().st_mtime_ns,
+    )
+
+    assert [path.name for path in written] == [
+        "managesieve-20261031T120000.250Z.sieve",
+        "managesieve-20261031T120000.250Z-2.sieve",
+    ]
+    assert [path.read_bytes() for path in written] == [
+        first.encode(),
+        second.encode(),
+    ]
+    assert {mode_of(path) for path in written} == {0o600}
+
+
+# ----------------------------------------------------------------------------
+def test_backups_in_one_second_are_named_apart_by_the_millisecond(
+    monkeypatch, tmp_path
+):
+    """Red when the stamp stops at the second: the names are equal."""
+    later = NOON.replace(microsecond=999000)
+    freeze_clock(monkeypatch, NOON, later)
+
+    names = [backup_path("managesieve", tmp_path).name for _ in range(2)]
+
+    assert names == [
+        "managesieve-20261031T120000.250Z.sieve",
+        "managesieve-20261031T120000.999Z.sieve",
+    ]
+    assert names == sorted(names)
+
+
+# ----------------------------------------------------------------------------
+def test_a_backup_keeps_a_file_planted_at_its_name(monkeypatch, tmp_path):
+    """A file already at the default name is kept, byte for byte.
+
+    Red when the write truncates: the planted file holds the backup.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    freeze_clock(monkeypatch, NOON)
+
+    backups = tmp_path / "cfg" / "mailctl" / "backups"
+    backups.mkdir(parents=True)
+    planted = backups / "managesieve-20261031T120000.250Z.sieve"
+    planted.write_bytes(b"planted\n")
+
+    path = utilities.scripts.upload_script(
+        mxroute(sieve=changing_server([CRLF_SCRIPT])),
+        load_config(SimpleNamespace()),
+        "managesieve",
+        CRLF_SCRIPT,
+        "# new\r\n",
+        active="managesieve",
+        activate=False,
+    )
+
+    assert planted.read_bytes() == b"planted\n"
+    assert path == backups / "managesieve-20261031T120000.250Z-2.sieve"
+    assert path.read_bytes() == CRLF_SCRIPT.encode("utf-8")
+
+
+# ----------------------------------------------------------------------------
+def test_a_named_backup_file_that_exists_is_refused(tmp_path):
+    """A name the user gave is never renumbered: the write is refused.
+
+    Red when the write truncates: the planted file holds the backup.
+    """
+    target = tmp_path / "copy.sieve"
+    target.write_bytes(b"planted\n")
+
+    with pytest.raises(MailctlError, match="already exists"):
+        write_backup(CRLF_SCRIPT, target)
+
+    assert target.read_bytes() == b"planted\n"
+    assert sorted(tmp_path.iterdir()) == [target]
+
+
+# ----------------------------------------------------------------------------
+def test_a_numbered_backup_under_a_file_still_fails(tmp_path):
+    """A parent that is a file is a failed write, not a taken name.
+
+    Red (it never ends) if the directory step's ``FileExistsError`` were
+    read as the name being taken and renumbered.
+    """
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+
+    with pytest.raises(MailctlError, match="could not write backup"):
+        write_backup(CRLF_SCRIPT, blocker / "copy.sieve", numbered=True)
 
 
 # ----------------------------------------------------------------------------
@@ -510,6 +676,43 @@ def test_backup_reports_an_unwritable_target(fake_sieve, tmp_path, capsys):
     )
 
     assert "could not write backup" in capsys.readouterr().err
+
+
+# ----------------------------------------------------------------------------
+def test_backup_output_to_an_existing_file_is_refused(
+    fake_sieve, tmp_path, capsys
+):
+    """``--output`` naming a file that exists keeps it and writes nothing.
+
+    Red when the write truncates, as it did before #330: exit 0 and the
+    file replaced by the backup.
+    """
+    target = tmp_path / "copy.sieve"
+    target.write_bytes(b"planted\n")
+
+    assert cli.main(["filterset", "backup", "--output", str(target)]) == 1
+
+    assert target.read_bytes() == b"planted\n"
+    assert sorted(tmp_path.iterdir()) == [target]
+    assert "already exists" in capsys.readouterr().err
+
+
+# ----------------------------------------------------------------------------
+def test_backup_into_a_directory_twice_at_one_instant_keeps_both(
+    fake_sieve, monkeypatch, tmp_path, capsys
+):
+    """A directory given to ``--output`` gets mailctl's names, renumbered."""
+    freeze_clock(monkeypatch, NOON)
+
+    for _ in range(2):
+        assert (
+            cli.main(["filterset", "backup", "--output", f"{tmp_path}/"]) == 0
+        )
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "managesieve-20261031T120000.250Z-2.sieve",
+        "managesieve-20261031T120000.250Z.sieve",
+    ]
 
 
 # ----------------------------------------------------------------------------
