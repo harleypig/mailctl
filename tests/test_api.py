@@ -705,6 +705,28 @@ def test_a_discarded_plan_cannot_be_executed(start):
 
 
 # ----------------------------------------------------------------------------
+def test_a_plan_left_waiting_past_the_limit_is_dropped_and_refused(start):
+    """A client abandoning plans without discarding them must not grow the
+    table without bound (#346 - bound the plan table). Red if no plan is
+    dropped, or if the newest are dropped instead of the oldest."""
+    client = initialized(start)
+    plan_ids = [
+        add_plan(client)["result"]["plan_id"]
+        for _ in range(server.PLANS_KEPT + 1)
+    ]
+
+    oldest = client.request("filter.add.execute", {"plan_id": plan_ids[0]})
+
+    assert refusal(oldest)["code"] == "plan_unknown"
+    assert "stored" not in client.read_state()
+
+    kept = client.request("filter.add.execute", {"plan_id": plan_ids[1]})
+
+    assert kept["result"]["result"]["filter"] == "github"
+    assert client.read_state()["stored"] == ["managesieve"]
+
+
+# ----------------------------------------------------------------------------
 def test_a_filter_set_changed_after_the_plan_is_refused_at_execute(start):
     """Red if execute uploads the plan's merge over the other client's
     edit: ADR 0002's failure, across the decide step."""

@@ -14,11 +14,15 @@ dispatches it, logs it, or could echo it.
 The lines are read on a thread of their own, as they arrive, so what the
 client sends while a request runs -- a cancel above all -- is in hand
 before that request ends. Everything else, the handling and every line
-written, stays on the thread that serves the requests.
+written, stays on the thread that serves the requests. The thread reads
+ahead at most ``INBOX_LIMIT`` messages, waiting once that many are read
+and not yet served, and :meth:`Channel.close` stops it.
 """
 
 import json
+import os
 import queue
+import select
 import threading
 from collections import deque
 from collections.abc import Callable
@@ -64,6 +68,12 @@ REQUEST_CANCELLED = -32800
 
 # Bytes asked of the input at a time; a read returns what has arrived.
 READ_SIZE = 65536
+
+# Messages read and not yet served, at most: past this the input thread
+# waits, so a client writing faster than it is served is held back by its
+# own pipe rather than filling memory. A cancel behind that many messages
+# is not seen until some are served.
+INBOX_LIMIT = 64
 
 _Taken = TypeVar("_Taken")
 
@@ -173,6 +183,10 @@ class Channel:
     sends while that answer is awaited is kept, in order, and is what
     :meth:`receive` returns next. While a request runs, :meth:`take` picks
     out of what has arrived the messages that cannot wait their turn.
+
+    At most ``INBOX_LIMIT`` messages are read and not yet served, held or
+    waiting, at any time. :meth:`close` stops the input thread and waits
+    for it; whatever it had not handed over is dropped.
     """
 
     # ------------------------------------------------------------------------
@@ -186,6 +200,25 @@ class Channel:
         # the input has ended, and nothing after it.
         self._inbox: queue.Queue[object | RpcError | None] = queue.Queue()
         self._ended = False
+
+        # Messages read and not yet served, in the inbox or held; the input
+        # thread waits on ``_room`` while there are INBOX_LIMIT of them.
+        self._unserved = 0
+        self._room = threading.Condition()
+        self._closing = False
+
+        # A read on a descriptor cannot be interrupted, so the thread waits
+        # until the input or a wake pipe is readable, and ``close`` writes
+        # to the pipe. Held as the input's descriptor and the pipe's read
+        # and write ends; None for a reader with no descriptor, whose read
+        # never waits.
+        try:
+            source: int | None = reader.fileno()
+
+        except (OSError, ValueError):
+            source = None
+
+        self._wake = None if source is None else (source, *os.pipe())
         self._pump = threading.Thread(
             target=self._read_lines, name="mailctl-api-input", daemon=True
         )
@@ -193,7 +226,8 @@ class Channel:
 
     # ------------------------------------------------------------------------
     def _read_lines(self) -> None:
-        """The input thread: every line, as it arrives, until the end.
+        """The input thread: every line, as it arrives, until the end or
+        :meth:`close`.
 
         ``reader.read(n)`` must return what is there rather than wait for
         ``n`` bytes, as an unbuffered stream's does. Blank lines are
@@ -203,18 +237,21 @@ class Channel:
         pending = bytearray()
 
         try:
-            while chunk := self._reader.read(READ_SIZE):
+            while self._readable() and (chunk := self._reader.read(READ_SIZE)):
                 # Search only what arrived, so a long line costs one pass.
                 start, scan = 0, len(pending)
                 pending += chunk
 
                 while (end := pending.find(b"\n", scan)) != -1:
-                    self._accept(bytes(pending[start : end + 1]))
+                    if not self._accept(bytes(pending[start : end + 1])):
+                        return
+
                     start = scan = end + 1
 
                 del pending[:start]
 
-            self._accept(bytes(pending))
+            if not self._closing:
+                self._accept(bytes(pending))
 
         except (OSError, ValueError):
             pass
@@ -223,16 +260,70 @@ class Channel:
             self._inbox.put(None)
 
     # ------------------------------------------------------------------------
-    def _accept(self, line: bytes) -> None:
-        """One line read, parsed or as its parse failure; blank is none."""
+    def _readable(self) -> bool:
+        """Wait until the input can be read; False once the channel is
+        closing instead."""
+        if self._wake is None:
+            return not self._closing
+
+        source, woken, _ = self._wake
+        ready, _, _ = select.select([source, woken], [], [])
+
+        return woken not in ready
+
+    # ------------------------------------------------------------------------
+    def _accept(self, line: bytes) -> bool:
+        """One line read, parsed or as its parse failure, once there is
+        room for it; blank is none. False once the channel is closing."""
         if not line.strip():
-            return
+            return True
 
         try:
-            self._inbox.put(parse(line))
+            message: object | RpcError = parse(line)
 
         except RpcError as error:
-            self._inbox.put(error)
+            message = error
+
+        with self._room:
+            self._room.wait_for(
+                lambda: self._unserved < INBOX_LIMIT or self._closing
+            )
+
+            if self._closing:
+                return False
+
+            self._unserved += 1
+
+        self._inbox.put(message)
+
+        return True
+
+    # ------------------------------------------------------------------------
+    def _served(self, count: int = 1) -> None:
+        """``count`` messages handed over or answered, making room."""
+        with self._room:
+            self._unserved -= count
+            self._room.notify()
+
+    # ------------------------------------------------------------------------
+    def close(self) -> None:
+        """Stop the input thread and wait for it to end; once is enough,
+        and more is harmless."""
+        with self._room:
+            if self._closing:
+                return
+
+            self._closing = True
+            self._room.notify_all()
+
+        if self._wake is not None:
+            os.write(self._wake[2], b"\0")
+
+        self._pump.join()
+
+        if self._wake is not None:
+            os.close(self._wake[1])
+            os.close(self._wake[2])
 
     # ------------------------------------------------------------------------
     def _read(self) -> object | RpcError | None:
@@ -295,6 +386,9 @@ class Channel:
 
         self._held = kept
 
+        if taken:
+            self._served(len(taken))
+
         return taken
 
     # ------------------------------------------------------------------------
@@ -305,6 +399,9 @@ class Channel:
         with a null id, as the specification has it.
         """
         message = self._held.popleft() if self._held else self._read()
+
+        if message is not None:
+            self._served()
 
         if isinstance(message, RpcError):
             raise message
@@ -369,6 +466,11 @@ class Channel:
         )
 
         while True:
+            # With INBOX_LIMIT messages held the input thread reads no
+            # further, so the answer cannot arrive: taken as declined.
+            if len(self._held) >= INBOX_LIMIT:
+                raise RpcError(INVALID_REQUEST, "")
+
             message = self._read()
 
             if message is None:
@@ -378,14 +480,18 @@ class Channel:
             # it would leave both sides waiting on each other; so it is
             # answered as any such line is, and taken as a declined answer.
             if isinstance(message, RpcError):
+                self._served()
                 self.fail(None, message)
 
                 raise RpcError(message.code, "")
 
             if interrupt is not None and interrupt(message):
+                self._served()
+
                 raise RequestCancelled(method)
 
             if is_response(message) and message.get("id") == ident:
+                self._served()
                 error = message.get("error")
 
                 if error is not None:
@@ -403,6 +509,7 @@ class Channel:
         for message in self._held:
             if not isinstance(message, RpcError) and interrupt(message):
                 self._held.remove(message)
+                self._served()
 
                 return True
 

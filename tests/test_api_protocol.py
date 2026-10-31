@@ -18,6 +18,7 @@ from typing import TypeGuard
 import pytest
 
 from mailctl import MailctlError
+from mailctl.api import protocol
 from mailctl.api import server as server_module
 from mailctl.api.protocol import (
     INVALID_PARAMS,
@@ -316,6 +317,105 @@ def test_lines_split_across_reads_arrive_whole(size):
     assert link.receive() is None
 
 
+# ----------------------------------------------------------------------------
+def numbered(count: int) -> list[bytes]:
+    """``count`` request lines, ids 0 up."""
+    return [
+        b'{"jsonrpc": "2.0", "id": %d, "method": "filter.list"}\n' % n
+        for n in range(count)
+    ]
+
+
+# ----------------------------------------------------------------------------
+def unserved(link: Channel, count: int) -> None:
+    """Wait until ``count`` messages are read and not yet served."""
+    deadline = time.monotonic() + 5
+
+    while link._unserved < count:
+        assert time.monotonic() < deadline, "the lines were never read"
+        time.sleep(0.001)
+
+
+# ----------------------------------------------------------------------------
+def closed_within(link: Channel, seconds: float) -> bool:
+    """Whether ``close`` returned within ``seconds``; a close that hangs
+    is left to its daemon thread rather than hanging the run."""
+    closer = threading.Thread(target=link.close, daemon=True)
+    closer.start()
+    closer.join(seconds)
+
+    return not closer.is_alive()
+
+
+# ----------------------------------------------------------------------------
+def test_a_client_flooding_input_is_read_no_further_than_the_limit(
+    monkeypatch,
+):
+    """Every byte is in the reader's hands at its first read, so only the
+    bound stops it handing over all ten and ending (#346 - bound the input
+    queue). Red if the input thread reads past the limit, or if take,
+    moving what has arrived into the held messages, makes room for more."""
+    monkeypatch.setattr(protocol, "INBOX_LIMIT", 4)
+    link, _out = channel(*numbered(10))
+    unserved(link, 4)
+
+    # A thread that never waits ends at once; this one is waiting.
+    link._pump.join(timeout=0.5)
+
+    assert link._pump.is_alive()
+    assert link._inbox.qsize() == 4
+
+    link.take(nothing)
+    link._pump.join(timeout=0.5)
+
+    assert link._pump.is_alive()
+    assert len(link._held) + link._inbox.qsize() == 4
+
+    assert [ident(link.receive()) for _ in range(10)] == list(range(10))
+    assert link.receive() is None
+
+
+# ----------------------------------------------------------------------------
+def test_close_stops_an_input_thread_waiting_for_room(monkeypatch):
+    """Red if close leaves the thread waiting on a full inbox, so close
+    never returns."""
+    monkeypatch.setattr(protocol, "INBOX_LIMIT", 2)
+    link, _out = channel(*numbered(5))
+    unserved(link, 2)
+
+    assert closed_within(link, 5)
+    assert not link._pump.is_alive()
+
+
+# ----------------------------------------------------------------------------
+def test_a_wait_with_the_limit_held_is_declined_rather_than_hung(
+    monkeypatch,
+):
+    """While a password is asked, everything else the client sends is
+    held; once the limit is held the input thread reads no further, so
+    the answer can never arrive. The wait ends as a declined answer and
+    the held messages keep their turn. Red if the wait goes on reading:
+    it hangs."""
+    monkeypatch.setattr(protocol, "INBOX_LIMIT", 3)
+    link, _out = channel(*numbered(5))
+    declined: list[RpcError] = []
+
+    def ask() -> None:
+        try:
+            link.request("credentials.prompt", {})
+
+        except RpcError as error:
+            declined.append(error)
+
+    asker = threading.Thread(target=ask, daemon=True)
+    asker.start()
+    asker.join(5)
+
+    assert declined, "the wait never ended"
+    assert [ident(link.receive()) for _ in range(5)] == list(range(5))
+    assert link.receive() is None
+
+
 # ############################################################################
 # Parameters
 # ############################################################################
@@ -511,8 +611,26 @@ def piped(monkeypatch):
     yield make
 
     for each in made:
+        each.link.close()
         each.close()
         each.reader.close()
+
+
+# ----------------------------------------------------------------------------
+def test_no_input_thread_is_left_reading_once_run_returns(piped):
+    """Run in-process, as a test or an embedding would: after shutdown the
+    client's pipe is still open and empty, and nothing may be left blocked
+    reading it (#346 - stop the reader). Red if run returns without
+    stopping the input thread."""
+    client = piped()
+    client.line(request(1, "shutdown"))
+    client.server.run()
+
+    assert [(a["id"], a.get("result")) for a in client.answers()] == [
+        (1, None)
+    ]
+    assert not client.link._pump.is_alive()
+    assert client.link._pump not in threading.enumerate()
 
 
 # ----------------------------------------------------------------------------

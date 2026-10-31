@@ -22,7 +22,9 @@ A change is plan, decide, execute across the boundary. A ``.plan`` method
 keeps the plan record here under a fresh id and returns the id beside the
 plan's document; the ``.execute`` method takes the id and nothing the plan
 already holds, so what was shown is what runs. An id is used once:
-executed, failed, or discarded, it is gone.
+executed, failed, or discarded, it is gone. Only the newest
+``PLANS_KEPT`` plans wait; making another drops the oldest, whose id is
+then refused as any used one is.
 """
 
 import argparse
@@ -99,6 +101,12 @@ _ABSENT = object()
 # The notification that cancels a request, named as the Language Server
 # Protocol names it, so a client that speaks LSP already knows it.
 CANCEL_METHOD = "$/cancelRequest"
+
+# Plans waiting at most; each holds its record, a filter set's text among
+# them, so a client that abandons plans without discarding them cannot
+# grow the table without bound. Far more than a client deciding one plan
+# at a time needs.
+PLANS_KEPT = 32
 
 
 # ############################################################################
@@ -242,7 +250,7 @@ class Server:
     # ------------------------------------------------------------------------
     def run(self) -> None:
         """Serve requests until ``shutdown`` or the end of input, then
-        close the session."""
+        close the session and stop reading the input."""
         try:
             while True:
                 try:
@@ -258,6 +266,7 @@ class Server:
 
         finally:
             self._close()
+            self.channel.close()
 
     # ------------------------------------------------------------------------
     def handle(self, message: object) -> bool:
@@ -551,6 +560,11 @@ class Server:
 
     # ------------------------------------------------------------------------
     def _keep(self, command: str, record: Any) -> str:
+        """Keep a plan under a fresh id, dropping the oldest waiting one
+        where ``PLANS_KEPT`` are already waiting."""
+        while len(self._plans) >= PLANS_KEPT:
+            del self._plans[next(iter(self._plans))]
+
         plan_id = secrets.token_hex(8)
         self._plans[plan_id] = _Plan(command, record)
 
@@ -561,15 +575,17 @@ class Server:
         """Remove a waiting plan from the table and return it.
 
         Refused, coded ``plan_unknown``, where no plan has the id -- it was
-        never made, or was executed, failed, or discarded already -- or
-        where ``command`` is given and the plan is another command's.
+        never made, or was executed, failed, discarded, or dropped as the
+        oldest already -- or where ``command`` is given and the plan is
+        another command's.
         """
         entry = self._plans.get(plan_id)
 
         if entry is None or (command is not None and entry.command != command):
             raise MailctlError(
                 "no plan with that id is waiting: a plan is used once, "
-                "whether it was carried out, failed, or was discarded",
+                "whether it was carried out, failed, or was discarded, "
+                f"and only the newest {PLANS_KEPT} wait",
                 code="plan_unknown",
                 fields={"plan_id": plan_id},
             )
