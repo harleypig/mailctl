@@ -54,6 +54,16 @@ FEATURES:
   result carries `restart: true`, since what moves is read only by a
   process started afterwards. The README's *API* section lists every
   method, its parameters, and its result.
+* **The API can cancel a request** ([#280]). A client sends
+  `$/cancelRequest` with the request's id, as in the Language Server
+  Protocol, and the request stops before its next exchange with the
+  server, answered with `-32800` and `data.written: false`, plus the
+  path of any backup it had written. A request that has sent a write is
+  never stopped, since the write may have landed, and is answered as
+  usual. A cancel names only a request sent before it, in hand or still
+  waiting its turn, and any other id is ignored. Cancelling a request
+  that waits for the password ends the wait, and the next request asks
+  again.
 
 ENHANCEMENTS:
 
@@ -152,6 +162,11 @@ BUG FIXES:
   left pointing at a folder that no longer existed. It now reads the
   filter set and which one is active again before renaming, and on any
   difference refuses with `filterset_changed`, touching nothing.
+* **A password command no longer reads mailctl's standard input**
+  ([#280]). It inherited it, so under the API, where standard input is
+  the client's pipe, a command that read it could take the client's
+  requests. It now runs with nothing on its input, on the command line
+  and the API alike.
 
 * **A password with a character outside ASCII no longer shows part of
   itself** ([#258]). IMAP's login sends ASCII only, and the error it
@@ -1742,3 +1757,4 @@ NOTES:
 [#330]: https://github.com/harleypig/mailctl/issues/330
 [#331]: https://github.com/harleypig/mailctl/issues/331
 [#332]: https://github.com/harleypig/mailctl/issues/332
+[#280]: https://github.com/harleypig/mailctl/issues/280
