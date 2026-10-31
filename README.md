@@ -796,7 +796,10 @@ and save again.
   one did, and that no filter still files into an old name, exiting
   non-zero naming any that failed. A step that fails part-way is not
   retried; the error says what was done and how to undo it
-  (`mailctl folder rename NEW OLD`).
+  (`mailctl folder rename NEW OLD`). If the filter set changed after the
+  rename was planned, or another filter set was made active, it is
+  refused and nothing is touched, even when no filter files into the
+  folder.
 * `search`, `view`, and `senders` **never mark mail read**. The folder
   is opened read-only, and the message is fetched in the form that leaves
   its read flag alone, so either guard alone would be enough.
@@ -1252,6 +1255,8 @@ was shown is what runs.
 * If the filter set changed on the server after the plan was made (in
   webmail, say), or another filter set was made active, an execute that
   uploads is refused with `filterset_changed` and nothing is uploaded.
+  `folder.rename.execute` with no filter to repoint uploads nothing and is
+  refused the same way, before the folder is touched.
   Make a new plan.
 * `filter.apply.execute` holds the plan to its own ceiling again, and it
   and `mail.mark.execute` check the folder's UIDVALIDITY again, refusing

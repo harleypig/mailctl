@@ -126,6 +126,13 @@ BUG FIXES:
   planned** ([#279]). The file carries every account's part, so writing
   over a save made in between lost that one. It is now refused with
   `baseline_changed`, writing nothing.
+* **`folder rename` no longer moves a folder after the filter set
+  changed, when no filter needed repointing** ([#332]). With no filter
+  filing into the folder, it renamed without reading the filter set
+  again, so a filter added in between that files into the old name was
+  left pointing at a folder that no longer existed. It now reads the
+  filter set and which one is active again before renaming, and on any
+  difference refuses with `filterset_changed`, touching nothing.
 
 * **A password with a character outside ASCII no longer shows part of
   itself** ([#258]). IMAP's login sends ASCII only, and the error it
@@ -1714,3 +1721,4 @@ NOTES:
 [#308]: https://github.com/harleypig/mailctl/issues/308
 [#279]: https://github.com/harleypig/mailctl/issues/279
 [#330]: https://github.com/harleypig/mailctl/issues/330
+[#332]: https://github.com/harleypig/mailctl/issues/332
