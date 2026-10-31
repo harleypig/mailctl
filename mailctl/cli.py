@@ -1024,15 +1024,8 @@ def emit_mail_plan(sessions, criteria, args, spec, folder, source) -> int:
 
     return emit_json(
         args,
-        json_output.plan(
-            "filter apply",
-            changes=bool(mail and mail.changes),
-            criteria=criteria.to_dict(),
-            actions=json_output.actions(spec),
-            folder=json_output.folder_plan(folder),
-            max_messages=args.max_messages,
-            over_limit=bool(mail and mail.count > args.max_messages),
-            mail=None if mail is None else json_output.mail_plan(mail),
+        json_output.apply_plan(
+            criteria, spec, folder, args.max_messages, mail
         ),
     )
 
@@ -2789,16 +2782,12 @@ def cmd_apply(args) -> int:
             args.fileinto,
             create=args.create_folder,
             subscribe=not args.no_subscribe,
+            delivery_route=False,
         )
 
         show_folder_plan(folder)
         utilities.mail.require_mail_action(folder, spec)
-
-        if folder.status == utilities.folders.FOLDER_MISSING:
-            raise MailctlError(
-                f"target folder {folder.folder!r} does not exist; pass "
-                f"--create-folder to create it"
-            )
+        utilities.mail.require_target_folder(folder)
 
         if folder.status == utilities.folders.FOLDER_IMAP_CREATE:
             announce_folder_creation(folder, args.dry_run)
@@ -2830,15 +2819,7 @@ def cmd_remove_rule(args) -> int:
         )
 
         if args.json:
-            return emit_json(
-                args,
-                json_output.plan(
-                    "filter remove",
-                    **json_output.change(plan.before != plan.after, plan.diff),
-                    filter=plan.rule,
-                    **json_output.activation(plan),
-                ),
-            )
+            return emit_json(args, json_output.removal_plan(plan))
 
         print_script_diff(plan.diff)
         print_activation(plan)
@@ -2884,19 +2865,7 @@ def cmd_move_rule(args) -> int:
         )
 
         if args.json:
-            return emit_json(
-                args,
-                json_output.plan(
-                    "filter move",
-                    **json_output.change(plan.changes, plan.diff),
-                    filter=plan.rule,
-                    from_position=plan.from_index + 1,
-                    to_position=plan.to_index + 1,
-                    count=plan.count,
-                    placement=json_output.placement(plan.placement),
-                    **json_output.activation(plan),
-                ),
-            )
+            return emit_json(args, json_output.move_plan(plan))
 
         if not plan.changes:
             print(
@@ -3078,16 +3047,7 @@ def cmd_switch_rule(args) -> int:
         )
 
         if args.json:
-            return emit_json(
-                args,
-                json_output.plan(
-                    args.command,
-                    **json_output.change(plan.changes, plan.diff),
-                    filter=plan.rule,
-                    enable=plan.enable,
-                    **json_output.activation(plan),
-                ),
-            )
+            return emit_json(args, json_output.switch_plan(plan))
 
         if not plan.changes:
             print(
@@ -3132,16 +3092,7 @@ def cmd_rename_rule(args) -> int:
         )
 
         if args.json:
-            return emit_json(
-                args,
-                json_output.plan(
-                    "filter rename",
-                    **json_output.change(plan.changes, plan.diff),
-                    filter=plan.rule,
-                    new_name=plan.new_name,
-                    **json_output.activation(plan),
-                ),
-            )
+            return emit_json(args, json_output.rename_plan(plan))
 
         if not plan.changes:
             print(
@@ -5394,6 +5345,9 @@ ERROR_TEXT = {
     ),
     "no_mail_action": lambda message, _: (
         f"{message} -- use --move-to, --discard, --mark-read, or --flag"
+    ),
+    "folder_missing": lambda message, _: (
+        f"{message}; pass --create-folder to create it"
     ),
     "no_marks": lambda message, _: (
         f"{message} -- use --read, --unread, --flag, --unflag, --keyword, "

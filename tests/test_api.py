@@ -59,6 +59,30 @@ BOSS_MAIL = (
     "See attached.\r\n"
 )
 
+# Two filters, so one can be moved, and two the optimizer merges: the same
+# test on the same header with the same actions, one after the other.
+TWO_FILTERS = (
+    ROUNDCUBE
+    + """# rule:[github]
+if header :contains "from" "noreply@github.com"
+{
+\tfileinto "INBOX.Lists";
+\tstop;
+}
+"""
+)
+
+MERGEABLE = (
+    ROUNDCUBE
+    + """# rule:[keep-ceo]
+if header :contains "from" "ceo@example.com"
+{
+\tfileinto "INBOX.Boss";
+\tstop;
+}
+"""
+)
+
 GITHUB_FILTER = {
     "version": 1,
     "criteria": {
@@ -700,7 +724,8 @@ def test_a_filter_set_changed_after_the_plan_is_refused_at_execute(start):
 
 # ----------------------------------------------------------------------------
 def test_a_plan_id_is_the_only_thing_execute_takes(start):
-    """The client cannot alter what runs by sending the plan back."""
+    """The client cannot alter what runs by sending the plan back. Red if
+    the refused request uses the plan up."""
     client = initialized(start)
     plan_id = add_plan(client)["result"]["plan_id"]
     response = client.request(
@@ -709,6 +734,570 @@ def test_a_plan_id_is_the_only_thing_execute_takes(start):
 
     assert response["error"]["code"] == -32602
     assert "name" in response["error"]["message"]
+
+    # Refused as a request, so the plan is not used up by it.
+    assert "result" in client.request(
+        "filter.add.execute", {"plan_id": plan_id}
+    )
+
+
+# ############################################################################
+# The rest of the filter group
+# ############################################################################
+
+# Each command that changes the filter set: its method's name, what its
+# plan is given, the filter set it starts from, the command its plan
+# document names, the filter its result names, and a line only the
+# stored result holds.
+SCRIPT_WRITES = {
+    "remove": (
+        "filter.remove",
+        {"name": "github"},
+        TWO_FILTERS,
+        "filter remove",
+        "github",
+        None,
+    ),
+    "move": (
+        "filter.move",
+        {"name": "github", "placement": {"where": "first"}},
+        TWO_FILTERS,
+        "filter move",
+        "github",
+        "github",
+    ),
+    "rename": (
+        "filter.rename",
+        {"name": "github", "new_name": "gh"},
+        TWO_FILTERS,
+        "filter rename",
+        "gh",
+        "# rule:[gh]",
+    ),
+    "disable": (
+        "filter.disable",
+        {"name": "github"},
+        TWO_FILTERS,
+        "filter disable",
+        "github",
+        'if false # header :contains "from" "noreply@github.com"',
+    ),
+    "optimize": (
+        "filter.optimize",
+        {},
+        MERGEABLE,
+        "filter optimize",
+        None,
+        '["boss@example.com", "ceo@example.com"]',
+    ),
+}
+
+
+# ----------------------------------------------------------------------------
+def script_plan(client: ChildClient, case: str, **extra) -> dict:
+    method, params, *_rest = SCRIPT_WRITES[case]
+
+    return client.request(f"{method}.plan", {**params, **extra})
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("case", sorted(SCRIPT_WRITES))
+def test_a_filter_set_write_plans_then_stores_once_with_a_backup(start, case):
+    """Red if a plan writes, if execute stores anything but the plan's
+    result, if its events do not come first, backup before upload, or if
+    the id can be used twice."""
+    method, _params, scripts, command, name, only_after = SCRIPT_WRITES[case]
+    client = initialized(start, scripts={"managesieve": scripts})
+    result = script_plan(client, case)["result"]
+    plan = result["document"]["plan"]
+
+    assert plan["command"] == command
+    assert plan["changes"] is True
+    assert plan["filterset"] == "managesieve"
+    assert "stored" not in client.read_state()
+
+    response = client.request(
+        f"{method}.execute", {"plan_id": result["plan_id"]}
+    )
+    done = response["result"]["result"]
+    stored = client.read_state()["scripts"]["managesieve"]
+
+    assert [event["kind"] for event in events(response)] == [
+        "filterset_backed_up",
+        "filterset_uploaded",
+    ]
+    assert done["command"] == command
+    assert done["filter"] == name
+    assert Path(done["backup"]).read_text(encoding="utf-8") == scripts
+    assert client.read_state()["stored"] == ["managesieve"]
+
+    if case == "remove":
+        assert "# rule:[github]" not in stored
+        assert "# rule:[keep-boss]" in stored
+
+    elif case == "move":
+        assert stored.index("rule:[github]") < stored.index("rule:[keep-boss]")
+
+    else:
+        assert only_after in stored
+
+    again = client.request(f"{method}.execute", {"plan_id": result["plan_id"]})
+
+    assert refusal(again)["code"] == "plan_unknown"
+    assert client.read_state()["stored"] == ["managesieve"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_disabled_filter_is_enabled_again(start):
+    """Red if ``filter.enable`` switches the filter the wrong way, or
+    names another command."""
+    client = initialized(start, scripts={"managesieve": TWO_FILTERS})
+
+    for method in ("filter.disable", "filter.enable"):
+        result = client.request(f"{method}.plan", {"name": "github"})["result"]
+
+        assert result["document"]["plan"]["enable"] is (
+            method.endswith("enable")
+        )
+        assert "result" in client.request(
+            f"{method}.execute", {"plan_id": result["plan_id"]}
+        )
+
+    stored = client.read_state()["scripts"]["managesieve"]
+
+    assert "if false" not in stored
+    assert "# rule:[github]" in stored
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("case", sorted(SCRIPT_WRITES))
+def test_a_filter_set_write_refuses_a_set_changed_since_the_plan(start, case):
+    """Red if execute uploads over another client's edit (ADR 0002)."""
+    method, _params, scripts, *_rest = SCRIPT_WRITES[case]
+    client = initialized(start, scripts={"managesieve": scripts})
+    plan_id = script_plan(client, case)["result"]["plan_id"]
+
+    state = client.read_state()
+    edited = scripts + "# rule:[made-elsewhere]\nkeep;\n"
+    state["scripts"]["managesieve"] = edited
+    client.write_state(state)
+
+    error = refusal(client.request(f"{method}.execute", {"plan_id": plan_id}))
+
+    assert error["code"] == "filterset_changed"
+    assert client.read_state()["scripts"]["managesieve"] == edited
+    assert "stored" not in client.read_state()
+
+    retry = client.request(f"{method}.execute", {"plan_id": plan_id})
+
+    assert refusal(retry)["code"] == "plan_unknown"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("case", ["add", *sorted(SCRIPT_WRITES)])
+def test_a_filter_set_write_refuses_an_active_set_switched_since_the_plan(
+    start, case
+):
+    """Red if execute uploads once another client has made another filter
+    set active: the plan decided from the old one whether to activate its
+    own, so the switch would be undone, unseen (#308)."""
+    if case == "add":
+        method, scripts = "filter.add", ROUNDCUBE
+
+    else:
+        method, _params, scripts, *_rest = SCRIPT_WRITES[case]
+
+    client = initialized(start, scripts={"managesieve": scripts})
+    plan = add_plan(client) if case == "add" else script_plan(client, case)
+    plan_id = plan["result"]["plan_id"]
+
+    state = client.read_state()
+    state["scripts"]["elsewhere"] = "keep;\n"
+    state["active"] = "elsewhere"
+    client.write_state(state)
+
+    error = refusal(client.request(f"{method}.execute", {"plan_id": plan_id}))
+    after = client.read_state()
+
+    assert error["code"] == "filterset_changed"
+    assert error["fields"] == {"operation": "filterset list", "arguments": []}
+    assert after["active"] == "elsewhere"
+    assert after["scripts"]["managesieve"] == scripts
+    assert "stored" not in after
+    assert not (client.state.parent / "backups").exists()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("case", sorted(SCRIPT_WRITES))
+def test_a_filter_set_write_runs_only_its_own_plan_by_its_id(start, case):
+    """Red if execute takes anything the plan holds, if another command's
+    execute runs this plan, or if a discarded plan still runs."""
+    method, _params, scripts, *_rest = SCRIPT_WRITES[case]
+    client = initialized(start, scripts={"managesieve": scripts})
+    plan_id = script_plan(client, case)["result"]["plan_id"]
+
+    sent_back = client.request(
+        f"{method}.execute", {"plan_id": plan_id, "name": "other"}
+    )
+    other = "filter.add" if case != "remove" else "filter.move"
+    elsewhere = client.request(f"{other}.execute", {"plan_id": plan_id})
+
+    assert sent_back["error"]["code"] == -32602
+    assert refusal(elsewhere)["code"] == "plan_unknown"
+
+    # Neither used the plan up: it is still there to discard.
+    assert client.request("plan.discard", {"plan_id": plan_id})["result"] is (
+        None
+    )
+
+    discarded = client.request(f"{method}.execute", {"plan_id": plan_id})
+
+    assert refusal(discarded)["code"] == "plan_unknown"
+    assert "stored" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("method", "params", "scripts"),
+    [
+        (
+            "filter.move",
+            {"name": "github", "placement": {"where": "last"}},
+            TWO_FILTERS,
+        ),
+        ("filter.enable", {"name": "github"}, TWO_FILTERS),
+        (
+            "filter.rename",
+            {"name": "github", "new_name": "github"},
+            TWO_FILTERS,
+        ),
+        ("filter.optimize", {}, TWO_FILTERS),
+    ],
+)
+def test_a_plan_that_changes_nothing_is_refused_at_execute(
+    start, method, params, scripts
+):
+    """Red if a plan the CLI would stop after showing is carried out: a
+    backup and an upload of the same bytes, and an activation nobody saw
+    asked for."""
+    client = initialized(start, scripts={"managesieve": scripts})
+    result = client.request(f"{method}.plan", params)["result"]
+
+    assert result["document"]["plan"]["changes"] is False
+    assert result["document"]["plan"]["diff"] is None
+
+    error = refusal(
+        client.request(f"{method}.execute", {"plan_id": result["plan_id"]})
+    )
+
+    assert error["code"] == "nothing_to_change"
+    assert "stored" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_a_filter_add_that_changes_nothing_is_still_carried_out(start):
+    """``filter add`` on the CLI uploads a filter replaced by itself, and
+    the API does the same. Red if ``filter.add.execute`` starts refusing
+    a plan that changes nothing without the CLI doing so too."""
+    client = initialized(start)
+    first = add_plan(client)["result"]["plan_id"]
+
+    assert "result" in client.request("filter.add.execute", {"plan_id": first})
+
+    stored = client.read_state()["scripts"]["managesieve"]
+    result = add_plan(client, replace=True)["result"]
+
+    assert result["document"]["plan"]["changes"] is False
+
+    response = client.request(
+        "filter.add.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert [event["kind"] for event in events(response)] == [
+        "filterset_backed_up",
+        "filterset_uploaded",
+    ]
+    assert client.read_state()["stored"] == ["managesieve", "managesieve"]
+    assert client.read_state()["scripts"]["managesieve"] == stored
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("capability", "method", "params"),
+    [
+        (
+            "ordering",
+            "filter.move",
+            {"name": "github", "placement": {"where": "first"}},
+        ),
+        ("ordering", "filter.optimize", {}),
+        ("disable", "filter.disable", {"name": "github"}),
+        ("disable", "filter.enable", {"name": "github"}),
+        ("rename", "filter.rename", {"name": "github", "new_name": "gh"}),
+    ],
+)
+def test_a_command_the_provider_does_not_declare_is_refused_unread(
+    start, monkeypatch, capability, method, params
+):
+    """The CLI hides these and refuses them below the front-end; the API
+    meets the same refusal, before anything connects. Red if the method
+    skips the check, or the check reads the filter set first."""
+    monkeypatch.setenv("MAILCTL_TEST_DECLINE", capability)
+    client = initialized(start, scripts={"managesieve": TWO_FILTERS})
+    error = refusal(client.request(f"{method}.plan", params))
+
+    assert (
+        f"does not declare the {capability!r} capability" in error["message"]
+    )
+    assert client.read_state().get("logins", 0) == 0
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("method", "params", "words"),
+    [
+        ("filter.remove", {"name": "nosuch"}, "nosuch"),
+        ("filter.disable", {"name": "nosuch"}, "nosuch"),
+        (
+            "filter.move",
+            {"name": "github", "placement": {"where": "after", "filter": "x"}},
+            "x",
+        ),
+        ("filter.rename", {"name": "nosuch", "new_name": "gh"}, "nosuch"),
+        ("filter.rename", {"name": "github", "new_name": " "}, "empty"),
+    ],
+)
+def test_a_filter_set_write_refuses_what_the_utility_refuses(
+    start, method, params, words
+):
+    client = initialized(start, scripts={"managesieve": TWO_FILTERS})
+
+    assert (
+        words in refusal(client.request(f"{method}.plan", params))["message"]
+    )
+    assert "stored" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_a_rename_to_a_name_already_taken_is_refused_with_its_code(start):
+    client = initialized(start, scripts={"managesieve": TWO_FILTERS})
+    response = client.request(
+        "filter.rename.plan", {"name": "github", "new_name": "keep-boss"}
+    )
+
+    assert refusal(response)["code"] == "rule_name_taken"
+
+
+# ----------------------------------------------------------------------------
+def test_filter_set_write_parameters_are_refused_as_parameters(start):
+    """Red if a missing name, a missing or unknown placement, or an
+    unknown kind to skip reaches the utilities instead."""
+    client = initialized(start, scripts={"managesieve": TWO_FILTERS})
+    asks = [
+        ("filter.remove.plan", {}),
+        ("filter.move.plan", {"name": "github"}),
+        ("filter.move.plan", {"name": "github", "placement": {"where": "up"}}),
+        ("filter.rename.plan", {"name": "github"}),
+        ("filter.optimize.plan", {"skip": ["colour"]}),
+        ("filter.disable.plan", {"name": "github", "yes": True}),
+    ]
+
+    for method, params in asks:
+        assert client.request(method, params)["error"]["code"] == -32602, (
+            method,
+            params,
+        )
+
+
+# ----------------------------------------------------------------------------
+def test_filter_optimize_skips_the_kinds_it_is_told_to(start):
+    client = initialized(start, scripts={"managesieve": MERGEABLE})
+    every = client.request("filter.optimize.plan", {})["result"]["document"]
+    skipped = client.request("filter.optimize.plan", {"skip": ["merge"]})
+
+    assert len(every["plan"]["merges"]) == 1
+    assert skipped["result"]["document"]["plan"]["considered"] == [
+        "redundant",
+        "reorder",
+    ]
+    assert skipped["result"]["document"]["plan"]["merges"] == []
+
+
+# ----------------------------------------------------------------------------
+def apply_plan(client: ChildClient, **extra) -> dict:
+    return client.request(
+        "filter.apply.plan",
+        {
+            "filter": GITHUB_FILTER,
+            "actions": {"move_to": "INBOX.Lists"},
+            **extra,
+        },
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_filter_apply_plans_the_pass_then_moves_the_mail_once(start):
+    """Red if the plan touches mail, if execute does anything but the
+    plan's move, or if the id can be used twice."""
+    client = initialized(start)
+    result = apply_plan(client)["result"]
+    plan = result["document"]["plan"]
+
+    assert plan["command"] == "filter apply"
+    assert plan["changes"] is True
+    assert plan["over_limit"] is False
+    assert [item["uid"] for item in plan["mail"]["messages"]] == [1]
+    assert plan["mail"]["destination"] == "INBOX.Lists"
+    assert "imap_writes" not in client.read_state()
+
+    response = client.request(
+        "filter.apply.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert response["result"]["result"] == {
+        "command": "filter apply",
+        "source": "INBOX",
+        "destination": "INBOX.Lists",
+        "flagged": 0,
+        "moved": 1,
+        "deleted": 0,
+        "copied": 0,
+    }
+    assert client.read_state()["imap_writes"] == [["move", [1], "INBOX.Lists"]]
+
+    again = client.request(
+        "filter.apply.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert refusal(again)["code"] == "plan_unknown"
+    assert len(client.read_state()["imap_writes"]) == 1
+
+
+# ----------------------------------------------------------------------------
+def test_filter_apply_creates_its_folder_at_execute_and_says_so_first(start):
+    """Red if the plan creates the folder, or execute moves mail into a
+    folder it has not made; or if the plan asks the rules half how a
+    filter would create it, since this pass saves no filter (the CLI's
+    ``apply-create-dry-json`` snapshot is the same plan)."""
+    client = initialized(start)
+    result = apply_plan(
+        client, actions={"move_to": "INBOX.New"}, create_folder=True
+    )["result"]
+
+    # Created over IMAP, and only so: the server advertises the mailbox
+    # extension, but no filter is saved to create it on delivery.
+    assert result["document"]["plan"]["folder"]["status"] == "create"
+    assert result["document"]["plan"]["folder"]["mailbox_disabled_by"] is None
+    assert "imap_writes" not in client.read_state()
+    assert "sieve_connects" not in client.read_state()
+
+    response = client.request(
+        "filter.apply.execute", {"plan_id": result["plan_id"]}
+    )
+    writes = [write[0] for write in client.read_state()["imap_writes"]]
+
+    assert [event["kind"] for event in events(response)] == ["folder_created"]
+    assert writes == ["create_folder", "subscribe_folder", "move"]
+
+
+# ----------------------------------------------------------------------------
+def test_filter_apply_refuses_a_missing_folder_it_was_not_asked_to_make(
+    start,
+):
+    client = initialized(start)
+    error = refusal(apply_plan(client, actions={"move_to": "INBOX.New"}))
+
+    assert error["code"] == "folder_missing"
+    assert error["fields"] == {"folder": "INBOX.New"}
+
+
+# ----------------------------------------------------------------------------
+def test_filter_apply_over_its_ceiling_is_planned_and_refused_whole(start):
+    """Red if the execute processes a partial batch, or reads the
+    ceiling from anywhere but the plan."""
+    every = {
+        **GITHUB_FILTER,
+        "criteria": {
+            **GITHUB_FILTER["criteria"],
+            "terms": [{"header": "To", "value": "user@example.com"}],
+        },
+    }
+    client = initialized(start)
+    result = apply_plan(client, filter=every, max_messages=1)["result"]
+
+    assert result["document"]["plan"]["over_limit"] is True
+    assert result["document"]["plan"]["mail"]["count"] == 2
+
+    error = refusal(
+        client.request("filter.apply.execute", {"plan_id": result["plan_id"]})
+    )
+
+    assert error["code"] == "max_messages"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_filter_apply_refuses_a_folder_renumbered_since_the_plan(start):
+    """Red if the execute moves UIDs that now name other messages."""
+    client = initialized(start)
+    plan_id = apply_plan(client)["result"]["plan_id"]
+
+    state = client.read_state()
+    state["uidvalidity"] = {"INBOX": 999}
+    client.write_state(state)
+
+    # A server cannot renumber the folder this connection holds selected
+    # (RFC 9051 section 2.3.1.1), so another is selected in between, as a
+    # long-lived client's next read would.
+    assert "result" in client.request("mail.search", {"folder": "INBOX.Lists"})
+
+    error = refusal(
+        client.request("filter.apply.execute", {"plan_id": plan_id})
+    )
+
+    assert error["code"] == "uidvalidity_changed"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_filter_apply_that_changes_nothing_is_planned_and_not_carried_out(
+    start,
+):
+    """Filing mail into the folder it is in searches nothing."""
+    client = initialized(start)
+    result = apply_plan(client, actions={"move_to": "INBOX"})["result"]
+
+    assert result["document"]["plan"]["changes"] is False
+    assert result["document"]["plan"]["mail"] is None
+
+    error = refusal(
+        client.request("filter.apply.execute", {"plan_id": result["plan_id"]})
+    )
+
+    assert error["code"] == "nothing_to_change"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_filter_apply_refuses_what_the_cli_refuses(start):
+    """``stop`` means nothing to delivered mail, so it is not taken; the
+    rest are the CLI's own refusals."""
+    client = initialized(start)
+
+    nothing = apply_plan(client, actions={})
+    redirect = apply_plan(client, actions={"redirect": "a@example.com"})
+    stop = apply_plan(
+        client, actions={"move_to": "INBOX.Lists", "stop": False}
+    )
+    ceiling = apply_plan(client, max_messages=-1)
+    unsubscribed = apply_plan(client, subscribe=False)
+
+    assert refusal(nothing)["code"] == "no_mail_action"
+    assert "redirect" in refusal(redirect)["message"]
+    assert stop["error"]["code"] == -32602
+    assert ceiling["error"]["code"] == -32602
+    assert refusal(unsubscribed)["code"] == "subscribe_needs_create"
+    assert "imap_writes" not in client.read_state()
 
 
 # ############################################################################

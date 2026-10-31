@@ -847,6 +847,19 @@ JSON_SCENARIOS = {
         ],
         {},
     ),
+    "apply-create-dry-json": (
+        [
+            "filter",
+            "apply",
+            *GITHUB,
+            "--move-to",
+            "Lists/GitHub",
+            "--create-folder",
+            "--dry-run",
+            "--json",
+        ],
+        {},
+    ),
     "apply-dry-overcap-json": (
         [
             "filter",

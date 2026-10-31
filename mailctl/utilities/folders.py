@@ -306,6 +306,7 @@ def plan_folder(
     create: bool = False,
     subscribe: bool = True,
     delimiter: str | None = None,
+    delivery_route: bool = True,
 ) -> FolderPlan:
     """Normalize the target folder and decide how it gets to exist.
 
@@ -320,8 +321,10 @@ def plan_folder(
     for :func:`check_folder` to refuse, so the front-end can show the plan
     first.
 
-    With no ManageSieve session (the existing-mail pass alone) the Sieve
-    route is simply unavailable. ``mailbox`` named in
+    With no ManageSieve session the Sieve route is simply unavailable, and
+    so it is with ``delivery_route`` false: the existing-mail pass saves
+    no rule, so it plans its folder without that route and never asks the
+    rules half, whatever the session allows. ``mailbox`` named in
     ``disabled_extensions`` counts as not advertised: the rule stays a
     plain ``fileinto`` and IMAP, where there is a session, makes the
     folder.
@@ -367,7 +370,9 @@ def plan_folder(
 
     delivery = session.dialect.delivery_create(
         config,
-        transport.rules_capabilities() if transport.has_rules else None,
+        transport.rules_capabilities()
+        if delivery_route and transport.has_rules
+        else None,
     )
     has_mailbox = delivery.usable
 

@@ -21,13 +21,17 @@ import traceback
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TextIO
 
 from .. import MailctlError, __version__, engine, json_output, utilities
 from ..config import SIEVE_TLS_MODES, Config, Secret, load_config
 from ..criteria import Criteria, dump_filter, load_filter
 from ..utilities.events import ServerAlert
+from ..utilities.folders import FolderPlan
+from ..utilities.mail import DEFAULT_MAX_MESSAGES, MailActionPlan
 from ..utilities.messages import DEFAULT_LIST_LIMIT, SortOrder
+from ..utilities.optimize import KINDS as OPTIMIZE_KINDS
 from ..utilities.rules import (
     PLACE_AFTER,
     PLACE_BEFORE,
@@ -154,6 +158,22 @@ class _Plan:
 
     command: str
     record: Any
+
+
+@dataclass(frozen=True)
+class _MailPass:
+    """A ``filter.apply.plan``: the existing-mail plan (None where the
+    actions leave matching mail as it is), the target folder's plan, and
+    the ceiling the execute holds it to."""
+
+    mail: MailActionPlan | None
+    folder: FolderPlan
+    max_messages: int
+
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        return bool(self.mail and self.mail.changes)
 
 
 class Server:
@@ -606,24 +626,7 @@ def filter_add_plan(server: Server, params: Params, _ident: object) -> dict:
     """
     session, config = server._open()
     criteria = filter_criteria(params.take("filter", dict))
-    given = Params(params.take("actions", dict))
-    # Each takes an address on the CLI, so a string here too; given one, it
-    # is the provider that refuses it, with its pointer.
-    refused = [name for name in REFUSED_ACTIONS if given.take(name, str, "")]
-    flags = ["\\Seen"] if given.take("mark_read", bool, False) else []
-
-    for flag in given.take("flags", list, []):
-        if flag not in flags:
-            flags.append(flag)
-
-    spec = ActionSpec(
-        fileinto=given.take("move_to", str, None),
-        discard=given.take("discard", bool, False),
-        flags=tuple(flags),
-        keep=given.take("keep", bool, False),
-        stop=given.take("stop", bool, None),
-    )
-    given.done()
+    spec, refused = action_spec(params.take("actions", dict))
 
     request = RuleRequest(
         criteria=criteria,
@@ -664,23 +667,293 @@ def filter_add_plan(server: Server, params: Params, _ident: object) -> dict:
 # ----------------------------------------------------------------------------
 def filter_add_execute(server: Server, params: Params, ident: object) -> dict:
     """Carry out a ``filter.add.plan``: the backup, the upload, and any
-    folder it creates, each sent as an ``event`` as it lands."""
+    folder it creates, each sent as an ``event`` as it lands.
+
+    A plan that changes nothing is carried out all the same, as ``filter
+    add`` does on the CLI: a filter replaced by itself is still uploaded,
+    with its backup."""
     session, config = server._open()
-    entry = server._take_plan(params.take("plan_id", str), "filter add")
+    plan_id = params.take("plan_id", str)
     params.done()
+    entry = server._take_plan(plan_id, "filter add")
 
     backup = utilities.rules.execute_script_change(
         session, config, entry.record, server._events(ident)
     )
 
-    return json_output.script_change_result("filter add", entry.record, backup)
+    return json_output.script_change_result(
+        "filter add", entry.record.name, entry.record, backup
+    )
+
+
+# ----------------------------------------------------------------------------
+def filter_apply_plan(server: Server, params: Params, _ident: object) -> dict:
+    """Plan ``filter apply``: the messages in ``folder`` that ``filter`` (a
+    filter document) selects, and what ``actions`` would do to them. No
+    filter is saved, and nothing is moved, flagged, or created.
+
+    ``max_messages`` is the ceiling: a plan over it is returned, with
+    ``over_limit`` true, and its execute is refused whole. Returns
+    ``plan_id`` and ``document``, the plan as ``filter apply --dry-run
+    --json`` prints it.
+    """
+    session, config = server._open()
+    criteria = filter_criteria(params.take("filter", dict))
+    spec, refused = action_spec(params.take("actions", dict), stop=False)
+    folder_name = params.take("folder", str, config.source_folder)
+    max_messages = params.take("max_messages", int, DEFAULT_MAX_MESSAGES)
+    create = params.take("create_folder", bool, False)
+    subscribe = params.take("subscribe", bool, True)
+    params.done()
+
+    if not subscribe and not create:
+        raise MailctlError(
+            "subscribe only shapes a folder this change creates; it needs "
+            "create_folder",
+            code="subscribe_needs_create",
+        )
+
+    if max_messages < 0:
+        raise RpcError(INVALID_PARAMS, "'max_messages' cannot be negative")
+
+    utilities.rules.reject_actions(config, refused)
+
+    folder = utilities.folders.plan_folder(
+        session,
+        config,
+        spec.fileinto,
+        create=create,
+        subscribe=subscribe,
+        delivery_route=False,
+    )
+    utilities.mail.require_mail_action(folder, spec)
+    utilities.mail.require_target_folder(folder)
+
+    source = utilities.mail.source_folder(session, folder_name)
+    mail = (
+        None
+        if utilities.mail.mail_pass_is_noop(spec, source, folder.folder)
+        else utilities.mail.plan_mail(
+            session, criteria, spec, source, folder.folder
+        )
+    )
+
+    return {
+        "plan_id": server._keep(
+            "filter apply", _MailPass(mail, folder, max_messages)
+        ),
+        "document": json_output.apply_plan(
+            criteria, spec, folder, max_messages, mail
+        ),
+    }
+
+
+# ----------------------------------------------------------------------------
+def filter_apply_execute(
+    server: Server, params: Params, ident: object
+) -> dict:
+    """Carry out a ``filter.apply.plan``: any folder it creates, sent as an
+    ``event``, then the messages it moves, flags, copies, or deletes.
+    Refused, touching nothing, over the plan's ceiling or once the
+    folder's UIDs have been renumbered."""
+    session, _config = server._open()
+    plan_id = params.take("plan_id", str)
+    params.done()
+    entry = server._take_plan(plan_id, "filter apply")
+
+    record = entry.record
+    require_changes(record.changes, "filter apply")
+
+    # changes is only true where a mail plan was made.
+    assert record.mail is not None
+
+    result = utilities.mail.execute_mail(
+        session,
+        record.mail,
+        record.max_messages,
+        record.folder,
+        server._events(ident),
+    )
+
+    return json_output.mail_result(result, record.mail)
+
+
+# ----------------------------------------------------------------------------
+def filter_remove_plan(server: Server, params: Params, _ident: object) -> dict:
+    """Plan ``filter remove``: the filter ``name`` taken out of the filter
+    set, the active one unless ``filterset`` names another; ``activate``
+    makes that one active too."""
+    session, _config = server._open()
+    name = params.take("name", str)
+    filterset = params.take("filterset", str, None)
+    activate = params.take("activate", bool, False)
+    params.done()
+
+    plan = utilities.rules.plan_removal(session, name, filterset, activate)
+
+    return {
+        "plan_id": server._keep("filter remove", plan),
+        "document": json_output.removal_plan(plan),
+    }
+
+
+# ----------------------------------------------------------------------------
+def filter_move_plan(server: Server, params: Params, _ident: object) -> dict:
+    """Plan ``filter move``: the filter ``name`` put where ``placement``
+    says (as ``filter.add.plan`` takes it), otherwise unchanged."""
+    session, config = server._open()
+    name = params.take("name", str)
+    where = placement(params.take("placement", dict))
+    filterset = params.take("filterset", str, None)
+    activate = params.take("activate", bool, False)
+    params.done()
+
+    # A placement is required, so there is one.
+    assert where is not None
+
+    utilities.rules.check_move(config)
+    plan = utilities.rules.plan_move(session, name, where, filterset, activate)
+
+    return {
+        "plan_id": server._keep("filter move", plan),
+        "document": json_output.move_plan(plan),
+    }
+
+
+# ----------------------------------------------------------------------------
+def filter_rename_plan(server: Server, params: Params, _ident: object) -> dict:
+    """Plan ``filter rename``: the filter ``name`` called ``new_name``, its
+    every other byte kept."""
+    session, config = server._open()
+    name = params.take("name", str)
+    new_name = params.take("new_name", str)
+    filterset = params.take("filterset", str, None)
+    activate = params.take("activate", bool, False)
+    params.done()
+
+    utilities.rules.check_rename(config, new_name)
+    plan = utilities.rules.plan_rename(
+        session, name, new_name, filterset, activate
+    )
+
+    return {
+        "plan_id": server._keep("filter rename", plan),
+        "document": json_output.rename_plan(plan),
+    }
+
+
+# ----------------------------------------------------------------------------
+def switch_plan(enable: bool) -> Callable[[Server, Params, object], dict]:
+    """Plan ``filter enable`` or ``filter disable``: the filter ``name``
+    switched on or off, kept in the filter set."""
+    command = "filter enable" if enable else "filter disable"
+
+    def method(server: Server, params: Params, _ident: object) -> dict:
+        session, config = server._open()
+        name = params.take("name", str)
+        filterset = params.take("filterset", str, None)
+        activate = params.take("activate", bool, False)
+        params.done()
+
+        utilities.rules.check_switch(config)
+        plan = utilities.rules.plan_switch(
+            session, name, enable, filterset, activate
+        )
+
+        return {
+            "plan_id": server._keep(command, plan),
+            "document": json_output.switch_plan(plan),
+        }
+
+    method.__doc__ = switch_plan.__doc__
+
+    return method
+
+
+# ----------------------------------------------------------------------------
+def filter_optimize_plan(
+    server: Server, params: Params, _ident: object
+) -> dict:
+    """Plan ``filter optimize``: a better arrangement of the filter set's
+    filters, proposing every kind of change but those ``skip`` names
+    (redundant, reorder, merge)."""
+    session, config = server._open()
+    filterset = params.take("filterset", str, None)
+    activate = params.take("activate", bool, False)
+    skip = params.take("skip", list, [])
+    params.done()
+
+    unknown = sorted(set(skip) - set(OPTIMIZE_KINDS))
+
+    if unknown:
+        raise RpcError(
+            INVALID_PARAMS,
+            f"'skip' takes only {', '.join(OPTIMIZE_KINDS)}",
+        )
+
+    utilities.optimize.check_optimize(config)
+    kinds = [kind for kind in OPTIMIZE_KINDS if kind not in skip]
+    plan = utilities.optimize.plan_optimize(
+        session, filterset, kinds, activate
+    )
+
+    return {
+        "plan_id": server._keep("filter optimize", plan),
+        "document": json_output.optimize_plan(plan),
+    }
+
+
+# ----------------------------------------------------------------------------
+def script_execute(
+    command: str,
+    name: Callable[[Any], str | None],
+    execute: Callable[..., Path] = utilities.rules.execute_script_change,
+) -> Callable[[Server, Params, object], dict]:
+    """Carry out a plan of ``command``, one that uploads the filter set:
+    the backup, then the upload, each sent as an ``event`` as it lands.
+    ``name`` is the filter's name once it is done, from the plan, and
+    ``execute`` the utility that carries the plan out.
+
+    Refused, sending nothing, where the plan changes nothing, or the
+    filter set changed since the plan was made."""
+
+    def method(server: Server, params: Params, ident: object) -> dict:
+        session, config = server._open()
+        plan_id = params.take("plan_id", str)
+        params.done()
+        entry = server._take_plan(plan_id, command)
+
+        record = entry.record
+        require_changes(record.changes, command)
+        backup = execute(session, config, record, server._events(ident))
+
+        return json_output.script_change_result(
+            command, name(record), record, backup
+        )
+
+    method.__doc__ = script_execute.__doc__
+
+    return method
+
+
+# ----------------------------------------------------------------------------
+def require_changes(changes: bool, command: str) -> None:
+    """Refuse to carry out a plan that changes nothing, as the CLI stops
+    after showing one; the plan is used up either way."""
+    if not changes:
+        raise MailctlError(
+            f"the {command} plan changes nothing, so there is nothing to "
+            f"carry out",
+            code="nothing_to_change",
+        )
 
 
 # ----------------------------------------------------------------------------
 def plan_discard(server: Server, params: Params, _ident: object) -> None:
     """Drop a waiting plan, whichever command made it."""
-    server._take_plan(params.take("plan_id", str), None)
+    plan_id = params.take("plan_id", str)
     params.done()
+    server._take_plan(plan_id, None)
 
 
 # ----------------------------------------------------------------------------
@@ -700,6 +973,36 @@ def filter_criteria(document: dict) -> Criteria:
         ) from exc
 
     return load_filter(text)
+
+
+# ----------------------------------------------------------------------------
+def action_spec(given: dict, *, stop: bool = True) -> tuple[ActionSpec, list]:
+    """What a filter does, from ``actions``, and the actions named that
+    the CLI refuses by name, for the provider to refuse.
+
+    ``stop`` is whether ``stop`` is taken: it means something to a saved
+    filter and nothing to mail already delivered.
+    """
+    values = Params(given)
+    # Each takes an address on the CLI, so a string here too; given one, it
+    # is the provider that refuses it, with its pointer.
+    refused = [name for name in REFUSED_ACTIONS if values.take(name, str, "")]
+    flags = ["\\Seen"] if values.take("mark_read", bool, False) else []
+
+    for flag in values.take("flags", list, []):
+        if flag not in flags:
+            flags.append(flag)
+
+    spec = ActionSpec(
+        fileinto=values.take("move_to", str, None),
+        discard=values.take("discard", bool, False),
+        flags=tuple(flags),
+        keep=values.take("keep", bool, False),
+        stop=values.take("stop", bool, None) if stop else None,
+    )
+    values.done()
+
+    return spec, refused
 
 
 # ----------------------------------------------------------------------------
@@ -752,6 +1055,34 @@ METHODS: dict[str, Callable[[Server, Params, object], Any]] = {
     "mail.view": mail_view,
     "filter.add.plan": filter_add_plan,
     "filter.add.execute": filter_add_execute,
+    "filter.apply.plan": filter_apply_plan,
+    "filter.apply.execute": filter_apply_execute,
+    "filter.remove.plan": filter_remove_plan,
+    "filter.remove.execute": script_execute(
+        "filter remove", lambda plan: plan.rule
+    ),
+    "filter.move.plan": filter_move_plan,
+    "filter.move.execute": script_execute(
+        "filter move", lambda plan: plan.rule
+    ),
+    "filter.rename.plan": filter_rename_plan,
+    "filter.rename.execute": script_execute(
+        "filter rename", lambda plan: plan.new_name
+    ),
+    "filter.enable.plan": switch_plan(True),
+    "filter.enable.execute": script_execute(
+        "filter enable", lambda plan: plan.rule
+    ),
+    "filter.disable.plan": switch_plan(False),
+    "filter.disable.execute": script_execute(
+        "filter disable", lambda plan: plan.rule
+    ),
+    "filter.optimize.plan": filter_optimize_plan,
+    "filter.optimize.execute": script_execute(
+        "filter optimize",
+        lambda plan: None,
+        utilities.optimize.execute_optimize,
+    ),
 }
 
 PROTOCOL_METHODS = frozenset({"initialize", "shutdown", "plan.discard"})
