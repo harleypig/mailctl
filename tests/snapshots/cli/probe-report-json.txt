@@ -12,6 +12,7 @@ usage: mailctl server probe [-h] [--verbose] [--debug] [--provider PROVIDER]
                             [--backup-dir BACKUP_DIR]
                             [--disable-extension NAME] [--json | --report]
 mailctl server probe: error: argument --json: not allowed with argument --report
+{"version": 2, "error": {"message": "argument --json: not allowed with argument --report", "code": "invalid_arguments"}}
 
 --- sieve calls
 --- imap calls

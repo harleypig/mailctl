@@ -70,13 +70,15 @@ def parse_status(data: list) -> list[FolderStatus]:
 
     except ProtocolError as exc:
         raise MailctlError(
-            f"could not read a STATUS response -- {exc}"
+            f"could not read a STATUS response -- {exc}",
+            code="folder_counts_unreadable",
         ) from exc
 
     if len(parsed) % 2:
         raise MailctlError(
             f"could not read a STATUS response -- expected a mailbox and "
-            f"its items, got {parsed!r}"
+            f"its items, got {parsed!r}",
+            code="folder_counts_unreadable",
         )
 
     return [_status(name, items) for name, items in chunk(parsed, 2)]
@@ -87,7 +89,8 @@ def _status(name, items) -> FolderStatus:
     """One mailbox name and its parenthesised items, as a record."""
     if not isinstance(items, tuple) or len(items) % 2:
         raise MailctlError(
-            f"could not read the STATUS items for {name!r} -- got {items!r}"
+            f"could not read the STATUS items for {name!r} -- got {items!r}",
+            code="folder_counts_unreadable",
         )
 
     values = {

@@ -373,7 +373,8 @@ def read_rules(filters) -> list[Rule]:
 
     if entries is None:
         raise MailctlError(
-            "read_rules expects a parsed filter set from parse_script()"
+            "read_rules expects a parsed filter set from parse_script()",
+            code="internal_error",
         )
 
     rules = []

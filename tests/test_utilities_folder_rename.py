@@ -437,7 +437,7 @@ def test_a_rename_refused_by_the_server_uploads_nothing(
     message = str(caught.value)
 
     assert caught.value.code == "rename_not_started"
-    assert caught.value.fields["cause"] is None
+    assert caught.value.fields["cause"] == "folder_rename_failed"
     assert caught.value.fields["backup"] is not None
     assert "could not rename folder 'INBOX.Lists'" in message
     assert (

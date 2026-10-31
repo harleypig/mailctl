@@ -71,7 +71,9 @@ class MxrouteTransport(Transport):
     def _sieve(self) -> SieveSession:
         """Return the ManageSieve session, or raise if none was opened."""
         if self.sieve is None:
-            raise MailctlError("no ManageSieve session is open")
+            raise MailctlError(
+                "no ManageSieve session is open", code="session_not_open"
+            )
 
         return self.sieve
 
@@ -79,7 +81,9 @@ class MxrouteTransport(Transport):
     def _imap(self) -> ImapSession:
         """Return the IMAP session, or raise if none was opened."""
         if self.imap is None:
-            raise MailctlError("no IMAP session is open")
+            raise MailctlError(
+                "no IMAP session is open", code="session_not_open"
+            )
 
         return self.imap
 

@@ -652,10 +652,14 @@ def read_config_file(path: Path) -> dict:
             return tomllib.load(handle)
 
     except tomllib.TOMLDecodeError as exc:
-        raise MailctlError(f"{path}: invalid TOML -- {exc}") from exc
+        raise MailctlError(
+            f"{path}: invalid TOML -- {exc}", code="config_invalid"
+        ) from exc
 
     except OSError as exc:
-        raise MailctlError(f"{path}: cannot read -- {exc}") from exc
+        raise MailctlError(
+            f"{path}: cannot read -- {exc}", code="config_unreadable"
+        ) from exc
 
 
 # Anything a shell would take as a variable name.
@@ -688,12 +692,14 @@ def read_env_file(path: Path) -> EnvFile:
 
     except OSError as exc:
         raise MailctlError(
-            f"env file {path}: cannot read -- {exc.strerror or exc}"
+            f"env file {path}: cannot read -- {exc.strerror or exc}",
+            code="env_file_unreadable",
         ) from exc
 
     except UnicodeDecodeError as exc:
         raise MailctlError(
-            f"env file {path}: not valid UTF-8 -- {exc.reason}"
+            f"env file {path}: not valid UTF-8 -- {exc.reason}",
+            code="env_file_invalid",
         ) from exc
 
     env_file = EnvFile(path=path)
@@ -725,7 +731,8 @@ def read_env_file(path: Path) -> EnvFile:
             f"env file {path} sets MAILCTL_PASSWORD and is readable by "
             f"group/other (mode {mode:04o});\n"
             "mailctl refuses to use it.\n"
-            f"Fix with: chmod 600 {path}"
+            f"Fix with: chmod 600 {path}",
+            code="env_file_mode",
         )
 
     return env_file
@@ -783,7 +790,8 @@ def _parse_env_line(line: str, path: Path, number: int) -> tuple[str, str]:
     if not sep or not _ENV_KEY.fullmatch(key):
         raise MailctlError(
             f"env file {path}, line {number}: not a KEY=VALUE line "
-            f"(the line is not shown, as it may hold a password)"
+            f"(the line is not shown, as it may hold a password)",
+            code="env_file_invalid",
         )
 
     if value[:1] in ("'", '"'):
@@ -791,7 +799,8 @@ def _parse_env_line(line: str, path: Path, number: int) -> tuple[str, str]:
             raise MailctlError(
                 f"env file {path}, line {number}: unterminated quote "
                 f"(values cannot span lines; the line is not shown, as it "
-                f"may hold a password)"
+                f"may hold a password)",
+                code="env_file_invalid",
             )
 
         value = value[1:-1]
@@ -819,7 +828,8 @@ def check_password_file_mode(path: Path) -> None:
 
     except OSError as exc:
         raise MailctlError(
-            f"{path}: cannot read password file -- {exc}"
+            f"{path}: cannot read password file -- {exc}",
+            code="password_file_unreadable",
         ) from exc
 
     if not mode & 0o077:
@@ -829,7 +839,8 @@ def check_password_file_mode(path: Path) -> None:
         f"password file {path} is readable by group/other "
         f"(mode {mode:04o});\n"
         "mailctl refuses to read it.\n"
-        f"Fix with: chmod 600 {path}"
+        f"Fix with: chmod 600 {path}",
+        code="password_file_mode",
     )
 
 
@@ -868,18 +879,22 @@ def read_password_file(path: Path) -> Secret:
 
     except OSError as exc:
         raise MailctlError(
-            f"{path}: cannot read password file -- {exc}"
+            f"{path}: cannot read password file -- {exc}",
+            code="password_file_unreadable",
         ) from exc
 
     except UnicodeDecodeError as exc:
         raise MailctlError(
-            f"{path}: password file is not valid UTF-8 -- {exc.reason}"
+            f"{path}: password file is not valid UTF-8 -- {exc.reason}",
+            code="password_file_invalid",
         ) from exc
 
     value = strip_one_newline(raw)
 
     if not value.strip():
-        raise MailctlError(f"{path}: password file is empty")
+        raise MailctlError(
+            f"{path}: password file is empty", code="password_file_empty"
+        )
 
     return Secret(value)
 
@@ -908,7 +923,9 @@ def run_password_command(command: str) -> Secret:
     argv = shlex.split(command)
 
     if not argv:
-        raise MailctlError("password command is empty")
+        raise MailctlError(
+            "password command is empty", code="password_command_empty"
+        )
 
     # Its stdin is never ours to lend: under the API it is the client's
     # pipe, and a helper reading it would take the client's requests.
@@ -923,20 +940,25 @@ def run_password_command(command: str) -> Secret:
 
     except OSError as exc:
         raise MailctlError(
-            f"password command {argv[0]!r} could not be run -- {exc}"
+            f"password command {argv[0]!r} could not be run -- {exc}",
+            code="password_command_failed",
         ) from exc
 
     if completed.returncode != 0:
         raise MailctlError(
             f"password command {argv[0]!r} failed with exit "
             f"{completed.returncode} (its output is not shown, as it may "
-            f"contain the credential)"
+            f"contain the credential)",
+            code="password_command_failed",
         )
 
     value = completed.stdout.split("\n", 1)[0].strip()
 
     if not value:
-        raise MailctlError(f"password command {argv[0]!r} produced no output")
+        raise MailctlError(
+            f"password command {argv[0]!r} produced no output",
+            code="password_command_no_output",
+        )
 
     return Secret(value)
 
@@ -958,7 +980,11 @@ def _as_port(value, label: str) -> int:
         return int(value)
 
     except (TypeError, ValueError) as exc:
-        raise MailctlError(f"{label}: {value!r} is not a port number") from exc
+        raise MailctlError(
+            f"{label}: {value!r} is not a port number",
+            code="setting_invalid",
+            fields={"setting": label},
+        ) from exc
 
 
 # The disabled_extensions value meaning "disable nothing". Reserved, so it
@@ -987,7 +1013,9 @@ def _as_extension_names(value, origin: Source) -> frozenset[str]:
     ):
         raise MailctlError(
             f"disabled_extensions: expected a list of extension names "
-            f"(from {origin.describe()})"
+            f"(from {origin.describe()})",
+            code="setting_invalid",
+            fields={"setting": "disabled_extensions"},
         )
 
     names = frozenset(item.strip().lower() for item in value if item.strip())
@@ -999,7 +1027,9 @@ def _as_extension_names(value, origin: Source) -> frozenset[str]:
         raise MailctlError(
             f"disabled_extensions: '{DISABLE_NOTHING}' means disable "
             f"nothing and cannot be combined with extension names "
-            f"(from {origin.describe()})"
+            f"(from {origin.describe()})",
+            code="setting_invalid",
+            fields={"setting": "disabled_extensions"},
         )
 
     return frozenset()
@@ -1104,7 +1134,9 @@ def load_config(args, environ: Mapping[str, str] | None = None) -> Config:
         raise MailctlError(
             f"sieve_tls: {sieve_tls!r} is not one of "
             f"{', '.join(SIEVE_TLS_MODES)} "
-            f"(from {sources['sieve_tls'].describe()})"
+            f"(from {sources['sieve_tls'].describe()})",
+            code="setting_invalid",
+            fields={"setting": "sieve_tls"},
         )
 
     backup_dir = setting("backup_dir", None)

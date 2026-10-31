@@ -21,7 +21,10 @@ connection made is counted in ``imap_opened`` and each one closed, by
 ``logout`` or ``shutdown`` as the real client closes its socket, in
 ``imap_closed``, so a test sees how many are still open. CHECKSCRIPT
 refuses every script where the file's ``checkscript`` is false, and the
-IMAP double advertises the file's ``imap_caps`` beside its own.
+IMAP double advertises the file's ``imap_caps`` beside its own. Where the
+file's ``unreachable`` is set, neither server can be reached: each
+connection fails as a refused socket does, before any login, or, where it
+is ``"tls"``, the IMAP one fails its TLS handshake.
 
 What the IMAP double is asked to write is appended to the file's
 ``imap_writes``, and its UIDVALIDITY is read from the file on every
@@ -47,6 +50,7 @@ import hashlib
 import json
 import os
 import socket
+import ssl
 import sys
 import time
 from pathlib import Path
@@ -151,6 +155,10 @@ class FileSieveClient:
     # ------------------------------------------------------------------------
     def connect(self, user, password, starttls=False, ssl=False) -> bool:
         state = load()
+
+        if state.get("unreachable"):
+            raise ConnectionRefusedError("connection refused")
+
         state["sieve_connects"] = state.get("sieve_connects", 0) + 1
         save(state)
 
@@ -343,6 +351,14 @@ if __name__ == "__main__":
     double = imap_double()
 
     def opening(*_args, **_kwargs) -> FakeIMAPClient:
+        unreachable = load().get("unreachable")
+
+        if unreachable == "tls":
+            raise ssl.SSLError("handshake failed")
+
+        if unreachable:
+            raise ConnectionRefusedError("connection refused")
+
         # The real constructor connects, so a connection counts from here.
         count("imap_opened")
 

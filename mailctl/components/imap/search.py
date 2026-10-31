@@ -89,7 +89,8 @@ def _encode(items, group: bool) -> list:
             except UnicodeEncodeError as exc:
                 raise MailctlError(
                     f"cannot search for {item!r}: it is not valid text "
-                    f"({exc.reason}); re-type the value"
+                    f"({exc.reason}); re-type the value",
+                    code="search_value_invalid",
                 ) from exc
 
         else:

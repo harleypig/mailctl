@@ -203,6 +203,96 @@ def test_a_coded_failure_under_json_carries_its_code(monkeypatch, capsys):
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "code"),
+    [
+        (["mail", "search", "--json", "--bogus"], "invalid_arguments"),
+        (["mail", "search", "--bogus", "--json"], "invalid_arguments"),
+        (["mail", "view", "1", "--raw", "--json"], "invalid_arguments"),
+        (["--json", "rules"], "gone_command"),
+        (["rules", "--json"], "gone_command"),
+        (["mail", "search", "--json", "--fileinto", "x"], "gone_option"),
+        (["mail", "search", "--fileinto", "x", "--json"], "gone_option"),
+        (
+            [
+                "filter",
+                "add",
+                "--from",
+                "a",
+                "--move-to",
+                "b",
+                "--no-subscribe",
+                "--dry-run",
+                "--json",
+            ],
+            "subscribe_needs_create",
+        ),
+    ],
+)
+def test_a_rejected_command_line_under_json_ends_in_a_coded_line(
+    argv, code, capsys, monkeypatch
+):
+    """#352: a command line refused before any command runs carries a
+    code under --json, wherever --json stands. The exit status and what
+    argparse prints are as they were: the line is only added after them."""
+    with pytest.raises(SystemExit) as rejected:
+        cli.main(argv)
+
+    lines = capsys.readouterr().err.splitlines()
+
+    monkeypatch.setattr(cli, "json_requested", lambda _argv: False)
+
+    with pytest.raises(SystemExit) as unasked:
+        cli.main(argv)
+
+    failure = json.loads(lines[-1])
+
+    assert rejected.value.code == unasked.value.code == 2
+    assert lines[:-1] == capsys.readouterr().err.splitlines()
+    assert failure["version"] == json_output.JSON_VERSION
+    assert failure["error"]["code"] == code
+    assert lines[-2].endswith(f": error: {failure['error']['message']}")
+
+
+# ----------------------------------------------------------------------------
+def test_a_rejected_command_line_without_json_prints_no_json(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["mail", "search", "--bogus"])
+
+    assert not capsys.readouterr().err.splitlines()[-1].startswith("{")
+
+
+# ----------------------------------------------------------------------------
+def test_a_refusal_the_cli_makes_carries_the_core_code_in_its_own_words(
+    capsys,
+):
+    """The CLI refuses no criteria before the core can, and in words that
+    name its own flags; the code is the core's, so a script meets one
+    code for the condition, and ERROR_TEXT adds nothing to the words."""
+    assert cli.main(["filter", "add", "--move-to", "b", "--dry-run"]) == 1
+    assert capsys.readouterr().err == f"mailctl: {cli.NO_CRITERIA}\n"
+
+    assert (
+        cli.main(["filter", "add", "--move-to", "b", "--dry-run", "--json"])
+        == 1
+    )
+
+    failure = json.loads(capsys.readouterr().err.splitlines()[-1])
+
+    assert failure["error"] == {
+        "message": cli.NO_CRITERIA,
+        "code": "no_criteria",
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_json_is_read_from_the_words_before_a_double_dash():
+    assert cli.json_requested(["mail", "search", "--json"])
+    assert not cli.json_requested(["mail", "search", "--", "--json"])
+    assert not cli.json_requested(["mail", "search", "--jsonish"])
+
+
+# ----------------------------------------------------------------------------
 def test_what_a_command_prints_on_the_way_goes_to_stderr(monkeypatch, capsys):
     """The redirect, not each command's care, keeps stdout clean."""
 

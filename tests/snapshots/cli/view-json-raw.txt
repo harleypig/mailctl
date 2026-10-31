@@ -14,6 +14,7 @@ usage: mailctl mail view [-h] [--verbose] [--debug] [--provider PROVIDER]
                          [--headers-only | --raw | --json]
                          uid
 mailctl mail view: error: argument --raw: not allowed with argument --json
+{"version": 2, "error": {"message": "argument --raw: not allowed with argument --json", "code": "invalid_arguments"}}
 
 --- sieve calls
 --- imap calls

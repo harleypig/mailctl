@@ -238,7 +238,10 @@ def refuse(provider: str, construct: str, why: str) -> MailctlError:
     Returned rather than raised so a caller writes ``raise refuse(...)``
     and the traceback points at the refusal, not at this helper.
     """
-    return MailctlError(f"the {provider} provider cannot {construct}: {why}")
+    return MailctlError(
+        f"the {provider} provider cannot {construct}: {why}",
+        code="unsupported",
+    )
 
 
 # ----------------------------------------------------------------------------
