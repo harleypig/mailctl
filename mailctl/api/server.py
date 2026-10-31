@@ -907,7 +907,9 @@ def filter_optimize_plan(
 def script_execute(
     command: str,
     name: Callable[[Any], str | None],
-    execute: Callable[..., Path] = utilities.rules.execute_script_change,
+    execute: Callable[..., Path | None] = (
+        utilities.rules.execute_script_change
+    ),
 ) -> Callable[[Server, Params, object], dict]:
     """Carry out a plan of ``command``, one that uploads the filter set:
     the backup, then the upload, each sent as an ``event`` as it lands.
@@ -926,6 +928,10 @@ def script_execute(
         record = entry.record
         require_changes(record.changes, command)
         backup = execute(session, config, record, server._events(ident))
+
+        # A plan that changes something is uploaded, and every upload is
+        # backed up first.
+        assert backup is not None
 
         return json_output.script_change_result(
             command, name(record), record, backup
@@ -946,6 +952,241 @@ def require_changes(changes: bool, command: str) -> None:
             f"carry out",
             code="nothing_to_change",
         )
+
+
+# ----------------------------------------------------------------------------
+def filterset_list(server: Server, params: Params, _ident: object) -> dict:
+    """``filterset list``: every stored filter set, the active one
+    first."""
+    session, _config = server._open()
+    params.done()
+
+    return json_output.scripts(*utilities.scripts.list_scripts(session))
+
+
+# ----------------------------------------------------------------------------
+def filterset_show(server: Server, params: Params, _ident: object) -> dict:
+    """``filterset show``: the filter set ``name``, the active one unless
+    named, exactly as the server holds it, and its filters' names."""
+    session, _config = server._open()
+    name = params.take("name", str, None)
+    params.done()
+
+    script = utilities.scripts.read_script(session, name)
+
+    try:
+        filters = script.rule_names()
+
+    except MailctlError:
+        # The text is what was asked for, and a filter set too broken to
+        # parse is the one most worth reading; null says so.
+        filters = None
+
+    return json_output.filterset_source(script.name, script.source, filters)
+
+
+# ----------------------------------------------------------------------------
+def filterset_backup(server: Server, params: Params, _ident: object) -> dict:
+    """``filterset backup``: the active filter set written, byte for byte,
+    to ``output`` or the backup directory, mode 0600. With ``dry_run``
+    true the file is named and not written.
+
+    One method rather than a plan and an execute: nothing on the server
+    changes and the CLI asks nothing, so there is no decision between the
+    two, and a plan would write bytes read some time before."""
+    session, config = server._open()
+    output = params.take("output", str, None)
+    dry_run = params.take("dry_run", bool, False)
+    params.done()
+
+    plan = utilities.backup.plan_backup(session, config, output)
+    path = plan.target if dry_run else utilities.backup.execute_backup(plan)
+
+    return json_output.backup_result(
+        plan,
+        path,
+        utilities.backup.count_rules(session, plan.source),
+        not dry_run,
+    )
+
+
+# ----------------------------------------------------------------------------
+def filterset_restore_plan(
+    server: Server, params: Params, _ident: object
+) -> dict:
+    """Plan ``filterset restore``: the backup ``file`` on the API's host
+    put whole over the filter set, the active one unless ``filterset``
+    names another. An empty file is refused unless ``allow_empty``.
+
+    The file is read here, so the execute uploads what this plan showed,
+    whatever happens to the file in between."""
+    session, config = server._open()
+    path = params.take("file", str)
+    filterset = params.take("filterset", str, None)
+    activate = params.take("activate", bool, False)
+    allow_empty = params.take("allow_empty", bool, False)
+    params.done()
+
+    # The client has no shell here, so nothing in the path is expanded.
+    backup = utilities.backup.read_backup_file(
+        path, config, allow_empty, expand=False
+    )
+    plan = utilities.backup.plan_restore(session, backup, filterset, activate)
+    count = utilities.backup.count_rules
+
+    return {
+        "plan_id": server._keep("filterset restore", plan),
+        "document": json_output.restore_plan(
+            plan, count(session, plan.before), count(session, plan.after)
+        ),
+    }
+
+
+# ----------------------------------------------------------------------------
+def folder_list(server: Server, params: Params, _ident: object) -> dict:
+    """``folder list``: every folder and whether it is subscribed; with
+    ``counts`` true, each folder's messages, unread, and size too."""
+    session, _config = server._open()
+    counts = params.take("counts", bool, False)
+    params.done()
+
+    if counts:
+        counted = utilities.folders.list_folder_counts(session)
+
+        return json_output.folder_listing(counted.listing, counted.statuses)
+
+    return json_output.folder_listing(utilities.folders.list_folders(session))
+
+
+# ----------------------------------------------------------------------------
+def folder_create_plan(server: Server, params: Params, _ident: object) -> dict:
+    """Plan ``folder create``: the folder ``folder``, subscribed unless
+    ``subscribe`` is false. One already there is planned as no change."""
+    session, _config = server._open()
+    folder = params.take("folder", str)
+    subscribe = params.take("subscribe", bool, True)
+    params.done()
+
+    plan = utilities.folders.plan_folder_creation(session, folder, subscribe)
+
+    return {
+        "plan_id": server._keep("folder create", plan),
+        "document": json_output.folder_creation_plan(plan),
+    }
+
+
+# ----------------------------------------------------------------------------
+def folder_create_execute(
+    server: Server, params: Params, _ident: object
+) -> dict:
+    """Carry out a ``folder.create.plan``: the folder created, then
+    subscribed where the plan says. A subscription that fails is in the
+    result; the folder exists either way."""
+    session, _config = server._open()
+    plan_id = params.take("plan_id", str)
+    params.done()
+    entry = server._take_plan(plan_id, "folder create")
+
+    record = entry.record
+    require_changes(record.changes, "folder create")
+    created = utilities.folders.execute_folder_creation(session, record)
+
+    # changes is only true where the folder is not there yet.
+    assert created is not None
+
+    return json_output.folder_creation_result(created)
+
+
+# ----------------------------------------------------------------------------
+def subscription_plan(
+    subscribe: bool,
+) -> Callable[[Server, Params, object], dict]:
+    """Plan ``folder subscribe`` or ``folder unsubscribe``: the folder
+    ``folder`` shown in webmail, or hidden from it."""
+    command = "folder subscribe" if subscribe else "folder unsubscribe"
+
+    def method(server: Server, params: Params, _ident: object) -> dict:
+        session, _config = server._open()
+        folder = params.take("folder", str)
+        params.done()
+
+        plan = utilities.folders.plan_subscription(session, folder, subscribe)
+
+        return {
+            "plan_id": server._keep(command, plan),
+            "document": json_output.subscription_plan(command, plan),
+        }
+
+    method.__doc__ = subscription_plan.__doc__
+
+    return method
+
+
+# ----------------------------------------------------------------------------
+def subscription_execute(
+    subscribe: bool,
+) -> Callable[[Server, Params, object], dict]:
+    """Carry out a ``folder.subscribe.plan`` or ``folder.unsubscribe.plan``;
+    the server's subscription list is read again to confirm it."""
+    command = "folder subscribe" if subscribe else "folder unsubscribe"
+
+    def method(server: Server, params: Params, _ident: object) -> dict:
+        session, _config = server._open()
+        plan_id = params.take("plan_id", str)
+        params.done()
+        entry = server._take_plan(plan_id, command)
+
+        record = entry.record
+        require_changes(record.changes, command)
+        utilities.folders.execute_subscription(session, record)
+
+        return json_output.subscription_result(command, record)
+
+    method.__doc__ = subscription_execute.__doc__
+
+    return method
+
+
+# ----------------------------------------------------------------------------
+def folder_rename_plan(server: Server, params: Params, _ident: object) -> dict:
+    """Plan ``folder rename``: the folder ``old``, and every folder under
+    it, called ``new``; their subscriptions carried; and every filter in
+    the active filter set that files into one of them repointed."""
+    session, _config = server._open()
+    old = params.take("old", str)
+    new = params.take("new", str)
+    params.done()
+
+    plan = utilities.folder_rename.plan_folder_rename(session, old, new)
+
+    return {
+        "plan_id": server._keep("folder rename", plan),
+        "document": json_output.folder_rename_plan(plan),
+    }
+
+
+# ----------------------------------------------------------------------------
+def folder_rename_execute(
+    server: Server, params: Params, ident: object
+) -> dict:
+    """Carry out a ``folder.rename.plan``: where a filter is repointed,
+    the filter set backed up and checked first, then the folders renamed
+    and their subscriptions carried, then the filter set stored; each
+    step sent as an ``event``. The account is then read back, and the
+    result says what that found.
+
+    Refused, touching nothing, where a filter is repointed and the filter
+    set changed since the plan was made."""
+    session, config = server._open()
+    plan_id = params.take("plan_id", str)
+    params.done()
+    entry = server._take_plan(plan_id, "folder rename")
+
+    result = utilities.folder_rename.execute_folder_rename(
+        session, config, entry.record, server._events(ident)
+    )
+
+    return json_output.folder_rename_result(result)
 
 
 # ----------------------------------------------------------------------------
@@ -1083,6 +1324,24 @@ METHODS: dict[str, Callable[[Server, Params, object], Any]] = {
         lambda plan: None,
         utilities.optimize.execute_optimize,
     ),
+    "filterset.list": filterset_list,
+    "filterset.show": filterset_show,
+    "filterset.backup": filterset_backup,
+    "filterset.restore.plan": filterset_restore_plan,
+    "filterset.restore.execute": script_execute(
+        "filterset restore",
+        lambda plan: None,
+        utilities.backup.execute_restore,
+    ),
+    "folder.list": folder_list,
+    "folder.create.plan": folder_create_plan,
+    "folder.create.execute": folder_create_execute,
+    "folder.rename.plan": folder_rename_plan,
+    "folder.rename.execute": folder_rename_execute,
+    "folder.subscribe.plan": subscription_plan(True),
+    "folder.subscribe.execute": subscription_execute(True),
+    "folder.unsubscribe.plan": subscription_plan(False),
+    "folder.unsubscribe.execute": subscription_execute(False),
 }
 
 PROTOCOL_METHODS = frozenset({"initialize", "shutdown", "plan.discard"})

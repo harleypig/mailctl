@@ -13,7 +13,14 @@ import pytest
 from utilities_support import FakeSieveSession, mxroute
 
 from mailctl import MailctlError, utilities
+from mailctl.config import Config, read_env_file
 from mailctl.providers.mxroute import MXROUTE
+
+# A run with no password file and no env file configured, so no backup
+# file is refused as a credential.
+NO_CREDENTIALS = Config(environ={})
+
+SENTINEL = "sentinel-Pa55word-backup-41d"
 
 # ############################################################################
 # Backups
@@ -68,7 +75,7 @@ def test_a_restore_is_planned_then_backs_up_and_uploads_exact_bytes(
     live = mxroute(sieve=fake)
 
     plan = utilities.backup.plan_restore(
-        live, utilities.backup.read_backup_file(backup)
+        live, utilities.backup.read_backup_file(backup, NO_CREDENTIALS)
     )
 
     assert plan.changes
@@ -105,7 +112,7 @@ def test_a_restore_over_an_unparseable_script_is_allowed(
         live,
         imap_config,
         utilities.backup.plan_restore(
-            live, utilities.backup.read_backup_file(backup)
+            live, utilities.backup.read_backup_file(backup, NO_CREDENTIALS)
         ),
     )
 
@@ -120,7 +127,7 @@ def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
     live = mxroute(sieve=fake)
 
     plan = utilities.backup.plan_restore(
-        live, utilities.backup.read_backup_file(backup)
+        live, utilities.backup.read_backup_file(backup, NO_CREDENTIALS)
     )
 
     assert not plan.changes
@@ -131,7 +138,7 @@ def test_restoring_an_identical_file_sends_nothing(imap_config, tmp_path):
 # ----------------------------------------------------------------------------
 def test_a_restore_needs_a_readable_file(tmp_path):
     with pytest.raises(MailctlError, match="could not read backup"):
-        utilities.backup.read_backup_file(tmp_path / "no")
+        utilities.backup.read_backup_file(tmp_path / "no", NO_CREDENTIALS)
 
 
 # ----------------------------------------------------------------------------
@@ -142,7 +149,7 @@ def test_with_nothing_active_a_restore_asks_for_script(tmp_path):
 
     with pytest.raises(MailctlError, match=r"no active filter set.*Name the"):
         utilities.backup.plan_restore(
-            live, utilities.backup.read_backup_file(backup)
+            live, utilities.backup.read_backup_file(backup, NO_CREDENTIALS)
         )
 
 
@@ -158,7 +165,9 @@ def test_with_nothing_active_a_named_restore_uploads_and_activates(
     live = mxroute(sieve=fake)
 
     plan = utilities.backup.plan_restore(
-        live, utilities.backup.read_backup_file(backup), script="spare"
+        live,
+        utilities.backup.read_backup_file(backup, NO_CREDENTIALS),
+        script="spare",
     )
 
     assert (plan.active, plan.activate) == (None, True)
@@ -179,14 +188,113 @@ def test_a_backup_path_expands_home_and_variables(monkeypatch, tmp_path):
 
     for spelled in ("~/b.sieve", "$MAILCTL_TEST_DIR/b.sieve"):
         assert (
-            utilities.backup.read_backup_file(spelled).path
+            utilities.backup.read_backup_file(spelled, NO_CREDENTIALS).path
             == tmp_path / "b.sieve"
         )
 
     assert (
-        utilities.backup.read_backup_file("${MAILCTL_TEST_DIR}/b.sieve").text
+        utilities.backup.read_backup_file(
+            "${MAILCTL_TEST_DIR}/b.sieve", NO_CREDENTIALS
+        ).text
         == "x"
     )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("expand", [True, False])
+@pytest.mark.parametrize(
+    "spelled", ["$MAILCTL_TEST_SECRET", "${MAILCTL_TEST_SECRET}/b.sieve"]
+)
+def test_a_backup_that_cannot_be_read_is_named_as_given(
+    monkeypatch, tmp_path, spelled, expand
+):
+    """Red if the message quotes the path expanded: the variable's value
+    is the password's stand-in, and with ``expand`` False, as the API
+    calls it, nothing is expanded at all."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MAILCTL_TEST_SECRET", SENTINEL)
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.backup.read_backup_file(
+            spelled, NO_CREDENTIALS, expand=expand
+        )
+
+    assert str(caught.value).startswith(f"could not read backup {spelled} --")
+    assert SENTINEL not in str(caught.value)
+
+    # Where the variable names a real file, only an expanding caller
+    # reads it.
+    (tmp_path / SENTINEL).mkdir()
+    (tmp_path / SENTINEL / "b.sieve").write_text("x")
+    named = "${MAILCTL_TEST_SECRET}/b.sieve"
+
+    if expand:
+        assert (
+            utilities.backup.read_backup_file(named, NO_CREDENTIALS).text
+            == "x"
+        )
+
+    else:
+        with pytest.raises(MailctlError, match="could not read backup"):
+            utilities.backup.read_backup_file(
+                named, NO_CREDENTIALS, expand=False
+            )
+
+
+# ----------------------------------------------------------------------------
+def credentials(tmp_path):
+    """A run whose password file and env file both hold the sentinel,
+    each made unreadable so that opening one fails differently."""
+    secret = tmp_path / "password"
+    secret.write_text(SENTINEL)
+    env_path = tmp_path / "mailctl.env"
+    env_path.write_text(f"MAILCTL_PASSWORD={SENTINEL}\n")
+    env_path.chmod(0o600)
+    config = Config(
+        environ={"MAILCTL_PASSWORD_FILE": str(secret)},
+        env_file=read_env_file(env_path),
+    )
+
+    secret.chmod(0)
+    env_path.chmod(0)
+    (tmp_path / "link").symlink_to(secret)
+
+    return config
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", ["password", "link", "mailctl.env"])
+def test_a_credential_file_is_refused_unopened_as_a_backup(tmp_path, name):
+    """Red if a restore reads a file the password comes from: its bytes
+    would come back as the diff. The file is unreadable, so a read would
+    fail as ``could not read`` rather than with this code."""
+    config = credentials(tmp_path)
+
+    for expand in (True, False):
+        with pytest.raises(MailctlError) as caught:
+            utilities.backup.read_backup_file(
+                tmp_path / name, config, allow_empty=True, expand=expand
+            )
+
+        assert caught.value.code == "credential_file"
+        assert SENTINEL not in str(caught.value)
+
+
+# ----------------------------------------------------------------------------
+def test_a_password_file_from_any_rung_is_refused(tmp_path):
+    """Every configured password file is one, not only the winning rung:
+    the flag's file here outranks the environment's, and both refuse."""
+    flag, ambient = tmp_path / "flag", tmp_path / "ambient"
+    config = Config(
+        password_file=str(flag),
+        environ={"MAILCTL_PASSWORD_FILE": str(ambient)},
+    )
+
+    for path in (flag, ambient):
+        with pytest.raises(MailctlError) as caught:
+            utilities.backup.read_backup_file(path, config)
+
+        assert caught.value.code == "credential_file"
 
 
 # ----------------------------------------------------------------------------
@@ -200,7 +308,9 @@ def test_a_restore_targets_the_named_script_and_leaves_it_inactive(
     live = mxroute(sieve=fake)
 
     plan = utilities.backup.plan_restore(
-        live, utilities.backup.read_backup_file(backup), script="spare"
+        live,
+        utilities.backup.read_backup_file(backup, NO_CREDENTIALS),
+        script="spare",
     )
 
     assert (plan.script, plan.activate) == ("spare", False)
@@ -220,10 +330,13 @@ def test_an_empty_backup_is_refused_unless_allowed(content, tmp_path):
     live = mxroute(sieve=FakeSieveSession(script="old\n"))
 
     with pytest.raises(MailctlError, match="would remove every filter"):
-        utilities.backup.read_backup_file(backup)
+        utilities.backup.read_backup_file(backup, NO_CREDENTIALS)
 
     plan = utilities.backup.plan_restore(
-        live, utilities.backup.read_backup_file(backup, allow_empty=True)
+        live,
+        utilities.backup.read_backup_file(
+            backup, NO_CREDENTIALS, allow_empty=True
+        ),
     )
 
     assert plan.after == content
@@ -246,7 +359,7 @@ def test_a_rejected_restore_leaves_the_backup_and_stores_nothing(
             live,
             imap_config,
             utilities.backup.plan_restore(
-                live, utilities.backup.read_backup_file(backup)
+                live, utilities.backup.read_backup_file(backup, NO_CREDENTIALS)
             ),
         )
 
@@ -299,7 +412,7 @@ def test_an_upload_refuses_a_backup_outside_the_root_and_sends_nothing(
     live = mxroute(sieve=fake)
 
     plan = utilities.backup.plan_restore(
-        live, utilities.backup.read_backup_file(backup)
+        live, utilities.backup.read_backup_file(backup, NO_CREDENTIALS)
     )
 
     with pytest.raises(MailctlError) as caught:

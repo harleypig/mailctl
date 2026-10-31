@@ -1301,6 +1301,802 @@ def test_filter_apply_refuses_what_the_cli_refuses(start):
 
 
 # ############################################################################
+# The filterset group
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_list_and_show_read_the_filter_sets_and_no_mail(start):
+    """Red if the active set is not listed first, if ``show`` changes a
+    byte of the text or reads the wrong set, or if either opens IMAP,
+    which ``filterset list`` and ``filterset show`` never do."""
+    client = initialized(
+        start,
+        scripts={"managesieve": TWO_FILTERS, "other": "keep;\n"},
+    )
+    listed = client.request("filterset.list")["result"]
+    shown = client.request("filterset.show")["result"]
+    other = client.request("filterset.show", {"name": "other"})["result"]
+
+    assert listed["filtersets"] == [
+        {"name": "managesieve", "active": True},
+        {"name": "other", "active": False},
+    ]
+    assert shown["filterset"] == {
+        "name": "managesieve",
+        "source": TWO_FILTERS,
+        "filters": ["keep-boss", "github"],
+    }
+    assert other["filterset"]["name"] == "other"
+    assert other["filterset"]["source"] == "keep;\n"
+    assert "imap_connects" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_show_returns_text_that_does_not_parse(start):
+    """The text is the point; red if a filter set too broken to parse is
+    refused instead of shown, with null for its filters."""
+    broken = "if header :contains {\n"
+    client = initialized(start, scripts={"managesieve": broken})
+    shown = client.request("filterset.show")["result"]["filterset"]
+
+    assert shown == {"name": "managesieve", "source": broken, "filters": None}
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_show_refuses_with_no_active_set_and_none_named(start):
+    client = initialized(start, active=None)
+
+    assert (
+        "no active filter set"
+        in (refusal(client.request("filterset.show"))["message"])
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_backup_writes_the_servers_bytes_and_dry_run_writes_none(
+    start,
+):
+    """Red if a dry run writes, if the copy is not the server's exact
+    bytes, if it is readable by anyone else, or if IMAP is opened."""
+    client = initialized(start, scripts={"managesieve": TWO_FILTERS})
+    target = client.state.parent / "kept" / "copy.sieve"
+
+    planned = client.request(
+        "filterset.backup", {"output": str(target), "dry_run": True}
+    )["result"]["result"]
+
+    assert planned == {
+        "command": "filterset backup",
+        "filterset": "managesieve",
+        "path": str(target),
+        "filters": 2,
+        "written": False,
+    }
+    assert not target.parent.exists()
+
+    done = client.request("filterset.backup", {"output": str(target)})
+
+    assert done["result"]["result"] == {**planned, "written": True}
+    assert target.read_bytes() == TWO_FILTERS.encode()
+    assert target.stat().st_mode & 0o777 == 0o600
+    assert target.parent.stat().st_mode & 0o777 == 0o700
+    assert "imap_connects" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_backup_goes_to_the_backup_directory_by_default(start):
+    client = initialized(start)
+    done = client.request("filterset.backup")["result"]["result"]
+    path = Path(done["path"])
+
+    assert path.parent == client.state.parent / "backups"
+    assert path.read_text(encoding="utf-8") == ROUNDCUBE
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_backup_refuses_an_output_outside_the_backup_root(
+    start, monkeypatch, tmp_path
+):
+    """``MAILCTL_BACKUP_ROOT`` holds on the API's host as on the CLI's.
+    Red if the copy is written outside it, or the server is asked for
+    the filter set first."""
+    monkeypatch.setenv("MAILCTL_BACKUP_ROOT", str(tmp_path))
+    client = initialized(start)
+    outside = tmp_path.parent / f"{tmp_path.name}-outside" / "copy.sieve"
+
+    error = refusal(
+        client.request("filterset.backup", {"output": str(outside)})
+    )
+
+    assert error["code"] == "backup_outside_root"
+    assert not outside.parent.exists()
+    assert client.read_state().get("logins", 0) == 0
+
+
+# ----------------------------------------------------------------------------
+def restore_file(client: ChildClient, text: str = TWO_FILTERS) -> str:
+    """A backup file in the API process's working directory, by the
+    relative name a client would give it."""
+    (client.state.parent / "restore.sieve").write_text(text, encoding="utf-8")
+
+    return "restore.sieve"
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_restore_plans_then_replaces_the_set_backing_it_up_first(
+    start,
+):
+    """Red if the plan writes, if execute stores anything but the file's
+    bytes, if the set it replaces is not backed up before the upload, if
+    IMAP is opened, or if the id can be used twice."""
+    client = initialized(start)
+    result = client.request(
+        "filterset.restore.plan", {"file": restore_file(client)}
+    )["result"]
+    plan = result["document"]["plan"]
+
+    assert plan["command"] == "filterset restore"
+    assert plan["changes"] is True
+    assert plan["source"] == "restore.sieve"
+    assert (plan["filters_before"], plan["filters_after"]) == (1, 2)
+    assert plan["filterset"] == "managesieve"
+    assert "stored" not in client.read_state()
+
+    # The file changing after the plan changes nothing: what was shown is
+    # what runs.
+    restore_file(client, "keep;\n")
+
+    response = client.request(
+        "filterset.restore.execute", {"plan_id": result["plan_id"]}
+    )
+    done = response["result"]["result"]
+
+    assert [event["kind"] for event in events(response)] == [
+        "filterset_backed_up",
+        "filterset_uploaded",
+    ]
+    assert done["command"] == "filterset restore"
+    assert done["filter"] is None
+    assert Path(done["backup"]).read_text(encoding="utf-8") == ROUNDCUBE
+    assert client.read_state()["scripts"]["managesieve"] == TWO_FILTERS
+    assert "imap_connects" not in client.read_state()
+
+    again = client.request(
+        "filterset.restore.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert refusal(again)["code"] == "plan_unknown"
+    assert client.read_state()["stored"] == ["managesieve"]
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_restore_the_server_rejects_is_backed_up_and_not_stored(
+    start,
+):
+    """CHECKSCRIPT comes before the upload, and the backup before both.
+    Red if a file the server rejects is stored, or no copy of what it
+    would have replaced is left."""
+    client = initialized(start, checkscript=False)
+    plan_id = client.request(
+        "filterset.restore.plan", {"file": restore_file(client)}
+    )["result"]["plan_id"]
+
+    error = refusal(
+        client.request("filterset.restore.execute", {"plan_id": plan_id})
+    )
+    kept = list((client.state.parent / "backups").iterdir())
+
+    assert "rejected" in error["message"]
+    assert "stored" not in client.read_state()
+    assert [path.read_text(encoding="utf-8") for path in kept] == [ROUNDCUBE]
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_restore_refuses_what_the_cli_refuses(start):
+    """An empty file, unless allowed; a file that is not there; and, with
+    nothing active, a restore that names no filter set."""
+    client = initialized(start)
+    empty = restore_file(client, "\n")
+
+    assert refusal(client.request("filterset.restore.plan", {"file": empty}))[
+        "code"
+    ] == ("empty_backup")
+    assert (
+        "could not read"
+        in (
+            refusal(
+                client.request("filterset.restore.plan", {"file": "missing"})
+            )["message"]
+        )
+    )
+
+    allowed = client.request(
+        "filterset.restore.plan", {"file": empty, "allow_empty": True}
+    )
+
+    assert allowed["result"]["document"]["plan"]["filters_after"] == 0
+
+    nothing_active = initialized(start, active=None)
+    restore_file(nothing_active)
+
+    assert refusal(
+        nothing_active.request(
+            "filterset.restore.plan", {"file": "restore.sieve"}
+        )
+    )["code"] == ("restore_needs_script")
+    assert "stored" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_restore_expands_nothing_in_the_file_it_is_given(
+    start, monkeypatch
+):
+    """A client has no shell, so its path is taken as written. Red if
+    ``$VAR``, ``${VAR}``, or ``~`` is expanded in the API's environment,
+    or if a refusal quotes the expanded path: the variable here holds
+    the sentinel, and it must reach no output, ``--debug`` on."""
+    monkeypatch.setenv("MAILCTL_PASSWORD", SENTINEL)
+    client = start("--debug")
+    client.request("initialize")
+
+    for spelled in ("$MAILCTL_PASSWORD", "${MAILCTL_PASSWORD}", "~"):
+        error = refusal(
+            client.request("filterset.restore.plan", {"file": spelled})
+        )
+
+        assert error["message"].startswith(
+            f"could not read backup {spelled} --"
+        )
+
+    assert client.read_state().get("logins", 0) == 0
+
+    assert_sentinel_absent(client)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", ["password", "password-link", "mailctl.env"])
+def test_filterset_restore_refuses_a_credential_file_unread(
+    start, tmp_path, name
+):
+    """Red if the password file, a link to it, or the env file in use is
+    read as a backup: its contents would come back as the diff. Each is
+    unreadable once the API has started, so a read would fail as
+    ``could not read`` and not with this code."""
+    secret = tmp_path / "password"
+    env_file = tmp_path / "mailctl.env"
+    env_file.write_text(f"MAILCTL_PASSWORD={SENTINEL}\n", encoding="utf-8")
+    env_file.chmod(0o600)
+    (tmp_path / "password-link").symlink_to(secret)
+
+    client = start("--debug", "--env-file", str(env_file), password=SENTINEL)
+    client.request("initialize")
+    secret.chmod(0)
+    env_file.chmod(0)
+
+    response = client.request(
+        "filterset.restore.plan", {"file": name, "allow_empty": True}
+    )
+
+    assert "result" not in response
+    assert refusal(response)["code"] == "credential_file"
+    assert client.read_state().get("logins", 0) == 0
+
+    assert_sentinel_absent(client)
+
+
+# ----------------------------------------------------------------------------
+def test_filterset_restore_of_what_the_server_holds_is_not_carried_out(
+    start,
+):
+    client = initialized(start)
+    result = client.request(
+        "filterset.restore.plan", {"file": restore_file(client, ROUNDCUBE)}
+    )["result"]
+
+    assert result["document"]["plan"]["changes"] is False
+    assert result["document"]["plan"]["diff"] is None
+
+    error = refusal(
+        client.request(
+            "filterset.restore.execute", {"plan_id": result["plan_id"]}
+        )
+    )
+
+    assert error["code"] == "nothing_to_change"
+    assert "stored" not in client.read_state()
+
+
+# ############################################################################
+# The folder group
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_folder_list_lists_every_folder_and_opens_no_filter_set(start):
+    """Red if a folder is dropped or its subscription misread, or if the
+    rules half is opened, which ``folder list`` never does."""
+    client = initialized(start)
+    listed = client.request("folder.list")["result"]
+
+    assert listed["delimiter"] == "."
+    assert listed["folders"] == [
+        {"name": "INBOX", "subscribed": True},
+        {"name": "INBOX.Lists", "subscribed": True},
+        {"name": "INBOX.spam", "subscribed": False},
+    ]
+    assert "sieve_connects" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_folder_list_counts_each_folder_from_one_request(start):
+    client = initialized(start, imap_caps=["LIST-STATUS", "STATUS=SIZE"])
+    listed = client.request("folder.list", {"counts": True})["result"]
+    spam = listed["folders"][2]
+
+    assert spam == {
+        "name": "INBOX.spam",
+        "subscribed": False,
+        "messages": 12,
+        "unseen": 12,
+        "size": 30822,
+    }
+    assert "sieve_connects" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_folder_list_counts_are_refused_without_one_request_for_them(start):
+    """A server without LIST-STATUS would need a request per folder."""
+    client = initialized(start)
+    error = refusal(client.request("folder.list", {"counts": True}))
+
+    assert "LIST-STATUS" in error["message"]
+
+
+# ----------------------------------------------------------------------------
+def test_folder_create_plans_then_creates_and_subscribes_once(start):
+    """Red if the plan creates, if execute does more than create and
+    subscribe, if the rules half is opened, or if the id runs twice."""
+    client = initialized(start)
+    result = client.request(
+        "folder.create.plan", {"folder": "INBOX.Projects"}
+    )["result"]
+    plan = result["document"]["plan"]
+
+    assert plan["command"] == "folder create"
+    assert plan["changes"] is True
+    assert plan["folder"]["status"] == "create"
+    assert plan["folder"]["subscribe"] is True
+    assert "imap_writes" not in client.read_state()
+
+    response = client.request(
+        "folder.create.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert response["result"]["result"] == {
+        "command": "folder create",
+        "folder": "INBOX.Projects",
+        "subscribed": True,
+        "subscribe_error": None,
+        "by_subscription": True,
+    }
+    assert client.read_state()["imap_writes"] == [
+        ["create_folder", "INBOX.Projects"],
+        ["subscribe_folder", "INBOX.Projects"],
+    ]
+    assert "sieve_connects" not in client.read_state()
+
+    again = client.request(
+        "folder.create.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert refusal(again)["code"] == "plan_unknown"
+    assert len(client.read_state()["imap_writes"]) == 2
+
+
+# ----------------------------------------------------------------------------
+def test_folder_create_unsubscribed_creates_and_subscribes_nothing(start):
+    client = initialized(start)
+    result = client.request(
+        "folder.create.plan", {"folder": "INBOX.Quiet", "subscribe": False}
+    )["result"]
+    response = client.request(
+        "folder.create.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert response["result"]["result"]["subscribed"] is False
+    assert client.read_state()["imap_writes"] == [
+        ["create_folder", "INBOX.Quiet"]
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_folder_create_of_a_folder_already_there_is_not_carried_out(start):
+    client = initialized(start)
+    result = client.request("folder.create.plan", {"folder": "INBOX.Lists"})[
+        "result"
+    ]
+
+    assert result["document"]["plan"]["changes"] is False
+
+    error = refusal(
+        client.request("folder.create.execute", {"plan_id": result["plan_id"]})
+    )
+
+    assert error["code"] == "nothing_to_change"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_folder_create_refuses_a_case_variant_of_a_folder(start):
+    client = initialized(start)
+    error = refusal(
+        client.request("folder.create.plan", {"folder": "INBOX.lists"})
+    )
+
+    assert "case-sensitive" in error["message"]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("command", "folder", "write"),
+    [
+        ("subscribe", "INBOX.spam", "subscribe_folder"),
+        ("unsubscribe", "INBOX.Lists", "unsubscribe_folder"),
+    ],
+)
+def test_a_subscription_plans_then_changes_once(start, command, folder, write):
+    """Red if the plan writes, if execute writes the other way, if the
+    rules half is opened, or if the id runs twice."""
+    client = initialized(start)
+    result = client.request(f"folder.{command}.plan", {"folder": folder})[
+        "result"
+    ]
+    plan = result["document"]["plan"]
+
+    assert plan["command"] == f"folder {command}"
+    assert plan["changes"] is True
+    assert plan["subscribed_now"] is (command == "unsubscribe")
+    assert "imap_writes" not in client.read_state()
+
+    response = client.request(
+        f"folder.{command}.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert response["result"]["result"] == {
+        "command": f"folder {command}",
+        "folder": folder,
+        "subscribed": command == "subscribe",
+    }
+    assert client.read_state()["imap_writes"] == [[write, folder]]
+    assert "sieve_connects" not in client.read_state()
+
+    again = client.request(
+        f"folder.{command}.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert refusal(again)["code"] == "plan_unknown"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("command", "folder"),
+    [("subscribe", "INBOX.Lists"), ("unsubscribe", "INBOX.spam")],
+)
+def test_a_subscription_already_as_asked_is_not_carried_out(
+    start, command, folder
+):
+    client = initialized(start)
+    result = client.request(f"folder.{command}.plan", {"folder": folder})[
+        "result"
+    ]
+
+    assert result["document"]["plan"]["changes"] is False
+
+    error = refusal(
+        client.request(
+            f"folder.{command}.execute", {"plan_id": result["plan_id"]}
+        )
+    )
+
+    assert error["code"] == "nothing_to_change"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("command", ["subscribe", "unsubscribe"])
+def test_a_subscription_to_no_folder_is_refused(start, command):
+    client = initialized(start)
+    error = refusal(
+        client.request(f"folder.{command}.plan", {"folder": "INBOX.Nope"})
+    )
+
+    assert error["code"] == "no_such_folder"
+
+
+# ----------------------------------------------------------------------------
+def test_folder_rename_repoints_its_filters_backing_the_set_up_first(start):
+    """Red if the plan writes, if the folder is renamed before the filter
+    set is backed up and checked, if a filter is left filing into the old
+    name, or if the subscriptions are not carried."""
+    client = initialized(start, scripts={"managesieve": TWO_FILTERS})
+    result = client.request(
+        "folder.rename.plan", {"old": "INBOX.Lists", "new": "INBOX.Feeds"}
+    )["result"]
+    plan = result["document"]["plan"]
+
+    assert plan["command"] == "folder rename"
+    assert plan["filters"] == [
+        {"filter": "github", "old": "INBOX.Lists", "new": "INBOX.Feeds"}
+    ]
+    assert plan["diff"] is not None
+    assert "imap_writes" not in client.read_state()
+    assert "stored" not in client.read_state()
+
+    response = client.request(
+        "folder.rename.execute", {"plan_id": result["plan_id"]}
+    )
+    done = response["result"]["result"]
+    stored = client.read_state()["scripts"]["managesieve"]
+
+    assert [event["kind"] for event in events(response)] == [
+        "filterset_backed_up",
+        "folder_renamed",
+        "subscription_changed",
+        "subscription_changed",
+        "filterset_uploaded",
+    ]
+    assert done["ok"] is True
+    assert done["filterset"] == "managesieve"
+    assert done["subscribed"] == ["INBOX.Feeds"]
+    assert done["unsubscribed"] == ["INBOX.Lists"]
+    assert Path(done["backup"]).read_text(encoding="utf-8") == TWO_FILTERS
+    assert 'fileinto "INBOX.Feeds"' in stored
+    assert 'fileinto "INBOX.Lists"' not in stored
+    assert [write[0] for write in client.read_state()["imap_writes"]] == [
+        "rename_folder",
+        "subscribe_folder",
+        "unsubscribe_folder",
+    ]
+
+    again = client.request(
+        "folder.rename.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert refusal(again)["code"] == "plan_unknown"
+
+
+# ----------------------------------------------------------------------------
+def test_folder_rename_with_no_filter_into_it_leaves_the_set_alone(start):
+    client = initialized(start)
+    result = client.request(
+        "folder.rename.plan", {"old": "INBOX.spam", "new": "INBOX.junk"}
+    )["result"]
+
+    assert result["document"]["plan"]["diff"] is None
+
+    response = client.request(
+        "folder.rename.execute", {"plan_id": result["plan_id"]}
+    )
+    done = response["result"]["result"]
+
+    assert done["backup"] is None
+    assert done["filterset"] is None
+    assert done["ok"] is True
+    assert "stored" not in client.read_state()
+    assert not (client.state.parent / "backups").exists()
+
+
+# ----------------------------------------------------------------------------
+def test_folder_rename_refuses_what_the_cli_refuses(start):
+    client = initialized(start)
+
+    inbox = client.request(
+        "folder.rename.plan", {"old": "INBOX", "new": "INBOX.Old"}
+    )
+    missing = client.request(
+        "folder.rename.plan", {"old": "INBOX.Nope", "new": "INBOX.Other"}
+    )
+
+    assert refusal(inbox)["code"] == "rename_inbox"
+    assert refusal(missing)["code"] == "no_such_folder"
+    assert "imap_writes" not in client.read_state()
+
+
+# ############################################################################
+# The two new filter set writes, held to the stale-plan refusals
+# ############################################################################
+
+# A filter set mailctl cannot parse, which only a restore may replace
+# (ADR 0005).
+UNPARSEABLE = "if header :contains {{{ not sieve\n"
+
+# Each command in these groups that uploads the filter set: its method,
+# what its plan is given, and the filter set it starts from. The file a
+# restore reads differs from each.
+STALE_WRITES = {
+    "filterset restore": (
+        "filterset.restore",
+        {"file": "restore.sieve"},
+        TWO_FILTERS,
+    ),
+    "filterset restore over an unparseable set": (
+        "filterset.restore",
+        {"file": "restore.sieve"},
+        UNPARSEABLE,
+    ),
+    "folder rename": (
+        "folder.rename",
+        {"old": "INBOX.Lists", "new": "INBOX.Feeds"},
+        TWO_FILTERS,
+    ),
+}
+
+
+# ----------------------------------------------------------------------------
+def stale_plan(start, case: str) -> tuple[ChildClient, str, str, str]:
+    method, params, before = STALE_WRITES[case]
+    client = initialized(start, scripts={"managesieve": before})
+    restore_file(client, MERGEABLE)
+    result = client.request(f"{method}.plan", params)["result"]
+    plan = result["document"]["plan"]
+
+    assert plan["changes"] is True
+
+    if before is UNPARSEABLE:
+        assert plan["filters_before"] is None
+
+    return client, method, result["plan_id"], before
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("case", sorted(STALE_WRITES))
+def test_a_group_write_refuses_a_filter_set_changed_since_the_plan(
+    start, case
+):
+    """Red if execute uploads over another client's edit (#257), or a
+    rename moves the folder before finding the set changed."""
+    client, method, plan_id, before = stale_plan(start, case)
+
+    state = client.read_state()
+    edited = before + "# rule:[made-elsewhere]\nkeep;\n"
+    state["scripts"]["managesieve"] = edited
+    client.write_state(state)
+
+    error = refusal(client.request(f"{method}.execute", {"plan_id": plan_id}))
+    after = client.read_state()
+
+    assert error["code"] == "filterset_changed"
+    assert after["scripts"]["managesieve"] == edited
+    assert "stored" not in after
+    assert "imap_writes" not in after
+    assert not (client.state.parent / "backups").exists()
+
+    retry = client.request(f"{method}.execute", {"plan_id": plan_id})
+
+    assert refusal(retry)["code"] == "plan_unknown"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("case", sorted(STALE_WRITES))
+def test_a_group_write_refuses_an_active_set_switched_since_the_plan(
+    start, case
+):
+    """Red if execute uploads once another client has made another filter
+    set active (#308)."""
+    client, method, plan_id, before = stale_plan(start, case)
+
+    state = client.read_state()
+    state["scripts"]["elsewhere"] = "keep;\n"
+    state["active"] = "elsewhere"
+    client.write_state(state)
+
+    error = refusal(client.request(f"{method}.execute", {"plan_id": plan_id}))
+    after = client.read_state()
+
+    assert error["code"] == "filterset_changed"
+    assert error["fields"] == {"operation": "filterset list", "arguments": []}
+    assert after["active"] == "elsewhere"
+    assert after["scripts"]["managesieve"] == before
+    assert "stored" not in after
+    assert "imap_writes" not in after
+    assert not (client.state.parent / "backups").exists()
+
+
+# ############################################################################
+# What the provider does not declare, and parameters
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("capability", "method", "params"),
+    [
+        ("rule_sets", "filterset.list", {}),
+        ("rule_sets", "filterset.show", {}),
+        ("rule_sets", "filterset.backup", {}),
+        ("rule_sets", "filterset.restore.plan", {"file": "restore.sieve"}),
+        ("folder_visibility", "folder.subscribe.plan", {"folder": "INBOX"}),
+        ("folder_visibility", "folder.unsubscribe.plan", {"folder": "INBOX"}),
+        (
+            "folder_visibility",
+            "folder.create.plan",
+            {"folder": "INBOX.Quiet", "subscribe": False},
+        ),
+        ("folder_counts", "folder.list", {"counts": True}),
+    ],
+)
+def test_a_group_method_the_provider_does_not_declare_is_refused_unread(
+    start, monkeypatch, capability, method, params
+):
+    """The CLI hides these and refuses them below the front-end; the API
+    meets the same refusal, before anything connects."""
+    monkeypatch.setenv("MAILCTL_TEST_DECLINE", capability)
+    client = initialized(start)
+    restore_file(client)
+    error = refusal(client.request(method, params))
+
+    assert (
+        f"does not declare the {capability!r} capability" in error["message"]
+    )
+    assert client.read_state().get("logins", 0) == 0
+
+
+# ----------------------------------------------------------------------------
+def test_group_parameters_are_refused_as_parameters(start):
+    """Red if a missing name, a wrong type, or a parameter the command
+    does not take reaches the utilities, or an execute takes more than
+    its plan's id."""
+    client = initialized(start)
+    asks = [
+        ("filterset.list", {"name": "x"}),
+        ("filterset.show", {"name": 1}),
+        ("filterset.backup", {"dry_run": "yes"}),
+        ("filterset.restore.plan", {}),
+        ("folder.list", {"counts": 1}),
+        ("folder.create.plan", {}),
+        ("folder.rename.plan", {"old": "INBOX.Lists"}),
+        ("folder.subscribe.plan", {"folder": "INBOX.spam", "yes": True}),
+    ]
+
+    for method, params in asks:
+        assert client.request(method, params)["error"]["code"] == -32602, (
+            method,
+            params,
+        )
+
+
+# ----------------------------------------------------------------------------
+# Each execute of these groups, and a plan for it that changes something.
+GROUP_EXECUTES = {
+    "folder.create": {"folder": "INBOX.New"},
+    "folder.subscribe": {"folder": "INBOX.spam"},
+    "folder.unsubscribe": {"folder": "INBOX.Lists"},
+    "folder.rename": {"old": "INBOX.Lists", "new": "INBOX.Feeds"},
+    "filterset.restore": {"file": "restore.sieve"},
+}
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("method", sorted(GROUP_EXECUTES))
+def test_a_bad_execute_parameter_does_not_use_up_the_plan(start, method):
+    """Red if an execute takes its plan before refusing a parameter it
+    does not take: refused as a request, the plan must still run."""
+    client = initialized(start)
+    restore_file(client)
+    plan_id = client.request(f"{method}.plan", GROUP_EXECUTES[method])[
+        "result"
+    ]["plan_id"]
+
+    bad = client.request(f"{method}.execute", {"plan_id": plan_id, "x": 1})
+
+    assert bad["error"]["code"] == -32602
+    assert "result" in client.request(
+        f"{method}.execute", {"plan_id": plan_id}
+    )
+
+
+# ############################################################################
 # The password
 # ############################################################################
 

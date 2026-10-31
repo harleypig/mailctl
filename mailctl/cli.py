@@ -1345,7 +1345,9 @@ def cmd_backup(args) -> int:
 def cmd_restore(args) -> int:
     """Replace a script with a backup file, after showing it."""
     config = configure(args)
-    backup = utilities.backup.read_backup_file(args.file, args.allow_empty)
+    backup = utilities.backup.read_backup_file(
+        args.file, config, args.allow_empty
+    )
 
     with connect(config, args) as sessions:
         plan = utilities.backup.plan_restore(
@@ -1357,13 +1359,10 @@ def cmd_restore(args) -> int:
 
             return emit_json(
                 args,
-                json_output.plan(
-                    "filterset restore",
-                    **json_output.change(plan.changes, plan.diff),
-                    source=str(plan.source),
-                    filters_before=count(sessions, plan.before),
-                    filters_after=count(sessions, plan.after),
-                    **json_output.activation(plan),
+                json_output.restore_plan(
+                    plan,
+                    count(sessions, plan.before),
+                    count(sessions, plan.after),
                 ),
             )
 
@@ -1637,16 +1636,7 @@ def cmd_subscribe(args) -> int:
 
         if args.json:
             return emit_json(
-                args,
-                json_output.plan(
-                    args.command,
-                    changes=plan.changes,
-                    requested=plan.requested,
-                    folder=plan.folder,
-                    delimiter=plan.delimiter,
-                    subscribe=plan.subscribe,
-                    subscribed_now=plan.subscribed_now,
-                ),
+                args, json_output.subscription_plan(args.command, plan)
             )
 
         if plan.requested != plan.folder:
@@ -1695,16 +1685,7 @@ def cmd_create_folder(args) -> int:
         target = plan.target
 
         if args.json:
-            return emit_json(
-                args,
-                json_output.plan(
-                    "folder create",
-                    changes=not plan.exists,
-                    folder=json_output.folder_plan(target),
-                    subscribed_now=plan.subscribed_now,
-                    missing_parents=list(plan.missing_parents),
-                ),
-            )
+            return emit_json(args, json_output.folder_creation_plan(plan))
 
         if target.requested != target.folder:
             print(
@@ -5385,6 +5366,9 @@ ERROR_TEXT = {
         f"{fields['count']} (or higher) to process every match. Note that "
         f"--yes does NOT lift this cap: it skips the confirmation prompt, "
         f"whereas the cap is a ceiling you set deliberately."
+    ),
+    "credential_file": lambda message, _: (
+        f"{message} Name the backup file to restore."
     ),
     "empty_backup": lambda message, _: (
         f"{message} Pass --allow-empty if that is what you want."

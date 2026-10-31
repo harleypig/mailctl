@@ -30,13 +30,18 @@ __all__ = [
     "add_plan",
     "alert",
     "apply_plan",
+    "backup_result",
     "capabilities",
     "change",
     "dumps",
     "error",
     "event",
+    "filterset_source",
+    "folder_creation_plan",
+    "folder_creation_result",
     "folder_listing",
     "folder_plan",
+    "folder_rename_result",
     "mail_plan",
     "mail_result",
     "mark_plan",
@@ -49,11 +54,14 @@ __all__ = [
     "plan",
     "removal_plan",
     "rename_plan",
+    "restore_plan",
     "rules_report",
     "script_change_result",
     "scripts",
     "sender_report",
     "step",
+    "subscription_plan",
+    "subscription_result",
     "switch_plan",
 ]
 
@@ -239,6 +247,18 @@ def scripts(active: str | None, others: list[str]) -> dict:
 
     return _document(
         filtersets=[{"name": name, "active": name == active} for name in names]
+    )
+
+
+# ----------------------------------------------------------------------------
+def filterset_source(
+    name: str, source: str, filters: list[str] | None
+) -> dict:
+    """``filterset show``: a filter set's text exactly as the server holds
+    it, and its filters' names in order; ``filters`` is null where the
+    text will not parse, which is the filter set most worth seeing."""
+    return _document(
+        filterset={"name": name, "source": source, "filters": filters}
     )
 
 
@@ -599,6 +619,51 @@ def folder_rename_plan(record) -> dict:
 
 
 # ----------------------------------------------------------------------------
+def restore_plan(
+    record, filters_before: int | None, filters_after: int | None
+) -> dict:
+    """``filterset restore``: a backup file put whole over a filter set,
+    the raw diff, and how many filters each side holds (null where one
+    will not parse)."""
+    return plan(
+        "filterset restore",
+        **change(record.changes, record.diff),
+        source=str(record.source),
+        filters_before=filters_before,
+        filters_after=filters_after,
+        **activation(record),
+    )
+
+
+# ----------------------------------------------------------------------------
+def subscription_plan(command: str, record) -> dict:
+    """``folder subscribe`` or ``folder unsubscribe``: the folder as asked
+    for and as the server names it, and its subscription now."""
+    return plan(
+        command,
+        changes=record.changes,
+        requested=record.requested,
+        folder=record.folder,
+        delimiter=record.delimiter,
+        subscribe=record.subscribe,
+        subscribed_now=record.subscribed_now,
+    )
+
+
+# ----------------------------------------------------------------------------
+def folder_creation_plan(record) -> dict:
+    """``folder create``: the folder, how it comes to exist, and the
+    levels above it the server is expected to make with it."""
+    return plan(
+        "folder create",
+        changes=record.changes,
+        folder=folder_plan(record.target),
+        subscribed_now=record.subscribed_now,
+        missing_parents=list(record.missing_parents),
+    )
+
+
+# ----------------------------------------------------------------------------
 def optimize_plan(record) -> dict:
     """``optimize-rules``: each rule to remove, move, or merge, and what
     was left alone for want of certainty. ``considered`` names the kinds
@@ -678,6 +743,87 @@ def mail_result(record, mail) -> dict:
             "moved": record.moved,
             "deleted": record.deleted,
             "copied": record.copied,
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def backup_result(
+    record, path: Path, filters: int | None, written: bool
+) -> dict:
+    """What ``filterset backup`` wrote, or would write where ``written``
+    is false: the filter set, the file, and how many filters it holds
+    (null where it will not parse)."""
+    return _document(
+        result={
+            "command": "filterset backup",
+            "filterset": record.script,
+            "path": str(path),
+            "filters": filters,
+            "written": written,
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def folder_creation_result(record) -> dict:
+    """What ``folder create`` achieved: the folder exists either way, and
+    ``subscribe_error`` is why subscribing to it failed, where it did."""
+    return _document(
+        result={
+            "command": "folder create",
+            "folder": record.folder,
+            "subscribed": record.subscribed,
+            "subscribe_error": record.subscribe_error or None,
+            "by_subscription": record.by_subscription,
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def subscription_result(command: str, record) -> dict:
+    """What ``folder subscribe`` or ``folder unsubscribe`` left: the
+    folder, and whether it is subscribed now."""
+    return _document(
+        result={
+            "command": command,
+            "folder": record.folder,
+            "subscribed": record.subscribe,
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def folder_rename_result(record) -> dict:
+    """What ``folder rename`` did, then what reading the account back
+    found. ``ok`` is false where any check failed; a failed check's
+    ``operation`` names the command that would set it right, given
+    ``arguments``. ``backup`` is null where no filter changed."""
+    plan_record = record.plan
+
+    return _document(
+        result={
+            "command": "folder rename",
+            "old": plan_record.old,
+            "new": plan_record.new,
+            "filterset": plan_record.script
+            if plan_record.rules_change
+            else None,
+            "backup": None if record.backup is None else str(record.backup),
+            "subscribed": list(record.subscribed),
+            "unsubscribed": list(record.unsubscribed),
+            "subscription_errors": list(record.subscription_errors),
+            "ok": record.ok,
+            "checks": [
+                {
+                    "label": check.label,
+                    "ok": check.ok,
+                    "detail": check.detail or None,
+                    "operation": check.operation or None,
+                    "arguments": list(check.arguments),
+                }
+                for check in record.checks
+            ],
         }
     )
 
