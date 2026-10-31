@@ -72,6 +72,12 @@ if header :contains "from" "noreply@github.com"
 """
 )
 
+# TWO_FILTERS with github disabled, as ``filter disable`` writes it.
+GITHUB_DISABLED = TWO_FILTERS.replace(
+    'if header :contains "from" "noreply@github.com"',
+    'if false # header :contains "from" "noreply@github.com"',
+)
+
 MERGEABLE = (
     ROUNDCUBE
     + """# rule:[keep-ceo]
@@ -781,6 +787,14 @@ SCRIPT_WRITES = {
         "filter disable",
         "github",
         'if false # header :contains "from" "noreply@github.com"',
+    ),
+    "enable": (
+        "filter.enable",
+        {"name": "github"},
+        GITHUB_DISABLED,
+        "filter enable",
+        "github",
+        'if header :contains "from" "noreply@github.com"',
     ),
     "optimize": (
         "filter.optimize",
