@@ -9,6 +9,7 @@ arrive while it waits, and that no refusal quotes what the client sent.
 import argparse
 import io
 import json
+from typing import TypeGuard
 
 import pytest
 
@@ -19,6 +20,7 @@ from mailctl.api.protocol import (
     PARSE_ERROR,
     Channel,
     ClientGone,
+    RequestCancelled,
     RpcError,
     parse,
 )
@@ -183,6 +185,106 @@ def test_an_error_answer_raises_and_the_end_of_input_is_named():
 
     with pytest.raises(ClientGone):
         gone.request("credentials.prompt", {})
+
+
+# ----------------------------------------------------------------------------
+def read_all(link: Channel) -> Channel:
+    """``link``, once its input thread has read every line there is."""
+    link._pump.join(timeout=5)
+
+    assert not link._pump.is_alive()
+
+    return link
+
+
+# ----------------------------------------------------------------------------
+def is_cancel(message: object) -> TypeGuard[dict]:
+    return isinstance(message, dict) and message.get("method") == CANCEL
+
+
+# ----------------------------------------------------------------------------
+def ident(message: object) -> object:
+    assert isinstance(message, dict)
+
+    return message["id"]
+
+
+CANCEL = "$/cancelRequest"
+CANCEL_7 = (
+    b'{"jsonrpc": "2.0", "method": "$/cancelRequest", "params": {"id": 7}}\n'
+)
+REQUEST_8 = b'{"jsonrpc": "2.0", "id": 8, "method": "filter.list"}\n'
+SHUTDOWN_9 = b'{"jsonrpc": "2.0", "id": 9, "method": "shutdown"}\n'
+
+
+# ----------------------------------------------------------------------------
+def test_take_picks_out_what_it_selects_and_leaves_the_rest_in_order():
+    """What a running request takes must not cost the requests behind it
+    their place. Red if take drops, reorders, or takes what it was not
+    asked for, or if a bad line loses its turn."""
+    link, _out = channel(REQUEST_8, CANCEL_7, b"{bad\n", SHUTDOWN_9, CANCEL_7)
+    read_all(link)
+
+    taken = link.take(is_cancel)
+
+    assert [message["params"]["id"] for message in taken] == [7, 7]
+    assert [ident(message) for message in link.held()] == [8, 9]
+    assert ident(link.receive()) == 8
+
+    with pytest.raises(RpcError):
+        link.receive()
+
+    assert ident(link.receive()) == 9
+    assert link.receive() is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_message_the_wait_is_interrupted_by_ends_it_and_the_rest_wait():
+    """A cancel while the server waits on the client ends the wait; it is
+    taken, and what came before it is received after, in order. Red if the
+    wait outlasts the cancel."""
+    link, _out = channel(REQUEST_8, CANCEL_7, SHUTDOWN_9)
+
+    with pytest.raises(RequestCancelled):
+        link.request("credentials.prompt", {}, interrupt=is_cancel)
+
+    assert ident(link.receive()) == 8
+    assert ident(link.receive()) == 9
+
+
+class Trickle(io.RawIOBase):
+    """A stream that hands over a few bytes per read, as a pipe may."""
+
+    # ------------------------------------------------------------------------
+    def __init__(self, data: bytes, size: int):
+        self._data = data
+        self._size = size
+
+    # ------------------------------------------------------------------------
+    def readable(self) -> bool:
+        return True
+
+    # ------------------------------------------------------------------------
+    def readinto(self, buffer) -> int:
+        piece, self._data = self._data[: self._size], self._data[self._size :]
+        buffer[: len(piece)] = piece
+
+        return len(piece)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("size", [1, 7, 4096])
+def test_lines_split_across_reads_arrive_whole(size):
+    """However the input arrives, a message is a line; a last one with no
+    newline still counts. Red if a line is cut where a read ends."""
+    link = Channel(
+        Trickle(REQUEST_8 + b"\n" + SHUTDOWN_9.rstrip(b"\n"), size),
+        io.BytesIO(),
+    )
+
+    assert ident(link.receive()) == 8
+    assert ident(link.receive()) == 9
+    assert link.receive() is None
 
 
 # ############################################################################

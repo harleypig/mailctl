@@ -10,11 +10,20 @@ The client's lines are read here and nowhere else, so this is where a
 password a client sends is wrapped: any ``password`` member holding a
 string becomes a :class:`Secret` as the line is parsed, before anything
 dispatches it, logs it, or could echo it.
+
+The lines are read on a thread of their own, as they arrive, so what the
+client sends while a request runs -- a cancel above all -- is in hand
+before that request ends. Everything else, the handling and every line
+written, stays on the thread that serves the requests.
 """
 
 import json
+import queue
+import threading
 from collections import deque
-from typing import BinaryIO, TypeGuard
+from collections.abc import Callable
+from io import RawIOBase
+from typing import BinaryIO, TypeGuard, TypeVar
 
 from .. import json_output
 from ..config import Secret
@@ -26,8 +35,10 @@ __all__ = [
     "METHOD_NOT_FOUND",
     "PARSE_ERROR",
     "REFUSED",
+    "REQUEST_CANCELLED",
     "Channel",
     "ClientGone",
+    "RequestCancelled",
     "RpcError",
     "parse",
 ]
@@ -46,6 +57,15 @@ INTERNAL_ERROR = -32603
 # the application; ``data`` holds the error document, whose ``code`` is
 # what a client branches on.
 REFUSED = 1
+
+# A request the client cancelled before anything was sent, as the Language
+# Server Protocol numbers it: outside the range JSON-RPC reserves.
+REQUEST_CANCELLED = -32800
+
+# Bytes asked of the input at a time; a read returns what has arrived.
+READ_SIZE = 65536
+
+_Taken = TypeVar("_Taken")
 
 
 # ############################################################################
@@ -79,6 +99,16 @@ class RpcError(Exception):
 
 class ClientGone(Exception):
     """The client's input ended while a request to it was unanswered."""
+
+
+class RequestCancelled(BaseException):
+    """The client cancelled the request in hand, and nothing it asked to be
+    written has been sent.
+
+    A ``BaseException``, as ``asyncio.CancelledError`` is, so no handler
+    for a failure on the way up -- a utility's, a library's -- can take it
+    for one and carry on.
+    """
 
 
 # ############################################################################
@@ -134,37 +164,144 @@ def is_response(message: object) -> TypeGuard[dict]:
 class Channel:
     """The client's end: its requests in, and everything sent to it out.
 
+    ``reader`` is read unbuffered, a read returning whatever has arrived:
+    a buffered stream would wait to fill its buffer, and a thread waiting
+    on one holds a lock the interpreter needs at exit.
+
     The server may ask the client something while one of the client's own
     requests is in hand (``credentials.prompt``). Whatever else the client
     sends while that answer is awaited is kept, in order, and is what
-    :meth:`receive` returns next.
+    :meth:`receive` returns next. While a request runs, :meth:`take` picks
+    out of what has arrived the messages that cannot wait their turn.
     """
 
     # ------------------------------------------------------------------------
-    def __init__(self, reader: BinaryIO, writer: BinaryIO):
+    def __init__(self, reader: BinaryIO | RawIOBase, writer: BinaryIO):
         self._reader = reader
         self._writer = writer
         self._held: deque[object | RpcError] = deque()
         self._sent_requests = 0
 
+        # Each line read, parsed or its parse failure, in order; None once
+        # the input has ended, and nothing after it.
+        self._inbox: queue.Queue[object | RpcError | None] = queue.Queue()
+        self._ended = False
+        self._pump = threading.Thread(
+            target=self._read_lines, name="mailctl-api-input", daemon=True
+        )
+        self._pump.start()
+
+    # ------------------------------------------------------------------------
+    def _read_lines(self) -> None:
+        """The input thread: every line, as it arrives, until the end.
+
+        ``reader.read(n)`` must return what is there rather than wait for
+        ``n`` bytes, as an unbuffered stream's does. Blank lines are
+        skipped, and a stream that fails to read has ended as far as the
+        client goes.
+        """
+        pending = bytearray()
+
+        try:
+            while chunk := self._reader.read(READ_SIZE):
+                # Search only what arrived, so a long line costs one pass.
+                start, scan = 0, len(pending)
+                pending += chunk
+
+                while (end := pending.find(b"\n", scan)) != -1:
+                    self._accept(bytes(pending[start : end + 1]))
+                    start = scan = end + 1
+
+                del pending[:start]
+
+            self._accept(bytes(pending))
+
+        except (OSError, ValueError):
+            pass
+
+        finally:
+            self._inbox.put(None)
+
+    # ------------------------------------------------------------------------
+    def _accept(self, line: bytes) -> None:
+        """One line read, parsed or as its parse failure; blank is none."""
+        if not line.strip():
+            return
+
+        try:
+            self._inbox.put(parse(line))
+
+        except RpcError as error:
+            self._inbox.put(error)
+
     # ------------------------------------------------------------------------
     def _read(self) -> object | RpcError | None:
-        """The next message off the stream, a parse failure as its error,
-        or None at the end of input; blank lines are skipped."""
-        while True:
-            line = self._reader.readline()
+        """The next message read, waiting for it, a parse failure as its
+        error, or None at the end of input."""
+        if self._ended:
+            return None
 
-            if not line:
-                return None
+        message = self._inbox.get()
 
-            if not line.strip():
-                continue
+        if message is None:
+            self._ended = True
 
+        return message
+
+    # ------------------------------------------------------------------------
+    def _drain(self) -> None:
+        """Hold whatever has been read, without waiting for more."""
+        while not self._ended:
             try:
-                return parse(line)
+                message = self._inbox.get_nowait()
 
-            except RpcError as error:
-                return error
+            except queue.Empty:
+                return
+
+            if message is None:
+                self._ended = True
+
+            else:
+                self._held.append(message)
+
+    # ------------------------------------------------------------------------
+    def take(
+        self, select: Callable[[object], TypeGuard[_Taken]]
+    ) -> list[_Taken]:
+        """Take out of what the client has sent so far, without waiting
+        for more, the messages ``select`` picks, in order.
+
+        The rest stay held, in order, and :meth:`receive` returns them as
+        it would have.
+        """
+        self._drain()
+
+        taken: list[_Taken] = []
+        kept: deque[object | RpcError] = deque()
+
+        for message in self._held:
+            if not isinstance(message, RpcError) and select(message):
+                taken.append(message)
+
+            else:
+                kept.append(message)
+
+        self._held = kept
+
+        return taken
+
+    # ------------------------------------------------------------------------
+    def held(self) -> tuple[object, ...]:
+        """What the client has sent so far and nothing has received yet,
+        in order, without waiting for more; lines that did not parse are
+        left out."""
+        self._drain()
+
+        return tuple(
+            message
+            for message in self._held
+            if not isinstance(message, RpcError)
+        )
 
     # ------------------------------------------------------------------------
     def receive(self) -> object | None:
@@ -201,7 +338,13 @@ class Channel:
         self.send({"jsonrpc": JSONRPC, "method": method, "params": params})
 
     # ------------------------------------------------------------------------
-    def request(self, method: str, params: dict) -> object:
+    def request(
+        self,
+        method: str,
+        params: dict,
+        *,
+        interrupt: Callable[[object], bool] | None = None,
+    ) -> object:
         """Ask the client something, and wait for its answer.
 
         Returns the answer's ``result``; raises ``RpcError`` with the
@@ -209,6 +352,10 @@ class Channel:
         :class:`ClientGone` where its input ended first. The server's ids
         are strings of their own, so they cannot be mistaken for the
         client's.
+
+        A message ``interrupt`` picks, arriving first, ends the wait: it
+        is taken, and :class:`RequestCancelled` raised. An answer sent
+        after that answers nothing anyone is waiting on.
         """
         self._sent_requests += 1
         ident = f"mailctl-{self._sent_requests}"
@@ -235,6 +382,9 @@ class Channel:
                 self.fail(None, message)
 
                 raise RpcError(message.code, "")
+
+            if interrupt is not None and interrupt(message):
+                raise RequestCancelled(method)
 
             if is_response(message) and message.get("id") == ident:
                 error = message.get("error")

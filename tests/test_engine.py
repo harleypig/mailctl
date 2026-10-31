@@ -10,7 +10,7 @@ import threading
 import pytest
 from imapclient.exceptions import IMAPClientAbortError, IMAPClientError
 from sievelib.managesieve import Error as SieveProtocolError
-from utilities_support import criteria, mxroute
+from utilities_support import Checkpoint, Stopped, criteria, mxroute
 
 from mailctl import MailctlError, engine, utilities
 from mailctl.components.imap import connection_lost as imap_lost
@@ -681,3 +681,78 @@ def test_an_operation_without_its_session_raises_rather_than_crashing():
 
     with pytest.raises(MailctlError, match="no IMAP session"):
         utilities.folders.list_folders(mxroute())
+
+
+# ############################################################################
+# The checkpoint
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_the_checkpoint_is_asked_before_every_operation_saying_which_write(
+    fake_imap, imap_config
+):
+    """Red if an operation goes out unasked, or a read is called a write:
+    the API's cancel relies on both."""
+    checkpoint = Checkpoint(allowed=10)
+
+    with engine.connect(
+        imap_config, rules=False, checkpoint=checkpoint
+    ) as live:
+        utilities.folders.list_folders(live)
+        live.transport.create_folder("INBOX.New")
+
+    assert checkpoint.asked == [False, True]
+
+
+# ----------------------------------------------------------------------------
+def test_an_operation_the_checkpoint_stops_is_never_sent_nor_connected(
+    fake_imap, imap_config
+):
+    """What it raises reaches the caller as it was raised, before the half
+    is connected or the operation sent; the session goes on after it.
+    Red if the checkpoint is asked after the call, or not at all."""
+    checkpoint = Checkpoint(allowed=0)
+    live = engine.Session(
+        MXROUTE,
+        MxrouteTransport.open(imap_config),
+        rules=False,
+        checkpoint=checkpoint,
+    )
+
+    with pytest.raises(Stopped):
+        live.transport.create_folder("INBOX.New")
+
+    assert live.opened == ()
+    assert fake_imap.calls == []
+
+    checkpoint.allowed = 2
+    live.transport.create_folder("INBOX.New")
+    live.close()
+
+    assert fake_imap.names().count("create_folder") == 1
+
+
+# ----------------------------------------------------------------------------
+def test_an_idle_probe_before_a_write_is_asked_about_after_the_write(
+    fake_imap, imap_config
+):
+    """The write is asked about first, so a front-end that stops nothing
+    once a write is under way does not stop its probe either."""
+    clock = Clock()
+    checkpoint = Checkpoint(allowed=10)
+    live = engine.Session(
+        MXROUTE,
+        MxrouteTransport.open(imap_config),
+        rules=False,
+        clock=clock,
+        checkpoint=checkpoint,
+    )
+
+    utilities.folders.list_folders(live)
+    clock.now += engine.IDLE_PROBE_AFTER
+    live.transport.create_folder("INBOX.New")
+    live.close()
+
+    assert checkpoint.asked == [False, True, False]
+    assert "noop" in fake_imap.names()

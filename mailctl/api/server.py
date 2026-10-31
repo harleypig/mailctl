@@ -6,6 +6,14 @@ own arguments as the CLI does and opens the session, which connects
 nothing until a method needs a half; ``shutdown``, or the end of input,
 closes it. Requests are handled one at a time, in order.
 
+A request in hand can be cancelled with the ``$/cancelRequest``
+notification, naming its id. It stops before the next exchange with the
+server, or before it starts, and is answered with ``REQUEST_CANCELLED``,
+its data saying nothing was sent. A request that has sent a write is never
+stopped -- a write may have landed, and is never sent again -- so it runs
+to its end and is answered as it would have been: a result means it ran.
+A cancel for an id that is not in hand or waiting its turn is ignored.
+
 A change is plan, decide, execute across the boundary. A ``.plan`` method
 keeps the plan record here under a fresh id and returns the id beside the
 plan's document; the ``.execute`` method takes the id and nothing the plan
@@ -22,7 +30,7 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, TypeGuard
 
 from .. import MailctlError, __version__, engine, json_output, utilities
 from ..config import SIEVE_TLS_MODES, Config, Secret, load_config
@@ -49,8 +57,10 @@ from .protocol import (
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
     REFUSED,
+    REQUEST_CANCELLED,
     Channel,
     ClientGone,
+    RequestCancelled,
     RpcError,
     is_response,
 )
@@ -81,6 +91,10 @@ KINDS = {
 LIST_KINDS = {str: "a list of strings", int: "a list of whole numbers"}
 
 _ABSENT = object()
+
+# The notification that cancels a request, named as the Language Server
+# Protocol names it, so a client that speaks LSP already knows it.
+CANCEL_METHOD = "$/cancelRequest"
 
 
 # ############################################################################
@@ -210,6 +224,14 @@ class Server:
         self._log = False
         self._current: object = None
 
+        # The request in hand: whether the client has cancelled it, and
+        # whether it has sent a write, after which a cancel is too late.
+        self._cancel_asked = False
+        self._committed = False
+
+        # Ids of requests cancelled while they waited their turn.
+        self._cancelled_waiting: set[str | int] = set()
+
     # ------------------------------------------------------------------------
     def run(self) -> None:
         """Serve requests until ``shutdown`` or the end of input, then
@@ -263,6 +285,8 @@ class Server:
         name = message["method"]
         notification = "id" not in message
         method = METHODS.get(name)
+        waited_cancelled = ident in self._cancelled_waiting
+        self._cancelled_waiting.discard(ident)
 
         if method is None:
             if not notification:
@@ -274,8 +298,15 @@ class Server:
             return False
 
         self._current = ident
+        self._cancel_asked = self._committed = False
 
         try:
+            if waited_cancelled:
+                raise RequestCancelled(name)
+
+            # A cancel that came while the request waited its turn.
+            self._checkpoint(False)
+
             params = message.get("params", {})
 
             if not isinstance(params, dict):
@@ -284,6 +315,17 @@ class Server:
                 )
 
             result = method(self, Params(params), ident)
+
+        except RequestCancelled:
+            return self._answer(
+                notification,
+                ident,
+                RpcError(
+                    REQUEST_CANCELLED,
+                    "the request was cancelled; nothing was sent",
+                    {"sent": False},
+                ),
+            )
 
         except RpcError as error:
             self._diagnose(ident, name)
@@ -311,6 +353,7 @@ class Server:
 
         finally:
             self._current = None
+            self._cancel_asked = self._committed = False
 
         if not notification:
             try:
@@ -332,6 +375,52 @@ class Server:
             self.channel.fail(ident, error)
 
         return False
+
+    # ------------------------------------------------------------------------
+    def _checkpoint(self, write: bool) -> None:
+        """The session's ``checkpoint``: raise :class:`RequestCancelled`
+        where the client has cancelled the request in hand and nothing it
+        asked to be written has been sent; once ``write`` is True it never
+        raises again for this request."""
+        if self._committed:
+            return
+
+        for cancel in self.channel.take(is_cancel):
+            self._cancel(cancel["params"]["id"])
+
+        if self._cancel_asked:
+            raise RequestCancelled(self._current)
+
+        self._committed = write
+
+    # ------------------------------------------------------------------------
+    def _cancel(self, target: str | int) -> None:
+        """Mark ``target`` cancelled: the request in hand, or one waiting
+        its turn. Any other id is not in hand, and is ignored."""
+        if self._current is not None and target == self._current:
+            self._cancel_asked = True
+
+            return
+
+        waiting = {
+            message.get("id")
+            for message in self.channel.held()
+            if isinstance(message, dict)
+            and "method" in message
+            and is_id(message.get("id"))
+        }
+
+        if target in waiting:
+            self._cancelled_waiting.add(target)
+
+    # ------------------------------------------------------------------------
+    def _cancels_current(self, message: object) -> bool:
+        """Whether ``message`` cancels the request in hand."""
+        return (
+            is_cancel(message)
+            and self._current is not None
+            and message["params"]["id"] == self._current
+        )
 
     # ------------------------------------------------------------------------
     def _diagnose(self, ident: object, name: str) -> None:
@@ -409,10 +498,13 @@ class Server:
     def _prompt(self, text: str) -> Secret:
         """``Config.prompter``: ask the client, and take its answer as the
         ``Secret`` the line was parsed into."""
+        # A cancel ends the wait, since the client may not answer once it
+        # has cancelled; nothing is sent before the login this asks for.
         try:
             answer = self.channel.request(
                 "credentials.prompt",
                 {"request": self._current, "prompt": text},
+                interrupt=None if self._committed else self._cancels_current,
             )
 
         except ClientGone as exc:
@@ -494,7 +586,9 @@ def initialize(server: Server, params: Params, _ident: object) -> dict:
     offer = engine.capabilities_for(config)
 
     session = server._stack.enter_context(
-        engine.connect(config, progress=server._progress)
+        engine.connect(
+            config, progress=server._progress, checkpoint=server._checkpoint
+        )
     )
     server.config, server.session, server._log = config, session, log
 
@@ -1407,6 +1501,38 @@ def plan_discard(server: Server, params: Params, _ident: object) -> None:
 
 
 # ----------------------------------------------------------------------------
+def cancel_request(server: Server, params: Params, _ident: object) -> None:
+    """``$/cancelRequest``, met in its turn rather than while a request
+    runs: a request it names still waiting behind it is cancelled, and any
+    other id -- answered already, or never sent -- is ignored. Sent as a
+    request, it is answered with null."""
+    target = params.take("id", object)
+    params.done()
+
+    if is_id(target):
+        server._cancel(target)
+
+
+# ----------------------------------------------------------------------------
+def is_id(value: object) -> TypeGuard[str | int]:
+    """Whether ``value`` is a request id: a string or a whole number."""
+    return isinstance(value, str | int) and not isinstance(value, bool)
+
+
+# ----------------------------------------------------------------------------
+def is_cancel(message: object) -> TypeGuard[dict]:
+    """Whether ``message`` is a ``$/cancelRequest`` notification naming an
+    id; one sent as a request waits its turn like any other."""
+    return (
+        isinstance(message, dict)
+        and message.get("method") == CANCEL_METHOD
+        and "id" not in message
+        and isinstance(message.get("params"), dict)
+        and is_id(message["params"].get("id"))
+    )
+
+
+# ----------------------------------------------------------------------------
 def filter_criteria(document: dict) -> Criteria:
     """A filter document's criteria, as ``filter add --filter`` reads one.
 
@@ -1562,9 +1688,12 @@ METHODS: dict[str, Callable[[Server, Params, object], Any]] = {
     "server.baseline.check": server_baseline_check,
     "config.migrate.plan": config_migrate_plan,
     "config.migrate.execute": config_migrate_execute,
+    CANCEL_METHOD: cancel_request,
 }
 
-PROTOCOL_METHODS = frozenset({"initialize", "shutdown", "plan.discard"})
+PROTOCOL_METHODS = frozenset(
+    {"initialize", "shutdown", "plan.discard", CANCEL_METHOD}
+)
 
 
 # ############################################################################

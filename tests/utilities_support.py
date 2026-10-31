@@ -100,3 +100,34 @@ def mxroute(sieve=None, imap=None) -> Session:
     Either may be None, for a half that was not opened.
     """
     return Session(MXROUTE, MxrouteTransport(sieve=sieve, imap=imap))
+
+
+class Stopped(BaseException):
+    """What :class:`Checkpoint` raises: a stop, as the API's cancel is one,
+    which no handler of failures on the way up takes for a failure."""
+
+
+class Checkpoint:
+    """A session's ``checkpoint`` that lets ``allowed`` operations go and
+    stops the next, or with ``before_write`` stops the first write instead;
+    ``asked`` records each operation it was asked about, True for a
+    write."""
+
+    # ------------------------------------------------------------------------
+    def __init__(self, allowed: int = 1_000, *, before_write: bool = False):
+        self.allowed = allowed
+        self.before_write = before_write
+        self.asked: list[bool] = []
+
+    # ------------------------------------------------------------------------
+    def __call__(self, write: bool) -> None:
+        self.asked.append(write)
+
+        if len(self.asked) > self.allowed or (write and self.before_write):
+            raise Stopped
+
+
+# ----------------------------------------------------------------------------
+def checked(session: Session, checkpoint: Checkpoint) -> Session:
+    """``session``'s provider and connections, with ``checkpoint``."""
+    return Session(session.provider, session.connection, checkpoint=checkpoint)

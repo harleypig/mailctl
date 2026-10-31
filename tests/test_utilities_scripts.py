@@ -10,7 +10,14 @@ conftest, so folder normalization and planning run for real.
 """
 
 import pytest
-from utilities_support import FakeSieveSession, criteria, mxroute
+from utilities_support import (
+    Checkpoint,
+    FakeSieveSession,
+    Stopped,
+    checked,
+    criteria,
+    mxroute,
+)
 
 from mailctl import MailctlError, utilities
 from mailctl.cli import error_text
@@ -287,3 +294,34 @@ def test_the_switch_refusal_says_what_ran_and_the_cli_how_to_see_it(
         "change again against what it runs now. 'mailctl filterset list' "
         "shows it."
     )
+
+
+# ############################################################################
+# Stopped part-way
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("kind", sorted(SCRIPT_PLANS))
+def test_an_upload_stopped_before_its_first_write_stores_nothing(
+    kind, sessions, imap_config, fake_sieve, tmp_path
+):
+    """The re-read and CHECKSCRIPT are reads, asked about before the store,
+    so a front-end that stops before a write stops every script execute
+    with nothing stored. The backup is written before the server sees
+    anything, so it is there. Red if the store goes out unasked."""
+    imap_config.backup_dir = tmp_path / "backups"
+    plan = SCRIPT_PLANS[kind](sessions, imap_config)
+    before = fake_sieve.script
+    fake_sieve.calls.clear()
+
+    with pytest.raises(Stopped):
+        _execute(
+            checked(sessions, Checkpoint(before_write=True)),
+            imap_config,
+            plan,
+        )
+
+    assert fake_sieve.names() == ["get_script", "check_script"]
+    assert fake_sieve.script == before
+    assert len(list((tmp_path / "backups").iterdir())) == 1

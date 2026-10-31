@@ -10,7 +10,7 @@ raise on the malformed, mislabelled mail that real mailboxes hold.
 
 import pytest
 from imapclient.response_parser import parse_fetch_response
-from utilities_support import mxroute
+from utilities_support import Checkpoint, Stopped, checked, criteria, mxroute
 
 from mailctl import MailctlError, utilities
 from mailctl.components.imap import structure_has_attachment
@@ -802,3 +802,34 @@ def test_a_raw_query_is_sorted_by_the_server_as_given(sessions, fake_imap):
 def test_an_unknown_sort_key_is_refused_naming_the_known_ones(sessions):
     with pytest.raises(MailctlError, match="size, sent, received"):
         utilities.messages.list_messages(sessions, "INBOX", order=by("from"))
+
+
+# ############################################################################
+# Stopped part-way
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_listing_stopped_at_its_checkpoint_fetches_no_further_page(
+    sessions, fake_imap
+):
+    """Each page is its own exchange, so a front-end's cancel lands between
+    pages. Three messages the re-check drops, a page of one each: the
+    folder list, the search, and the first page go, and the second page
+    is stopped. Red if a stopped listing reads another page."""
+    fake_imap.messages = {
+        uid: f"From: a{uid}@example.com\r\n\r\nbody\r\n".encode()
+        for uid in (1, 2, 3)
+    }
+    checkpoint = Checkpoint(allowed=3)
+
+    with pytest.raises(Stopped):
+        utilities.messages.list_messages(
+            checked(sessions, checkpoint),
+            "INBOX",
+            criteria=criteria("From", "nobody@example.invalid"),
+            limit=1,
+        )
+
+    assert len(fake_imap.fetches) == 1
+    assert checkpoint.asked == [False] * 4
