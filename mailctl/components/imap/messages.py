@@ -146,6 +146,8 @@ class PartialExecution(MailctlError):
         total: int,
         fallback: bool,
         destination: str = "",
+        *,
+        code: str,
     ):
         self.result = result
         self.total = total
@@ -178,7 +180,8 @@ class PartialExecution(MailctlError):
         super().__init__(
             f"{cause} -- stopped part-way: {done} of {total} message(s) were "
             f"fully processed, in batches of {BULK_CHUNK}; later batches were "
-            f"not touched. {advice}"
+            f"not touched. {advice}",
+            code=code,
         )
 
 

@@ -18,7 +18,7 @@ import os
 import sys
 
 from .protocol import Channel
-from .server import Server, build_parser
+from .server import ArgumentsRejected, Server, build_parser, rejected_error
 
 __all__ = ["main"]
 
@@ -27,7 +27,21 @@ __all__ = ["main"]
 def main(argv: list[str] | None = None) -> int:
     """Serve one client on stdin and stdout until it shuts down or its
     input ends."""
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    rejected = None
+
+    # A bad argument is said on stderr as argparse says it, and kept to
+    # answer the client's initialize with: exiting would reach the client
+    # as the end of its input, with nothing to say why.
+    try:
+        args = parser.parse_args(argv)
+
+    except ArgumentsRejected as exc:
+        parser.print_usage(sys.stderr)
+        print(f"{parser.prog}: error: {exc.message}", file=sys.stderr)
+        args = parser.parse_args([])
+        rejected = rejected_error(exc.message)
+
     stdout = sys.stdout.buffer
 
     # The protocol owns the real stdout. Anything else printed would be a
@@ -40,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
             ) as stdin,
             contextlib.redirect_stdout(sys.stderr),
         ):
-            Server(args, Channel(stdin, stdout)).run()
+            Server(args, Channel(stdin, stdout), rejected=rejected).run()
 
     except KeyboardInterrupt:
         return 130

@@ -364,6 +364,91 @@ def test_initialize_refuses_a_bad_setting_and_a_second_initialize(start):
 
 
 # ----------------------------------------------------------------------------
+def test_a_setting_refused_reaches_the_client_with_a_code(
+    start, tmp_path, monkeypatch
+):
+    """Red if a refusal of the configuration reaches the client uncoded
+    (#352): a client branches on ``code``, never on the message."""
+    exposed = tmp_path / "exposed-password"
+    exposed.write_text("not the account's\n", encoding="utf-8")
+    exposed.chmod(0o644)
+
+    unknown = refusal(start("--provider", "nosuch").request("initialize"))
+
+    # The API's own --imap-port takes a number, so a bad port can only
+    # reach it from the environment, as one from a config file would.
+    monkeypatch.setenv("MAILCTL_IMAP_PORT", "many")
+    port = refusal(start().request("initialize"))
+    monkeypatch.delenv("MAILCTL_IMAP_PORT")
+    mode = refusal(
+        initialized(start, "--password-file", str(exposed)).request(
+            "filter.list"
+        )
+    )
+
+    assert unknown["code"] == "unknown_provider"
+    assert port["code"] == "setting_invalid"
+    assert port["fields"] == {"setting": "imap_port"}
+    assert mode["code"] == "password_file_mode"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "code", "fields"),
+    [
+        (["--imap-port", "many"], "setting_invalid", {"setting": "imap_port"}),
+        (["--pasword", "Sentinel-7f3a"], "invalid_arguments", {}),
+        (["--fol", "INBOX"], "invalid_arguments", {}),
+    ],
+)
+def test_a_bad_argument_answers_initialize_rather_than_ending_the_input(
+    start, argv, code, fields
+):
+    """#352: a process that exits on a bad argument reaches its client as
+    the end of its output. It answers initialize with a code instead,
+    quoting no value given, and takes no option by a prefix."""
+    client = start(*argv)
+    refused = refusal(client.request("initialize"))
+    client.request("shutdown")
+    status, _stderr = client.close()
+
+    assert refused["code"] == code
+    assert refused["fields"] == fields
+    assert "Sentinel-7f3a" not in json.dumps(refused)
+    assert status == 0
+
+
+# ----------------------------------------------------------------------------
+def test_a_connection_failure_reaches_the_client_with_a_code(start):
+    """Red if a server that cannot be reached is refused uncoded (#352):
+    the code names the condition, the same on either half, and the
+    provider's advice rides in ``fields``."""
+    client = initialized(start)
+    state = client.read_state()
+    state["unreachable"] = True
+    client.write_state(state)
+
+    rules = refusal(client.request("filter.list"))
+    mail = refusal(client.request("mail.search", {"filter": GITHUB_FILTER}))
+
+    state["unreachable"] = "tls"
+    client.write_state(state)
+    rules_tls = refusal(client.request("filter.list"))
+    mail_tls = refusal(
+        client.request("mail.search", {"filter": GITHUB_FILTER})
+    )
+
+    assert rules["code"] == mail["code"] == "connection_failed"
+    assert "cannot reach" in rules["message"]
+    assert "cannot reach" in mail["message"]
+    assert rules["fields"]["advice"] == "try_setting"
+    assert mail["fields"]["advice"] == "check_settings"
+    assert rules_tls["code"] == mail_tls["code"] == "tls_failed"
+    assert "TLS failure" in rules_tls["message"]
+    assert "TLS failure" in mail_tls["message"]
+
+
+# ----------------------------------------------------------------------------
 def test_a_method_before_initialize_is_refused(start):
     client = start()
 

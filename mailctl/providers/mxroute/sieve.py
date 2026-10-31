@@ -144,7 +144,7 @@ def reject_actions(requested: Iterable[str]) -> None:
 
     for name, explanation in MXROUTE_FORBIDDEN_ACTIONS.items():
         if name in requested:
-            raise MailctlError(explanation)
+            raise MailctlError(explanation, code="forbidden_action")
 
     for name, label in UNIMPLEMENTED_ACTIONS.items():
         if name in requested:
@@ -297,7 +297,9 @@ def check_disabled_extensions(config: Config) -> None:
             f"disabled_extensions: unknown Sieve extension(s) "
             f"{', '.join(repr(name) for name in unknown)} "
             f"(from {disabled_source(config).describe()}). Known: "
-            f"{', '.join(KNOWN_EXTENSIONS)}"
+            f"{', '.join(KNOWN_EXTENSIONS)}",
+            code="setting_invalid",
+            fields={"setting": "disabled_extensions"},
         )
 
 
@@ -336,7 +338,8 @@ def check_rule_extensions(config: Config, actions: list) -> None:
         raise MailctlError(
             f"{disabled_message(config, blocked)}, and this filter needs "
             f"{it}. Drop the action that needs {it}, or take {it} out of "
-            f"disabled_extensions."
+            f"disabled_extensions.",
+            code="extension_disabled",
         )
 
 
@@ -361,7 +364,8 @@ def check_criteria_extensions(
         raise MailctlError(
             f"{disabled_message(config, blocked)}, and this filter's criteria "
             f"need {it}. Drop the criterion that needs {it}, or take {it} "
-            f"out of disabled_extensions."
+            f"out of disabled_extensions.",
+            code="extension_disabled",
         )
 
     listed = {name.lower() for name in advertised}

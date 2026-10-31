@@ -34,7 +34,8 @@ def provider_named(name: str, origin: Source | None = None) -> Provider:
 
         raise MailctlError(
             f"provider: {name!r} is not a known provider{where}. Known: "
-            f"{', '.join(sorted(PROVIDERS))}"
+            f"{', '.join(sorted(PROVIDERS))}",
+            code="unknown_provider",
         )
 
     return provider

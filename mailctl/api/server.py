@@ -36,7 +36,7 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO, TypeGuard
+from typing import Any, NoReturn, TextIO, TypeGuard
 
 from .. import MailctlError, __version__, engine, json_output, utilities
 from ..config import SIEVE_TLS_MODES, Config, Secret, load_config
@@ -224,8 +224,10 @@ class Server:
         channel: Channel,
         *,
         stderr: TextIO | None = None,
+        rejected: MailctlError | None = None,
     ):
         self.args = args
+        self.rejected = rejected
         self.channel = channel
         self.stderr = stderr or sys.stderr
         self.config: Config | None = None
@@ -619,6 +621,9 @@ def initialize(server: Server, params: Params, _ident: object) -> dict:
             "the session is already initialized",
             code="already_initialized",
         )
+
+    if server.rejected is not None:
+        raise server.rejected
 
     config = load_config(server.args)
     config.prompter = server._prompt
@@ -1735,6 +1740,44 @@ PROTOCOL_METHODS = frozenset(
 
 
 # ----------------------------------------------------------------------------
+class ArgumentsRejected(Exception):
+    """The process's own arguments were refused, with argparse's words."""
+
+    # ------------------------------------------------------------------------
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+# ----------------------------------------------------------------------------
+class Parser(argparse.ArgumentParser):
+    """argparse's parser, raising its refusal rather than exiting.
+
+    A process that exits on a bad argument reaches its client as the end
+    of its output and nothing more, so the refusal is kept to answer the
+    client's ``initialize`` with. No option is taken by a prefix of its
+    name, as on the command line.
+    """
+
+    # ------------------------------------------------------------------------
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, allow_abbrev=False, **kwargs)
+
+    # ------------------------------------------------------------------------
+    def error(self, message: str) -> NoReturn:
+        raise ArgumentsRejected(message)
+
+
+# ----------------------------------------------------------------------------
+def rejected_error(message: str) -> MailctlError:
+    """The refusal ``initialize`` answers with for arguments refused with
+    ``message``, in words that quote no value given."""
+    said, code, fields = json_output.rejection(message)
+
+    return MailctlError(said, code=code, fields=fields)
+
+
+# ----------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
     """The process's arguments: the CLI's connection settings, so a
     client starts the API with what a user would give ``mailctl``.
@@ -1742,7 +1785,7 @@ def build_parser() -> argparse.ArgumentParser:
     The one left out is ``--password``: an argument is readable in the
     process list, and the API has its own way to ask (credentials.prompt).
     """
-    parser = argparse.ArgumentParser(
+    parser = Parser(
         prog="mailctl-api",
         description="Serve mailctl's operations as JSON-RPC 2.0 over "
         "standard input and output, one message per line.",

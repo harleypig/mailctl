@@ -93,6 +93,8 @@ def list_folder_counts(session: Session) -> FolderCounts:
             f"the mail server does not advertise "
             f"{support.missing}, and without it every folder would be a "
             f"request of its own",
+            code="server_capability_missing",
+            fields={"capability": support.missing},
         )
 
     listing = list_folders(session)

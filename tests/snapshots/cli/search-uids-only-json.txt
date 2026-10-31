@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-{"version": 2, "error": {"message": "--uids-only prints a listing's UIDs; it cannot be combined with --json or --build-filter"}}
+{"version": 2, "error": {"message": "--uids-only prints a listing's UIDs; it cannot be combined with --json or --build-filter", "code": "invalid_arguments"}}
 
 --- sieve calls
 --- imap calls

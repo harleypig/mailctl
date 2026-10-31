@@ -84,14 +84,16 @@ def imap_session(
 
     except ImapTLSError as exc:
         raise MailctlError(
-            f"{exc} Port 993 is implicit TLS; port 143 uses STARTTLS."
+            f"{exc} Port 993 is implicit TLS; port 143 uses STARTTLS.",
+            code="tls_failed",
         ) from exc
 
     except ImapConnectionError as exc:
         raise MailctlError(
             f"{exc} Check the IMAP host and port settings.",
-            code="check_settings",
+            code="connection_failed",
             fields={
+                "advice": "check_settings",
                 "reason": str(exc),
                 "settings": ("imap_host", "imap_port"),
             },

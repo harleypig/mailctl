@@ -95,9 +95,10 @@ class ImapAuthenticationError(MailctlError):
     ``reason`` is the server's own refusal, which never holds the password.
     """
 
-    def __init__(self, username: str, reason: str):
+    def __init__(self, username: str, reason: str, *, code: str):
         super().__init__(
-            f"IMAP authentication failed for {username!r} [{reason}]"
+            f"IMAP authentication failed for {username!r} [{reason}]",
+            code=code,
         )
         self.username = username
         self.reason = reason
@@ -219,7 +220,9 @@ class ImapSession:
                 unopened.pop_all()
 
         except LoginError as exc:
-            raise ImapAuthenticationError(self.username, str(exc)) from exc
+            raise ImapAuthenticationError(
+                self.username, str(exc), code="auth_failed"
+            ) from exc
 
         except UnicodeEncodeError:
             # imaplib sends LOGIN's arguments as ASCII, and its error names
@@ -237,16 +240,18 @@ class ImapSession:
 
         except ssl.SSLError as exc:
             raise ImapTLSError(
-                f"TLS failure against {where} -- {exc}."
+                f"TLS failure against {where} -- {exc}.", code="tls_failed"
             ) from exc
 
         except (socket.gaierror, OSError) as exc:
             raise ImapConnectionError(
-                f"cannot reach {where} -- {exc}."
+                f"cannot reach {where} -- {exc}.", code="connection_failed"
             ) from exc
 
         except IMAPClientError as exc:
-            raise MailctlError(f"mail server error -- {exc}") from exc
+            raise MailctlError(
+                f"mail server error -- {exc}", code="connection_failed"
+            ) from exc
 
         self.client = client
         self._selected = None
@@ -323,7 +328,9 @@ class ImapSession:
     def _require_client(self) -> IMAPClient:
         """Return the live client or fail loudly."""
         if self.client is None:
-            raise MailctlError("IMAP session is not open")
+            raise MailctlError(
+                "IMAP session is not open", code="internal_error"
+            )
 
         return self.client
 
@@ -347,13 +354,17 @@ class ImapSession:
             listing = client.list_folders()
 
         except IMAPClientError as exc:
-            raise MailctlError(f"LIST failed -- {exc}") from exc
+            raise MailctlError(
+                f"LIST failed -- {exc}", code="folder_list_failed"
+            ) from exc
 
         try:
             subscribed = client.list_sub_folders()
 
         except IMAPClientError as exc:
-            raise MailctlError(f"LSUB failed -- {exc}") from exc
+            raise MailctlError(
+                f"LSUB failed -- {exc}", code="folder_list_failed"
+            ) from exc
 
         self._folders, delimiter = self._decode_listing(listing)
         self._subscribed, _ = self._decode_listing(subscribed)
@@ -552,7 +563,9 @@ class ImapSession:
             typ, data = imap._simple_command("LIST", *arguments)
 
         except IMAPClientError as exc:
-            raise MailctlError(f"LIST-STATUS failed -- {exc}") from exc
+            raise MailctlError(
+                f"LIST-STATUS failed -- {exc}", code="folder_counts_failed"
+            ) from exc
 
         finally:
             imap.untagged_responses.pop("LIST", None)
@@ -566,7 +579,10 @@ class ImapSession:
                 else str(reason)
             )
 
-            raise MailctlError(f"LIST-STATUS failed -- {typ} {text}")
+            raise MailctlError(
+                f"LIST-STATUS failed -- {typ} {text}",
+                code="folder_counts_failed",
+            )
 
         return parse_status(status)
 
@@ -611,7 +627,8 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"could not subscribe to folder {folder!r} -- {exc}"
+                f"could not subscribe to folder {folder!r} -- {exc}",
+                code="subscription_failed",
             ) from exc
 
         self._read_folders()
@@ -620,7 +637,8 @@ class ImapSession:
             raise MailctlError(
                 f"the server accepted SUBSCRIBE for {folder!r} but still "
                 f"does not list it as subscribed (LSUB), so mail clients "
-                f"will not show it"
+                f"will not show it",
+                code="subscribe_unconfirmed",
             )
 
     # ------------------------------------------------------------------------
@@ -634,7 +652,8 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"could not unsubscribe from folder {folder!r} -- {exc}"
+                f"could not unsubscribe from folder {folder!r} -- {exc}",
+                code="subscription_failed",
             ) from exc
 
         self._read_folders()
@@ -650,7 +669,8 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"could not create folder {folder!r} -- {exc}"
+                f"could not create folder {folder!r} -- {exc}",
+                code="folder_create_failed",
             ) from exc
 
         self._read_folders()
@@ -670,7 +690,8 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"could not rename folder {old!r} to {new!r} -- {exc}"
+                f"could not rename folder {old!r} to {new!r} -- {exc}",
+                code="folder_rename_failed",
             ) from exc
 
         # The selected folder may have been the one renamed; select afresh
@@ -688,7 +709,8 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"could not read the message count of {folder!r} -- {exc}"
+                f"could not read the message count of {folder!r} -- {exc}",
+                code="message_count_failed",
             ) from exc
 
         return int(status[b"MESSAGES"])
@@ -707,7 +729,9 @@ class ImapSession:
             client.noop()
 
         except IMAPClientError as exc:
-            raise MailctlError(f"NOOP failed -- {exc}") from exc
+            raise MailctlError(
+                f"NOOP failed -- {exc}", code="noop_failed"
+            ) from exc
 
     # ------------------------------------------------------------------------
     def search_uids(self, criteria: SearchCriteria, folder: str) -> list[int]:
@@ -745,7 +769,7 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"search in {folder!r} failed -- {exc}"
+                f"search in {folder!r} failed -- {exc}", code="search_failed"
             ) from exc
 
     # ------------------------------------------------------------------------
@@ -774,7 +798,9 @@ class ImapSession:
                 )
 
         except IMAPClientError as exc:
-            raise MailctlError(f"fetch failed -- {exc}") from exc
+            raise MailctlError(
+                f"fetch failed -- {exc}", code="fetch_failed"
+            ) from exc
 
         return [
             _fetched(uid, data, folder)
@@ -798,7 +824,9 @@ class ImapSession:
             fetched = client.fetch(uids, SUMMARY_ITEMS)
 
         except IMAPClientError as exc:
-            raise MailctlError(f"fetch failed -- {exc}") from exc
+            raise MailctlError(
+                f"fetch failed -- {exc}", code="fetch_failed"
+            ) from exc
 
         return [
             _fetched(uid, fetched[uid], folder)
@@ -843,7 +871,12 @@ class ImapSession:
                 )
 
                 raise PartialExecution(
-                    exc, done, plan.count, fallback, plan.destination
+                    exc,
+                    done,
+                    plan.count,
+                    fallback,
+                    plan.destination,
+                    code="partial_execution",
                 ) from exc
 
             done = MailActionResult(
@@ -939,7 +972,9 @@ class ImapSession:
             client.add_flags(uids, flags)
 
         except IMAPClientError as exc:
-            raise MailctlError(f"could not set flags -- {exc}") from exc
+            raise MailctlError(
+                f"could not set flags -- {exc}", code="flags_failed"
+            ) from exc
 
     # ------------------------------------------------------------------------
     def add_folder_flags(
@@ -982,7 +1017,8 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"could not {verb} flags in {folder!r} -- {exc}"
+                f"could not {verb} flags in {folder!r} -- {exc}",
+                code="flags_failed",
             ) from exc
 
     # ------------------------------------------------------------------------
@@ -1022,7 +1058,8 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"could not move messages to {destination!r} -- {exc}"
+                f"could not move messages to {destination!r} -- {exc}",
+                code="move_failed",
             ) from exc
 
         return len(uids)
@@ -1063,7 +1100,8 @@ class ImapSession:
             )
 
             raise MailctlError(
-                f"could not copy messages to {destination!r} -- {exc}.{done}"
+                f"could not copy messages to {destination!r} -- {exc}.{done}",
+                code="copy_failed",
             ) from exc
 
         return copied
@@ -1088,7 +1126,9 @@ class ImapSession:
                 client.expunge()
 
         except IMAPClientError as exc:
-            raise MailctlError(f"could not delete messages -- {exc}") from exc
+            raise MailctlError(
+                f"could not delete messages -- {exc}", code="delete_failed"
+            ) from exc
 
         return len(uids)
 
@@ -1119,12 +1159,17 @@ class ImapSession:
             fetched = client.fetch([uid], items)
 
         except IMAPClientError as exc:
-            raise MailctlError(f"fetch failed -- {exc}") from exc
+            raise MailctlError(
+                f"fetch failed -- {exc}", code="fetch_failed"
+            ) from exc
 
         data = fetched.get(uid)
 
         if not data:
-            raise NoSuchMessage(f"no message with uid {uid} in {folder!r}")
+            raise NoSuchMessage(
+                f"no message with uid {uid} in {folder!r}",
+                code="no_such_message",
+            )
 
         return data
 
@@ -1143,7 +1188,8 @@ class ImapSession:
         except IMAPClientError as exc:
             raise MailctlError(
                 f"IMAP search {expression!r} failed -- {exc}. Use IMAP "
-                f"syntax, e.g. 'FROM boss@example.com' or 'UNSEEN'."
+                f"syntax, e.g. 'FROM boss@example.com' or 'UNSEEN'.",
+                code="raw_query_failed",
             ) from exc
 
     # ------------------------------------------------------------------------
@@ -1186,7 +1232,9 @@ class ImapSession:
             )
 
         except IMAPClientError as exc:
-            raise MailctlError(f"sort in {folder!r} failed -- {exc}") from exc
+            raise MailctlError(
+                f"sort in {folder!r} failed -- {exc}", code="search_failed"
+            ) from exc
 
 
 # ----------------------------------------------------------------------------

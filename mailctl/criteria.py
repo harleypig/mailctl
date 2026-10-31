@@ -133,14 +133,17 @@ def parse_date(text: str, what: str = "a date") -> date:
     """
     if not _ISO_DATE.fullmatch(text.strip()):
         raise MailctlError(
-            f"{what} must be a date as YYYY-MM-DD, not {text!r}"
+            f"{what} must be a date as YYYY-MM-DD, not {text!r}",
+            code="date_invalid",
         )
 
     try:
         return date.fromisoformat(text.strip())
 
     except ValueError as exc:
-        raise MailctlError(f"{what}: {text!r} is not a real date") from exc
+        raise MailctlError(
+            f"{what}: {text!r} is not a real date", code="date_invalid"
+        ) from exc
 
 
 # ----------------------------------------------------------------------------
@@ -152,13 +155,16 @@ def parse_age(text: str, what: str = "an age") -> int:
     if match is None:
         raise MailctlError(
             f"{what} must be a whole number of days or weeks, as 30d or "
-            f"3w, not {text!r}"
+            f"3w, not {text!r}",
+            code="age_invalid",
         )
 
     days = int(match[1]) * AGE_UNITS[match[2]]
 
     if days < 1:
-        raise MailctlError(f"{what} must be at least 1d, not {text!r}")
+        raise MailctlError(
+            f"{what} must be at least 1d, not {text!r}", code="age_invalid"
+        )
 
     return days
 
@@ -268,7 +274,9 @@ class Term:
     # ------------------------------------------------------------------------
     def __post_init__(self):
         if not self.header:
-            raise MailctlError("a criterion needs a header name")
+            raise MailctlError(
+                "a criterion needs a header name", code="header_name_empty"
+            )
 
 
 @dataclass
@@ -299,12 +307,14 @@ class Criteria:
     def __post_init__(self):
         if self.match not in MATCH_MODES:
             raise MailctlError(
-                f"the match mode must be one of {', '.join(MATCH_MODES)}"
+                f"the match mode must be one of {', '.join(MATCH_MODES)}",
+                code="match_invalid",
             )
 
         if self.compare not in COMPARE_OPS:
             raise MailctlError(
-                f"the comparison must be one of {', '.join(COMPARE_OPS)}"
+                f"the comparison must be one of {', '.join(COMPARE_OPS)}",
+                code="compare_invalid",
             )
 
         if self.body:
@@ -312,13 +322,15 @@ class Criteria:
 
         if self.older_than is not None and self.older_than < 1:
             raise MailctlError(
-                f"an age must be at least one day, not {self.older_than}"
+                f"an age must be at least one day, not {self.older_than}",
+                code="age_invalid",
             )
 
         if self.since and self.before and self.since >= self.before:
             raise MailctlError(
                 f"no message can arrive on or after {self.since} and before "
-                f"{self.before}; since must be earlier than before"
+                f"{self.before}; since must be earlier than before",
+                code="date_range_empty",
             )
 
     # ------------------------------------------------------------------------
@@ -329,7 +341,10 @@ class Criteria:
     def add(self, header: str, value: str) -> None:
         """Append a term, canonicalizing the header name."""
         if value == "":
-            raise MailctlError(f"criterion for {header!r} has an empty value")
+            raise MailctlError(
+                f"criterion for {header!r} has an empty value",
+                code="criterion_empty",
+            )
 
         self.terms.append(Term(canonical_header(header), value))
 
@@ -337,7 +352,9 @@ class Criteria:
     def add_body(self, value: str) -> None:
         """Append a body test: the body contains ``value``."""
         if value == "":
-            raise MailctlError("a body criterion has an empty value")
+            raise MailctlError(
+                "a body criterion has an empty value", code="criterion_empty"
+            )
 
         self.body.append(value)
         self._check_body_compare()
@@ -463,19 +480,24 @@ class Criteria:
 
         if match not in MATCH_MODES:
             raise MailctlError(
-                f"filter: 'match' must be one of {', '.join(MATCH_MODES)}"
+                f"filter: 'match' must be one of {', '.join(MATCH_MODES)}",
+                code="filter_invalid",
             )
 
         if compare not in COMPARE_OPS:
             raise MailctlError(
-                f"filter: 'compare' must be one of {', '.join(COMPARE_OPS)}"
+                f"filter: 'compare' must be one of {', '.join(COMPARE_OPS)}",
+                code="filter_invalid",
             )
 
         criteria = cls(match=match, compare=compare, **_filters(data))
         terms = data.get("terms")
 
         if terms is not None and (not isinstance(terms, list) or not terms):
-            raise MailctlError("filter: 'terms' must be a non-empty list")
+            raise MailctlError(
+                "filter: 'terms' must be a non-empty list",
+                code="filter_invalid",
+            )
 
         for index, term in enumerate(terms or []):
             where = f"terms[{index}]"
@@ -483,11 +505,15 @@ class Criteria:
 
             if not all(isinstance(term[key], str) for key in term):
                 raise MailctlError(
-                    f"filter: {where} 'header' and 'value' must be strings"
+                    f"filter: {where} 'header' and 'value' must be strings",
+                    code="filter_invalid",
                 )
 
             if not term["header"].strip():
-                raise MailctlError(f"filter: {where} has an empty header")
+                raise MailctlError(
+                    f"filter: {where} has an empty header",
+                    code="filter_invalid",
+                )
 
             criteria.add(term["header"], term["value"])
 
@@ -495,11 +521,15 @@ class Criteria:
 
         if body is not None:
             if not isinstance(body, list) or not body:
-                raise MailctlError("filter: 'body' must be a non-empty list")
+                raise MailctlError(
+                    "filter: 'body' must be a non-empty list",
+                    code="filter_invalid",
+                )
 
             if not all(isinstance(value, str) and value for value in body):
                 raise MailctlError(
-                    "filter: every 'body' value must be a non-empty string"
+                    "filter: every 'body' value must be a non-empty string",
+                    code="filter_invalid",
                 )
 
             for value in body:
@@ -508,7 +538,8 @@ class Criteria:
         if not criteria:
             raise MailctlError(
                 "filter: criteria holds no terms, body, dates, or state; a "
-                "filter must test something"
+                "filter must test something",
+                code="filter_invalid",
             )
 
         return criteria
@@ -829,7 +860,8 @@ def load_filter(text: str) -> Criteria:
     except json.JSONDecodeError as exc:
         raise MailctlError(
             f"filter is not valid JSON: {exc.msg} (line {exc.lineno}, "
-            f"column {exc.colno})"
+            f"column {exc.colno})",
+            code="filter_invalid",
         ) from exc
 
     _require_keys(document, "document", {"version", "criteria"})
@@ -840,7 +872,8 @@ def load_filter(text: str) -> Criteria:
     if isinstance(version, bool) or version != FILTER_VERSION:
         raise MailctlError(
             f"filter: unsupported version {version!r}; this mailctl reads "
-            f"version {FILTER_VERSION}"
+            f"version {FILTER_VERSION}",
+            code="filter_version_unsupported",
         )
 
     return Criteria.from_dict(document["criteria"])
@@ -858,7 +891,8 @@ def _filters(data: dict) -> dict:
 
             if not isinstance(value, str):
                 raise MailctlError(
-                    f"filter: {key!r} must be a YYYY-MM-DD string"
+                    f"filter: {key!r} must be a YYYY-MM-DD string",
+                    code="filter_invalid",
                 )
 
             filters[key] = parse_date(value, f"filter: {key!r}")
@@ -869,7 +903,8 @@ def _filters(data: dict) -> dict:
         # bool is an int in Python, and true is not an age.
         if isinstance(days, bool) or not isinstance(days, int) or days < 1:
             raise MailctlError(
-                "filter: 'older_than_days' must be a whole number, 1 or more"
+                "filter: 'older_than_days' must be a whole number, 1 or more",
+                code="filter_invalid",
             )
 
         filters["older_than"] = days
@@ -877,7 +912,10 @@ def _filters(data: dict) -> dict:
     for key in ("unread", "flagged"):
         if key in data:
             if not isinstance(data[key], bool):
-                raise MailctlError(f"filter: {key!r} must be true or false")
+                raise MailctlError(
+                    f"filter: {key!r} must be true or false",
+                    code="filter_invalid",
+                )
 
             filters[key] = data[key]
 
@@ -890,18 +928,24 @@ def _require_keys(
 ) -> None:
     """Refuse ``data`` unless it is an object holding exactly these keys."""
     if not isinstance(data, dict):
-        raise MailctlError(f"filter: {where} must be a JSON object")
+        raise MailctlError(
+            f"filter: {where} must be a JSON object", code="filter_invalid"
+        )
 
     missing = sorted(required - data.keys())
 
     if missing:
-        raise MailctlError(f"filter: {where} lacks {', '.join(missing)}")
+        raise MailctlError(
+            f"filter: {where} lacks {', '.join(missing)}",
+            code="filter_invalid",
+        )
 
     unknown = sorted(data.keys() - required - set(optional))
 
     if unknown:
         raise MailctlError(
-            f"filter: {where} has unknown key(s) {', '.join(unknown)}"
+            f"filter: {where} has unknown key(s) {', '.join(unknown)}",
+            code="filter_invalid",
         )
 
 
@@ -913,7 +957,9 @@ def _or_chain(keys: list) -> list:
     IMAPClient adds the parentheses around each nested list itself.
     """
     if not keys:
-        raise MailctlError("cannot build a search key from no criteria")
+        raise MailctlError(
+            "cannot build a search key from no criteria", code="internal_error"
+        )
 
     if len(keys) == 1:
         return keys[0]

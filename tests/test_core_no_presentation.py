@@ -571,8 +571,17 @@ def test_every_raised_code_is_rendered_and_every_rendering_raised():
 
 
 # ############################################################################
-# Every refusal in the utilities carries a code (#331)
+# Every refusal carries a code (#331, #352)
 # ############################################################################
+
+# Every module of the package, the interfaces with the core: a refusal the
+# CLI makes itself reaches a script's --json as surely as the core's.
+ALL_MODULES = tuple(
+    sorted(
+        path.relative_to(PACKAGE).with_suffix("").as_posix()
+        for path in PACKAGE.rglob("*.py")
+    )
+)
 
 
 # ----------------------------------------------------------------------------
@@ -634,22 +643,53 @@ def uncoded_errors(tree: ast.AST, names: set[str]) -> list[int]:
 
 
 # ----------------------------------------------------------------------------
-def test_every_error_the_utilities_build_carries_a_code():
-    """An API client branches on an error's code, never its message
-    (ADR 0008), so an uncoded refusal is one it cannot tell apart."""
-    names = error_classes()
-    modules = [name for name in CORE_MODULES if name.startswith("utilities/")]
-
-    assert "utilities/flags" in modules
-    assert {"MailctlError", "ImapConnectionError"} <= names
-
-    found = {
+def uncoded_by_module(names: set[str], tree_of=module_tree) -> dict:
+    """Every module of the package building one of ``names`` uncoded,
+    with the lines."""
+    return {
         name: lines
-        for name in modules
-        if (lines := uncoded_errors(module_tree(name), names))
+        for name in ALL_MODULES
+        if (lines := uncoded_errors(tree_of(name), names))
     }
 
-    assert found == {}
+
+# ----------------------------------------------------------------------------
+def test_every_error_mailctl_builds_carries_a_code():
+    """An API client branches on an error's code, never its message
+    (ADR 0008), and a script on the --json failure line's, so an uncoded
+    refusal is one neither can tell apart."""
+    names = error_classes()
+
+    assert {
+        "config",
+        "criteria",
+        "engine",
+        "rules",
+        "components/imap/client",
+        "components/managesieve/script",
+        "providers/base",
+        "providers/mxroute/sieve",
+        "utilities/flags",
+        "cli",
+        "api/server",
+    } <= set(ALL_MODULES)
+    assert {"MailctlError", "ImapConnectionError", "Refusal"} <= names
+
+    assert uncoded_by_module(names) == {}
+
+
+# ----------------------------------------------------------------------------
+def test_the_code_walk_reaches_beyond_the_utilities():
+    """An uncoded error planted in a component, a provider, and the CLI is
+    found, so the whole-package walk is not the utilities' walk renamed."""
+    names = error_classes()
+    planted = ast.parse("raise MailctlError('bare')\n")
+    targets = {"components/imap/client", "providers/registry", "cli"}
+
+    def tree_of(name: str) -> ast.AST:
+        return planted if name in targets else module_tree(name)
+
+    assert uncoded_by_module(names, tree_of) == {key: [1] for key in targets}
 
 
 # ----------------------------------------------------------------------------

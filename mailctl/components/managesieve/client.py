@@ -102,8 +102,10 @@ class SieveConnectionError(MailctlError):
 class SieveAuthenticationError(MailctlError):
     """The server was reached and refused the credentials."""
 
-    def __init__(self, username: str):
-        super().__init__(f"ManageSieve authentication failed for {username!r}")
+    def __init__(self, username: str, *, code: str):
+        super().__init__(
+            f"ManageSieve authentication failed for {username!r}", code=code
+        )
         self.username = username
 
 
@@ -521,21 +523,22 @@ class SieveSession:
 
         except SieveProtocolError as exc:
             raise SieveConnectionError(
-                f"ManageSieve error talking to {where} -- {exc}."
+                f"ManageSieve error talking to {where} -- {exc}.",
+                code="connection_failed",
             ) from exc
 
         except ssl.SSLError as exc:
             raise SieveConnectionError(
-                f"TLS failure against {where} -- {exc}."
+                f"TLS failure against {where} -- {exc}.", code="tls_failed"
             ) from exc
 
         except OSError as exc:
             raise SieveConnectionError(
-                f"cannot reach {where} -- {exc}."
+                f"cannot reach {where} -- {exc}.", code="connection_failed"
             ) from exc
 
         if not authenticated:
-            raise SieveAuthenticationError(self.username)
+            raise SieveAuthenticationError(self.username, code="auth_failed")
 
         self.client = client
         self._log("authenticated")
@@ -555,7 +558,9 @@ class SieveSession:
     def _require_client(self) -> SieveClient:
         """Return the live client or fail loudly."""
         if self.client is None:
-            raise MailctlError("ManageSieve session is not open")
+            raise MailctlError(
+                "ManageSieve session is not open", code="internal_error"
+            )
 
         return self.client
 
@@ -590,7 +595,9 @@ class SieveSession:
             result = client.listscripts()
 
         except SieveProtocolError as exc:
-            raise MailctlError(f"LISTSCRIPTS failed -- {exc}") from exc
+            raise MailctlError(
+                f"LISTSCRIPTS failed -- {exc}", code="filterset_list_failed"
+            ) from exc
 
         if result is None:
             return (None, [])
@@ -615,10 +622,16 @@ class SieveSession:
             content = client.getscript_bytes(name)
 
         except SieveProtocolError as exc:
-            raise MailctlError(f"GETSCRIPT {name!r} failed -- {exc}") from exc
+            raise MailctlError(
+                f"GETSCRIPT {name!r} failed -- {exc}",
+                code="filterset_read_failed",
+            ) from exc
 
         if content is None:
-            raise MailctlError(f"could not download filter set {name!r}")
+            raise MailctlError(
+                f"could not download filter set {name!r}",
+                code="filterset_read_failed",
+            )
 
         return content
 
@@ -638,7 +651,8 @@ class SieveSession:
         except UnicodeDecodeError as exc:
             raise MailctlError(
                 f"filter set {name!r} is not valid UTF-8, so it cannot be "
-                f"read ({exc.reason} at byte {exc.start})"
+                f"read ({exc.reason} at byte {exc.start})",
+                code="filterset_not_utf8",
             ) from exc
 
     # ------------------------------------------------------------------------
@@ -658,13 +672,15 @@ class SieveSession:
 
         except SieveProtocolError as exc:
             raise MailctlError(
-                f"the server rejected the filter set -- {exc}"
+                f"the server rejected the filter set -- {exc}",
+                code="filterset_rejected",
             ) from exc
 
         if not accepted:
             raise MailctlError(
                 "the server rejected the filter set when checking it; "
-                "nothing was uploaded"
+                "nothing was uploaded",
+                code="filterset_rejected",
             )
 
         if client.warning is not None:
@@ -683,10 +699,15 @@ class SieveSession:
             stored = client.putscript(name, content)
 
         except SieveProtocolError as exc:
-            raise MailctlError(f"PUTSCRIPT {name!r} failed -- {exc}") from exc
+            raise MailctlError(
+                f"PUTSCRIPT {name!r} failed -- {exc}",
+                code="filterset_upload_failed",
+            ) from exc
 
         if not stored:
-            raise MailctlError(f"PUTSCRIPT {name!r} failed")
+            raise MailctlError(
+                f"PUTSCRIPT {name!r} failed", code="filterset_upload_failed"
+            )
 
         if client.warning is not None:
             self._log(client.warning)
@@ -701,7 +722,12 @@ class SieveSession:
             activated = client.setactive(name)
 
         except SieveProtocolError as exc:
-            raise MailctlError(f"SETACTIVE {name!r} failed -- {exc}") from exc
+            raise MailctlError(
+                f"SETACTIVE {name!r} failed -- {exc}",
+                code="filterset_activate_failed",
+            ) from exc
 
         if not activated:
-            raise MailctlError(f"SETACTIVE {name!r} failed")
+            raise MailctlError(
+                f"SETACTIVE {name!r} failed", code="filterset_activate_failed"
+            )

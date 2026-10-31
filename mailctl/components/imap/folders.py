@@ -113,7 +113,7 @@ def normalize_folder(
     components = split_path(name, delimiter)
 
     if not components:
-        raise MailctlError("empty folder name")
+        raise MailctlError("empty folder name", code="folder_name_empty")
 
     if components[0].upper() == "INBOX":
         components = ["INBOX", *components[1:]]

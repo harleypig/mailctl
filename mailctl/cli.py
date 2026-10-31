@@ -17,6 +17,7 @@ import re
 import shlex
 import sys
 import traceback
+from typing import NoReturn
 
 from . import MailctlError, __version__, engine, json_output, utilities
 from .config import (
@@ -181,7 +182,8 @@ def confirm(prompt: str, assume_yes: bool) -> bool:
     if not sys.stdin.isatty():
         raise MailctlError(
             f"{prompt} -- refusing to continue without a terminal to ask. "
-            f"Re-run with --yes to confirm, or --dry-run to preview."
+            f"Re-run with --yes to confirm, or --dry-run to preview.",
+            code="confirmation_needed",
         )
 
     answer = input(f"{prompt} [y/N] ").strip().lower()
@@ -493,7 +495,10 @@ def criteria_from_args(args) -> Criteria:
 
     for item in args.header or []:
         if "=" not in item:
-            raise MailctlError(f"--header expects NAME=VALUE, got {item!r}")
+            raise MailctlError(
+                f"--header expects NAME=VALUE, got {item!r}",
+                code=ARGUMENTS,
+            )
 
         name, value = item.split("=", 1)
         criteria.add(name, value)
@@ -515,25 +520,27 @@ def criteria_given(args) -> Criteria:
     flags = criteria_from_args(args)
 
     if args.derive is not None and args.like is None:
-        raise MailctlError("--derive needs --like UID")
+        raise MailctlError("--derive needs --like UID", code=ARGUMENTS)
 
     require_like_for_uidvalidity(args)
 
     if args.filter_file is None:
         if not flags and args.like is None:
-            raise MailctlError(NO_CRITERIA)
+            raise Refusal(NO_CRITERIA, code="no_criteria")
 
         return flags
 
     if flags or args.match is not None or args.compare is not None:
         raise MailctlError(
             "--filter carries its own criteria; give criteria flags or "
-            "--filter, not both"
+            "--filter, not both",
+            code=ARGUMENTS,
         )
 
     if args.like is not None:
         raise MailctlError(
-            "--like and --filter both supply the criteria; give one of them"
+            "--like and --filter both supply the criteria; give one of them",
+            code=ARGUMENTS,
         )
 
     return read_filter(args.filter_file)
@@ -554,19 +561,23 @@ def read_filter(path: str) -> Criteria:
 
         except OSError as exc:
             raise MailctlError(
-                f"cannot read filter file {path!r}: {exc.strerror}"
+                f"cannot read filter file {path!r}: {exc.strerror}",
+                code="filter_file_unreadable",
             ) from exc
 
         except UnicodeDecodeError as exc:
             raise MailctlError(
-                f"filter file {path!r} is not UTF-8 text"
+                f"filter file {path!r} is not UTF-8 text",
+                code="filter_file_not_utf8",
             ) from exc
 
     try:
         return load_filter(text)
 
     except MailctlError as exc:
-        raise MailctlError(f"{source}: {exc}") from exc
+        raise MailctlError(
+            f"{source}: {exc}", code=exc.code, fields=exc.fields
+        ) from exc
 
 
 # ----------------------------------------------------------------------------
@@ -596,7 +607,8 @@ def message_like(sessions, config, args, explicit: Criteria, file=None):
     if not like.criteria:
         raise MailctlError(
             f"nothing to derive from uid {like.message.uid}: it has none of "
-            f"the headers asked for ({', '.join(like.skipped)})"
+            f"the headers asked for ({', '.join(like.skipped)})",
+            code="nothing_to_derive",
         )
 
     return like
@@ -641,7 +653,9 @@ def placement_from_args(args) -> Placement | None:
     after = getattr(args, "place_after", None)
 
     if before == "" or after == "":
-        raise MailctlError("--before and --after need a filter name")
+        raise MailctlError(
+            "--before and --after need a filter name", code=ARGUMENTS
+        )
 
     if getattr(args, "place_first", False):
         return Placement(PLACE_FIRST)
@@ -2635,12 +2649,13 @@ def cmd_add(args) -> int:
     explicit = criteria_given(args)
 
     if args.folder is not None and args.like is None:
-        raise MailctlError("--folder needs --like UID")
+        raise MailctlError("--folder needs --like UID", code=ARGUMENTS)
 
     if args.like is not None and args.no_imap:
         raise MailctlError(
             "--like reads the message over the mail connection, so it cannot "
-            "be combined with --no-mail"
+            "be combined with --no-mail",
+            code=ARGUMENTS,
         )
 
     spec = actions_from_args(args)
@@ -3117,29 +3132,35 @@ def cmd_search(args) -> int:
     criteria = criteria_from_args(args)
 
     if args.derive is not None and args.like is None:
-        raise MailctlError("--derive needs --like UID")
+        raise MailctlError("--derive needs --like UID", code=ARGUMENTS)
 
     require_like_for_uidvalidity(args)
 
     if args.uids_only and (args.json or args.build_filter):
         raise MailctlError(
             "--uids-only prints a listing's UIDs; it cannot be combined with "
-            "--json or --build-filter"
+            "--json or --build-filter",
+            code=ARGUMENTS,
         )
 
     if args.raw and (args.build_filter or args.like is not None):
         raise MailctlError(
             "--raw is a query, not criteria; it cannot be combined with "
-            "--like or --build-filter"
+            "--like or --build-filter",
+            code=ARGUMENTS,
         )
 
     if args.reverse and args.sort is None:
-        raise MailctlError("--reverse reverses --sort; give --sort too")
+        raise MailctlError(
+            "--reverse reverses --sort; give --sort too",
+            code=ARGUMENTS,
+        )
 
     if args.sort is not None and args.build_filter:
         raise MailctlError(
             "--sort orders a listing; --build-filter prints a filter, which "
-            "has no order"
+            "has no order",
+            code=ARGUMENTS,
         )
 
     order = None if args.sort is None else SortOrder(args.sort, args.reverse)
@@ -3191,10 +3212,11 @@ def cmd_search(args) -> int:
 def print_filter(args, criteria: Criteria) -> int:
     """Print the filter criteria make, and save nothing."""
     if not criteria:
-        raise MailctlError(
+        raise Refusal(
             "--build-filter needs criteria: give --like UID, or criteria "
             "flags (--from/--to/--cc/--subject/--list-id/--header/--body/"
-            "--since/--before/--older-than/--unread/--flagged)"
+            "--since/--before/--older-than/--unread/--flagged)",
+            code="no_criteria",
         )
 
     if args.json:
@@ -3543,7 +3565,7 @@ def print_senders(report) -> int:
 
 
 # ----------------------------------------------------------------------------
-def global_parser() -> argparse.ArgumentParser:
+def global_parser() -> "Parser":
     """Flags accepted both before and after the subcommand.
 
     ``--verbose mailctl filter add`` and ``mailctl filter add --verbose``
@@ -3552,7 +3574,7 @@ def global_parser() -> argparse.ArgumentParser:
     already set by the top-level parser, so passing the flag first would
     silently do nothing.
     """
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = Parser(add_help=False)
 
     parser.add_argument(
         "--verbose",
@@ -3574,13 +3596,13 @@ def global_parser() -> argparse.ArgumentParser:
 # ----------------------------------------------------------------------------
 def connection_parser(
     offer: engine.ProviderCapabilities, words: Wording
-) -> argparse.ArgumentParser:
+) -> "Parser":
     """Flags shared by every subcommand that connects to the server.
 
     The provider's own connection settings are offered only when ``offer``
     -- its declared capabilities -- names them, with the help it gives.
     """
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = Parser(add_help=False)
 
     def setting(name: str) -> dict:
         if name not in offer.settings:
@@ -3669,14 +3691,14 @@ def connection_parser(
 
 
 # ----------------------------------------------------------------------------
-def criteria_parser(dated_before: bool = True) -> argparse.ArgumentParser:
+def criteria_parser(dated_before: bool = True) -> "Parser":
     """The criteria flags shared by add / apply / search.
 
     ``dated_before`` False leaves out ``--before DATE``, for ``add``, whose
     ``--before RULE`` places the rule. A date filter is refused on ``add``
     anyway, so nothing is lost but the spelling.
     """
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = Parser(add_help=False)
 
     group = parser.add_argument_group("criteria")
     group.add_argument(
@@ -3751,10 +3773,10 @@ def criteria_parser(dated_before: bool = True) -> argparse.ArgumentParser:
 # ----------------------------------------------------------------------------
 def criteria_source_parser(
     offer: engine.ProviderCapabilities,
-) -> argparse.ArgumentParser:
+) -> "Parser":
     """The other two ways add and apply take criteria: a filter document,
     or a message to take them from."""
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = Parser(add_help=False)
 
     group = parser.add_argument_group("criteria from a filter or a message")
     group.add_argument(
@@ -3803,15 +3825,15 @@ def add_uidvalidity(
 def require_like_for_uidvalidity(args) -> None:
     """Refuse --uidvalidity where there is no --like UID for it to check."""
     if getattr(args, "uidvalidity", None) is not None and args.like is None:
-        raise MailctlError("--uidvalidity needs --like UID")
+        raise MailctlError("--uidvalidity needs --like UID", code=ARGUMENTS)
 
 
 # ----------------------------------------------------------------------------
 def action_parser(
     offer: engine.ProviderCapabilities,
-) -> argparse.ArgumentParser:
+) -> "Parser":
     """The action flags shared by add / apply."""
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = Parser(add_help=False)
 
     group = parser.add_argument_group("actions")
     group.add_argument(
@@ -3875,9 +3897,9 @@ def action_parser(
 
 
 # ----------------------------------------------------------------------------
-def safety_parser() -> argparse.ArgumentParser:
+def safety_parser() -> "Parser":
     """Flags shared by every mutating subcommand."""
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = Parser(add_help=False)
 
     group = parser.add_argument_group("safety")
     group.add_argument(
@@ -3895,14 +3917,14 @@ def safety_parser() -> argparse.ArgumentParser:
 
 
 # ----------------------------------------------------------------------------
-def mail_safety_parser() -> argparse.ArgumentParser:
+def mail_safety_parser() -> "Parser":
     """Safety flags that only mean something for the existing-mail pass.
 
     Kept apart from ``safety_parser`` so a command that never touches mail
     -- ``add``, ``remove-rule`` -- does not advertise flags that would do
     nothing.
     """
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = Parser(add_help=False)
 
     group = parser.add_argument_group("existing mail")
     group.add_argument(
@@ -3930,7 +3952,7 @@ def mail_safety_parser() -> argparse.ArgumentParser:
 def build_parser(
     offer: engine.ProviderCapabilities | None = None,
     words: Wording | None = None,
-) -> argparse.ArgumentParser:
+) -> "Parser":
     """Construct the full argument parser.
 
     ``offer`` is the selected provider's declared capabilities
@@ -3952,7 +3974,7 @@ def build_parser(
     safety = safety_parser()
     mail_safety = mail_safety_parser()
 
-    parser = argparse.ArgumentParser(
+    parser = Parser(
         prog="mailctl",
         description="Read, sort, and filter the mail on your account.",
     )
@@ -5039,35 +5061,19 @@ def main(argv: list[str] | None = None) -> int:
     """Parse arguments, dispatch, and turn failures into diagnostics."""
     parser = build_parser(*(provider_offer(argv) or (None, None)))
     given = sys.argv[1:] if argv is None else argv
-    refuse_gone_command(parser, given)
-    refuse_gone_option(parser, given)
-    args = parser.parse_args(argv)
 
-    # Only a value given before the command's last word can reach one that
-    # has no use for it; after it, argparse refuses it as unrecognized.
-    if not args.reads_settings and (
-        args.provider is not None or args.env_file is not None
-    ):
-        parser.error(
-            f"'{args.command}' reads no settings, so it takes neither "
-            f"--provider nor --env-file"
-        )
+    try:
+        args = parse_command_line(parser, given, argv)
 
-    # The same parse as 'mailctl [GROUP [ACTION]] --help', on the parser
-    # built for this run's provider, so the two cannot drift; argparse exits
-    # from it, 0 with the help or 2 naming the valid commands.
-    if args.command == "help":
-        refuse_gone_command(parser, args.topic)
-        parser.parse_args([*args.topic, "--help"])
+    except CommandLineRejected as exc:
+        if json_requested(given):
+            sys.stderr.write(
+                json_output.dumps(
+                    json_output.error(exc.message, exc.refusal), indent=None
+                )
+            )
 
-    # --no-subscribe only shapes a folder this run creates. Accepting it
-    # alone would be a flag that looks like it took effect and did not.
-    if getattr(args, "no_subscribe", False) and not args.create_folder:
-        parser.error(
-            "--no-subscribe only applies with --create-folder; to hide a "
-            "folder that already exists, use 'mailctl folder unsubscribe "
-            "FOLDER'"
-        )
+        raise
 
     # --json and --uids-only keep stdout for the data alone: the data goes
     # to args.stdout, the stdout this run started with, and everything said
@@ -5087,7 +5093,8 @@ def main(argv: list[str] | None = None) -> int:
             and getattr(args, "dry_run", None) is False
         ):
             raise MailctlError(
-                "--json prints a write command's plan, so it needs --dry-run"
+                "--json prints a write command's plan, so it needs --dry-run",
+                code=ARGUMENTS,
             )
 
         if not machine:
@@ -5127,6 +5134,59 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         return 1
+
+
+# ----------------------------------------------------------------------------
+def parse_command_line(
+    parser: "Parser", given: list[str], argv: list[str] | None
+) -> argparse.Namespace:
+    """Parse the command line, and refuse what the parse alone lets by.
+
+    Every refusal here exits 2, through ``parser.error``, as a rejected
+    command line does.
+    """
+    refuse_gone_command(parser, given)
+    refuse_gone_option(parser, given)
+    args = parser.parse_args(argv)
+
+    # Only a value given before the command's last word can reach one that
+    # has no use for it; after it, argparse refuses it as unrecognized.
+    if not args.reads_settings and (
+        args.provider is not None or args.env_file is not None
+    ):
+        parser.error(
+            f"'{args.command}' reads no settings, so it takes neither "
+            f"--provider nor --env-file"
+        )
+
+    # The same parse as 'mailctl [GROUP [ACTION]] --help', on the parser
+    # built for this run's provider, so the two cannot drift; argparse exits
+    # from it, 0 with the help or 2 naming the valid commands.
+    if args.command == "help":
+        refuse_gone_command(parser, args.topic)
+        parser.parse_args([*args.topic, "--help"])
+
+    # --no-subscribe only shapes a folder this run creates. Accepting it
+    # alone would be a flag that looks like it took effect and did not.
+    if getattr(args, "no_subscribe", False) and not args.create_folder:
+        parser.error(
+            "--no-subscribe only applies with --create-folder; to hide a "
+            "folder that already exists, use 'mailctl folder unsubscribe "
+            "FOLDER'",
+            code="subscribe_needs_create",
+        )
+
+    return args
+
+
+# ----------------------------------------------------------------------------
+def json_requested(argv: list[str]) -> bool:
+    """Whether ``argv`` asks for --json: read from the words, since a
+    command line argparse refused has no namespace to read it from.
+    Nothing after ``--`` is an option."""
+    words = argv[: argv.index("--")] if "--" in argv else argv
+
+    return "--json" in words
 
 
 # ----------------------------------------------------------------------------
@@ -5172,7 +5232,7 @@ def env_file_before_command(path: str, commands) -> str:
 
 
 # ----------------------------------------------------------------------------
-def refuse_gone_command(parser: argparse.ArgumentParser, argv) -> None:
+def refuse_gone_command(parser: "Parser", argv) -> None:
     """Stop a command line that starts with a command's old name, naming
     the command it is now; there are no aliases (#219).
 
@@ -5198,12 +5258,13 @@ def refuse_gone_command(parser: argparse.ArgumentParser, argv) -> None:
     if first in GONE_COMMANDS:
         parser.error(
             f"'{first}' is now 'mailctl {GONE_COMMANDS[first]}'; the "
-            f"commands are grouped (see 'mailctl help')"
+            f"commands are grouped (see 'mailctl help')",
+            code="gone_command",
         )
 
 
 # ----------------------------------------------------------------------------
-def refuse_gone_option(parser: argparse.ArgumentParser, argv) -> None:
+def refuse_gone_option(parser: "Parser", argv) -> None:
     """Stop a command line that gives an option by its old name, naming
     the option it is now. Nothing after ``--`` is an option."""
     for word in argv:
@@ -5215,7 +5276,8 @@ def refuse_gone_option(parser: argparse.ArgumentParser, argv) -> None:
         if old in GONE_OPTIONS:
             parser.error(
                 f"{old} is now {GONE_OPTIONS[old]}; the options are named "
-                f"the same for every provider"
+                f"the same for every provider",
+                code="gone_option",
             )
 
 
@@ -5241,6 +5303,71 @@ def report_failure(args, message: str, code: str | None = None) -> None:
 # Errors -- the core's condition, with the flags and commands that act on it
 # ############################################################################
 
+# The code of a command line refused for its arguments alone: an option
+# argparse does not know, two that cannot be combined, one that needs
+# another. A script that meets it has a command line to fix, which no
+# finer code would change; a name gone since #219 has codes of its own,
+# since what fixes it is the new name.
+ARGUMENTS = "invalid_arguments"
+
+
+# ----------------------------------------------------------------------------
+class Refusal(MailctlError):
+    """A refusal the CLI makes itself, already in this front-end's words.
+
+    Its code may be a core one, so a script meets one code for one
+    condition whichever layer refused; ``error_text`` adds nothing to it.
+    """
+
+
+# ----------------------------------------------------------------------------
+class CommandLineRejected(SystemExit):
+    """argparse's exit for a rejected command line, with the --json
+    failure line's ``message`` and ``refusal`` code, which argparse knows
+    nothing of. ``fields`` are the API's; the CLI's line, like every other
+    failure it prints, carries none."""
+
+    # ------------------------------------------------------------------------
+    def __init__(
+        self,
+        status: object,
+        message: str,
+        refusal: str,
+        fields: dict[str, object] | None = None,
+    ):
+        super().__init__(status)
+        self.message = message
+        self.refusal = refusal
+        self.fields = fields
+
+
+# ----------------------------------------------------------------------------
+class Parser(argparse.ArgumentParser):
+    """argparse's parser, its refusals carrying a code.
+
+    The subcommand parsers are made in the root's class, so a refusal at
+    any level comes here. What is printed, and the exit status, are
+    argparse's own.
+
+    An option is never taken by a prefix of its name: a script's ``--jso``
+    working today would stop the day an option sharing the prefix is
+    added, and the command line is a contract (RELEASING, v1).
+    """
+
+    # ------------------------------------------------------------------------
+    def __init__(self, *args, allow_abbrev: bool = False, **kwargs):
+        super().__init__(*args, allow_abbrev=allow_abbrev, **kwargs)
+
+    # ------------------------------------------------------------------------
+    def error(self, message: str, code: str = ARGUMENTS) -> NoReturn:
+        try:
+            super().error(message)
+
+        except SystemExit as exc:
+            raise CommandLineRejected(
+                exc.code, *json_output.rejection(message, code)
+            ) from None
+
 
 # ----------------------------------------------------------------------------
 def flag_for(setting: str) -> str:
@@ -5261,6 +5388,28 @@ SENDERS_FLAGS = {
     "minimum": "--min",
     "max_messages": "--max-messages",
 }
+
+
+# ----------------------------------------------------------------------------
+def with_advice(message: str, fields) -> str:
+    """A connection failure's message, with the flags its ``advice`` field
+    names: the settings to check, or the other value of one to try."""
+    advice = fields.get("advice")
+
+    if advice == "check_settings":
+        return (
+            f"{fields['reason']} Check "
+            f"{' and '.join(flag_for(name) for name in fields['settings'])}."
+        )
+
+    if advice == "try_setting":
+        return (
+            f"{fields['before']} Try {flag_for(fields['setting'])} "
+            f"{fields['value']}{fields['note']} as the alternative. "
+            f"{fields['after']}"
+        )
+
+    return message
 
 
 # What the CLI says for each coded error (MailctlError.code). The core's
@@ -5298,41 +5447,107 @@ ERROR_TEXT = {
         f"{message}; --no-subscribe only applies with --create-folder"
     ),
     # The message says all there is: no flag of this front-end acts on it.
+    "age_invalid": lambda message, _: message,
     "auth_failed": lambda message, _: message,
     "backup_exists": lambda message, _: message,
     "backup_unreadable": lambda message, _: message,
     "baseline_host_invalid": lambda message, _: message,
     "baseline_read_failed": lambda message, _: message,
+    "compare_invalid": lambda message, _: message,
+    "config_invalid": lambda message, _: message,
+    "config_unreadable": lambda message, _: message,
+    "copy_failed": lambda message, _: message,
     "credentials_not_ascii": lambda message, _: message,
     "criteria_and_raw": lambda message, _: message,
+    "criterion_empty": lambda message, _: message,
+    "date_invalid": lambda message, _: message,
+    "date_range_empty": lambda message, _: message,
+    "delete_failed": lambda message, _: message,
+    "env_file_invalid": lambda message, _: message,
+    "env_file_mode": lambda message, _: message,
+    "env_file_not_utf8": lambda message, _: message,
+    "env_file_unreadable": lambda message, _: message,
+    "extension_disabled": lambda message, _: message,
+    "fetch_failed": lambda message, _: message,
     "file_unwritable": lambda message, _: message,
+    "filter_cannot_disable": lambda message, _: message,
+    "filter_cannot_enable": lambda message, _: message,
+    "filter_invalid": lambda message, _: message,
     "filter_name_empty": lambda message, _: message,
+    "filter_name_invalid": lambda message, _: message,
+    "filter_unnamed": lambda message, _: message,
+    "filter_version_unsupported": lambda message, _: message,
+    "filters_not_mergeable": lambda message, _: message,
+    "filterset_activate_failed": lambda message, _: message,
     "filterset_empty": lambda message, _: message,
+    "filterset_list_failed": lambda message, _: message,
+    "filterset_not_utf8": lambda message, _: message,
+    "filterset_read_failed": lambda message, _: message,
+    "filterset_rejected": lambda message, _: message,
     "filterset_unnamed": lambda message, _: message,
+    "filterset_unparseable": lambda message, _: message,
+    "filterset_upload_failed": lambda message, _: message,
     "flag_set_and_cleared": lambda message, _: message,
+    "flags_failed": lambda message, _: message,
     "folder_case_variant": lambda message, _: message,
+    "folder_counts_failed": lambda message, _: message,
+    "folder_counts_unreadable": lambda message, _: message,
+    "folder_create_failed": lambda message, _: message,
     "folder_exists": lambda message, _: message,
+    "folder_list_failed": lambda message, _: message,
+    "folder_name_empty": lambda message, _: message,
     "folder_not_planned": lambda message, _: message,
+    "folder_rename_failed": lambda message, _: message,
+    "folder_rewrite_failed": lambda message, _: message,
+    "forbidden_action": lambda message, _: message,
+    "header_name_empty": lambda message, _: message,
+    "internal_error": lambda message, _: message,
+    "kept_test_unreadable": lambda message, _: message,
     "keyword_invalid": lambda message, _: message,
     "keyword_system_flag": lambda message, _: message,
     "limit_below_one": lambda message, _: message,
+    "match_invalid": lambda message, _: message,
+    "message_count_failed": lambda message, _: message,
     "migration_appeared": lambda message, _: message,
     "migration_failed": lambda message, _: message,
+    "move_failed": lambda message, _: message,
+    "no_such_filter": lambda message, _: message,
     "no_such_message": lambda message, _: message,
     "no_uids": lambda message, _: message,
     "no_uidvalidity": lambda message, _: message,
+    "noop_failed": lambda message, _: message,
     "nothing_to_change": lambda message, _: message,
     "optimize_defect": lambda message, _: message,
+    "parser_mismatch": lambda message, _: message,
+    "partial_execution": lambda message, _: message,
+    "password_command_empty": lambda message, _: message,
+    "password_command_failed": lambda message, _: message,
+    "password_command_no_output": lambda message, _: message,
+    "password_file_empty": lambda message, _: message,
+    "password_file_mode": lambda message, _: message,
+    "password_file_not_utf8": lambda message, _: message,
+    "password_file_unreadable": lambda message, _: message,
     "probe_invalid": lambda message, _: message,
+    "raw_query_failed": lambda message, _: message,
+    "rearrangement_repeats": lambda message, _: message,
     "rename_into_itself": lambda message, _: message,
     "rename_not_started": lambda message, _: message,
     "rename_same_name": lambda message, _: message,
     "rename_subfolder_clash": lambda message, _: message,
+    "search_failed": lambda message, _: message,
+    "search_value_invalid": lambda message, _: message,
+    "server_capability_missing": lambda message, _: message,
+    "setting_invalid": lambda message, _: message,
+    "setting_not_read": lambda message, _: message,
+    "subscribe_unconfirmed": lambda message, _: message,
+    "subscription_failed": lambda message, _: message,
     "uid_below_one": lambda message, _: message,
     "uidvalidity_out_of_range": lambda message, _: message,
     "unknown_grouping": lambda message, _: message,
     "unknown_kind": lambda message, _: message,
+    "unknown_provider": lambda message, _: message,
     "unknown_sort_key": lambda message, _: message,
+    "unsupported": lambda message, _: message,
     "no_password": lambda _, fields: (
         f"no password available -- pass --password-file, --password-cmd, "
         f"or --password, {fields['settings']}"
@@ -5342,15 +5557,8 @@ ERROR_TEXT = {
         f"Set {', '.join(flag_for(name) for name in fields['settings'])}, "
         f"the matching MAILCTL_* variable, or add it to {fields['config']}"
     ),
-    "check_settings": lambda _, fields: (
-        f"{fields['reason']} Check "
-        f"{' and '.join(flag_for(name) for name in fields['settings'])}."
-    ),
-    "try_setting": lambda _, fields: (
-        f"{fields['before']} Try {flag_for(fields['setting'])} "
-        f"{fields['value']}{fields['note']} as the alternative. "
-        f"{fields['after']}"
-    ),
+    "connection_failed": lambda message, fields: with_advice(message, fields),
+    "tls_failed": lambda message, fields: with_advice(message, fields),
     "needs_mail": lambda _, fields: (
         f"{fields['reason']} and --no-mail was given, so "
         f"{fields['folder']!r} cannot be created"
@@ -5501,6 +5709,9 @@ ERROR_TEXT = {
 def error_text(exc: MailctlError) -> str:
     """What the CLI says for ``exc``: its message, with this front-end's
     flags added where the error's code has any."""
+    if isinstance(exc, Refusal):
+        return str(exc)
+
     render = ERROR_TEXT.get(exc.code or "")
 
     return str(exc) if render is None else render(str(exc), exc.fields)

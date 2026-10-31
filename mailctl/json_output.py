@@ -14,11 +14,12 @@ removing one, or changing what a value means, raises ``JSON_VERSION``.
 """
 
 import json
+import re
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
-from .config import Secret
+from .config import CONNECTION_SETTINGS, Secret
 from .utilities import events, migration, rules
 from .utilities.reports import TIME_FORMAT
 
@@ -142,6 +143,58 @@ def _unmapped(value):
 # ----------------------------------------------------------------------------
 def _document(**body) -> dict:
     return {"version": JSON_VERSION, **body}
+
+
+# argparse's words for a value it could not take, up to the value itself:
+# "argument --imap-port: invalid int value", "argument group: invalid
+# choice". Its full message quotes the value, which may be a password typed
+# into the wrong place.
+_INVALID = re.compile(r"(argument (\S+): invalid [^:]*)(?::.*)?", re.DOTALL)
+
+_UNRECOGNIZED = "unrecognized arguments: "
+
+
+# ----------------------------------------------------------------------------
+def rejection(
+    message: str, code: str = "invalid_arguments"
+) -> tuple[str, str, dict[str, object] | None]:
+    """The failure document's message, code, and fields for a command
+    line argparse refused with ``message``: the CLI's --json line, and
+    the API's answer to ``initialize`` when its own arguments were bad.
+
+    Built from the kind of refusal rather than copied, since argparse
+    quotes what it could not use, and a word it did not recognise may be
+    a password that lost its option. What is kept is what names the
+    mistake: an option's name, never a value.
+    """
+    if message.startswith(_UNRECOGNIZED):
+        words = message[len(_UNRECOGNIZED) :].split()
+        options = [word.split("=", 1)[0] for word in words if word[:1] == "-"]
+        others = len(words) - len(options)
+        said = ", ".join(options)
+
+        if others:
+            noun = "word" if others == 1 else "words"
+            said = (
+                f"{said} and {others} other {noun}"
+                if said
+                else (f"{others} {noun}")
+            )
+
+        return f"{_UNRECOGNIZED}{said}", code, None
+
+    invalid = _INVALID.fullmatch(message)
+
+    if invalid is None:
+        return message, code, None
+
+    flag = invalid.group(2).split("/")[-1]
+    setting = flag.removeprefix("--").replace("-", "_")
+
+    if flag.startswith("--") and setting in CONNECTION_SETTINGS:
+        return invalid.group(1), "setting_invalid", {"setting": setting}
+
+    return invalid.group(1), code, None
 
 
 # ----------------------------------------------------------------------------
