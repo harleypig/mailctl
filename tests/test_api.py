@@ -1930,6 +1930,13 @@ STALE_WRITES = {
         {"old": "INBOX.Lists", "new": "INBOX.Feeds"},
         TWO_FILTERS,
     ),
+    # No filter files into INBOX.spam, so nothing is uploaded; the set is
+    # still read again before the folder moves (#332).
+    "folder rename with no filter to repoint": (
+        "folder.rename",
+        {"old": "INBOX.spam", "new": "INBOX.junk"},
+        TWO_FILTERS,
+    ),
 }
 
 

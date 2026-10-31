@@ -23,6 +23,8 @@ Checked after the rename:
 ('listscripts',)
 ('listscripts',)
 ('getscript', 'managesieve')
+('listscripts',)
+('getscript', 'managesieve')
 ('getscript', 'managesieve')
 ('logout',)
 --- imap calls
