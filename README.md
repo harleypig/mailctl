@@ -235,6 +235,16 @@ it. One that only names a password file or command is not.
 visible in the process list to every user on the machine and your shell
 saves it to history. mailctl warns when you use it.
 
+A command line mailctl rejects never quotes a word it could not use, so a
+password typed after a misspelt option, or given to a command that does
+not take one, is not shown back. The error names a long option up to its
+`=`, and a short one only when it stands alone, and counts the other
+words: `unrecognized arguments: --pasword and 1 other word`. A word
+straight after an option, or after `--`, is counted and never named, since
+it may be that option's value. An invalid value is dropped from the
+message, and an error of any other shape reads `the command line was
+refused`. The same holds for the `--json` line and for `mailctl-api`.
+
 ### Turning off a Sieve extension
 
 `disabled_extensions` tells mailctl never to write a rule that needs a
@@ -1005,7 +1015,7 @@ exit status. `server probe --json` prints its own versioned document (see
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — `command` is the command's path, such as `"filter add"`; what else a plan holds depends on the command |
 | `server baseline check` | `{"version", "host", "baseline", "baseline_taken", "taken", "account_recorded", "requires_known", "serious", "informational", "drift": [{"severity", "kind", "half", "name", "before", "after"}]}` |
 | `server baseline show` | the saved file as stored (see *Watch the servers for change*) |
-| any, failing | `{"version", "error": {"message", "code"}}`, one line, the last on stderr; `code` names the refusal where it has one, and is absent otherwise |
+| any, failing | `{"version", "error": {"message", "code"}}`, one line, the last on stderr; `code` names the refusal, and is absent only for an interrupted run or an unexpected failure |
 
 * `version` is `2`. A key may be added without changing it; one renamed,
   removed, or given a new meaning changes it.
@@ -1060,12 +1070,10 @@ exit status. `server probe --json` prints its own versioned document (see
   folder*.
 
 **An error's `code`** is a short name for the condition, so a script can
-tell one refusal from another without reading the message: for example
-`no_criteria`, `no_action`, `max_messages`, `senders_ceiling`,
-`no_such_folder`, `folder_missing`, `state_in_rule`, `missing_settings`,
-`credential_file`, `uidvalidity_changed`, `no_such_message`, and
-`backup_exists`. Every refusal from the work a command does carries one;
-some of the command line's own checks on its arguments have none yet.
+tell one refusal from another without reading the message. Every refusal
+carries one, the command line's own included; an interrupted run and an
+unexpected failure do not. [docs/ERROR-CODES.md][codes] lists every code
+and what it means.
 
 **Exit status**, on every command:
 
@@ -1073,9 +1081,13 @@ some of the command line's own checks on its arguments have none yet.
 |--------|-------|
 | 0 | done, including "nothing to change" |
 | 1 | a failure or a refusal, with the reason on stderr (one JSON line under `--json`) |
-| 2 | the argument parser rejected the command line — an unknown command or flag, a value it cannot read, `--no-subscribe` without `--create-folder`; the message is plain text, even under `--json` |
+| 2 | the command line was rejected before anything ran — an unknown command or option, a value that cannot be read, `--no-subscribe` without `--create-folder`; the usage and the reason are text, and under `--json` one coded JSON line follows them |
 | 3, 4 | `server baseline check` only: informational, or serious, drift |
 | 130 | interrupted |
+
+An option is matched by its whole name, never by a prefix: `--jso` is
+refused rather than taken as `--json`. A rejected command line never
+quotes a word mailctl could not use (see *The password*).
 
 **From v1.0.0 these are a promise.** The documents, the error codes, and
 the exit statuses above, with the API below, are kept for every 1.x
@@ -1112,6 +1124,13 @@ list. Two settings are its own:
 
 `mailctl-api --help` lists them all. The Docker image starts it with `api`
 as its first word (see *In Docker*).
+
+A bad argument does not end the process, since the client would see only
+the end of its output. mailctl says it on stderr, quoting no value given,
+and answers `initialize` with the refusal, such as `invalid_arguments`, or
+`setting_invalid` with `fields.setting` naming the setting. Every other
+method is then refused with `not_initialized`. As on the command line, an
+option is matched by its whole name, never by a prefix.
 
 ### The stream
 
@@ -1471,13 +1490,10 @@ A refusal's `data` is the error document from *Output for scripts*,
 the condition. Branch on it, never on the message. The API's own are
 `not_initialized`, `already_initialized`, `plan_unknown`, and
 `password_declined`. The rest come from the work both interfaces share,
-so the command line's `--json` carries the same ones: among them
-`nothing_to_change`, `filterset_changed`, `filterset_empty`,
-`auth_failed`, `credentials_not_ascii`, `subscribe_needs_create`,
-`unknown_sort_key`, `unknown_kind`, `folder_missing`, `folder_exists`,
-`no_such_message`, `uid_below_one`, `backup_exists`, `credential_file`,
-`baseline_changed`, `baseline_read_failed`, `migration_conflict`,
-`migration_changed`, and `migration_reference_unrewritable`.
+so the command line's `--json` carries the same ones.
+[docs/ERROR-CODES.md][codes] lists every code, what it means, and the
+`fields` that come with it. A connection failure can carry the
+provider's advice in `fields.advice`: `check_settings` or `try_setting`.
 
 ### An exchange
 
@@ -1681,6 +1697,7 @@ filters need domain-owner credentials, and mailctl logs in as a mailbox. So:
   tell you which of your filters would have caught a given message.
 
 [adr2]: adr/0002-non-destructive-script-merge.md
+[codes]: docs/ERROR-CODES.md
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
 [promise]: RELEASING.md#what-v1-promises
 [adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md

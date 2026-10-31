@@ -4,6 +4,20 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BREAKING CHANGES:
+
+* **No option is taken by a prefix of its name** ([#352]). An
+  unambiguous prefix used to be accepted, so `--jso` was taken as
+  `--json`. Now an option must be given whole, on `mailctl` and
+  `mailctl-api`, and a prefix is refused with exit status 2. So a command
+  line that works today keeps its meaning when an option sharing its
+  prefix is added.
+* **`try_setting` and `check_settings` are no longer error codes**
+  ([#352]). A connection failure is `connection_failed`, and a TLS failure
+  `tls_failed`, on both servers; a ManageSieve TLS failure used to be
+  `try_setting`. The provider's advice is now `fields.advice` on the API,
+  under the same two names. What the command line prints is unchanged.
+
 FEATURES:
 
 * **An API, for a program in any language to drive mailctl** ([#258]).
@@ -146,8 +160,54 @@ ENHANCEMENTS:
   the API's `mail.view` and `mail.search` `like` refuse it the same way.
   The API's `like` refuses a UID below 1 with `uid_below_one`, as
   `mail.view` does, where it answered `-32602`.
+* **Every refusal carries a `code`, the command line's own included**
+  ([#352]). A bad setting, password file, env file, or `config.toml`, a
+  criterion or filter document that cannot be read, and a failure talking
+  to a server had none; each now has one. New codes include
+  `server_capability_missing`, with the capability in `fields`, for a
+  server that does not advertise what a request needs, and
+  `setting_not_read` for a setting the provider has no use for. A file
+  that is not UTF-8 is `password_file_not_utf8`, `env_file_not_utf8`,
+  `filter_file_not_utf8`, or `filterset_not_utf8`. A bad `--imap-port`,
+  `--sieve-port`, or `--sieve-tls` is `setting_invalid`, as the same value
+  from a file is. Only an interrupted run and an unexpected failure carry
+  no code. [docs/ERROR-CODES.md][codes] lists every code.
+* **Under `--json`, a rejected command line ends with a coded JSON line**
+  ([#352]). Exit status 2 printed the usage and the reason as text and
+  nothing a script could read. The text is unchanged, and one line
+  follows it, the last on stderr, as for exit status 1: mostly
+  `invalid_arguments`, or `gone_command` and `gone_option` for an old
+  name. `--json` counts on either side of the bad word, as long as it
+  comes before any `--`.
+* **`mailctl-api` answers `initialize` when its own arguments are bad**
+  ([#352]). It exited with status 2, and the client saw only the end of
+  its output. Now it says why on stderr and keeps serving: `initialize`
+  is refused with the coded refusal, and every other method with
+  `not_initialized`, until `shutdown`.
 
 BUG FIXES:
+
+* **A mistyped password option no longer prints the password** ([#364]).
+  A password after a misspelt option, as in `--pasword VALUE`, or given
+  to a command that does not take one, as in `config migrate --password
+  VALUE`, was quoted back in the error, on stderr. So was the value of an
+  invalid choice or of an option that takes none. The error now names a
+  long option up to its `=`, and a short one only when it stands alone,
+  and counts the other words: `unrecognized arguments: --pasword and 1
+  other word`. A word straight after an option, or after `--`, is never
+  named, since it may be that option's value. An error of a shape mailctl
+  does not know reads `the command line was refused`. This holds for the
+  error line, the `--json` line, and `mailctl-api`'s stderr and its answer
+  to `initialize`. The exit status is still 2.
+* **A connection that fails to open is closed at once** ([#349],
+  [#362]). A refused login, a cancelled password prompt, a refused
+  STARTTLS, or a failure reading the folders after login left the
+  connection open until the process ended, which in a long-running API
+  client could be hours. An IMAP connection that never logged in is now
+  shut down; one that did is logged out first, and its socket is shut
+  down even when the logout fails. A ManageSieve connection is closed on
+  any failure before login, and after the logout on an ordinary close.
+  The error raised is the original one, with its code.
 
 * **Two backups of one filter set taken in the same second no longer
   overwrite each other** ([#330]). A backup was named to the second, so a
@@ -1814,3 +1874,8 @@ NOTES:
 [#347]: https://github.com/harleypig/mailctl/issues/347
 [#350]: https://github.com/harleypig/mailctl/issues/350
 [#351]: https://github.com/harleypig/mailctl/issues/351
+[#349]: https://github.com/harleypig/mailctl/issues/349
+[#352]: https://github.com/harleypig/mailctl/issues/352
+[#362]: https://github.com/harleypig/mailctl/issues/362
+[#364]: https://github.com/harleypig/mailctl/issues/364
+[codes]: docs/ERROR-CODES.md
