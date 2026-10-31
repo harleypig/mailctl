@@ -133,7 +133,19 @@ root `pytest` (*The TUI*).
      refused before any write, and before its flags are read; `mail view` and
      `--like` refusing one, a UID lost in the renumbering included; a plan's
      own value checked again at execute; and reading it costing no SELECT
-     of its own. A filter set changed since the plan ([#257][i257]):
+     of its own. A UID the folder does not hold is refused coded
+     ([#341][i341]): `criteria_like` in `test_utilities_mail.py` and
+     `read_message` in `test_utilities_messages.py` each refuse it as
+     `no_such_message` with the folder and the UIDs, after one fetch, and
+     `test_utilities_uids.py` gives it the same code under a current pin.
+     A session's checkpoint stops the work between exchanges
+     ([#280][i280]): a mail plan stopped after its search reads no
+     headers, and an execute stopped before its first write moves nothing
+     (`test_utilities_mail.py`); a listing and a count stopped at a
+     checkpoint fetch no further page (`test_utilities_messages.py`,
+     `test_utilities_senders.py`); and an upload stopped before its first
+     write stores nothing (`test_utilities_scripts.py`).
+     A filter set changed since the plan ([#257][i257]):
      `test_utilities_scripts.py` takes every kind of script plan (add,
      remove, move, switch, rename, restore) and refuses each, coded
      `filterset_changed`, with nothing sent and no backup of the plan's
@@ -164,7 +176,12 @@ root `pytest` (*The TUI*).
      the script listing on rules), and one soon after an exchange, a half
      not yet connected, or a second write in a row sends none; an idle half
      the server dropped reconnects before the write, and a probe the server
-     refused stops it.
+     refused stops it. The checkpoint ([#280][i280]): asked before every
+     operation, saying which is a write; an operation it stops is neither
+     sent nor connected for, and what it raised reaches the caller; and an
+     idle probe before a write is asked about after the write, so a
+     front-end that stops nothing once a write is under way does not stop
+     its probe either.
    - **Sieve extensions** (`test_extensions.py`) — the emit table checked
      against sievelib's `require` line over every rule shape, and
      `disabled_extensions` refusing, falling back, and doing nothing where
@@ -236,11 +253,15 @@ root `pytest` (*The TUI*).
      test sees which halves a method opened; records what the IMAP double
      is asked to write (`imap_writes`); reads UIDVALIDITY afresh on every
      SELECT, so a folder can be renumbered between plan and execute;
-     refuses CHECKSCRIPT where its `checkscript` is false; and advertises
-     its `imap_caps`. `MAILCTL_TEST_DECLINE` names capabilities the
-     provider is to declare false. Covered: `initialize` connecting
-     nothing, refusing a bad setting and a second `initialize`, and a
-     method before it;
+     refuses CHECKSCRIPT where its `checkscript` is false; advertises its
+     `imap_caps`; and, where its `hold` counts a double's call (`fetch`,
+     `create_folder`, `getscript_bytes`, `checkscript`, `putscript`),
+     notes it in `held` and holds it until the API has a line from the
+     client it has not yet read, so a test knows a request was mid-way
+     when its cancel arrived ([#280][i280]). `MAILCTL_TEST_DECLINE` names
+     capabilities the provider is to declare false. Covered: `initialize`
+     connecting nothing, refusing a bad setting and a second
+     `initialize`, and a method before it;
      `initialize` naming what the rename left behind ([#307][i307]) — an
      old setting from the env file, one from the environment, and an old
      config directory with no new one — each with a sentinel (the old
@@ -256,8 +277,9 @@ root `pytest` (*The TUI*).
      refusing a UID from a renumbered folder, with `build_filter` or
      without, before the UID is used; `build_filter` returning the filter
      document `filter.add.plan` takes, listing and saving nothing; and a
-     UID below 1 or missing, an unknown `like` key, empty criteria, and
-     each combination the CLI refuses all refused; a plan that writes
+     UID below 1 (`uid_below_one`) or missing (`no_such_message`,
+     [#341][i341]), an unknown `like` key, empty criteria, and each
+     combination the CLI refuses all refused; a plan that writes
      nothing, runs once, sends its events before its answer, and is
      refused once
      discarded, or at execute once the filter set changed; and `log` only
@@ -316,7 +338,22 @@ root `pytest` (*The TUI*).
      unknown `skip` kind as `unknown_kind` rather than a JSON-RPC
      parameter error, a backup file that exists or cannot be written or
      read, an empty filter set to edit, no active one to show, and a
-     baseline that cannot be read or named.
+     baseline that cannot be read or named; and `mail.view`'s and
+     `mail.search` `like`'s UID the folder lacks, `no_such_message` with
+     `build_filter` or without, and `like`'s UID below 1, `uid_below_one`
+     ([#341][i341]).
+     Cancelling a request ([#280][i280]): a long search held on its first
+     page and cancelled stops, answered `-32800`, and the session goes on;
+     requests read while one runs are answered after it, in order; one
+     cancelled while it waits its turn never runs; a cancel for an unknown
+     or finished id, or naming none, is ignored, and one sent as a request
+     answered null; an execute cancelled before its first write sends
+     nothing, and one cancelled after its backup, held on CHECKSCRIPT,
+     names the backup and stores nothing; an execute or a `filter.apply`
+     pass cancelled after its first write runs to its end; a cancel while
+     `credentials.prompt` waits ends the wait, a late answer to it answers
+     nothing, and the next request asks again; and a password command gets
+     no input while the client's next request is still answered.
      And two structural checks. The method set matches the command tree
      both ways: every method but the protocol's own is a CLI command
      path, a `.plan` with its `.execute`, and every command has a method
@@ -331,7 +368,15 @@ root `pytest` (*The TUI*).
      no parameter refusal naming the value, no method taking a password,
      another command's plan refused and left waiting, and a result that
      cannot be sent answered as an internal error with serving going
-     on.
+     on. The input thread and the cancel ([#280][i280]): `take` picking
+     out each cancel with what is held ahead of it and leaving the rest in
+     order, a bad line keeping its turn; a cancel already held, or
+     arriving while a server-to-client request waits, ending the wait,
+     with what came before it received after; lines split across reads
+     arriving whole, a last line with no newline counted; a late cancel,
+     met in its turn or taken by the next request's checkpoint, sparing a
+     request sent after it that reuses the id; and a cancel landing just
+     after a checkpoint read the input still ending the password prompt.
    - **The ManageSieve wrapper** (`test_managesieve_client.py`) — the real
      `SieveClient` against a scripted socket that replays a server's bytes:
      GETSCRIPT byte-exact whatever the script ends with ([#90][i90]), the
@@ -869,7 +914,9 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i307]: https://github.com/harleypig/mailctl/issues/307
 [i308]: https://github.com/harleypig/mailctl/issues/308
 [i279]: https://github.com/harleypig/mailctl/issues/279
+[i280]: https://github.com/harleypig/mailctl/issues/280
 [i330]: https://github.com/harleypig/mailctl/issues/330
 [i331]: https://github.com/harleypig/mailctl/issues/331
 [i332]: https://github.com/harleypig/mailctl/issues/332
+[i341]: https://github.com/harleypig/mailctl/issues/341
 [i325]: https://github.com/harleypig/mailctl/issues/325

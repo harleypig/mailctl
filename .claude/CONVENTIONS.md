@@ -183,7 +183,9 @@ layer may call.
   - `protocol.py` — the framing, one JSON message per line, and the
     envelope. A client's lines are read here and nowhere else, so this is
     where a `password` it sends is wrapped in `Secret`, as the line is
-    parsed.
+    parsed. They are read on a thread of their own, so a cancel is in
+    hand while a request runs; the handling and every line written stay
+    on the thread that serves the requests ([#280][i280]).
   - `server.py` — the session, the methods, and the plan table between a
     `.plan` and its `.execute`.
   - `__main__.py` — `python -m mailctl.api`.
@@ -236,7 +238,9 @@ layer may call.
     and `ServerAlert` re-exported for a front-end to recognise one.
   - `uids.py` — a UID kept between runs, pinned to the folder's
     UIDVALIDITY and refused, before it is used, once the folder has been
-    renumbered ([#204][i204]).
+    renumbered ([#204][i204]); a UID the folder does not hold is refused,
+    coded `no_such_message`, a pinned one checked for staleness first
+    ([#341][i341]).
 - `mailctl/engine.py` — **the session**. `connect(config)` resolves the
   provider the configuration selects, refuses a setting it has no use for,
   lets its dialect validate the rest — all before any connection — and
@@ -254,7 +258,9 @@ layer may call.
     `mail_noop`, an IMAP `NOOP`, on mail), `Provider` (the
     record naming a host's capabilities, dialect, and transport), and
     `ProviderCapabilities`; it re-exports the model so one import reaches
-    both.
+    both. `message_headers` and `message_source` return None for a UID
+    the folder does not hold, which the `mxroute` transport makes of the
+    `imap` component's `NoSuchMessage` ([#341][i341]).
   - `model.py` — the provider-neutral model the utilities speak:
     `ActionSpec`, `Placement`, `DisplayDiff`, the folder and message
     records, the neutral steps a rule's actions take (`ActionStep`), the
@@ -511,7 +517,8 @@ is a gap in the others, not a design choice.
 **An API method is named by its command path, dotted** — `filter.list`,
 `mail.search`, and a write command as a pair, `filter.add.plan` and
 `filter.add.execute` — so the API and the help name an operation alike;
-`initialize`, `shutdown`, and `plan.discard` are the protocol's own.
+`initialize`, `shutdown`, `plan.discard`, and `$/cancelRequest` are the
+protocol's own.
 **The API offers every command but `help`** ([#258][i258],
 [#279][i279]). `help` is the CLI's help for its own command line; a client
 learns what it can call from `initialize`'s capabilities and the method
@@ -527,7 +534,10 @@ opens the halves its CLI command opens. `mail.search` takes `like` and
 `build_filter`, the CLI's `--like` and `--build-filter`, and each filter in
 `filter.list` carries its neutral `steps` beside its `actions`
 ([#259][i259]), so a client fills a filter in from a message and words
-what a filter does without deriving either itself.
+what a filter does without deriving either itself. `like`'s UID is
+refused as `mail.view`'s is: below 1, coded `uid_below_one`, and one the
+folder does not hold, `no_such_message` with the folder and the UIDs
+([#341][i341]).
 
 **An interface may leave out an operation that does not fit its medium**
 (operator, 2026-09-28, [#145][i145]). "Next message" is a stateless
@@ -744,6 +754,13 @@ classification** (`engine.Session`):
 - **One call at a time per half**, under a lock, since IMAP and
   ManageSieve are both one command after another; and each mail call names
   its folder rather than trusting the one a previous call left selected.
+- **A front-end may stop a call before it is sent.** `engine.connect` and
+  `Session` take a `checkpoint`, a third callback beside `progress` and
+  `on_event`, called before every transport operation, True for a write,
+  and before the half is connected; what it raises stops the operation
+  unsent and reaches the caller as raised. The utilities never know it is
+  there, so every loop in them stops between exchanges, never during one
+  ([#280][i280]).
 - **A session owns its connections, and nothing is shared between
   sessions.** There is no module-level connection state: a long-running
   front-end keeps one session per user.
@@ -754,7 +771,16 @@ fails before any login or password prompt (decided on [#137][i137]).
 **The API holds one session for its process**: `initialize` resolves the
 configuration from the process's own arguments, as the CLI does, and opens
 the session, connecting nothing; `shutdown` or the end of input closes it.
-Requests are handled one at a time, in order.
+Requests are handled one at a time, in order. **A request can be cancelled
+between exchanges, never after its first write** ([#280][i280]). The
+client sends `$/cancelRequest`, the Language Server Protocol's
+notification, naming the request's id, and the API's checkpoint stops it
+before its next exchange, answered `-32800` with `written` false and the
+path of any backup it wrote first. Once a write is sent the request runs
+to its end and answers as it would have, since that write may have landed
+and is never sent again. A cancel names only a request sent before it,
+the one in hand or one waiting its turn ahead of it; any other id is
+ignored, so a late cancel never stops a later request reusing the id.
 
 **How a provider is chosen, declared, and held to its interface:**
 
@@ -1210,7 +1236,13 @@ and it is enforced by construction rather than by care:
   drop a prompted password so the next request asks again; one from a
   file, a command, or a setting is kept. On either interface, a password
   IMAP cannot send, since imaplib sends `LOGIN` as ASCII, is refused as
-  `credentials_not_ascii`, quoting nothing.
+  `credentials_not_ascii`, quoting nothing. A cancel of the request ends
+  the prompt's wait; a late answer to that prompt answers nothing, and the
+  next request asks again ([#280][i280]).
+- **A password command reads nothing of mailctl's stdin.** It runs with
+  stdin from `/dev/null` on either interface: under the API stdin is the
+  client's pipe, and under the CLI it may be a `--filter -` document
+  ([#280][i280]).
 - **The API expands nothing in a path a client sends.** The client has no
   shell on the API's host, so `filterset.restore`'s `file` is read as
   given, and every message names it as given: expanded,
@@ -1666,9 +1698,11 @@ will read it.
 [i307]: https://github.com/harleypig/mailctl/issues/307
 [i308]: https://github.com/harleypig/mailctl/issues/308
 [i279]: https://github.com/harleypig/mailctl/issues/279
+[i280]: https://github.com/harleypig/mailctl/issues/280
 [i330]: https://github.com/harleypig/mailctl/issues/330
 [i331]: https://github.com/harleypig/mailctl/issues/331
 [i332]: https://github.com/harleypig/mailctl/issues/332
+[i341]: https://github.com/harleypig/mailctl/issues/341
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147
