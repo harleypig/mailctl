@@ -185,7 +185,11 @@ layer may call.
     where a `password` it sends is wrapped in `Secret`, as the line is
     parsed. They are read on a thread of their own, so a cancel is in
     hand while a request runs; the handling and every line written stay
-    on the thread that serves the requests ([#280][i280]).
+    on the thread that serves the requests ([#280][i280]). That thread
+    reads ahead at most `INBOX_LIMIT`, 64, messages not yet served, then
+    waits, so a client writing faster than it is served is held back by
+    its own pipe; it is stopped when the API stops serving, closing the
+    session failed or not ([#346][i346]).
   - `server.py` — the session, the methods, and the plan table between a
     `.plan` and its `.execute`.
   - `__main__.py` — `python -m mailctl.api`.
@@ -457,7 +461,9 @@ keeps the plan record in the session's plan table under a fresh id and
 returns the id beside the plan's document; the `.execute` method takes the
 id and nothing the plan already holds, so what was shown is what runs. An
 id is used once: executed, failed, or discarded (`plan.discard`), it is
-gone, and using it again is refused, coded `plan_unknown`. That is the
+gone, and using it again is refused, coded `plan_unknown`. Only the
+newest `PLANS_KEPT`, 32, plans wait: making another drops the oldest,
+whose id is refused the same way ([#346][i346]). That is the
 session's *a write is never sent again* held across a lost response. An
 execute checks its parameters before it takes the plan, so a request
 refused as malformed leaves the plan to run. And an execute of a plan that
@@ -781,6 +787,10 @@ to its end and answers as it would have, since that write may have landed
 and is never sent again. A cancel names only a request sent before it,
 the one in hand or one waiting its turn ahead of it; any other id is
 ignored, so a late cancel never stops a later request reusing the id.
+A cancel sent behind 64 messages not yet served is not seen until some
+are served, and a `credentials.prompt` waiting while that many are held
+is taken as declined, since its answer could no longer be read
+([#346][i346]).
 
 **How a provider is chosen, declared, and held to its interface:**
 
@@ -1416,6 +1426,12 @@ needed, send several mutations as one aliased request
 - **A build-it-yourself Docker image** is the top-level `Dockerfile`, built
   with `make image` and published nowhere; the README's *In Docker* section
   says how to run it. It sets `MAILCTL_BACKUP_ROOT` (*Rule conventions*).
+  It carries the CLI, the API, and the TUI in one venv, so the TUI finds
+  `mailctl-api` on `PATH`: `api` runs the API, `tui` the TUI, and
+  anything else is the CLI's arguments ([#347][i347]). Its guards — the
+  config directory a mount, the user not root, and a terminal for the
+  TUI — hold whichever runs, and the TUI's `--api` is refused, since the
+  command it names need not keep them.
 
 ## QA
 
@@ -1476,7 +1492,7 @@ Full dimension status:
 | 9. Compatibility | **Active** — CPython 3.11 through 3.14, every one tested in CI, and sievelib at both ends of its bound (1.5.0 and the newest below 2); the TUI on 3.11 and 3.14 only, the oldest and newest; no external contract we publish ([#231][i231], [#232][i232]) |
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
-| 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`) is built by `tests/container/test_image.py`, and in CI by the *Image scan* workflow on a PR or push touching its inputs (`Dockerfile`, `.dockerignore`, `docker/**`, `pyproject.toml`, and the workflow file itself), weekly on a schedule until 60 quiet days turn it off ([ICEBOX.md][icebox-scan]), and on manual dispatch; `test_image.py` itself is not in CI |
+| 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`), which installs the TUI beside mailctl ([#347][i347]), is built by `tests/container/test_image.py`, and in CI by the *Image scan* workflow on a PR or push touching its inputs (`Dockerfile`, `.dockerignore`, `docker/**`, `pyproject.toml`, `clients/tui/pyproject.toml`, `clients/tui/src/**`, and the workflow file itself), weekly on a schedule until 60 quiet days turn it off ([ICEBOX.md][icebox-scan]), and on manual dispatch; `test_image.py` itself is not in CI |
 | 13. Documentation | **Active** — this file, `README.md`, and `adr/`; markdownlint gates the prose |
 | 14. Code review | **Informal** — solo repo; `master` is PR-only, 0 required reviewers |
 | 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`. `TUI (3.x)` runs on 3.11 and 3.14, with mailctl installed beside the TUI so its real-API test runs: the TUI's `pyright`, then its `pytest`, both from `clients/tui/` ([ADR 0009][adr9]). One job named `Test` waits on both matrices and passes only if every version of each did, since that is the check the ruleset requires, so a red TUI blocks a merge ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror. `.github/workflows/image-scan.yml` (*Image scan*, job `Trivy (report only)`) runs when the image's inputs change, weekly on a schedule (Monday 06:17 UTC) so a CVE published against the unchanged base image is still reported, and on manual dispatch. GitHub turns that schedule off after 60 days with no activity in the repository, and nothing here warns when it does ([ICEBOX.md][icebox-scan]). The scan never fails on a finding and is not a required check ([#238][i238], [#264][i264]) |
@@ -1628,7 +1644,8 @@ will read it.
 - **Currently `v0.y.z` — alpha.** Per `git.md`, `X = 0` means **breakage is
   expected** and the `y.z` split is deliberately loose: bump `y` for a
   meaningful addition, `z` for a smaller change, and do not agonize over
-  which. The `0 → 1` jump is a decision in its own right and is not near.
+  which. The `0 → 1` jump is a decision in its own right, and M5 readies
+  it; what `v1.0.0` promises is [RELEASING.md](../RELEASING.md)'s.
 - **The rename gates `0 → 1`, and it has landed.** `v1.0.0` is where the
   version becomes a compatibility promise, and a name — the command, the
   config directory, the environment variables — is part of what it covers;
@@ -1703,6 +1720,8 @@ will read it.
 [i331]: https://github.com/harleypig/mailctl/issues/331
 [i332]: https://github.com/harleypig/mailctl/issues/332
 [i341]: https://github.com/harleypig/mailctl/issues/341
+[i346]: https://github.com/harleypig/mailctl/issues/346
+[i347]: https://github.com/harleypig/mailctl/issues/347
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147

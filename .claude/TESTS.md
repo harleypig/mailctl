@@ -126,10 +126,14 @@ root `pytest` (*The TUI*).
      `migration_appeared` and `migration_failed`. The folder rename's
      read-back names the operation that fixes a failed check where there
      is one: `folder rename` back for a filter left on the old name
-     ([#332][i332]), `folder rename` again where the rename never
-     happened, `folder unsubscribe` for an old name still subscribed, and
-     nothing where mailctl cannot fix it. `test_utilities_uids.py` pins
-     the UIDVALIDITY check ([#204][i204]): a stale pin given to `mail mark`
+     ([#332][i332]), `folder rename` again for every folder and
+     subscription check where the rename never happened, `folder
+     subscribe` for each folder left unsubscribed, the new name or one
+     under it ([#350][i350]), and `folder unsubscribe` for an old name
+     still subscribed; a check mailctl cannot fix says so in its detail,
+     and a read that failed carries the server's answer.
+     `test_utilities_uids.py` pins the UIDVALIDITY check ([#204][i204]): a
+     stale pin given to `mail mark`
      refused before any write, and before its flags are read; `mail view` and
      `--like` refusing one, a UID lost in the renumbering included; a plan's
      own value checked again at execute; and reading it costing no SELECT
@@ -282,8 +286,11 @@ root `pytest` (*The TUI*).
      combination the CLI refuses all refused; a plan that writes
      nothing, runs once, sends its events before its answer, and is
      refused once
-     discarded, or at execute once the filter set changed; and `log` only
-     where `initialize` asked, `server.alert` always and once per session.
+     discarded, or at execute once the filter set changed; a plan left
+     waiting past `PLANS_KEPT` dropped oldest first, refused
+     `plan_unknown`, while the next oldest still runs ([#346][i346]);
+     and `log` only where `initialize` asked, `server.alert` always and
+     once per session.
      Every other command's method ([#279][i279]), each opening only the
      halves its CLI command opens: the `filter` writes (remove, move,
      rename, enable, disable, optimize) planned, then stored once behind a
@@ -377,6 +384,15 @@ root `pytest` (*The TUI*).
      met in its turn or taken by the next request's checkpoint, sparing a
      request sent after it that reuses the id; and a cancel landing just
      after a checkpoint read the input still ending the password prompt.
+     The input's bound and its end ([#346][i346]): a client flooding the
+     input read no further than `INBOX_LIMIT`, `take` included; `close`
+     stopping a thread waiting for room, and not waiting on a read it has
+     no descriptor to wake; a password prompt waiting with the limit held
+     declined rather than hung; a declined bad line, and a cancel ending a
+     wait, held or not, each making room; an input descriptor of 1024 or
+     more still read, since the wait polls rather than selects; and no
+     input thread left once `run` returns, even where closing the session
+     failed.
    - **The ManageSieve wrapper** (`test_managesieve_client.py`) — the real
      `SieveClient` against a scripted socket that replays a server's bytes:
      GETSCRIPT byte-exact whatever the script ends with ([#90][i90]), the
@@ -635,7 +651,16 @@ container run cannot be mistaken for an MXroute one ([#49][i49]).
   from every source, a path through the mount cannot lead out, the run
   cannot lift `MAILCTL_BACKUP_ROOT` with `-e` or `--entrypoint`, a run as
   root or without the config mount is refused, and `--help` and
-  `--version` need no mount.
+  `--version` need no mount. The image's `api` and `tui` ([#347][i347])
+  are held to the same two refusals: `api` and `api help`, `tui` and
+  `tui --version`, a help word after `--`, and one beside other
+  arguments for either, since each starts what it is given. `tui`
+  without a terminal is refused, and its `--api`, in every spelling its
+  parser takes, with the control that after `--` the word is handed on
+  rather than refused. `api` answers `initialize` over `docker run -i`
+  and is held to the root under `-e MAILCTL_BACKUP_ROOT=/`; `tui` under
+  a pty reaches the container's own API, as far as its password prompt;
+  and `api --version`, `api -h`, and `tui --help` need no mount.
 - **Where the live tier's write guards are proved.** The mail store is
   disposable, so this tier needs no guard of its own; instead
   `test_live_write_guards.py` runs the live tier's guards against it
@@ -680,12 +705,19 @@ and its tests are a suite of their own: `clients/tui/tests/`, under
 `clients/tui/pyproject.toml`'s pytest configuration (`asyncio_mode =
 auto`, for `pytest-asyncio`). **The root `pytest` does not collect
 them** — its `testpaths` is `tests` — so `make test` needs nothing of
-Textual's. Run them with **`make testtui`**, which type-checks the TUI
-with its own `pyright` and then runs its `pytest`, both from
-`clients/tui/`; `TESTARGS` passes through as for the other targets. It
-needs the TUI installed into `.venv` beside mailctl (CONVENTIONS.md ›
-*Toolchain & reproducibility*). CI runs the same two steps as `TUI
-(3.11)` and `TUI (3.14)`, and the required `Test` check waits on them.
+Textual's, and it blocks pytest-asyncio by name (`-p no:asyncio`): no
+root test is async, and the plugin, there when the TUI shares `.venv`,
+would warn on every run ([#351][i351]). Run them with **`make
+testtui`**, which type-checks the TUI with its own `pyright` and then
+runs its `pytest`, both from `clients/tui/`; `TESTARGS` passes through
+as for the other targets. It needs the TUI installed into `.venv` beside
+mailctl (CONVENTIONS.md › *Toolchain & reproducibility*). CI runs the
+same two steps as `TUI (3.11)` and `TUI (3.14)`, and the required `Test`
+check waits on them.
+A test waits for a pushed screen to mount (`conftest.reach`) before it
+presses a key or queries the screen: one on the stack but not yet
+mounted has no children and no focus, and a key pressed then is lost
+([#348][i348]).
 
 - **Against a stub API** (`test_app.py`) — `stub_api.py` stands in for
   `mailctl-api` as a real child process, so the TUI's framing, its reader,
@@ -919,4 +951,9 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i331]: https://github.com/harleypig/mailctl/issues/331
 [i332]: https://github.com/harleypig/mailctl/issues/332
 [i341]: https://github.com/harleypig/mailctl/issues/341
+[i346]: https://github.com/harleypig/mailctl/issues/346
+[i347]: https://github.com/harleypig/mailctl/issues/347
+[i348]: https://github.com/harleypig/mailctl/issues/348
+[i350]: https://github.com/harleypig/mailctl/issues/350
+[i351]: https://github.com/harleypig/mailctl/issues/351
 [i325]: https://github.com/harleypig/mailctl/issues/325
