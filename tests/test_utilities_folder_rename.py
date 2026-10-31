@@ -281,9 +281,75 @@ def test_an_unsubscribed_folder_stays_unsubscribed(
 
     assert result.subscribed == ()
     assert "subscribe_folder" not in mailbox.names()
-    assert sieve.names() == ["get_script", "get_script"]
+    assert sieve.names() == ["get_script", "get_script", "get_script"]
     assert result.backup is None
     assert result.ok, result.checks
+
+
+# ----------------------------------------------------------------------------
+def test_with_no_rule_to_repoint_an_unchanged_filter_set_renames(
+    live, sieve, mailbox, imap_config
+):
+    """Red if the re-check refuses a filter set the plan saw unchanged,
+    or the folder half stops running without a rule to repoint (#332)."""
+    planned = plan(live, "spam", "Junk")
+
+    result = execute_folder_rename(live, imap_config, planned)
+
+    assert ("rename_folder", "INBOX.spam", "INBOX.Junk") in mailbox.calls
+    assert sieve.script == SCRIPT
+    assert "put_script" not in sieve.names()
+    assert result.backup is None
+    assert result.ok, result.checks
+
+
+# ----------------------------------------------------------------------------
+def test_with_no_rule_to_repoint_a_changed_filter_set_stops_the_rename(
+    live, sieve, mailbox, imap_config
+):
+    """Red if the rename moves the folder without reading the filter set
+    again when the plan had no rule to repoint: a rule filing into the old
+    name, added since, would be left pointing at nothing (#332)."""
+    planned = plan(live, "spam", "Junk")
+    sieve.script += (
+        '# rule:[spam]\r\nif true\r\n{\r\n\tfileinto "INBOX.spam";\r\n}\r\n'
+    )
+    edited = sieve.script
+
+    with pytest.raises(MailctlError) as caught:
+        execute_folder_rename(live, imap_config, planned)
+
+    assert caught.value.code == "filterset_changed"
+    assert caught.value.fields["operation"] == "filterset show"
+    assert "rename_folder" not in mailbox.names()
+    assert "subscribe_folder" not in mailbox.names()
+    assert "unsubscribe_folder" not in mailbox.names()
+    assert "check_script" not in sieve.names()
+    assert "put_script" not in sieve.names()
+    assert sieve.script == edited
+
+
+# ----------------------------------------------------------------------------
+def test_with_no_rule_to_repoint_a_switched_filter_set_stops_the_rename(
+    live, sieve, mailbox, imap_config
+):
+    """Red if the re-check without a rule to repoint compares the bytes
+    and not which filter set runs: the set switched to may file into the
+    old name (#332, as #308)."""
+    planned = plan(live, "spam", "Junk")
+    sieve.active = "elsewhere"
+    sieve.others = ["managesieve"]
+
+    with pytest.raises(MailctlError) as caught:
+        execute_folder_rename(live, imap_config, planned)
+
+    assert caught.value.code == "filterset_changed"
+    assert caught.value.fields["operation"] == "filterset list"
+    assert "rename_folder" not in mailbox.names()
+    assert "subscribe_folder" not in mailbox.names()
+    assert "unsubscribe_folder" not in mailbox.names()
+    assert "put_script" not in sieve.names()
+    assert "set_active" not in sieve.names()
 
 
 # ----------------------------------------------------------------------------
@@ -438,6 +504,8 @@ def test_a_rule_left_on_the_old_name_fails_the_check(live, imap_session):
 
     assert not rules.ok
     assert rules.detail == "'github' still does, 'lists' still does"
+    assert rules.operation == "folder rename"
+    assert rules.arguments == ("INBOX.Archive", "INBOX.Lists")
 
 
 # ----------------------------------------------------------------------------

@@ -29,7 +29,12 @@ from .events import (
     SubscriptionChanged,
 )
 from .folders import case_variant_hint
-from .scripts import activates, fetch_active, upload_script
+from .scripts import (
+    activates,
+    fetch_active,
+    require_unchanged,
+    upload_script,
+)
 
 # ############################################################################
 # The plan
@@ -393,7 +398,10 @@ def execute_folder_rename(
     validated before anything else, the folder is renamed and its
     subscriptions carried over once the server has accepted the script,
     and the script is stored straight after. With no rule to repoint the
-    script is left alone and only the folder half runs.
+    script is left alone and only the folder half runs, once the script
+    is read again and found as the plan saw it: a rule filing into the
+    old name added since would otherwise be left pointing at nothing
+    (#332).
 
     A failed subscription is recorded, not raised. Any other failure
     raises, naming the state the account is left in; nothing is retried.
@@ -461,6 +469,7 @@ def execute_folder_rename(
             )
 
         else:
+            require_unchanged(session, plan.script, plan.before, plan.active)
             move_folders()
 
     except MailctlError as exc:
@@ -597,12 +606,20 @@ def verify_folder_rename(
             }
         )
 
+        label = (
+            f"no filter in {plan.script!r} files into {old!r} or a folder "
+            f"under it"
+        )
+
         checks.append(
-            PostCondition(
-                f"no filter in {plan.script!r} files into {old!r} or a folder "
-                f"under it",
-                not left,
+            PostCondition(label, True)
+            if not left
+            else PostCondition(
+                label,
+                False,
                 ", ".join(f"{rule!r} still does" for rule in left),
+                operation="folder rename",
+                arguments=(new, old),
             )
         )
 
