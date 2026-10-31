@@ -746,3 +746,27 @@ def test_the_backup_directory_is_reachable_without_an_environment(tmp_path):
     )
 
     assert target.parent == tmp_path
+
+
+# ----------------------------------------------------------------------------
+def test_backup_dry_run_to_an_existing_file_is_refused(
+    fake_sieve, tmp_path, capsys
+):
+    """Red if the plan says it would write a file the real run refuses
+    (#331): a dry run that promises what the run will not do."""
+    target = tmp_path / "copy.sieve"
+    target.write_bytes(b"planted\n")
+
+    assert (
+        cli.main(["filterset", "backup", "--dry-run", "--output", str(target)])
+        == 1
+    )
+
+    out, err = capsys.readouterr()
+
+    assert target.read_bytes() == b"planted\n"
+    assert out == ""
+    assert err == (
+        f"mailctl: {target} already exists, and a backup never replaces a "
+        f"file.\n"
+    )

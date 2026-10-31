@@ -71,6 +71,7 @@ from .scripts import (
     DEFAULT_SCRIPT_NAME,
     activates,
     fetch_active,
+    require_not_empty,
     upload_script,
 )
 
@@ -141,7 +142,9 @@ def check_rename(config: Config, new_name: str) -> None:
 def _require_name(name: str) -> None:
     """Refuse an empty or blank rule name."""
     if not name.strip():
-        raise MailctlError("a filter's new name cannot be empty")
+        raise MailctlError(
+            "a filter's new name cannot be empty", code="filter_name_empty"
+        )
 
 
 # ----------------------------------------------------------------------------
@@ -580,8 +583,7 @@ def plan_removal(
     """Take a named rule out of the script without uploading the result."""
     name, before, active = fetch_active(session, script)
 
-    if not before.strip():
-        raise MailctlError(f"filter set {name!r} is empty")
+    require_not_empty(name, before)
 
     after = session.dialect.remove_rule(before, rule)
 
@@ -613,8 +615,7 @@ def plan_move(
 
     name, before, active = fetch_active(session, script)
 
-    if not before.strip():
-        raise MailctlError(f"filter set {name!r} is empty")
+    require_not_empty(name, before)
 
     dialect = session.dialect
     after = dialect.move_rule(before, rule, placement)
@@ -660,8 +661,7 @@ def plan_switch(
 
     name, before, active = fetch_active(session, script)
 
-    if not before.strip():
-        raise MailctlError(f"filter set {name!r} is empty")
+    require_not_empty(name, before)
 
     dialect = session.dialect
     switch = dialect.enable_rule if enable else dialect.disable_rule
@@ -700,8 +700,7 @@ def plan_rename(
 
     name, before, active = fetch_active(session, script)
 
-    if not before.strip():
-        raise MailctlError(f"filter set {name!r} is empty")
+    require_not_empty(name, before)
 
     dialect = session.dialect
     after = dialect.rename_rule(before, rule, new_name)

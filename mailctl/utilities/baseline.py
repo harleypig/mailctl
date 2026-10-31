@@ -231,7 +231,9 @@ def baseline_path(config: Config, directory: Path | None = None) -> Path:
     if not HOST_NAME.fullmatch(host) or ".." in host:
         raise MailctlError(
             f"host {config.host!r} cannot name a baseline file: only "
-            f"letters, digits, dots, and hyphens are used"
+            f"letters, digits, dots, and hyphens are used",
+            code="baseline_host_invalid",
+            fields={"host": config.host},
         )
 
     return (directory or baseline_dir()) / f"{host}.json"
@@ -279,7 +281,11 @@ def read_baseline(path: Path) -> Baseline | None:
         return None
 
     except (OSError, UnicodeDecodeError) as exc:
-        raise MailctlError(f"could not read baseline {path}: {exc}") from exc
+        raise MailctlError(
+            f"could not read baseline {path}: {exc}",
+            code="baseline_read_failed",
+            fields={"path": path},
+        ) from exc
 
     try:
         document = json.loads(text)
@@ -477,7 +483,9 @@ def execute_save_baseline(plan: BaselineSavePlan) -> Path:
 
     except (OSError, UnicodeDecodeError) as exc:
         raise MailctlError(
-            f"could not read baseline {plan.path}: {exc}"
+            f"could not read baseline {plan.path}: {exc}",
+            code="baseline_read_failed",
+            fields={"path": plan.path},
         ) from exc
 
     if now != (None if plan.previous is None else plan.previous.text):

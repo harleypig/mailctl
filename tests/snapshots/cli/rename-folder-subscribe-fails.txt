@@ -42,7 +42,7 @@ Uploaded and activated filter set 'managesieve'
 Checked after the rename:
   ok    'INBOX.Lists' is gone
   ok    'INBOX.Archive' exists
-  FAIL  'INBOX.Archive' is subscribed, as 'INBOX.Lists' was -- webmail will not show it; 'mailctl folder subscribe INBOX.Archive' does
+  FAIL  'INBOX.Archive' is subscribed, as 'INBOX.Lists' was -- webmail will not show it; 'mailctl folder subscribe INBOX.Archive' fixes it
   ok    'INBOX.Lists' is off the subscription list
   ok    the 1 folder under it moved with it
   FAIL  those subscribed before are subscribed now -- 'INBOX.Archive.GitHub' is not

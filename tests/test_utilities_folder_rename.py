@@ -176,23 +176,35 @@ def test_a_missing_parent_is_named(live):
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    ("old", "new", "message"),
+    ("old", "new", "message", "code"),
     [
-        ("INBOX", "Archive", "INBOX cannot be renamed"),
-        ("inbox", "Archive", "INBOX cannot be renamed"),
-        ("Nope", "Archive", "no folder named 'INBOX.Nope'"),
-        ("lists", "Archive", "'INBOX.Lists' exists, but folder names are"),
-        ("Lists", "spam", "'INBOX.spam' already exists"),
-        ("Lists", "Spam", "'INBOX.spam' exists, but folder names are"),
-        ("Lists", "INBOX.Lists", "is already named"),
-        ("Lists", "Lists/Inner", "inside itself"),
+        ("INBOX", "Archive", "INBOX cannot be renamed", "rename_inbox"),
+        ("inbox", "Archive", "INBOX cannot be renamed", "rename_inbox"),
+        ("Nope", "Archive", "no folder named 'INBOX.Nope'", "no_such_folder"),
+        (
+            "lists",
+            "Archive",
+            "'INBOX.Lists' exists, but folder names are",
+            "no_such_folder",
+        ),
+        ("Lists", "spam", "'INBOX.spam' already exists", "folder_exists"),
+        (
+            "Lists",
+            "Spam",
+            "'INBOX.spam' exists, but folder names are",
+            "folder_case_variant",
+        ),
+        ("Lists", "INBOX.Lists", "is already named", "rename_same_name"),
+        ("Lists", "Lists/Inner", "inside itself", "rename_into_itself"),
     ],
 )
 def test_a_rename_that_cannot_or_should_not_happen_is_refused(
-    live, mailbox, old, new, message
+    live, mailbox, old, new, message, code
 ):
-    with pytest.raises(MailctlError, match=message):
+    with pytest.raises(MailctlError, match=message) as caught:
         plan(live, old, new)
+
+    assert caught.value.code == code
 
     assert "rename_folder" not in mailbox.names()
 
@@ -204,8 +216,16 @@ def test_a_child_landing_on_an_existing_folder_is_refused(
     mailbox.listing.append(((), b".", b"INBOX.Archive.GitHub"))
     imap_session.create_folder("INBOX.Unrelated")
 
-    with pytest.raises(MailctlError, match=r"'INBOX\.Archive\.GitHub'"):
+    with pytest.raises(
+        MailctlError, match=r"'INBOX\.Archive\.GitHub'"
+    ) as caught:
         plan(live)
+
+    assert caught.value.code == "rename_subfolder_clash"
+    assert caught.value.fields == {
+        "folder": "INBOX.Lists",
+        "taken": ["INBOX.Archive.GitHub"],
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -414,6 +434,9 @@ def test_a_rename_refused_by_the_server_uploads_nothing(
 
     message = str(caught.value)
 
+    assert caught.value.code == "rename_not_started"
+    assert caught.value.fields["cause"] is None
+    assert caught.value.fields["backup"] is not None
     assert "could not rename folder 'INBOX.Lists'" in message
     assert (
         "Nothing was renamed, and the filter set on the server is as"
@@ -521,6 +544,28 @@ def test_an_unsubscribed_new_name_fails_the_check(live, imap_session):
 
 
 # ----------------------------------------------------------------------------
+def test_an_old_name_still_subscribed_names_the_unsubscribe(
+    live, imap_session
+):
+    before = plan(live)
+    imap_session.rename_folder("INBOX.Lists", "INBOX.Archive")
+    imap_session.subscribe("INBOX.Archive")
+    imap_session.subscribe("INBOX.Lists")
+
+    check = next(
+        c
+        for c in verify_folder_rename(live, before)
+        if c.label == "'INBOX.Lists' is off the subscription list"
+    )
+
+    assert not check.ok
+    assert (check.operation, check.arguments) == (
+        "folder unsubscribe",
+        ("INBOX.Lists",),
+    )
+
+
+# ----------------------------------------------------------------------------
 def test_fewer_messages_after_fails_the_check(live, mailbox, imap_session):
     before = plan(live)
     imap_session.rename_folder("INBOX.Lists", "INBOX.Archive")
@@ -543,6 +588,35 @@ def test_a_rename_that_never_happened_fails_every_folder_check(live):
     assert "'INBOX.Lists' is gone" in failed
     assert "'INBOX.Archive' exists" in failed
     assert "the 1 folder under it moved with it" in failed
+
+    fixes = {c.label: (c.operation, c.arguments) for c in checks}
+
+    # The old name still there is the rename to ask for again; a folder
+    # mailctl cannot remove, and children it cannot name one by one, are
+    # offered nothing.
+    assert fixes["'INBOX.Archive' exists"] == (
+        "folder rename",
+        ("INBOX.Lists", "INBOX.Archive"),
+    )
+    assert fixes["'INBOX.Lists' is gone"] == ("", ())
+    assert fixes["the 1 folder under it moved with it"] == ("", ())
+
+
+# ----------------------------------------------------------------------------
+def test_a_new_name_missing_with_the_old_gone_offers_nothing(
+    live, imap_session
+):
+    before = plan(live)
+    imap_session.rename_folder("INBOX.Lists", "INBOX.Elsewhere")
+
+    check = next(
+        c
+        for c in verify_folder_rename(live, before)
+        if c.label == "'INBOX.Archive' exists"
+    )
+
+    assert not check.ok
+    assert check.operation == ""
 
 
 # ----------------------------------------------------------------------------

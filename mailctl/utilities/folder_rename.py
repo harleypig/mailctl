@@ -161,18 +161,26 @@ def _check_names(
         )
 
     if same_folder(old, new):
-        raise MailctlError(f"{requested!r} is already named {old!r}")
+        raise MailctlError(
+            f"{requested!r} is already named {old!r}",
+            code="rename_same_name",
+            fields={"folder": old},
+        )
 
     if _under(new, old, delimiter):
         raise MailctlError(
             f"cannot rename {old!r} to {new!r}: a folder cannot be moved "
-            f"inside itself"
+            f"inside itself",
+            code="rename_into_itself",
+            fields={"folder": old, "new": new},
         )
 
     if listing.exists(new):
         raise MailctlError(
             f"not renaming {old!r}: {new!r} already exists. Rename or "
-            f"remove it first; merging two folders is not a rename."
+            f"remove it first; merging two folders is not a rename.",
+            code="folder_exists",
+            fields={"folder": new},
         )
 
     # A case-only rename ('Lists' to 'lists') has the old name as its one
@@ -187,7 +195,9 @@ def _check_names(
         raise MailctlError(
             f"not renaming {old!r} to {new!r}: {case_variant_hint(variants)}"
             f"The new name would put a second folder beside "
-            f"{'it' if len(variants) == 1 else 'them'}."
+            f"{'it' if len(variants) == 1 else 'them'}.",
+            code="folder_case_variant",
+            fields={"folder": new, "variants": variants},
         )
 
 
@@ -225,7 +235,9 @@ def plan_folder_rename(
     if taken:
         raise MailctlError(
             f"not renaming {old!r}: folders it would move a subfolder onto "
-            f"already exist ({', '.join(repr(name) for name in taken)})"
+            f"already exist ({', '.join(repr(name) for name in taken)})",
+            code="rename_subfolder_clash",
+            fields={"folder": old, "taken": taken},
         )
 
     parts = new.split(delimiter) if delimiter else [new]
@@ -335,7 +347,9 @@ def _interrupted(
     if not renamed:
         return MailctlError(
             f"{error}\nNothing was renamed, and the filter set on the server "
-            f"is as it was.{saved}"
+            f"is as it was.{saved}",
+            code="rename_not_started",
+            fields={"cause": error.code, "backup": backup},
         )
 
     try:
@@ -517,8 +531,27 @@ def verify_folder_rename(
 
     old, new = plan.old, plan.new
 
+    # No operation is offered for an old name still there: mailctl removes
+    # no folder, and where the new one is missing the next check offers
+    # the rename again.
     checks.append(PostCondition(f"{old!r} is gone", not listing.exists(old)))
-    checks.append(PostCondition(f"{new!r} exists", listing.exists(new)))
+
+    label = f"{new!r} exists"
+
+    if listing.exists(new):
+        checks.append(PostCondition(label, True))
+
+    # Only where the old name is still there is asking again the fix;
+    # with neither name listed, no command brings the folder back.
+    elif listing.exists(old):
+        checks.append(
+            PostCondition(
+                label, False, operation="folder rename", arguments=(old, new)
+            )
+        )
+
+    else:
+        checks.append(PostCondition(label, False))
 
     carried = plan.by_subscription
 
@@ -539,9 +572,13 @@ def verify_folder_rename(
 
     if carried:
         checks.append(
-            PostCondition(
+            PostCondition(f"{old!r} is off the subscription list", True)
+            if not listing.is_subscribed(old)
+            else PostCondition(
                 f"{old!r} is off the subscription list",
-                not listing.is_subscribed(old),
+                False,
+                operation="folder unsubscribe",
+                arguments=(old,),
             )
         )
 

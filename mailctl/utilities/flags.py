@@ -14,7 +14,7 @@ from .. import MailctlError
 from ..engine import Session
 from .messages import LIST_PAGE
 from .rules import require_capability
-from .uids import check_uidvalidity, require_pinnable
+from .uids import check_uid, check_uidvalidity, require_pinnable
 
 # The two system flags mark sets and clears by name, as IMAP spells them.
 SEEN = "\\Seen"
@@ -87,7 +87,9 @@ def check_keyword(keyword: str) -> str:
         raise MailctlError(
             f"{keyword} is a system flag, not a keyword; of the system "
             f"flags only \\Seen (read) and \\Flagged are set and cleared, "
-            f"by name"
+            f"by name",
+            code="keyword_system_flag",
+            fields={"keyword": keyword},
         )
 
     if not keyword or any(
@@ -95,7 +97,9 @@ def check_keyword(keyword: str) -> str:
     ):
         raise MailctlError(
             f"{keyword!r} cannot be a keyword: a keyword is one word of "
-            f'printable ASCII, without spaces or any of ( ) {{ % * " ] \\'
+            f'printable ASCII, without spaces or any of ( ) {{ % * " ] \\',
+            code="keyword_invalid",
+            fields={"keyword": keyword},
         )
 
     return keyword
@@ -131,7 +135,9 @@ def mark_flags(
 
     if both:
         raise MailctlError(
-            f"cannot both set and clear {', '.join(both)}; ask for one"
+            f"cannot both set and clear {', '.join(both)}; ask for one",
+            code="flag_set_and_cleared",
+            fields={"flags": both},
         )
 
     if not add and not remove:
@@ -167,10 +173,14 @@ def plan_mark(
     wanted = _unique_uids(uids)
 
     if not wanted:
-        raise MailctlError("name at least one message UID to mark")
+        raise MailctlError(
+            "name at least one message UID to mark", code="no_uids"
+        )
 
     if not add and not remove:
-        raise MailctlError("nothing to mark: no flag to set or clear")
+        raise MailctlError(
+            "nothing to mark: no flag to set or clear", code="no_marks"
+        )
 
     transport = session.transport
     folder = session.dialect.normalize(folder, transport.list_folders())
@@ -190,7 +200,9 @@ def plan_mark(
     if missing:
         raise MailctlError(
             f"no message with uid {', '.join(map(str, missing))} in "
-            f"{folder!r}; nothing was marked"
+            f"{folder!r}; nothing was marked",
+            code="no_such_message",
+            fields={"folder": folder, "uids": missing},
         )
 
     return MarkPlan(
@@ -267,10 +279,7 @@ def _unique_uids(uids: Iterable[int]) -> list[int]:
     """The UIDs in the order given, repeats dropped; below 1 refused."""
     result: list[int] = []
 
-    for uid in uids:
-        if uid < 1:
-            raise MailctlError(f"message UIDs start at 1, not {uid}")
-
+    for uid in map(check_uid, uids):
         if uid not in result:
             result.append(uid)
 

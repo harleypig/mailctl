@@ -568,3 +568,104 @@ def test_every_raised_code_is_rendered_and_every_rendering_raised():
 
     assert "max_messages" in raised
     assert raised == set(cli.ERROR_TEXT)
+
+
+# ############################################################################
+# Every refusal in the utilities carries a code (#331)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def error_classes() -> set[str]:
+    """``MailctlError`` and every subclass of it, by name, so a raise of
+    a component's error is held to the bar too."""
+    found: set[str] = set()
+    pending: list[type] = [mailctl.MailctlError]
+
+    while pending:
+        cls = pending.pop()
+        found.add(cls.__name__)
+        pending += cls.__subclasses__()
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def uncoded_errors(tree: ast.AST, names: set[str]) -> list[int]:
+    """The line of every call building one of ``names`` with no ``code``,
+    or with ``code=None`` written out.
+
+    Every call, not only every ``raise``: an error a helper builds and
+    returns is raised elsewhere. A code passed through ``**`` or from a
+    variable is taken on trust; neither can be read here.
+    """
+    lines = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        function = node.func
+        called = None
+
+        if isinstance(function, ast.Name):
+            called = function.id
+
+        elif isinstance(function, ast.Attribute):
+            called = function.attr
+
+        if called not in names:
+            continue
+
+        codes = [
+            keyword.value
+            for keyword in node.keywords
+            if keyword.arg in {"code", None}
+        ]
+        written_none = any(
+            isinstance(code, ast.Constant) and code.value is None
+            for code in codes
+        )
+
+        if not codes or written_none:
+            lines.append(node.lineno)
+
+    return lines
+
+
+# ----------------------------------------------------------------------------
+def test_every_error_the_utilities_build_carries_a_code():
+    """An API client branches on an error's code, never its message
+    (ADR 0008), so an uncoded refusal is one it cannot tell apart."""
+    names = error_classes()
+    modules = [name for name in CORE_MODULES if name.startswith("utilities/")]
+
+    assert "utilities/flags" in modules
+    assert {"MailctlError", "ImapConnectionError"} <= names
+
+    found = {
+        name: lines
+        for name in modules
+        if (lines := uncoded_errors(module_tree(name), names))
+    }
+
+    assert found == {}
+
+
+# ----------------------------------------------------------------------------
+def test_the_code_walk_catches_an_uncoded_error():
+    """The walk is seen to catch each shape it is for, and to pass the
+    coded ones, so a clean result is not a walk that read nothing."""
+    names = error_classes()
+    planted = ast.parse(
+        "raise MailctlError('bare')\n"
+        "raise errors.MailctlError('by attribute')\n"
+        "raise MailctlError('none', code=None)\n"
+        "def helper():\n"
+        "    return ImapConnectionError('built for a raise elsewhere')\n"
+        "raise MailctlError('coded', code='x')\n"
+        "raise MailctlError('passed on', **coded)\n"
+        "raise ValueError('not ours')\n"
+    )
+
+    assert uncoded_errors(planted, names) == [1, 2, 3, 5]

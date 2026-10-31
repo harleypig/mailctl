@@ -12,11 +12,30 @@ from pathlib import Path
 
 from .. import MailctlError
 
-__all__ = ["FileTaken", "write_backup", "write_private"]
+__all__ = ["FileTaken", "check_free", "write_backup", "write_private"]
 
 
 class FileTaken(Exception):
     """An exclusive write found a file already at its target."""
+
+
+# ----------------------------------------------------------------------------
+def check_free(target: Path) -> None:
+    """Refuse ``target`` where a file is already there: a backup never
+    replaces one. A plan calls this so it refuses what the write would;
+    the write still creates exclusively, for a file that appears between.
+    """
+    if os.path.lexists(target):
+        raise _taken(Path(target))
+
+
+# ----------------------------------------------------------------------------
+def _taken(target: Path) -> MailctlError:
+    return MailctlError(
+        f"{target} already exists, and a backup never replaces a file.",
+        code="backup_exists",
+        fields={"path": target},
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -49,10 +68,7 @@ def write_backup(text: str, target: Path, numbered: bool = False) -> Path:
 
         except FileTaken:
             if not numbered:
-                raise MailctlError(
-                    f"{candidate} already exists, and a backup never "
-                    f"replaces a file."
-                ) from None
+                raise _taken(candidate) from None
 
         number += 1
         candidate = target.with_name(f"{target.stem}-{number}{target.suffix}")
@@ -100,7 +116,9 @@ def write_private(
             raise FileTaken(target) from None
 
         raise MailctlError(
-            f"could not write {what} to {target}: {exc}"
+            f"could not write {what} to {target}: {exc}",
+            code="file_unwritable",
+            fields={"path": target},
         ) from exc
 
     return target

@@ -1104,15 +1104,14 @@ def test_a_rename_to_a_name_already_taken_is_refused_with_its_code(start):
 
 # ----------------------------------------------------------------------------
 def test_filter_set_write_parameters_are_refused_as_parameters(start):
-    """Red if a missing name, a missing or unknown placement, or an
-    unknown kind to skip reaches the utilities instead."""
+    """Red if a missing name or a missing or unknown placement reaches
+    the utilities instead."""
     client = initialized(start, scripts={"managesieve": TWO_FILTERS})
     asks = [
         ("filter.remove.plan", {}),
         ("filter.move.plan", {"name": "github"}),
         ("filter.move.plan", {"name": "github", "placement": {"where": "up"}}),
         ("filter.rename.plan", {"name": "github"}),
-        ("filter.optimize.plan", {"skip": ["colour"]}),
         ("filter.disable.plan", {"name": "github", "yes": True}),
     ]
 
@@ -3171,3 +3170,204 @@ def test_config_migrate_never_expands_a_variable_into_a_config_path(
     )
 
     assert_sentinel_absent(client)
+
+
+# ############################################################################
+# Every refusal is coded (#331)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_each_refusal_the_utilities_make_reaches_the_client_coded(
+    start, tmp_path
+):
+    """Red if any of these comes back uncoded, under another code, or
+    without the fields a client needs: a client branches on the code,
+    never on the message (ADR 0008)."""
+    taken = tmp_path / "taken.sieve"
+    taken.write_text("kept\n", encoding="utf-8")
+    not_text = tmp_path / "latin1.sieve"
+    not_text.write_bytes(b"# caf\xe9\n")
+    client = initialized(start, uidvalidity={"INBOX.spam": None})
+    asks = [
+        (
+            "mail.mark.plan",
+            {"uids": [1], "keywords": ["\\Deleted"]},
+            "keyword_system_flag",
+            {"keyword": "\\Deleted"},
+        ),
+        (
+            "mail.mark.plan",
+            {"uids": [1], "keywords": ["two words"]},
+            "keyword_invalid",
+            {"keyword": "two words"},
+        ),
+        (
+            "mail.mark.plan",
+            {"uids": [1], "keywords": ["$X"], "no_keywords": ["$X"]},
+            "flag_set_and_cleared",
+            {"flags": ["$X"]},
+        ),
+        ("mail.mark.plan", {"uids": [], "read": True}, "no_uids", {}),
+        (
+            "mail.mark.plan",
+            {"uids": [0], "read": True},
+            "uid_below_one",
+            {"uid": 0},
+        ),
+        (
+            "mail.mark.plan",
+            {"uids": [1, 99], "read": True},
+            "no_such_message",
+            {"folder": "INBOX", "uids": [99]},
+        ),
+        (
+            "mail.mark.plan",
+            {"uids": [1], "read": True, "uidvalidity": 0},
+            "uidvalidity_out_of_range",
+            {"uidvalidity": 0},
+        ),
+        ("mail.view", {"uid": 0}, "uid_below_one", {"uid": 0}),
+        (
+            "mail.view",
+            {"uid": 1, "folder": "INBOX.spam", "uidvalidity": 7},
+            "no_uidvalidity",
+            {"folder": "INBOX.spam"},
+        ),
+        (
+            "mail.search",
+            {"filter": GITHUB_FILTER, "raw": "ALL"},
+            "criteria_and_raw",
+            {},
+        ),
+        ("mail.search", {"limit": 0}, "limit_below_one", {"limit": 0}),
+        (
+            "mail.senders",
+            {"by": "colour"},
+            "unknown_grouping",
+            {"grouping": "colour"},
+        ),
+        (
+            "folder.rename.plan",
+            {"old": "INBOX.Lists", "new": "INBOX.Lists"},
+            "rename_same_name",
+            {"folder": "INBOX.Lists"},
+        ),
+        (
+            "folder.rename.plan",
+            {"old": "INBOX.Lists", "new": "INBOX.Lists.A"},
+            "rename_into_itself",
+            {"folder": "INBOX.Lists"},
+        ),
+        (
+            "folder.rename.plan",
+            {"old": "INBOX.Lists", "new": "INBOX.spam"},
+            "folder_exists",
+            {"folder": "INBOX.spam"},
+        ),
+        (
+            "folder.rename.plan",
+            {"old": "INBOX.Lists", "new": "INBOX.SPAM"},
+            "folder_case_variant",
+            {"variants": ["INBOX.spam"]},
+        ),
+        (
+            "folder.create.plan",
+            {"folder": "INBOX.lists"},
+            "folder_case_variant",
+            {"variants": ["INBOX.Lists"]},
+        ),
+        (
+            "filter.rename.plan",
+            {"name": "keep-boss", "new_name": " "},
+            "filter_name_empty",
+            {},
+        ),
+        (
+            "filter.optimize.plan",
+            {"skip": ["colour"]},
+            "unknown_kind",
+            {"unknown": ["colour"]},
+        ),
+        (
+            "filterset.backup",
+            {"output": str(taken), "dry_run": True},
+            "backup_exists",
+            {"path": str(taken)},
+        ),
+        (
+            "filterset.backup",
+            {"output": str(taken)},
+            "backup_exists",
+            {"path": str(taken)},
+        ),
+        (
+            "filterset.backup",
+            {"output": str(taken / "under-a-file.sieve")},
+            "file_unwritable",
+            {"path": str(taken / "under-a-file.sieve")},
+        ),
+        (
+            "filterset.restore.plan",
+            {"file": str(tmp_path / "absent")},
+            "backup_unreadable",
+            {"path": str(tmp_path / "absent")},
+        ),
+        (
+            "filterset.restore.plan",
+            {"file": str(not_text)},
+            "backup_unreadable",
+            {"path": str(not_text)},
+        ),
+    ]
+
+    for method, params, code, fields in asks:
+        error = refusal(client.request(method, params))
+
+        assert error["code"] == code, (method, params, error)
+        assert error.get("fields", {}).items() >= fields.items(), (
+            method,
+            params,
+            error,
+        )
+
+    assert taken.read_text(encoding="utf-8") == "kept\n"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_an_empty_filter_set_to_edit_reaches_the_client_coded(start):
+    client = initialized(start, scripts={"managesieve": ""})
+    error = refusal(client.request("filter.remove.plan", {"name": "x"}))
+
+    assert error["code"] == "filterset_empty"
+    assert error["fields"] == {"filterset": "managesieve"}
+
+
+# ----------------------------------------------------------------------------
+def test_no_active_filter_set_to_show_reaches_the_client_coded(start):
+    client = initialized(start, active=None)
+
+    assert (
+        refusal(client.request("filterset.show"))["code"]
+        == "filterset_unnamed"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_baseline_that_cannot_be_read_is_refused_coded(start):
+    """Red if a baseline path that is not a file comes back uncoded."""
+    baseline_file().mkdir(parents=True)
+    unreadable = refusal(initialized(start).request("server.baseline.show"))
+
+    assert unreadable["code"] == "baseline_read_failed"
+    assert unreadable["fields"] == {"path": str(baseline_file())}
+
+
+# ----------------------------------------------------------------------------
+def test_a_host_that_cannot_name_a_baseline_is_refused_coded(start):
+    client = initialized(start, "--host", "mail_example.com")
+    error = refusal(client.request("server.baseline.show"))
+
+    assert error["code"] == "baseline_host_invalid"
+    assert error["fields"] == {"host": "mail_example.com"}

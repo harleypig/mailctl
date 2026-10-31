@@ -232,14 +232,17 @@ def load_probe(document: object) -> ProbeRecord:
     something it is not.
     """
     if not isinstance(document, dict):
-        raise MailctlError("not a probe document: not a JSON object")
+        raise MailctlError(
+            "not a probe document: not a JSON object", code="probe_invalid"
+        )
 
     version = document.get("version")
 
     if version != PROBE_VERSION:
         raise MailctlError(
             f"probe document version {version!r}; this mailctl reads "
-            f"version {PROBE_VERSION}"
+            f"version {PROBE_VERSION}",
+            code="probe_invalid",
         )
 
     try:
@@ -247,7 +250,8 @@ def load_probe(document: object) -> ProbeRecord:
 
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise MailctlError(
-            f"not a probe document: {type(exc).__name__}: {exc}"
+            f"not a probe document: {type(exc).__name__}: {exc}",
+            code="probe_invalid",
         ) from exc
 
 

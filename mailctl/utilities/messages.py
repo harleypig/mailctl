@@ -28,6 +28,7 @@ from ..providers.base import (
 from .mail import header_values
 from .rules import require_capability
 from .uids import (
+    check_uid,
     check_uidvalidity,
     current_uidvalidity,
     read_pinned,
@@ -190,11 +191,15 @@ def list_messages(
         require_capability(session, "raw_query")
 
     if criteria is not None and raw:
-        raise MailctlError("give criteria or a raw query, not both")
+        raise MailctlError(
+            "give criteria or a raw query, not both", code="criteria_and_raw"
+        )
 
     if limit is not None and limit < 1:
         raise MailctlError(
-            f"the message limit must be at least 1, not {limit}"
+            f"the message limit must be at least 1, not {limit}",
+            code="limit_below_one",
+            fields={"limit": limit},
         )
 
     if order is not None and order.key not in SORT_KEYS:
@@ -402,8 +407,7 @@ def read_message(
     where the folder's is now another, the message is refused rather than
     shown, since the UID may name a different one.
     """
-    if uid < 1:
-        raise MailctlError(f"message UIDs start at 1, not {uid}")
+    check_uid(uid)
 
     require_pinnable(session, uidvalidity)
 

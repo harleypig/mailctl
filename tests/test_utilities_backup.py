@@ -44,6 +44,23 @@ def test_a_backup_is_planned_then_written_byte_for_byte(
 
 
 # ----------------------------------------------------------------------------
+def test_a_named_backup_file_that_exists_is_refused_by_the_plan(
+    sessions, imap_config, tmp_path
+):
+    """Red if the plan names a file the write would refuse: show, then
+    change, is honest only if the plan refuses too (#331)."""
+    target = tmp_path / "c.sieve"
+    target.write_text("kept\n")
+
+    with pytest.raises(MailctlError, match="already exists") as caught:
+        utilities.backup.plan_backup(sessions, imap_config, str(target))
+
+    assert caught.value.code == "backup_exists"
+    assert caught.value.fields == {"path": target}
+    assert target.read_text() == "kept\n"
+
+
+# ----------------------------------------------------------------------------
 def test_a_backup_with_no_active_script_is_refused(imap_config):
     with pytest.raises(MailctlError, match="nothing to back up"):
         utilities.backup.plan_backup(
