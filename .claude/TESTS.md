@@ -887,9 +887,11 @@ Its first run against the real account is [#298][i298].
 Live tests touch a real mailbox, so the guards are not optional:
 
 - **Credentials come from the environment** — the `MAILCTL_*` variables
-  (`config.py`), with the password via `MAILCTL_PASSWORD_CMD` in preference to
-  `MAILCTL_PASSWORD`. `MAILCTL_LIVE=1` is required, so a plain `pytest` can
-  never touch the account.
+  (`config.py`), with the password via `MAILCTL_PASSWORD_FILE` or
+  `MAILCTL_PASSWORD_CMD` in preference to `MAILCTL_PASSWORD`; the gate
+  accepts any of the three, testing only that one is set
+  (`test_live_gate.py`, [#369][i369]). `MAILCTL_LIVE=1` is required, so a
+  plain `pytest` can never touch the account.
 - **The password stays out of every artifact.** A live test's output, a
   captured log, and a failure traceback are all places a credential could
   surface — `Secret` is what prevents it, so a live test must never unwrap a
@@ -1005,3 +1007,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i362]: https://github.com/harleypig/mailctl/issues/362
 [i364]: https://github.com/harleypig/mailctl/issues/364
 [i325]: https://github.com/harleypig/mailctl/issues/325
+[i369]: https://github.com/harleypig/mailctl/issues/369
