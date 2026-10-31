@@ -62,7 +62,10 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+# No root test is async. pytest-asyncio is here only when the TUI's dev
+# extra shares this .venv, and loaded it warns on every run; blocking it by
+# name is a no-op when it is absent, where its ini key would warn instead.
+addopts = "-ra -p no:asyncio"
 markers = [
   "live: hits a real MXroute account and mutates real state; also gated on MAILCTL_LIVE=1",
   "container: runs against a throwaway local Dovecot in Docker; gated on MAILCTL_CONTAINER=1",
