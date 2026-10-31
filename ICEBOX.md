@@ -600,3 +600,42 @@ It is a proof of concept, not a product: nothing here depends on it.
 [go-i259]: https://github.com/harleypig/mailctl/issues/259
 [go-ruling]: https://github.com/harleypig/mailctl/issues/259#issuecomment-6527684685
 [go-adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
+
+## The API's input bound counts messages, not bytes
+
+`ICEBOX:` API input limit, INBOX_LIMIT, line length, max line length, byte
+cap, byte limit, max message size, message size limit, memory, unbounded
+line, oversized line, huge line, no newline, flood, backpressure, read-ahead,
+protocol.py, JSON-RPC framing, stdio — **trigger: the API gains a carrier
+other than stdio, or a client is seen sending an oversized line.**
+
+The API's input thread reads ahead at most `INBOX_LIMIT`, 64, messages not
+yet served, then waits, so a client that writes faster than it is served is
+held back by its own pipe ([harleypig/mailctl#346][bytes-i346]). The bound
+counts whole messages. Bytes that have not yet reached a newline sit in the
+reader's pending buffer (`_read_lines` in `mailctl/api/protocol.py`), which
+grows until one arrives, with no cap; and each of the 64 held messages may
+be any size. A single line with no newline therefore takes as much memory as
+the client cares to send. Parked 2026-10-31, the operator's ruling on a
+finding from the independent review of that bound.
+
+**What was deferred:** a byte cap on one message, and on what is held in
+total, with a line over the cap refused as a malformed message rather than
+read whole.
+
+**Why not now.** Over stdio the API's one peer is the process that started
+it, running as the same user and unauthenticated by design ([ADR
+0008][bytes-adr8]). A client that sends an endless line can only exhaust its
+own user's memory, which it could do without mailctl, so this is a
+self-inflicted cost and not an attack. No message mailctl expects comes near
+a size where a cap would matter.
+
+**Why the trigger.** An HTTP carrier is already planned for the web UI, as
+its own decision ([ADR 0008][bytes-adr8] *HTTP for the web UI, later*). Its
+peer is no longer the parent process, and a request body is then input from
+somebody else, so a size limit belongs in that design, likely where the HTTP
+server reads the body rather than in the stdio framing. A real client sending
+oversized lines over stdio would be the other reason to add one here.
+
+[bytes-i346]: https://github.com/harleypig/mailctl/issues/346
+[bytes-adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
