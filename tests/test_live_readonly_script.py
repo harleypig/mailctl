@@ -847,3 +847,161 @@ def test_the_guards_exception_needs_a_work_dir(tmp_path):
     )
 
     assert proc.stdout == "refused\n"
+
+
+# ############################################################################
+# --env-file (#325)
+# ############################################################################
+
+# Stands in for a password held in an env file. The fake never opens the
+# file either, so this reaching the output could only be the script reading
+# it.
+ENV_SENTINEL = "env-s3ntinel-never-print-me"
+
+
+# ----------------------------------------------------------------------------
+def env_file(tmp_path, name="account.env"):
+    """An env file holding the sentinel and a line that leaves a marker
+    behind if anything runs the file as shell; return both paths. Mode
+    0600, as mailctl requires of one holding a password."""
+    path = tmp_path / name
+    marker = tmp_path / f"{name}.sourced"
+    path.write_text(f"MAILCTL_PASSWORD={ENV_SENTINEL}\ntouch {marker}\n")
+    path.chmod(0o600)
+
+    return path, marker
+
+
+# ----------------------------------------------------------------------------
+def test_env_file_reaches_every_call_before_its_command(tmp_path):
+    """Red if run_mailctl drops ENV_ARGS, or puts them after the command's
+    own arguments. The dry-run check on the rest of each call is the
+    guard still holding with the option in front of it."""
+    path, _ = env_file(tmp_path)
+    proc, calls = run(tmp_path, "--env-file", str(path))
+
+    assert proc.returncode == 0, proc.stdout
+    assert calls
+
+    for call in calls:
+        assert call[:2] == ["--env-file", str(path)], call
+
+        rest = call[2:]
+
+        assert "--env-file" not in rest, call
+        assert "--yes" not in rest
+
+        if is_work_backup(rest):
+            continue
+
+        if " ".join(rest[:2]) in MUTATING or " ".join(rest[:3]) in MUTATING:
+            assert "--dry-run" in rest, call
+
+
+# ----------------------------------------------------------------------------
+def test_the_equals_spelling_is_passed_as_two_words(tmp_path):
+    path, _ = env_file(tmp_path)
+    proc, calls = run(tmp_path, f"--env-file={path}", "list")
+
+    assert proc.returncode == 0, proc.stdout
+    assert calls == [["--env-file", str(path), "filterset", "list"]]
+
+
+# ----------------------------------------------------------------------------
+def test_help_names_the_env_file_option(tmp_path):
+    proc, calls = run(tmp_path, "--help")
+
+    assert proc.returncode == 0
+    options = proc.stdout.split("Options:")[1].splitlines()
+
+    assert any(line.startswith("  --env-file PATH ") for line in options)
+    assert calls == []
+
+
+# ----------------------------------------------------------------------------
+def test_without_env_file_no_call_carries_one(tmp_path):
+    """Red if ENV_ARGS is filled in when the option was not given."""
+    proc, calls = run(tmp_path)
+
+    assert proc.returncode == 0, proc.stdout
+    assert calls
+    assert not any(
+        arg == "--env-file" or arg.startswith("--env-file=")
+        for call in calls
+        for arg in call
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_the_later_env_file_wins(tmp_path):
+    """Red if the first is kept. The first names no file at all, so this
+    also shows only the path in force is checked, as mailctl ignores an
+    overridden one."""
+    path, _ = env_file(tmp_path)
+    proc, calls = run(
+        tmp_path,
+        "--env-file",
+        str(tmp_path / "no-such.env"),
+        "list",
+        "--env-file",
+        str(path),
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert calls == [["--env-file", str(path), "filterset", "list"]]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("kind", ["missing", "directory"])
+def test_an_env_file_that_is_not_a_file_is_refused_before_any_call(
+    tmp_path, kind
+):
+    """Red if the check is dropped (the calls happen, and mailctl would
+    refuse each test in turn) or accepts a directory."""
+    path = tmp_path / "account.env"
+
+    if kind == "directory":
+        path.mkdir()
+
+    proc, calls = run(tmp_path, "--env-file", str(path), "list")
+
+    assert proc.returncode == 2
+    assert proc.stdout == ""
+    assert str(path) in proc.stderr
+    assert calls == []
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (("list", "--env-file"), "--env-file needs a PATH"),
+        (("list", "--env-file="), "env file is not a readable file: \n"),
+    ],
+    ids=["no-argument", "empty-value"],
+)
+def test_env_file_without_a_path_is_a_usage_error(tmp_path, args, message):
+    """Red if a trailing --env-file reads past the argv (set -u ends the
+    script with 1, not 2) or an empty value is passed on."""
+    proc, calls = run(tmp_path, *args)
+
+    assert proc.returncode == 2
+    assert proc.stdout == ""
+    assert message in proc.stderr
+    assert calls == []
+
+
+# ----------------------------------------------------------------------------
+def test_the_script_never_reads_the_env_file(tmp_path):
+    """Red if the script sources the file (the marker appears) or prints
+    any of it (the sentinel appears), on a passing run and on failing
+    ones, whose diagnostics quote mailctl's output."""
+    path, marker = env_file(tmp_path)
+
+    for breaks in ((), ("two-active",), ("probe-not-json",)):
+        proc, _ = run(tmp_path, "--env-file", str(path), breaks=breaks)
+
+        assert ENV_SENTINEL not in proc.stdout
+        assert ENV_SENTINEL not in proc.stderr
+
+    assert not marker.exists()

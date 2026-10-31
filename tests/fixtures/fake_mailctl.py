@@ -109,8 +109,27 @@ def ungrouped(argv: list[str]) -> list[str] | None:
     return None
 
 
+# ----------------------------------------------------------------------------
+def without_env_file(argv: list[str]) -> list[str]:
+    """``argv`` with a leading ``--env-file PATH`` or ``--env-file=PATH``
+    taken off, as mailctl takes it before the command (#325). Only the
+    path is skipped; the file is never opened, as the script never opens
+    it either."""
+    while argv:
+        if argv[0] == "--env-file" and len(argv) > 1:
+            argv = argv[2:]
+
+        elif argv[0].startswith("--env-file="):
+            argv = argv[1:]
+
+        else:
+            break
+
+    return argv
+
+
 GIVEN = sys.argv[1:]
-ARGV = ungrouped(GIVEN) or []
+ARGV = ungrouped(without_env_file(GIVEN)) or []
 BREAK = set(filter(None, os.environ.get("STUB_BREAK", "").split(",")))
 STATE = Path(os.environ["STUB_LOG"]).with_suffix(".state")
 FLAGGED = Path(os.environ["STUB_LOG"]).with_suffix(".flagged")
