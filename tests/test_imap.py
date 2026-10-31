@@ -529,6 +529,67 @@ def test_a_connection_that_does_not_log_in_is_closed(fake_imap, failure):
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("method", "error", "raised", "code"),
+    [
+        pytest.param(
+            "list_folders",
+            IMAPClientError("LIST refused"),
+            MailctlError,
+            "folder_list_failed",
+            id="list",
+        ),
+        pytest.param(
+            "list_sub_folders",
+            IMAPClientError("LSUB refused"),
+            MailctlError,
+            "folder_list_failed",
+            id="lsub",
+        ),
+        pytest.param(
+            "namespace", OSError("reset"), OSError, None, id="namespace"
+        ),
+    ],
+)
+def test_a_connection_whose_folders_cannot_be_read_is_logged_out(
+    fake_imap, method, error, raised, code
+):
+    """Once logged in, the session reads the folders and the namespace;
+    a failure there leaves a socket nothing holds, since the caller never
+    got a session to close. It is logged out, and the failure is raised
+    as it was. Red if the session leaves it open (#362)."""
+    fake_imap.caps.add("NAMESPACE")
+    fake_imap.failures[method] = error
+    session = plain_session()
+
+    with pytest.raises(raised) as caught:
+        session.open()
+
+    assert caught.value is error or caught.value.__cause__ is error
+    assert getattr(caught.value, "code", None) == code
+    assert fake_imap.calls.count(("logout",)) == 1
+    assert session.client is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_logout_that_fails_still_closes_the_socket(fake_imap):
+    """imaplib closes the socket only after a LOGOUT that went through, so
+    a connection that dropped -- the likeliest reason a read failed -- is
+    shut down when the LOGOUT fails too, and the read's failure is the one
+    raised. Red if a failed LOGOUT leaves the socket open (#362)."""
+    fake_imap.failures["list_folders"] = IMAPClientError("dropped")
+    fake_imap.failures["logout"] = OSError("broken pipe")
+    session = plain_session()
+
+    with pytest.raises(MailctlError) as caught:
+        session.open()
+
+    assert caught.value.code == "folder_list_failed"
+    assert fake_imap.calls.count(("shutdown",)) == 1
+    assert session.client is None
+
+
+# ----------------------------------------------------------------------------
 def test_calling_a_method_before_open_fails_clearly():
     session = plain_session()
 

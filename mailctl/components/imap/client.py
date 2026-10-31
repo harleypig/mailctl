@@ -255,8 +255,15 @@ class ImapSession:
 
         self.client = client
         self._selected = None
-        self._read_folders()
-        self._read_namespace()
+
+        # Logged in, but the caller has no session to close until this
+        # returns: a failed read must not leave the connection open.
+        with contextlib.ExitStack() as unread:
+            unread.callback(self.close)
+            self._read_folders()
+            self._read_namespace()
+            unread.pop_all()
+
         self._log(
             f"connected; delimiter {self._delimiter!r}, "
             f"{len(self._folders)} folders, "
@@ -318,8 +325,13 @@ class ImapSession:
         if self.client is None:
             return
 
-        with contextlib.suppress(IMAPClientError, OSError):
+        try:
             self.client.logout()
+
+        except (IMAPClientError, OSError):
+            # imaplib closes the socket only after a LOGOUT that went
+            # through, so one that failed leaves it open.
+            _shut_down(self.client)
 
         self.client = None
         self._selected = None
@@ -1239,8 +1251,9 @@ class ImapSession:
 
 # ----------------------------------------------------------------------------
 def _shut_down(client: IMAPClient) -> None:
-    """Close a connection that never logged in, without a LOGOUT: there is
-    no session to end, and the socket may already be gone."""
+    """Close a connection without a LOGOUT: it never logged in, so there
+    is no session to end, or its LOGOUT failed. The socket may already be
+    gone."""
     with contextlib.suppress(IMAPClientError, OSError):
         client.shutdown()
 
