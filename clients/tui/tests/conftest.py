@@ -315,3 +315,17 @@ async def settle(pilot, until: Callable[[], bool], tries: int = 200) -> None:
         await pilot.pause(0.05)
 
     raise AssertionError("the app never reached the expected state")
+
+
+# ----------------------------------------------------------------------------
+async def reach(pilot, app, screen_class: type) -> None:
+    """Let the app work until a ``screen_class`` is the screen and has
+    mounted (#348). A pushed screen is on the stack before it mounts, so
+    ``isinstance`` alone can hold while it has no children and no focus:
+    a query then finds nothing, and a key pressed then reaches no widget
+    and is lost for good. Once it has mounted, the focus its ``on_mount``
+    asked for is queued ahead of any key the test presses next."""
+    await settle(
+        pilot,
+        lambda: isinstance(app.screen, screen_class) and app.screen.is_mounted,
+    )

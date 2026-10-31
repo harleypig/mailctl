@@ -13,7 +13,7 @@ import json
 import os
 import sys
 
-from conftest import API_CHILD, SIZE, digest, settle
+from conftest import API_CHILD, SIZE, digest, reach, settle
 from mailctl_tui.app import MailctlApp, PasswordScreen
 from mailctl_tui.offer import COMMANDS
 from mailctl_tui.screens import AddScreen, MessageScreen, PlanScreen
@@ -82,7 +82,7 @@ async def test_the_filters_come_from_the_real_api(tmp_path):
     app = real_api(tmp_path)
 
     async with app.run_test(size=SIZE) as pilot:
-        await settle(pilot, lambda: isinstance(app.screen, PasswordScreen))
+        await reach(pilot, app, PasswordScreen)
         await pilot.press(*PASSWORD_KEYS)
         await pilot.press("enter")
         await settle(pilot, lambda: len(cells(app)) == 1)
@@ -134,7 +134,7 @@ async def test_the_first_scope_against_the_real_api(tmp_path):
     state_file = tmp_path / "state.json"
 
     async with app.run_test(size=SIZE) as pilot:
-        await settle(pilot, lambda: isinstance(app.screen, PasswordScreen))
+        await reach(pilot, app, PasswordScreen)
         await pilot.press(*PASSWORD_KEYS)
         await pilot.press("enter")
         await search(pilot, app, folder="INBOX")
@@ -149,12 +149,12 @@ async def test_the_first_scope_against_the_real_api(tmp_path):
         )
 
         await pilot.press("enter")
-        await settle(pilot, lambda: isinstance(app.screen, MessageScreen))
+        await reach(pilot, app, MessageScreen)
 
         assert "All green." in shown(app, "#body")
 
         await pilot.press("a")
-        await settle(pilot, lambda: isinstance(app.screen, AddScreen))
+        await reach(pilot, app, AddScreen)
 
         # The message has no List-Id, so the API matches on its sender.
         assert shown(app, ".note") == (
@@ -166,7 +166,7 @@ async def test_the_first_scope_against_the_real_api(tmp_path):
 
         app.screen.query_one("#move_to", Input).value = "Lists"
         await pilot.press("ctrl+s")
-        await settle(pilot, lambda: isinstance(app.screen, PlanScreen))
+        await reach(pilot, app, PlanScreen)
 
         assert "  then:  move it to 'Lists'" in shown(app, "#summary")
         assert '+if anyof (header :contains "From" "noreply@github.com")' in (
