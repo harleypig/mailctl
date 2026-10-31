@@ -565,9 +565,15 @@ class FakeTransport(Transport):
             )
 
     def message_headers(self, folder, uid):
+        if uid not in self.messages:
+            return None
+
         return email.message_from_string(self.messages[uid])
 
     def message_source(self, folder, uid):
+        if uid not in self.messages:
+            return None
+
         return self.messages[uid].encode(), ()
 
     def sort_messages(self, folder, order, criteria, expression):

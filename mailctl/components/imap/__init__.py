@@ -15,6 +15,7 @@ from .client import (
     ImapConnectionError,
     ImapSession,
     ImapTLSError,
+    NoSuchMessage,
     Revealable,
     connection_lost,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "MailActionPlan",
     "MailActionResult",
     "MessageSummary",
+    "NoSuchMessage",
     "PartialExecution",
     "Revealable",
     "SearchCriteria",

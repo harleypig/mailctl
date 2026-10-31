@@ -1,0 +1,13 @@
+$ mailctl mail search --like 99 --json
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 2, "error": {"message": "no message with uid 99 in 'INBOX'", "code": "no_such_message"}}
+
+--- sieve calls
+--- imap calls
+('login', 'user@example.com')
+('select_folder', 'INBOX', True)
+('fetch', (99,))
+('logout',)

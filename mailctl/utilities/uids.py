@@ -105,26 +105,40 @@ def check_uidvalidity(
 def read_pinned(
     session: Session,
     folder: str,
+    uid: int,
     uidvalidity: int | None,
-    read: Callable[[], T],
+    read: Callable[[], T | None],
 ) -> T:
-    """Return ``read()``, a read of one UID in ``folder``, refusing it as
-    stale where it failed and the UID was pinned to a UIDVALIDITY the
-    folder no longer has.
+    """Return ``read()``, a read of ``uid`` in ``folder``, refusing it as
+    stale where it failed or found nothing and the UID was pinned to a
+    UIDVALIDITY the folder no longer has, and otherwise refusing a read
+    that found nothing as a missing message.
 
     The read selects the folder, and the selection reports its
     UIDVALIDITY, so checking after it costs no round trip; the caller
-    checks a read that succeeded. A failed one is checked here, so a UID
-    lost in a renumbering is refused as stale, not as a missing message.
+    checks a read that succeeded. A failed or empty one is checked here,
+    so a UID lost in a renumbering is refused as stale, not as missing.
     """
     try:
-        return read()
+        found = read()
 
     except MailctlError:
         if uidvalidity is not None:
             check_uidvalidity(session, folder, uidvalidity)
 
         raise
+
+    if found is None:
+        if uidvalidity is not None:
+            check_uidvalidity(session, folder, uidvalidity)
+
+        raise MailctlError(
+            f"no message with uid {uid} in {folder!r}",
+            code="no_such_message",
+            fields={"folder": folder, "uids": [uid]},
+        )
+
+    return found
 
 
 # ----------------------------------------------------------------------------

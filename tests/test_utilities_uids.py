@@ -160,8 +160,10 @@ def test_a_stale_uid_gone_in_the_renumbering_is_refused_as_stale(
 
 # ----------------------------------------------------------------------------
 def test_a_missing_uid_under_a_current_pin_is_still_missing(mailbox, sessions):
-    with pytest.raises(MailctlError, match="no message with uid 99"):
+    with pytest.raises(MailctlError, match="no message with uid 99") as caught:
         messages.read_message(sessions, "INBOX", 99, DEFAULT_UIDVALIDITY)
+
+    assert caught.value.code == "no_such_message"
 
 
 # ----------------------------------------------------------------------------

@@ -700,9 +700,6 @@ def mail_search(server: Server, params: Params, _ident: object) -> dict:
         uidvalidity = given.take("uidvalidity", int, None)
         given.done()
 
-        if uid < 1:
-            raise RpcError(INVALID_PARAMS, "'uid' must be at least 1")
-
         derived = utilities.mail.criteria_like(
             session, folder, uid, criteria, uidvalidity=uidvalidity
         )

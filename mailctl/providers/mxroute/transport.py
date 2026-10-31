@@ -313,14 +313,22 @@ class MxrouteTransport(Transport):
         self._imap().remove_folder_flags(folder, uids, flags)
 
     # ------------------------------------------------------------------------
-    def message_headers(self, folder: str, uid: int) -> Message:
-        return self._imap().fetch_message_headers(folder, uid)
+    def message_headers(self, folder: str, uid: int) -> Message | None:
+        try:
+            return self._imap().fetch_message_headers(folder, uid)
+
+        except imap_component.NoSuchMessage:
+            return None
 
     # ------------------------------------------------------------------------
     def message_source(
         self, folder: str, uid: int
-    ) -> tuple[bytes, tuple[str, ...]]:
-        return self._imap().fetch_message_source(folder, uid)
+    ) -> tuple[bytes, tuple[str, ...]] | None:
+        try:
+            return self._imap().fetch_message_source(folder, uid)
+
+        except imap_component.NoSuchMessage:
+            return None
 
     # ------------------------------------------------------------------------
     def sort_messages(

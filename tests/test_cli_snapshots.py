@@ -1209,6 +1209,10 @@ SCENARIOS = {
         {},
     ),
     "search-like-missing": (["mail", "search", "--like", "99"], {}),
+    "search-like-missing-json": (
+        ["mail", "search", "--like", "99", "--json"],
+        {},
+    ),
     "search-like-derive-missing": (
         ["mail", "search", "--like", "2", "--derive", "cc"],
         {},

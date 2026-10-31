@@ -573,6 +573,19 @@ def test_a_uid_below_one_is_refused_before_any_fetch(sessions, listed, uid):
 
 
 # ----------------------------------------------------------------------------
+def test_criteria_like_a_missing_uid_is_refused_coded(sessions, listed):
+    """Red if the read's own uncoded refusal is let through, or a missing
+    message is taken as a read that found nothing to derive from."""
+    with pytest.raises(MailctlError) as caught:
+        utilities.mail.criteria_like(sessions, "INBOX", 99)
+
+    assert str(caught.value) == "no message with uid 99 in 'INBOX'"
+    assert caught.value.code == "no_such_message"
+    assert dict(caught.value.fields) == {"folder": "INBOX", "uids": [99]}
+    assert [call[0] for call in listed.calls].count("fetch") == 1
+
+
+# ----------------------------------------------------------------------------
 def test_criteria_like_a_message_reads_and_marks_nothing(sessions, listed):
     utilities.mail.criteria_like(sessions, "INBOX", 7)
 
