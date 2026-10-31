@@ -15,8 +15,8 @@ license = { text = "MIT" }
 dependencies = [
   "textual>=8.2,<9",
   # Imported for Text, the plain-text renderable; Textual depends on it
-  # and sets the upper bound.
-  "rich>=14.2",
+  # but bounds it from below only.
+  "rich>=14.2,<16",
 ]
 
 [project.optional-dependencies]

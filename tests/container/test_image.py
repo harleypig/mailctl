@@ -1,7 +1,10 @@
-"""The Docker image's guard on where backups go, run in the image (#230).
+"""The Docker image's guard on where backups go, run in the image (#230),
+and its three commands, the CLI, the API, and the TUI (#347).
 
 Builds mailctl's own image from the top-level ``Dockerfile`` and runs it
-as a user would. Every backup must land in the mounted config directory,
+as a user would. The first argument ``api`` runs ``mailctl-api`` and
+``tui`` runs ``mailctl-tui``; anything else is the CLI's, and every guard
+holds whichever runs. Every backup must land in the mounted config directory,
 since anything else is lost with the container: the entrypoint refuses a
 run as root or without the mount, and mailctl itself refuses a backup
 location outside ``MAILCTL_BACKUP_ROOT``, which the image sets, from any
@@ -13,8 +16,17 @@ the container has no network, so a guard that let a run through would
 fail on connecting instead, which the control below shows.
 """
 
+import fcntl
+import itertools
+import json
 import os
+import pty
+import re
+import select
+import struct
 import subprocess
+import termios
+import time
 from pathlib import Path
 
 import pytest
@@ -26,6 +38,7 @@ IMAGE = "mailctl-test-image"
 CONFIG = "/config/mailctl"
 OUTSIDE = "/dev/shm/backups"
 REFUSED = "outside /config/mailctl, the one directory MAILCTL_BACKUP_ROOT"
+RUNS = itertools.count()
 
 
 # ----------------------------------------------------------------------------
@@ -62,8 +75,42 @@ def run_image(
     *argv: str,
     user: str | None = None,
     env: dict[str, str] | None = None,
+    stdin: str | None = None,
 ) -> subprocess.CompletedProcess:
-    """``docker run`` the image with ``argv``, offline, as the host user."""
+    """``docker run`` the image with ``argv``, offline, as the host user;
+    ``stdin``, where given, is sent to it under ``--interactive``."""
+    name = f"mailctl-test-run-{os.getpid()}-{next(RUNS)}"
+    command = [*docker_run(mount, user=user, env=env), "--name", name]
+
+    if stdin is not None:
+        command.append("--interactive")
+
+    # A guard that lets the API or the TUI start where it should refuse
+    # leaves it waiting; the timeout fails the test, and the kill stops the
+    # container, which outlives the client killed by the timeout.
+    try:
+        return subprocess.run(
+            [*command, image, *argv],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+
+    except subprocess.TimeoutExpired:
+        subprocess.run(["docker", "kill", name], capture_output=True)
+        raise
+
+
+# ----------------------------------------------------------------------------
+def docker_run(
+    mount: Path | None,
+    *,
+    user: str | None = None,
+    env: dict[str, str] | None = None,
+) -> list[str]:
+    """``docker run``'s words up to the image: offline, as the host user."""
     command = [
         "docker",
         "run",
@@ -84,12 +131,7 @@ def run_image(
     if mount is not None:
         command += ["--volume", f"{mount}:{CONFIG}"]
 
-    return subprocess.run(
-        [*command, image, *argv],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    return command
 
 
 BACKUP = ("filterset", "backup", "--dry-run")
@@ -209,20 +251,184 @@ def test_the_root_holds_without_the_entrypoint(image, mount):
     assert REFUSED in result.stderr
 
 
-# ----------------------------------------------------------------------------
-def test_without_the_mount_the_run_is_refused(image):
-    result = run_image(image, None, *BACKUP)
+# The three commands, each as it starts with nothing more given: the API
+# and the TUI run with no arguments, which is the CLI's help. Then a help
+# word that does not stop the command: after ``--`` it is an argument, and
+# the TUI hands any argument it does not know to the API it starts.
+CONNECT = ("--host", "127.0.0.1", "--user", "user@example.test")
+COMMANDS = [
+    pytest.param(BACKUP, id="cli"),
+    pytest.param(("api",), id="api"),
+    pytest.param(("api", "help"), id="api-help"),
+    pytest.param(("tui",), id="tui"),
+    pytest.param(("tui", "--version"), id="tui-version"),
+    pytest.param(
+        ("folder", "create", *CONNECT, "--", "--help"), id="cli-dashdash"
+    ),
+    pytest.param(
+        ("filter", "rename", *CONNECT, "--", "old", "--help"),
+        id="cli-dashdash-later",
+    ),
+    pytest.param(("filterset", "show", "--", "-h"), id="cli-dashdash-h"),
+    pytest.param(("tui", "--", "-h"), id="tui-dashdash"),
+    pytest.param(("api", "--", "--help"), id="api-dashdash"),
+    pytest.param(("tui", "--host", "127.0.0.1", "-h"), id="tui-not-alone"),
+    pytest.param(("api", *CONNECT, "--version"), id="api-not-alone"),
+]
 
-    assert result.returncode == 2
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("argv", COMMANDS)
+def test_without_the_mount_the_run_is_refused(image, argv):
+    """Red if a command the CLI would take as help, no arguments or
+    ``help``, skips the guard for the API or the TUI, which it starts; if
+    the TUI's ``--version``, which it hands to the API and keeps running,
+    does; if a help word after ``--``, a positional the command runs with,
+    does; or if one beside other arguments does for the API or the TUI."""
+    result = run_image(image, None, *argv, stdin="")
+
+    assert result.returncode == 2, result.stderr
     assert f"{CONFIG} is not a mount" in result.stderr
 
 
 # ----------------------------------------------------------------------------
-def test_as_root_the_run_is_refused(image, mount):
-    result = run_image(image, mount, *BACKUP, user="0:0")
+@pytest.mark.parametrize("argv", COMMANDS)
+def test_as_root_the_run_is_refused(image, mount, argv):
+    result = run_image(image, mount, *argv, user="0:0", stdin="")
 
-    assert result.returncode == 2
+    assert result.returncode == 2, result.stderr
     assert "running as root defeats the guard" in result.stderr
+
+
+# ----------------------------------------------------------------------------
+def test_the_tui_without_a_terminal_is_refused(image, mount):
+    """Red if ``docker run`` without ``-t`` starts the TUI on a pipe."""
+    result = run_image(image, mount, "tui", stdin="")
+
+    assert result.returncode == 2, result.stderr
+    assert "the TUI needs a terminal" in result.stderr
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        pytest.param(("--api", "sh"), id="separate"),
+        pytest.param(("--api=sh",), id="equals"),
+        pytest.param(("--ap", "sh"), id="prefix"),
+        pytest.param(("--a=sh",), id="prefix-equals"),
+        pytest.param(("--host", "127.0.0.1", "--api", "sh"), id="later"),
+        pytest.param(("-h", "--api", "sh"), id="beside-help"),
+    ],
+)
+def test_the_tui_will_not_start_another_api(image, mount, argv):
+    """Red if ``tui --api COMMAND``, in any spelling the TUI's parser
+    takes, gets through: the command it names need not keep the backup
+    root, which ``env MAILCTL_BACKUP_ROOT=/ mailctl-api`` would lift."""
+    result = run_image(image, mount, "tui", *argv, stdin="")
+
+    assert result.returncode == 2, result.stderr
+    assert "runs its own API for the TUI" in result.stderr
+
+
+# ----------------------------------------------------------------------------
+def test_an_api_word_after_dashdash_is_the_apis(image, mount):
+    """The control: after ``--`` the TUI hands ``--api`` on rather than
+    taking it, so it is not refused as the TUI's; the terminal guard is
+    what stops this run."""
+    result = run_image(image, mount, "tui", "--", "--api", "sh", stdin="")
+
+    assert result.returncode == 2, result.stderr
+    assert "the TUI needs a terminal" in result.stderr
+
+
+# ----------------------------------------------------------------------------
+def api_lines(stdout: str) -> list[dict]:
+    """The API's JSON lines, one message each."""
+    return [json.loads(line) for line in stdout.splitlines()]
+
+
+INITIALIZE = {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
+SHUTDOWN = {"jsonrpc": "2.0", "id": 2, "method": "shutdown"}
+
+
+# ----------------------------------------------------------------------------
+def test_the_api_serves_on_stdin_and_stdout(image, mount):
+    """Red if ``api`` does not reach ``mailctl-api``: the CLI would refuse
+    the word, and nothing would answer ``initialize``."""
+    stdin = f"{json.dumps(INITIALIZE)}\n{json.dumps(SHUTDOWN)}\n"
+
+    result = run_image(image, mount, "api", stdin=stdin)
+
+    assert result.returncode == 0, result.stderr
+    first, second = api_lines(result.stdout)
+    assert first["id"] == 1
+    assert first["result"]["provider"] == "mxroute"
+    assert second == {"jsonrpc": "2.0", "id": 2, "result": None}
+
+
+# ----------------------------------------------------------------------------
+def test_the_api_cannot_lift_the_root(image, mount):
+    """Red if the API, started by the image, is not held to the root that
+    the entrypoint exports over ``-e MAILCTL_BACKUP_ROOT=/``."""
+    result = run_image(
+        image,
+        mount,
+        "api",
+        "--backup-dir",
+        OUTSIDE,
+        env={"MAILCTL_BACKUP_ROOT": "/"},
+        stdin=f"{json.dumps(INITIALIZE)}\n",
+    )
+
+    (answer,) = api_lines(result.stdout)
+    assert REFUSED in answer["error"]["message"], result.stderr
+
+
+# Escape sequences a terminal acts on, taken out of what the TUI drew.
+ESCAPES = re.compile(rb"\x1b\[[0-9;?<>=$]*[A-Za-z~]|\x1b\][^\x07]*\x07")
+# The TUI's own line under the password field. The field is opened only
+# when the API asks for the password, which it does for the filter list
+# the TUI reads once ``initialize`` has answered.
+PROMPTED = b"Enter to send it, Escape to cancel."
+
+
+# ----------------------------------------------------------------------------
+def test_the_tui_reaches_the_containers_own_api(image, mount):
+    """Red if ``tui`` does not start ``mailctl-tui``, or it cannot start
+    the image's ``mailctl-api``: no password prompt is ever drawn."""
+    name = f"mailctl-test-tui-{os.getpid()}"
+    command = [*docker_run(mount), "--interactive", "--tty", "--name", name]
+    main, child = pty.openpty()
+    fcntl.ioctl(child, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+
+    process = subprocess.Popen(
+        [*command, image, "tui"], stdin=child, stdout=child, stderr=child
+    )
+    os.close(child)
+    drawn = b""
+    deadline = time.monotonic() + 60
+
+    try:
+        while PROMPTED not in ESCAPES.sub(b"", drawn):
+            assert time.monotonic() < deadline, ESCAPES.sub(b"", drawn)
+            ready, _, _ = select.select([main], [], [], 0.5)
+
+            if ready:
+                try:
+                    drawn += os.read(main, 65536)
+
+                except OSError:  # the terminal closed: the run ended
+                    break
+
+    finally:
+        # The terminal is closed before the wait: the client would block
+        # writing to a terminal nobody reads.
+        subprocess.run(["docker", "kill", name], capture_output=True)
+        os.close(main)
+        process.wait(timeout=60)
+
+    assert PROMPTED in ESCAPES.sub(b"", drawn), ESCAPES.sub(b"", drawn)
 
 
 # ----------------------------------------------------------------------------
@@ -258,8 +464,18 @@ def test_a_backup_dir_in_the_mount_passes_the_guard(image, mount, argv):
 
 
 # ----------------------------------------------------------------------------
-def test_help_and_the_version_need_no_mount(image):
-    result = run_image(image, None, "--version")
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        pytest.param(("--version",), "mailctl ", id="cli"),
+        pytest.param(("api", "--version"), "mailctl ", id="api"),
+        pytest.param(("api", "-h"), "usage: mailctl-api", id="api-h"),
+        pytest.param(("tui", "--help"), "usage: mailctl-tui", id="tui"),
+        pytest.param(("tui", "-h"), "usage: mailctl-tui", id="tui-h"),
+    ],
+)
+def test_help_and_the_version_need_no_mount(image, argv, expected):
+    result = run_image(image, None, *argv)
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith("mailctl ")
+    assert result.stdout.startswith(expected)

@@ -6,8 +6,10 @@
 name: Image scan
 
 # Only changes that can alter what trivy finds: the Dockerfile, the base
-# image it pins, and the dependencies pyproject.toml declares. mailctl's own
-# source is in the image too, but trivy has nothing to report about it.
+# image it pins, and the dependencies pyproject.toml declares, mailctl's and
+# the TUI's. The TUI's source is listed with it, since the image installs
+# the TUI from that tree; mailctl's own source is in the image too, but
+# trivy has nothing to report about it.
 # The weekly run catches a CVE published against the unchanged base image,
 # which no path filter can see (#264 - scheduled image scan).
 on:
@@ -20,6 +22,8 @@ on:
       - .dockerignore
       - docker/**
       - pyproject.toml
+      - clients/tui/pyproject.toml
+      - clients/tui/src/**
       - .github/workflows/image-scan.yml
   push:
     branches:
@@ -29,6 +33,8 @@ on:
       - .dockerignore
       - docker/**
       - pyproject.toml
+      - clients/tui/pyproject.toml
+      - clients/tui/src/**
       - .github/workflows/image-scan.yml
 
 permissions:
