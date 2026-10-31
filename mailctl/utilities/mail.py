@@ -28,7 +28,7 @@ from ..providers.base import (
     same_folder,
 )
 from .events import EventSink
-from .folders import FolderPlan, realize_folder
+from .folders import FOLDER_MISSING, FolderPlan, realize_folder
 from .uids import (
     check_uidvalidity,
     current_uidvalidity,
@@ -49,6 +49,18 @@ def require_mail_action(folder: FolderPlan, spec: ActionSpec) -> None:
     """Refuse an existing-mail pass that would do nothing to a message."""
     if not folder.folder and not spec.discard and not spec.flags:
         raise MailctlError("nothing to do", code="no_mail_action")
+
+
+# ----------------------------------------------------------------------------
+def require_target_folder(folder: FolderPlan) -> None:
+    """Refuse an existing-mail pass into a folder that does not exist and
+    was not planned to be created."""
+    if folder.status == FOLDER_MISSING:
+        raise MailctlError(
+            f"target folder {folder.folder!r} does not exist",
+            code="folder_missing",
+            fields={"folder": folder.folder},
+        )
 
 
 # ----------------------------------------------------------------------------

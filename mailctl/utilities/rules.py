@@ -368,6 +368,11 @@ class RemovalPlan:
     active: str | None
     activate: bool
 
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        return self.before != self.after
+
 
 @dataclass(frozen=True)
 class MovePlan:

@@ -14,6 +14,9 @@ only its SHA-256, which a login is checked against, so a password that
 reached the connection is known to have done so without being written
 anywhere.
 
+Each ManageSieve connection is counted in the file's ``sieve_connects``,
+so a test can see that a method never touched the rules half.
+
 What the IMAP double is asked to write is appended to the file's
 ``imap_writes``, and its UIDVALIDITY is read from the file on every
 SELECT, so a test can see what an execute did to the mail and renumber a
@@ -88,6 +91,10 @@ class FileSieveClient:
 
     # ------------------------------------------------------------------------
     def connect(self, user, password, starttls=False, ssl=False) -> bool:
+        state = load()
+        state["sieve_connects"] = state.get("sieve_connects", 0) + 1
+        save(state)
+
         return accepted(password)
 
     # ------------------------------------------------------------------------

@@ -21,13 +21,14 @@ import traceback
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TextIO
 
 from .. import MailctlError, __version__, engine, json_output, utilities
 from ..config import SIEVE_TLS_MODES, Config, Secret, load_config
 from ..criteria import Criteria, dump_filter, load_filter
 from ..utilities.events import ServerAlert
-from ..utilities.folders import FOLDER_MISSING, FolderPlan
+from ..utilities.folders import FolderPlan
 from ..utilities.mail import DEFAULT_MAX_MESSAGES, MailActionPlan
 from ..utilities.messages import DEFAULT_LIST_LIMIT, SortOrder
 from ..utilities.optimize import KINDS as OPTIMIZE_KINDS
@@ -666,7 +667,11 @@ def filter_add_plan(server: Server, params: Params, _ident: object) -> dict:
 # ----------------------------------------------------------------------------
 def filter_add_execute(server: Server, params: Params, ident: object) -> dict:
     """Carry out a ``filter.add.plan``: the backup, the upload, and any
-    folder it creates, each sent as an ``event`` as it lands."""
+    folder it creates, each sent as an ``event`` as it lands.
+
+    A plan that changes nothing is carried out all the same, as ``filter
+    add`` does on the CLI: a filter replaced by itself is still uploaded,
+    with its backup."""
     session, config = server._open()
     plan_id = params.take("plan_id", str)
     params.done()
@@ -714,17 +719,15 @@ def filter_apply_plan(server: Server, params: Params, _ident: object) -> dict:
     utilities.rules.reject_actions(config, refused)
 
     folder = utilities.folders.plan_folder(
-        session, config, spec.fileinto, create=create, subscribe=subscribe
+        session,
+        config,
+        spec.fileinto,
+        create=create,
+        subscribe=subscribe,
+        delivery_route=False,
     )
     utilities.mail.require_mail_action(folder, spec)
-
-    if folder.status == FOLDER_MISSING:
-        raise MailctlError(
-            f"target folder {folder.folder!r} does not exist, and nothing "
-            f"asked for it to be created (create_folder)",
-            code="folder_missing",
-            fields={"folder": folder.folder},
-        )
+    utilities.mail.require_target_folder(folder)
 
     source = utilities.mail.source_folder(session, folder_name)
     mail = (
@@ -902,11 +905,14 @@ def filter_optimize_plan(
 
 # ----------------------------------------------------------------------------
 def script_execute(
-    command: str, name: Callable[[Any], str | None]
+    command: str,
+    name: Callable[[Any], str | None],
+    execute: Callable[..., Path] = utilities.rules.execute_script_change,
 ) -> Callable[[Server, Params, object], dict]:
     """Carry out a plan of ``command``, one that uploads the filter set:
     the backup, then the upload, each sent as an ``event`` as it lands.
-    ``name`` is the filter's name once it is done, from the plan.
+    ``name`` is the filter's name once it is done, from the plan, and
+    ``execute`` the utility that carries the plan out.
 
     Refused, sending nothing, where the plan changes nothing, or the
     filter set changed since the plan was made."""
@@ -918,20 +924,8 @@ def script_execute(
         entry = server._take_plan(plan_id, command)
 
         record = entry.record
-        # A removal has no ``changes``: the dialect refuses one that would
-        # take out nothing. Every other plan says, since a re-rendered
-        # filter set can differ from the stored one in layout alone.
-        require_changes(getattr(record, "changes", True), command)
-
-        if command == "filter optimize":
-            backup = utilities.optimize.execute_optimize(
-                session, config, record, server._events(ident)
-            )
-
-        else:
-            backup = utilities.rules.execute_script_change(
-                session, config, record, server._events(ident)
-            )
+        require_changes(record.changes, command)
+        backup = execute(session, config, record, server._events(ident))
 
         return json_output.script_change_result(
             command, name(record), record, backup
@@ -1085,7 +1079,9 @@ METHODS: dict[str, Callable[[Server, Params, object], Any]] = {
     ),
     "filter.optimize.plan": filter_optimize_plan,
     "filter.optimize.execute": script_execute(
-        "filter optimize", lambda plan: None
+        "filter optimize",
+        lambda plan: None,
+        utilities.optimize.execute_optimize,
     ),
 }
 

@@ -499,7 +499,7 @@ def removal_plan(record) -> dict:
     """``filter remove``: the filter taken out, not yet uploaded."""
     return plan(
         "filter remove",
-        **change(record.before != record.after, record.diff),
+        **change(record.changes, record.diff),
         filter=record.rule,
         **activation(record),
     )

@@ -894,6 +894,40 @@ def test_a_filter_set_write_refuses_a_set_changed_since_the_plan(start, case):
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize("case", ["add", *sorted(SCRIPT_WRITES)])
+def test_a_filter_set_write_refuses_an_active_set_switched_since_the_plan(
+    start, case
+):
+    """Red if execute uploads once another client has made another filter
+    set active: the plan decided from the old one whether to activate its
+    own, so the switch would be undone, unseen (#308)."""
+    if case == "add":
+        method, scripts = "filter.add", ROUNDCUBE
+
+    else:
+        method, _params, scripts, *_rest = SCRIPT_WRITES[case]
+
+    client = initialized(start, scripts={"managesieve": scripts})
+    plan = add_plan(client) if case == "add" else script_plan(client, case)
+    plan_id = plan["result"]["plan_id"]
+
+    state = client.read_state()
+    state["scripts"]["elsewhere"] = "keep;\n"
+    state["active"] = "elsewhere"
+    client.write_state(state)
+
+    error = refusal(client.request(f"{method}.execute", {"plan_id": plan_id}))
+    after = client.read_state()
+
+    assert error["code"] == "filterset_changed"
+    assert error["fields"] == {"operation": "filterset list", "arguments": []}
+    assert after["active"] == "elsewhere"
+    assert after["scripts"]["managesieve"] == scripts
+    assert "stored" not in after
+    assert not (client.state.parent / "backups").exists()
+
+
+# ----------------------------------------------------------------------------
 @pytest.mark.parametrize("case", sorted(SCRIPT_WRITES))
 def test_a_filter_set_write_runs_only_its_own_plan_by_its_id(start, case):
     """Red if execute takes anything the plan holds, if another command's
@@ -958,6 +992,33 @@ def test_a_plan_that_changes_nothing_is_refused_at_execute(
 
     assert error["code"] == "nothing_to_change"
     assert "stored" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_a_filter_add_that_changes_nothing_is_still_carried_out(start):
+    """``filter add`` on the CLI uploads a filter replaced by itself, and
+    the API does the same. Red if ``filter.add.execute`` starts refusing
+    a plan that changes nothing without the CLI doing so too."""
+    client = initialized(start)
+    first = add_plan(client)["result"]["plan_id"]
+
+    assert "result" in client.request("filter.add.execute", {"plan_id": first})
+
+    stored = client.read_state()["scripts"]["managesieve"]
+    result = add_plan(client, replace=True)["result"]
+
+    assert result["document"]["plan"]["changes"] is False
+
+    response = client.request(
+        "filter.add.execute", {"plan_id": result["plan_id"]}
+    )
+
+    assert [event["kind"] for event in events(response)] == [
+        "filterset_backed_up",
+        "filterset_uploaded",
+    ]
+    assert client.read_state()["stored"] == ["managesieve", "managesieve"]
+    assert client.read_state()["scripts"]["managesieve"] == stored
 
 
 # ----------------------------------------------------------------------------
@@ -1115,18 +1176,20 @@ def test_filter_apply_plans_the_pass_then_moves_the_mail_once(start):
 # ----------------------------------------------------------------------------
 def test_filter_apply_creates_its_folder_at_execute_and_says_so_first(start):
     """Red if the plan creates the folder, or execute moves mail into a
-    folder it has not made."""
+    folder it has not made; or if the plan asks the rules half how a
+    filter would create it, since this pass saves no filter (the CLI's
+    ``apply-create-dry-json`` snapshot is the same plan)."""
     client = initialized(start)
     result = apply_plan(
         client, actions={"move_to": "INBOX.New"}, create_folder=True
     )["result"]
 
-    # Created over IMAP now, and by the filter as mail arrives, were it
-    # saved: the server advertises the mailbox extension.
-    assert result["document"]["plan"]["folder"]["status"] == (
-        "create-and-on-delivery"
-    )
+    # Created over IMAP, and only so: the server advertises the mailbox
+    # extension, but no filter is saved to create it on delivery.
+    assert result["document"]["plan"]["folder"]["status"] == "create"
+    assert result["document"]["plan"]["folder"]["mailbox_disabled_by"] is None
     assert "imap_writes" not in client.read_state()
+    assert "sieve_connects" not in client.read_state()
 
     response = client.request(
         "filter.apply.execute", {"plan_id": result["plan_id"]}

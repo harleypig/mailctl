@@ -2782,16 +2782,12 @@ def cmd_apply(args) -> int:
             args.fileinto,
             create=args.create_folder,
             subscribe=not args.no_subscribe,
+            delivery_route=False,
         )
 
         show_folder_plan(folder)
         utilities.mail.require_mail_action(folder, spec)
-
-        if folder.status == utilities.folders.FOLDER_MISSING:
-            raise MailctlError(
-                f"target folder {folder.folder!r} does not exist; pass "
-                f"--create-folder to create it"
-            )
+        utilities.mail.require_target_folder(folder)
 
         if folder.status == utilities.folders.FOLDER_IMAP_CREATE:
             announce_folder_creation(folder, args.dry_run)
@@ -5349,6 +5345,9 @@ ERROR_TEXT = {
     ),
     "no_mail_action": lambda message, _: (
         f"{message} -- use --move-to, --discard, --mark-read, or --flag"
+    ),
+    "folder_missing": lambda message, _: (
+        f"{message}; pass --create-folder to create it"
     ),
     "no_marks": lambda message, _: (
         f"{message} -- use --read, --unread, --flag, --unflag, --keyword, "
