@@ -38,6 +38,7 @@ from mailctl import MailctlError, cli
 from mailctl.components.managesieve import client as client_module
 from mailctl.components.managesieve.client import (
     DEFAULT_TIMEOUT,
+    SieveAuthenticationError,
     SieveClient,
     SieveConnectionError,
     SieveSession,
@@ -92,6 +93,7 @@ class ScriptedSocket:
         self.chunk = chunk
         self.sent: list[bytes] = []
         self.timeouts: list[float] = []
+        self.closes = 0
 
     # ------------------------------------------------------------------------
     def sendall(self, payload: bytes) -> None:
@@ -110,7 +112,7 @@ class ScriptedSocket:
 
     # ------------------------------------------------------------------------
     def close(self) -> None:
-        pass
+        self.closes += 1
 
 
 # ----------------------------------------------------------------------------
@@ -583,6 +585,124 @@ def test_a_whole_response_still_reads_one_byte_at_a_time(no_hang):
         "managesieve",
         ["other"],
     )
+
+
+# ############################################################################
+# The socket is closed on every failed open, and on close (#362)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def sent_logout(sock: ScriptedSocket) -> bool:
+    return any(line.startswith(b"LOGOUT") for line in sock.sent)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("data", "tls", "raised", "code"),
+    [
+        pytest.param(
+            GREETING + b'NO "Authentication failed."\r\n',
+            "none",
+            SieveAuthenticationError,
+            "auth_failed",
+            id="login-refused",
+        ),
+        pytest.param(
+            GREETING.replace(b'"SASL" "PLAIN"\r\n', b'"STARTTLS"\r\n')
+            + b'NO "TLS unavailable."\r\n',
+            "starttls",
+            SieveAuthenticationError,
+            "auth_failed",
+            id="starttls-refused",
+        ),
+        pytest.param(
+            GREETING[:-20],
+            "none",
+            SieveConnectionError,
+            "connection_failed",
+            id="greeting-cut-short",
+        ),
+        pytest.param(
+            GREETING.replace(b'"SASL" "PLAIN"\r\n', b""),
+            "none",
+            SieveConnectionError,
+            "connection_failed",
+            id="no-sasl",
+        ),
+    ],
+)
+def test_a_connection_that_does_not_log_in_is_closed(
+    monkeypatch, no_hang, data, tls, raised, code
+):
+    """Once the socket is open, a refused login or STARTTLS, or a failure
+    reading the greeting, leaves it with nothing holding it, since the
+    caller never got a session to close. It is closed without a LOGOUT,
+    and the failure is raised as it was. Red if it is left open."""
+    sock = ScriptedSocket(data)
+    monkeypatch.setattr(
+        client_module.socket, "create_connection", lambda *a, **k: sock
+    )
+    session = SieveSession(
+        "mail.example.com",
+        4190,
+        "user@example.com",
+        lambda: Secret(PASSWORD),
+        tls=tls,
+    )
+
+    with pytest.raises(raised) as caught:
+        session.open()
+
+    assert caught.value.code == code
+    assert sock.closes == 1
+    assert not sent_logout(sock)
+    assert session.client is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_connection_that_cannot_be_made_closes_nothing(monkeypatch):
+    """No socket, nothing to close: the connection failure is raised as
+    it was, not replaced by one from the cleanup."""
+
+    def refused(*_args, **_kwargs):
+        raise ConnectionRefusedError("refused")
+
+    monkeypatch.setattr(client_module.socket, "create_connection", refused)
+    session = SieveSession(
+        "mail.example.com", 4190, "user@example.com", lambda: Secret(PASSWORD)
+    )
+
+    with pytest.raises(SieveConnectionError) as caught:
+        session.open()
+
+    assert caught.value.code == "connection_failed"
+    assert session.client is None
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "logout_reply",
+    [
+        pytest.param(b'OK "Logout completed."\r\n', id="answered"),
+        pytest.param(b"", id="connection-gone"),
+    ],
+)
+def test_close_logs_out_then_closes_the_socket(server, logout_reply):
+    """sievelib's LOGOUT sends the command and leaves its socket open, so
+    the session closes it, whether or not the LOGOUT was answered. The
+    client is held here so sievelib's close on collection cannot stand in
+    for the session's. Red if close leaves the socket open."""
+    server.data += logout_reply
+    session = connected()
+    client = session.client
+
+    session.close()
+
+    assert sent_logout(server)
+    assert server.closes == 1
+    assert session.client is None
+    assert client is not None
 
 
 # ############################################################################

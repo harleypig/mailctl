@@ -26,7 +26,7 @@ import re
 import socket
 import ssl
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from sievelib.managesieve import (
     CRLF,
@@ -441,6 +441,26 @@ def connection_lost(error: BaseException) -> bool:
     return False
 
 
+# ----------------------------------------------------------------------------
+def _shut_down(client: SieveClient) -> None:
+    """Close the client's socket, if it opened one, without a LOGOUT.
+
+    The socket is taken off the client first, so sievelib's own close when
+    the client is collected finds nothing left to close. ``sock`` is
+    sievelib's attribute, outside the commands the session otherwise uses,
+    so a client without one is read as one with no socket.
+    """
+    sock: socket.socket | None = getattr(client, "sock", None)
+
+    if sock is None:
+        return
+
+    client.sock = cast(socket.socket, None)
+
+    with contextlib.suppress(OSError):
+        sock.close()
+
+
 class SieveSession:
     """A connected ManageSieve client with human-readable failures."""
 
@@ -513,32 +533,44 @@ class SieveSession:
 
         client = SieveClient(self.host, self.port, timeout=self.timeout)
 
-        try:
-            authenticated = client.connect(
-                self.username,
-                self.password().reveal(),
-                starttls=(self.tls == "starttls"),
-                ssl=(self.tls == "ssl"),
-            )
+        # Once connect has opened the socket, a failure or a refusal before
+        # the login completes leaves it with nothing holding it: sievelib
+        # closes it only when the client is collected.
+        with contextlib.ExitStack() as unopened:
+            unopened.callback(_shut_down, client)
 
-        except SieveProtocolError as exc:
-            raise SieveConnectionError(
-                f"ManageSieve error talking to {where} -- {exc}.",
-                code="connection_failed",
-            ) from exc
+            try:
+                authenticated = client.connect(
+                    self.username,
+                    self.password().reveal(),
+                    starttls=(self.tls == "starttls"),
+                    ssl=(self.tls == "ssl"),
+                )
 
-        except ssl.SSLError as exc:
-            raise SieveConnectionError(
-                f"TLS failure against {where} -- {exc}.", code="tls_failed"
-            ) from exc
+            except SieveProtocolError as exc:
+                raise SieveConnectionError(
+                    f"ManageSieve error talking to {where} -- {exc}.",
+                    code="connection_failed",
+                ) from exc
 
-        except OSError as exc:
-            raise SieveConnectionError(
-                f"cannot reach {where} -- {exc}.", code="connection_failed"
-            ) from exc
+            except ssl.SSLError as exc:
+                raise SieveConnectionError(
+                    f"TLS failure against {where} -- {exc}.",
+                    code="tls_failed",
+                ) from exc
 
-        if not authenticated:
-            raise SieveAuthenticationError(self.username, code="auth_failed")
+            except OSError as exc:
+                raise SieveConnectionError(
+                    f"cannot reach {where} -- {exc}.",
+                    code="connection_failed",
+                ) from exc
+
+            if not authenticated:
+                raise SieveAuthenticationError(
+                    self.username, code="auth_failed"
+                )
+
+            unopened.pop_all()
 
         self.client = client
         self._log("authenticated")
@@ -552,6 +584,8 @@ class SieveSession:
         with contextlib.suppress(SieveProtocolError, OSError):
             self.client.logout()
 
+        # sievelib's LOGOUT leaves the socket open.
+        _shut_down(self.client)
         self.client = None
 
     # ------------------------------------------------------------------------
