@@ -14,7 +14,7 @@ import email
 import email.message
 
 import pytest
-from utilities_support import criteria
+from utilities_support import Checkpoint, Stopped, checked, criteria
 
 from mailctl import MailctlError, utilities
 from mailctl.criteria import Criteria
@@ -641,3 +641,49 @@ def test_a_mail_pass_that_changes_nothing_is_recognised(
     spec, destination, noop
 ):
     assert utilities.mail.mail_pass_is_noop(spec, "INBOX", destination) is noop
+
+
+# ############################################################################
+# Stopped part-way
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_mail_plan_stopped_after_its_search_reads_no_headers(
+    sessions, mailbox
+):
+    """The search and the header fetch are two exchanges, and a front-end's
+    cancel lands between them. Red if a stopped plan fetches."""
+    with pytest.raises(Stopped):
+        utilities.mail.plan_mail(
+            checked(sessions, Checkpoint(allowed=1)),
+            criteria(),
+            ActionSpec(),
+            "INBOX",
+            "INBOX.Lists",
+        )
+
+    assert "search" in mailbox.names()
+    assert "fetch" not in mailbox.names()
+
+
+# ----------------------------------------------------------------------------
+def test_an_execute_stopped_before_its_first_write_moves_nothing(
+    sessions, mailbox
+):
+    """Its reads -- the UIDVALIDITY check -- are asked about first, so a
+    front-end that stops before a write stops it with nothing sent. Red if
+    the move is sent before the checkpoint is asked."""
+    plan = utilities.mail.plan_mail(
+        sessions, criteria(), ActionSpec(), "INBOX", "INBOX.Lists"
+    )
+    checkpoint = Checkpoint(before_write=True)
+
+    with pytest.raises(Stopped):
+        utilities.mail.execute_mail(
+            checked(sessions, checkpoint), plan, max_messages=2
+        )
+
+    assert checkpoint.asked[-1] is True
+    assert False in checkpoint.asked
+    assert "move" not in mailbox.names()

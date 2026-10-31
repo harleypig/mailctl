@@ -27,6 +27,15 @@ folder between a plan and its execute. ``MAILCTL_TEST_DECLINE`` names
 capabilities, comma separated, the provider is to declare false, so a
 test reaches the refusal a provider without them meets.
 
+The file's ``hold`` slows a request down so a test can cancel it in
+flight: it maps a double's method (``fetch``, ``create_folder``,
+``getscript_bytes``, ``checkscript``, ``putscript``) to how many of its
+next calls wait.
+Each such call appends the method's name to ``held``, then waits until
+the client has sent the API another line, unread, before it runs. A test
+waits for ``held`` to grow, sends the line, and so knows the request was
+mid-way when the line arrived.
+
 Nothing here prints. Whatever this process writes to stdout is the API's.
 """
 
@@ -36,8 +45,10 @@ import json
 import os
 import socket
 import sys
+import time
 from pathlib import Path
 
+from api_support import TIMEOUT
 from conftest import FakeIMAPClient
 from imapclient.exceptions import LoginError
 
@@ -62,6 +73,9 @@ IMAP_WRITES = (
 
 STATE = Path(os.environ["MAILCTL_TEST_STATE"])
 
+# The API's channel, once main has made it.
+CHANNELS: list[api.Channel] = []
+
 
 # ----------------------------------------------------------------------------
 def load() -> dict:
@@ -83,6 +97,43 @@ def accepted(password: str) -> bool:
     digest = hashlib.sha256(password.encode("utf-8")).hexdigest()
 
     return digest == state["password_sha256"]
+
+
+# ----------------------------------------------------------------------------
+def hold(name: str) -> None:
+    """Where ``hold`` still counts ``name``, say so in ``held`` and wait
+    for a line from the client the API has not yet read."""
+    state = load()
+    left = state.get("hold", {}).get(name, 0)
+
+    if not left:
+        return
+
+    state["hold"][name] = left - 1
+    state.setdefault("held", []).append(name)
+    save(state)
+
+    # The channel's own queue: read lines no checkpoint has taken yet.
+    inbox = CHANNELS[0]._inbox
+    deadline = time.monotonic() + TIMEOUT
+
+    while inbox.empty():
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"no line from the client while {name} held")
+
+        time.sleep(0.01)
+
+
+# ----------------------------------------------------------------------------
+def holding(name: str, call):
+    """``call``, held first where ``hold`` says so."""
+
+    def held(*args, **kwargs):
+        hold(name)
+
+        return call(*args, **kwargs)
+
+    return held
 
 
 class FileSieveClient:
@@ -115,16 +166,20 @@ class FileSieveClient:
 
     # ------------------------------------------------------------------------
     def getscript_bytes(self, name: str):
+        hold("getscript_bytes")
         text = load()["scripts"].get(name)
 
         return None if text is None else text.encode("utf-8")
 
     # ------------------------------------------------------------------------
     def checkscript(self, content: str) -> bool:
+        hold("checkscript")
+
         return load().get("checkscript", True)
 
     # ------------------------------------------------------------------------
     def putscript(self, name: str, content: str) -> bool:
+        hold("putscript")
         state = load()
         state["scripts"][name] = content
         state.setdefault("stored", []).append(name)
@@ -177,6 +232,9 @@ def imap_double() -> FakeIMAPClient:
 
     for name in IMAP_WRITES:
         setattr(client, name, recorded(name, getattr(client, name)))
+
+    client.fetch = holding("fetch", client.fetch)
+    client.create_folder = holding("create_folder", client.create_folder)
 
     select = client.select_folder
 
@@ -241,7 +299,17 @@ def refuse_network(*_args, **_kwargs):
     raise OSError("the API test double opens no socket")
 
 
+class RecordedChannel(api.Channel):
+    """The API's channel, kept where ``hold`` can see what it has read."""
+
+    # ------------------------------------------------------------------------
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        CHANNELS.append(self)
+
+
 if __name__ == "__main__":
+    api.Channel = RecordedChannel  # type: ignore[misc]
     socket.socket.connect = refuse_network  # type: ignore[method-assign]
     decline(os.environ.get("MAILCTL_TEST_DECLINE", ""))
 

@@ -7,6 +7,7 @@ read, and the ceiling must refuse before a single header is fetched.
 """
 
 import pytest
+from utilities_support import Checkpoint, Stopped, checked
 
 from mailctl import MailctlError, utilities
 from mailctl.cli import error_text
@@ -378,3 +379,31 @@ def test_bad_arguments_are_refused_before_searching(
 
     if flag is not None:
         assert error_text(caught.value) == f"{flag} must be at least 1, not 0"
+
+
+# ############################################################################
+# Stopped part-way
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_a_count_stopped_at_its_checkpoint_reads_no_further_page(
+    sessions, fake_imap, monkeypatch
+):
+    """A page of headers is one exchange, so a front-end's cancel lands
+    between pages: here the folder list, the search, and the first page of
+    one go, and the second is stopped. Red if a stopped count reads on."""
+    monkeypatch.setattr(utilities.senders, "LIST_PAGE", 1)
+    mailbox(
+        fake_imap,
+        (message(GITHUB), False),
+        (message(NEWS), False),
+        (message(BOSS), False),
+    )
+
+    with pytest.raises(Stopped):
+        utilities.senders.count_senders(
+            checked(sessions, Checkpoint(allowed=3)), "INBOX"
+        )
+
+    assert len(fake_imap.fetches) == 1

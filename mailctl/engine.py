@@ -17,6 +17,12 @@ asks which provider it has: what it does around each call -- connect,
 serialise, re-connect -- it reads from the transport interface's own
 classification of that call.
 
+Before each operation the session calls the front-end's ``checkpoint``,
+if it gave one, saying whether the operation is a write; a checkpoint that
+raises stops the operation before it is sent. That is how a front-end
+that can be told to stop a request in hand stops it between exchanges,
+never during one.
+
 A session that lives long has halves that sit idle, and a server may log
 an idle client out. So before a write on a half that has been idle, the
 session sends that half's probe -- a read, and so retried on a fresh
@@ -81,6 +87,11 @@ class Session:
     half it may not behaves as one that is not there. ``idle_after`` is
     how many seconds of ``clock`` a connected half may go without an
     exchange before a write on it is preceded by the half's probe.
+
+    ``checkpoint``, where given, is called before every operation, with
+    True for a write, and before the half is connected or waited on; what
+    it raises stops the operation unsent, and reaches the caller as it
+    was raised.
     """
 
     # ------------------------------------------------------------------------
@@ -93,6 +104,7 @@ class Session:
         mail: bool = True,
         idle_after: float = IDLE_PROBE_AFTER,
         clock: Callable[[], float] = time.monotonic,
+        checkpoint: Callable[[bool], None] | None = None,
     ):
         self.provider = provider
         self.connection = transport
@@ -103,6 +115,7 @@ class Session:
         self._idle_after = idle_after
         self._clock = clock
         self._last_exchange: dict[str, float] = {}
+        self._checkpoint = checkpoint
 
     # ------------------------------------------------------------------------
     @property
@@ -189,6 +202,9 @@ class Session:
         the half's probe first (:meth:`_probe_if_idle`).
         """
         half = cast(str, operation.half)
+
+        if self._checkpoint is not None:
+            self._checkpoint(operation.kind == WRITE)
 
         with self._locks[half]:
             if operation.kind == WRITE:
@@ -305,6 +321,7 @@ def connect(
     rules: bool = True,
     mail: bool = True,
     progress: Progress | None = None,
+    checkpoint: Callable[[bool], None] | None = None,
 ) -> Iterator[Session]:
     """A session on the configured provider, closed when the block ends.
 
@@ -313,6 +330,7 @@ def connect(
     and it connects only when first used; :meth:`Session.open_all`
     connects both up front. The configuration is validated first, so an
     unknown provider or a setting it refuses costs no connection.
+    ``checkpoint`` is the session's (:class:`Session`).
     """
     provider = provider_for(config)
     check_settings(provider, config)
@@ -323,6 +341,7 @@ def connect(
         provider.transport.open(config, progress=progress),
         rules=rules,
         mail=mail,
+        checkpoint=checkpoint,
     )
 
     try:

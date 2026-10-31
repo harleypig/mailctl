@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -3371,3 +3372,381 @@ def test_a_host_that_cannot_name_a_baseline_is_refused_coded(start):
 
     assert error["code"] == "baseline_host_invalid"
     assert error["fields"] == {"host": "mail_example.com"}
+
+
+# ############################################################################
+# Cancelling a request in flight (#280)
+# ############################################################################
+
+# A filter no message meets, so a search under it with a limit of one reads
+# the folder a message at a time -- one exchange each -- and never stops on
+# a match.
+NOBODY_FILTER = {
+    "version": 1,
+    "criteria": {
+        "match": "all",
+        "compare": "contains",
+        "terms": [{"header": "From", "value": "nobody@example.invalid"}],
+    },
+}
+
+THREE_MESSAGES = {"1": GITHUB_MAIL, "2": BOSS_MAIL, "3": GITHUB_MAIL}
+
+CANCELLED = {
+    "code": -32800,
+    "message": "the request was cancelled; nothing on the server was changed",
+    "data": {"written": False},
+}
+
+
+# ----------------------------------------------------------------------------
+def post(client: ChildClient, method: str, params: dict | None = None) -> int:
+    """Send a request without waiting for its answer; return its id."""
+    client._next += 1
+    message: dict = {"jsonrpc": "2.0", "id": client._next, "method": method}
+
+    if params is not None:
+        message["params"] = params
+
+    client.send(message)
+
+    return client._next
+
+
+# ----------------------------------------------------------------------------
+def cancel(client: ChildClient, ident: object) -> None:
+    client.send(
+        {
+            "jsonrpc": "2.0",
+            "method": "$/cancelRequest",
+            "params": {"id": ident},
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def wait_held(client: ChildClient, count: int) -> list[str]:
+    """Wait until ``count`` of the doubles' calls have held, so the request
+    making them is known to be mid-way; return what held."""
+    deadline = time.monotonic() + TIMEOUT
+
+    while True:
+        try:
+            held = client.read_state().get("held", [])
+
+        except json.JSONDecodeError:
+            # Read while the child was writing it.
+            held = []
+
+        if len(held) >= count:
+            return held
+
+        assert time.monotonic() < deadline, "the request never held"
+        time.sleep(0.01)
+
+
+# ----------------------------------------------------------------------------
+def unhold(client: ChildClient) -> None:
+    """Clear what is left of ``hold``, between requests."""
+    state = client.read_state()
+    state["hold"] = {}
+    client.write_state(state)
+
+
+# ----------------------------------------------------------------------------
+def test_a_long_search_cancelled_mid_way_stops_and_the_session_goes_on(start):
+    """Held on its first page of three, the search is cancelled; the second
+    page is never fetched, and the answer says nothing was sent. The next
+    request on the same session works. Red if the cancel is read only once
+    the request ends (the search finishes with a result), or if a page
+    after the cancel is fetched (``held`` grows)."""
+    client = initialized(start, messages=THREE_MESSAGES, hold={"fetch": 3})
+    search = post(client, "mail.search", {"filter": NOBODY_FILTER, "limit": 1})
+
+    wait_held(client, 1)
+    cancel(client, search)
+    response = client.until(search)
+
+    assert response["error"] == CANCELLED
+    assert client.read_state()["held"] == ["fetch"]
+
+    unhold(client)
+    viewed = client.request("mail.view", {"uid": 1})
+
+    assert viewed["result"]["message"]["uid"] == 1
+    assert client.request("shutdown")["result"] is None
+    assert client.close()[0] == 0
+
+
+# ----------------------------------------------------------------------------
+def test_requests_sent_while_one_runs_are_answered_after_it_in_order(start):
+    """A request read while the search runs waits its turn: the search is
+    answered first, cancelled, then the request. Red if reading ahead
+    answers out of order, or drops what it read."""
+    client = initialized(start, messages=THREE_MESSAGES, hold={"fetch": 2})
+    search = post(client, "mail.search", {"filter": NOBODY_FILTER, "limit": 1})
+
+    wait_held(client, 1)
+    listing = post(client, "filter.list")
+    wait_held(client, 2)
+    cancel(client, search)
+
+    first = client.until(search)
+
+    assert first["error"] == CANCELLED
+    assert not [note for note in first["notes"] if "method" not in note]
+
+    second = client.until(listing)
+
+    assert [item["name"] for item in second["result"]["filters"]] == [
+        "keep-boss"
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_request_cancelled_while_it_waits_its_turn_never_runs(start):
+    """The search it waited behind runs to its end; it is answered
+    cancelled in its turn and has not touched the rules half. Red if a
+    cancel for a request not yet started is ignored."""
+    client = initialized(start, messages=THREE_MESSAGES, hold={"fetch": 2})
+    search = post(client, "mail.search", {"filter": NOBODY_FILTER, "limit": 1})
+
+    wait_held(client, 1)
+    listing = post(client, "filter.list")
+    wait_held(client, 2)
+    cancel(client, listing)
+
+    assert client.until(search)["result"]["messages"] == []
+    assert client.until(listing)["error"] == CANCELLED
+    assert client.read_state().get("sieve_connects", 0) == 0
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_for_an_id_not_in_hand_is_ignored(start):
+    """An unknown id, a finished one, and a cancel naming no id: none is
+    answered, and the session goes on, a request reusing the finished id
+    included. Sent as a request, a cancel waits its turn like any other
+    and is answered with null. Red if any of them is answered, or is kept
+    to stop a later request."""
+    client = initialized(start)
+    finished = client.request("filter.list")
+
+    cancel(client, 999)
+    cancel(client, "nobody")
+    cancel(client, finished["id"])
+    cancel(client, True)
+    client.send({"jsonrpc": "2.0", "method": "$/cancelRequest"})
+
+    listed = client.request("filter.list")
+
+    assert "result" in listed
+    assert listed["notes"] == []
+
+    client.send(
+        {"jsonrpc": "2.0", "id": finished["id"], "method": "filter.list"}
+    )
+
+    assert "result" in client.until(finished["id"])
+    assert client.request("$/cancelRequest", {"id": 999})["result"] is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_before_an_executes_first_write_sends_nothing(start):
+    """Held on its re-read of the filter set, the execute is cancelled: no
+    filter set is stored, the answer says nothing was sent, and the plan
+    is used up, as a failed one is. A new plan then runs. Red if the
+    execute stores after the cancel, or keeps the plan."""
+    client = initialized(start)
+    plan_id = add_plan(client)["result"]["plan_id"]
+    state = client.read_state()
+    state["hold"] = {"getscript_bytes": 1}
+    client.write_state(state)
+
+    execute = post(client, "filter.add.execute", {"plan_id": plan_id})
+
+    wait_held(client, 1)
+    cancel(client, execute)
+    error = client.until(execute)["error"]
+
+    # The re-read is followed by the backup before the next exchange.
+    assert Path(error["data"].pop("backup")).is_file()
+    assert error == CANCELLED
+
+    state = client.read_state()
+
+    assert "stored" not in state
+    assert state["scripts"]["managesieve"] == ROUNDCUBE
+
+    again = client.request("filter.add.execute", {"plan_id": plan_id})
+
+    assert refusal(again)["code"] == "plan_unknown"
+
+    fresh = add_plan(client)["result"]["plan_id"]
+    done = client.request("filter.add.execute", {"plan_id": fresh})
+
+    assert "result" in done, done
+    assert client.read_state()["stored"] == ["managesieve"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_after_the_backup_names_it_and_stores_nothing(
+    start, tmp_path
+):
+    """Held while the server checks the new filter set -- the backup on
+    disk, the text sent, nothing stored -- the execute is cancelled before
+    its first write. The answer says nothing on the server changed and
+    names the backup, which holds the filter set as it was. Red if the
+    cancel's data leaves the backup out, or the execute stores after the
+    cancel."""
+    client = initialized(start)
+    plan_id = add_plan(client)["result"]["plan_id"]
+    state = client.read_state()
+    state["hold"] = {"checkscript": 1}
+    client.write_state(state)
+
+    execute = post(client, "filter.add.execute", {"plan_id": plan_id})
+
+    wait_held(client, 1)
+    cancel(client, execute)
+    response = client.until(execute)
+    error = response["error"]
+    backup = Path(error["data"].pop("backup"))
+
+    assert error == CANCELLED
+    assert backup.parent == tmp_path / "backups"
+    assert backup.read_bytes() == ROUNDCUBE.encode()
+    assert events(response)[-1] == {
+        "kind": "filterset_backed_up",
+        "filterset": "managesieve",
+        "path": str(backup),
+    }
+    assert "stored" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_after_an_executes_first_write_lets_it_finish(start):
+    """Held while the filter set is being stored, the execute is cancelled
+    too late: it runs to its end and is answered with its result, which
+    says it was sent. Red if the cancel stops it mid-way, or answers it
+    as cancelled once something was sent."""
+    client = initialized(start)
+    plan_id = add_plan(client)["result"]["plan_id"]
+    state = client.read_state()
+    state["hold"] = {"putscript": 1}
+    client.write_state(state)
+
+    execute = post(client, "filter.add.execute", {"plan_id": plan_id})
+
+    wait_held(client, 1)
+    cancel(client, execute)
+    response = client.until(execute)
+
+    assert "result" in response, response
+    assert response["result"]["result"]["filter"] == "github"
+    assert events(response)[-1]["kind"] == "filterset_uploaded"
+    assert client.read_state()["stored"] == ["managesieve"]
+    assert "github" in client.read_state()["scripts"]["managesieve"]
+    assert "result" in client.request("filter.list")
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_after_the_passs_first_write_lets_the_whole_pass_finish(
+    start,
+):
+    """Held while it creates its folder, its first write, the pass is
+    cancelled too late: the folder is subscribed and the mail moved, and
+    the reply is the whole pass's counts. The move is not stopped between
+    its batches either, being one write. Red if a cancel after the first
+    write stops what follows it."""
+    client = initialized(start)
+    plan_id = apply_plan(
+        client, actions={"move_to": "INBOX.New"}, create_folder=True
+    )["result"]["plan_id"]
+    state = client.read_state()
+    state["hold"] = {"create_folder": 1}
+    client.write_state(state)
+
+    execute = post(client, "filter.apply.execute", {"plan_id": plan_id})
+
+    wait_held(client, 1)
+    cancel(client, execute)
+    response = client.until(execute)
+    writes = [write[0] for write in client.read_state()["imap_writes"]]
+
+    assert response["result"]["result"]["moved"] == 1
+    assert writes == ["create_folder", "subscribe_folder", "move"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_while_the_password_is_asked_ends_the_wait(start):
+    """The client need not answer a prompt for a request it cancelled: the
+    wait ends, nothing has logged in, and the answer says nothing was
+    sent. An answer to the old prompt sent later answers nothing; the next
+    request asks again and logs in. The password is nowhere on stdout or
+    stderr. Red if the cancel waits behind the prompt (the test times
+    out), or the late answer is taken as a request."""
+    client = start("--debug", password=SENTINEL, configured=False)
+    client.request("initialize")
+    search = post(client, "mail.search", {"filter": GITHUB_FILTER})
+    prompt = client.receive()
+
+    assert prompt["method"] == "credentials.prompt"
+
+    cancel(client, search)
+    response = client.until(search)
+
+    assert response["error"] == CANCELLED
+    assert client.read_state().get("logins", 0) == 0
+
+    client.send(
+        {
+            "jsonrpc": "2.0",
+            "id": prompt["id"],
+            "result": {"password": SENTINEL},
+        }
+    )
+    client.answer = {"result": {"password": SENTINEL}}
+    viewed = client.request("mail.view", {"uid": 1})
+
+    assert viewed["result"]["message"]["uid"] == 1
+    assert client.prompted == 1
+    assert client.read_state()["logins"] == 1
+
+    client.request("shutdown")
+    code, stderr = client.close()
+
+    assert code == 0
+    nowhere(client, stderr, SENTINEL)
+
+
+# ----------------------------------------------------------------------------
+def test_a_password_command_gets_no_input_and_the_client_is_still_heard(
+    start, tmp_path, monkeypatch
+):
+    """The password command runs while the client's next request is on
+    the way. Reading its stdin, it must meet the end at once rather than
+    the client's pipe, and that request is answered after the login. Red
+    if the command inherits the API's stdin: it finds a pipe that stays
+    open with nothing for it, gives up, and the login is refused."""
+    helper = tmp_path / "password-helper.py"
+    helper.write_text(
+        "import select, sys\n"
+        "ready, _, _ = select.select([sys.stdin], [], [], 2)\n"
+        "if not ready:\n"
+        "    sys.exit(4)\n"
+        "if sys.stdin.read():\n"
+        "    sys.exit(3)\n"
+        f"print({PASSWORD!r})\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MAILCTL_PASSWORD_CMD", f"{sys.executable} {helper}")
+    client = start(configured=False)
+    client.request("initialize")
+
+    viewing = post(client, "mail.view", {"uid": 1})
+    listing = post(client, "filter.list")
+
+    assert client.until(viewing)["result"]["message"]["uid"] == 1
+    assert "result" in client.until(listing)
+    assert client.read_state()["logins"] == 2
+    assert client.prompted == 0

@@ -28,13 +28,19 @@ def main(argv: list[str] | None = None) -> int:
     """Serve one client on stdin and stdout until it shuts down or its
     input ends."""
     args = build_parser().parse_args(argv)
-    channel = Channel(sys.stdin.buffer, sys.stdout.buffer)
+    stdout = sys.stdout.buffer
 
     # The protocol owns the real stdout. Anything else printed would be a
-    # line the client cannot parse, so it goes to stderr instead.
+    # line the client cannot parse, so it goes to stderr instead. Its input
+    # is read unbuffered, through a file object of its own (``Channel``).
     try:
-        with contextlib.redirect_stdout(sys.stderr):
-            Server(args, channel).run()
+        with (
+            open(
+                sys.stdin.fileno(), "rb", buffering=0, closefd=False
+            ) as stdin,
+            contextlib.redirect_stdout(sys.stderr),
+        ):
+            Server(args, Channel(stdin, stdout)).run()
 
     except KeyboardInterrupt:
         return 130
