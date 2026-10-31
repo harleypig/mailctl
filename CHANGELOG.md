@@ -35,6 +35,25 @@ FEATURES:
   shows the plan and its diff, and `y` saves it, backing the filter set up
   first and saying where, while Escape discards the plan. The mail
   already delivered is left alone.
+* **The API offers every command** ([#279]). Each command of the
+  command line is now a method named by its path, `filter.apply` for
+  `filter apply`, and each that changes something is a `.plan` and an
+  `.execute`: the rest of the `filter` group, the `filterset` and
+  `folder` groups, `mail.mark` and `mail.senders`, `server.test`,
+  `server.probe`, the three `server.baseline` commands, and
+  `config.migrate`. `help` is left out, since it describes the command
+  line's own options. A plan's document is what `--dry-run --json`
+  prints; `server.test`, which the command line lays out for a person,
+  gets a document of its own, and the `server baseline save` and `config
+  migrate` plans are the API's own. `filterset.backup` is one method,
+  since nothing on the server changes. An execute refused for its
+  parameters keeps its plan, and one whose plan changes nothing is
+  refused with `nothing_to_change`, sending nothing, except
+  `filter.add.execute`, which carries it out as `filter add` does. The
+  API expands nothing in a path a client sends. `config.migrate`'s
+  result carries `restart: true`, since what moves is read only by a
+  process started afterwards. The README's *API* section lists every
+  method, its parameters, and its result.
 
 ENHANCEMENTS:
 
@@ -79,6 +98,34 @@ ENHANCEMENTS:
   `-32602`.
 
 BUG FIXES:
+
+* **Two backups of one filter set taken in the same second no longer
+  overwrite each other** ([#330]). A backup was named to the second, so a
+  second backup in that second replaced the first, and the copy taken
+  before the first change was lost. Backups are now named to the
+  millisecond, `<name>-<YYYYmmddTHHMMSS.mmmZ>.sieve`, and a backup never
+  replaces a file: where the name mailctl chose is taken, the next free
+  one, `-2`, `-3`, and so on, is used. **`filterset backup --output
+  FILE` naming a file that exists is now refused**, exit status 1, and
+  the file is left as it was; it was replaced without a word.
+* **`filterset restore` no longer reads the password back as a backup**
+  ([#279]). Given a password file, or the env file in use, as its FILE,
+  `filterset restore` read it and showed its contents as the diff. Such a
+  file is now refused before it is opened, links followed, coded
+  `credential_file`, on the command line and the API alike.
+* **`config migrate` keeps a `config.toml` path as it was written**
+  ([#279]). A `password_file` or `backup_dir` naming the old directory as
+  `~/...` or through a variable was rewritten as the expanded path, which
+  could write a variable's value into the file. Now only the old
+  directory's own name is changed, and a path that reaches the old
+  directory through a variable, which cannot be rewritten without
+  expanding it, is refused with `migration_reference_unrewritable` before
+  anything moves. A plan the two directories no longer match is refused
+  with `migration_changed`, also before anything moves.
+* **`server baseline save` no longer writes over a save made after it
+  planned** ([#279]). The file carries every account's part, so writing
+  over a save made in between lost that one. It is now refused with
+  `baseline_changed`, writing nothing.
 
 * **A password with a character outside ASCII no longer shows part of
   itself** ([#258]). IMAP's login sends ASCII only, and the error it
@@ -1665,3 +1712,5 @@ NOTES:
 [#242]: https://github.com/harleypig/mailctl/issues/242
 [#307]: https://github.com/harleypig/mailctl/issues/307
 [#308]: https://github.com/harleypig/mailctl/issues/308
+[#279]: https://github.com/harleypig/mailctl/issues/279
+[#330]: https://github.com/harleypig/mailctl/issues/330

@@ -4,7 +4,8 @@
 - Date: 2026-10-28
 - Accepted: 2026-10-29, by the operator on [#224][i224]
 - Amended: 2026-10-30, for [#258][i258] and again for [#307][i307];
-  2026-10-31, for [#281][i281] (see *Amendment*)
+  2026-10-31, for [#281][i281] and again for [#279][i279] (see
+  *Amendment*)
 - Amends [ADR 0003][adr3] (see its *Amendment*). Builds on [ADR
   0007][adr7]. Recorded for [#224][i224].
 
@@ -454,6 +455,50 @@ when that slice starts.**
 **Revisit when the web UI's slice is filed.** Its ADR decides the
 binding (loopback only by default), the authentication, and the library.
 
+### Every command has a method (#279)
+
+Added on 2026-10-31, for [#279][i279]. *Follow-up work* left *"the
+remaining commands' methods"* to later issues. They are built, so of that
+paragraph only the web carrier (deferred above) and the fuller message
+reader remain. Every command of the CLI is a method named by its path,
+each write a `.plan` and an `.execute` over the plan table of §2, and
+`tests/test_api.py` fails for a command added later with neither a
+method nor a stated reason. Building them settled five points §2 left
+open:
+
+- **`help` has no method.** It describes the CLI's own options; a client
+  learns what it can call from `initialize`'s capabilities and the
+  method set.
+- **Not every write is a pair.** `filterset.backup` is one method: nothing
+  on the server changes and the CLI asks nothing, so there is no decision
+  for a plan to wait on, and a plan would write bytes read some time
+  before. `server.baseline.save` and `config.migrate` change only files
+  on the API's host and are pairs all the same, so a client can show what
+  would be written first. Their executes refuse a plan the files no
+  longer match (`baseline_changed`, `migration_changed`), the same guard
+  §2 gives a filter set, held in the utilities so the CLI meets it too.
+  `config.migrate`'s result carries `restart: true`: the process resolved
+  its configuration at `initialize`, so only one started afterwards reads
+  what moved.
+- **A plan that changes nothing is refused at execute**
+  (`nothing_to_change`), where the CLI stops after showing it.
+  `filter.add.execute` is the exception, carrying it out as `filter add`
+  does.
+- **An execute checks its parameters before it takes the plan**, so a
+  request refused for its parameters leaves the plan waiting. Only an
+  execute that reached the plan uses it up, which is §2's single use.
+- **A path from the client is never expanded.** `filterset.restore.plan`
+  takes a path on the API's host, and expanding `~` or `$VAR` there
+  would read the API's environment for the client and could name a
+  secret. A file the session reads the password from is refused as a
+  backup (`credential_file`), on both interfaces. Any other file the user
+  can read may still be named, which is no more than the client can do,
+  because over stdio its one peer runs as the same user (§4); a carrier
+  that serves another user must revisit it.
+
+`server.test` has a document of its own, built from the same probes as
+the CLI's report, which offers none.
+
 ## Sources
 
 Fetched 2026-10-28.
@@ -492,6 +537,7 @@ Fetched 2026-10-28.
 [i258]: https://github.com/harleypig/mailctl/issues/258
 [i307]: https://github.com/harleypig/mailctl/issues/307
 [i281]: https://github.com/harleypig/mailctl/issues/281
+[i279]: https://github.com/harleypig/mailctl/issues/279
 [ice-tui]: ../ICEBOX.md#tui-front-end
 [jsonrpc]: https://www.jsonrpc.org/specification
 [mcp]: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports
