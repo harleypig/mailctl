@@ -94,7 +94,8 @@ def test_an_unknown_command_is_refused_as_an_unknown_command(capsys):
 
     assert helped == run(capsys, "nosuch")
     assert helped[0] == 2
-    assert "invalid choice: 'nosuch'" in helped[2]
+    assert "invalid choice (choose from" in helped[2]
+    assert "nosuch" not in helped[2]
     assert "filter" in helped[2]
 
 
@@ -104,7 +105,8 @@ def test_an_unknown_action_is_refused_by_its_group(capsys):
 
     assert helped == run(capsys, "filter", "nosuch")
     assert helped[0] == 2
-    assert "invalid choice: 'nosuch'" in helped[2]
+    assert "invalid choice (choose from" in helped[2]
+    assert "nosuch" not in helped[2]
     assert "optimize" in helped[2]
 
 

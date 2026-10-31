@@ -21,7 +21,7 @@ usage: mailctl mail search [-h] [--verbose] [--debug] [--provider PROVIDER]
                            [--sort {size,sent,received}] [--reverse]
                            [--like UID] [--derive DERIVE] [--uidvalidity N]
                            [--build-filter] [--json] [--uids-only]
-mailctl mail search: error: argument --sort: invalid choice: 'from' (choose from size, sent, received)
+mailctl mail search: error: argument --sort: invalid choice (choose from size, sent, received)
 
 --- sieve calls
 --- imap calls

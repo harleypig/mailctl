@@ -285,7 +285,8 @@ def test_a_bad_setting_flag_is_a_setting_refusal_naming_it(capsys):
 
     assert rejected.value.code == 2
     assert failure["error"] == {
-        "message": "argument --sieve-tls: invalid choice",
+        "message": "argument --sieve-tls: invalid choice (choose from "
+        "starttls, ssl, none)",
         "code": "setting_invalid",
     }
 
@@ -293,31 +294,182 @@ def test_a_bad_setting_flag_is_a_setting_refusal_naming_it(capsys):
 SENTINEL = "Sentinel-Not-A-Real-Password-7f3a"
 
 
+# Every shape a password can take into a refused command line: an option
+# mistyped (spaced, with '=', or short and attached), a password option
+# given where it is not taken, one that takes the password as the command
+# word, and a value given to an option that takes none or another kind.
+LEAKY_COMMAND_LINES = [
+    ["filter", "list", "--pasword", SENTINEL],
+    ["filter", "list", f"--pasword={SENTINEL}"],
+    ["filter", "list", "--passwd", SENTINEL],
+    ["filter", "list", "--pasword-cmd", SENTINEL],
+    ["filter", "list", f"--password-cmd={SENTINEL}", "--password-file", "x"],
+    ["filter", "list", f"-P{SENTINEL}"],
+    ["config", "migrate", "--password", SENTINEL],
+    ["config", "migrate", f"-p{SENTINEL}"],
+    ["--password", SENTINEL, "filter", "list"],
+    ["help", f"--password={SENTINEL}"],
+    ["help", "filter", SENTINEL],
+    ["filter", "list", f"--debug={SENTINEL}"],
+    ["mail", "view", SENTINEL],
+    ["folder", "list", "--imap-port", SENTINEL],
+    ["folder", "list", "--sieve-tls", SENTINEL],
+]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("json_flag", [[], ["--json"]], ids=["text", "json"])
+@pytest.mark.parametrize("argv", LEAKY_COMMAND_LINES)
+def test_a_refused_command_line_never_quotes_a_word_argparse_could_not_use(
+    argv, json_flag, capsys
+):
+    """#364: a word argparse refused may be a password that lost its
+    option, so neither the error line nor the --json line quotes one; they
+    say what kind of mistake it was and name options only. Exit 2 and the
+    usage block are argparse's own. Red if Parser.error hands argparse's
+    message on unfiltered."""
+    with pytest.raises(SystemExit) as rejected:
+        cli.main([*argv, *json_flag])
+
+    out, err = capsys.readouterr()
+
+    assert rejected.value.code == 2
+    assert err.startswith("usage: mailctl")
+    assert ": error: " in err
+    assert SENTINEL not in out
+    assert SENTINEL not in err
+
+    if json_flag:
+        assert json.loads(err.splitlines()[-1])["error"]["code"]
+
+
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "argv",
+    ("message", "said"),
     [
-        ["filter", "list", "--pasword", SENTINEL, "--json"],
-        ["filter", "list", f"--pasword={SENTINEL}", "--json"],
-        ["config", "migrate", "--password", SENTINEL, "--json"],
-        ["--password", SENTINEL, "filter", "list", "--json"],
-        ["folder", "list", "--imap-port", SENTINEL, "--json"],
-        ["folder", "list", "--sieve-tls", SENTINEL, "--json"],
+        (
+            f"argument --debug: ignored explicit argument '{SENTINEL}'",
+            "argument --debug: ignored explicit argument",
+        ),
+        (
+            f"argument uid: invalid int value: '{SENTINEL}'",
+            "argument uid: invalid int value",
+        ),
+        (
+            f"argument --sort: invalid choice: '{SENTINEL}' (choose from "
+            "'size', 'sent', 'received')",
+            "argument --sort: invalid choice (choose from size, sent, "
+            "received)",
+        ),
+        (
+            f"argument --sort: invalid choice: '{SENTINEL}', maybe you "
+            "meant 'size'? (choose from size, sent, received)",
+            "argument --sort: invalid choice (choose from size, sent, "
+            "received)",
+        ),
+        (
+            f"argument --sort: invalid choice: 'x (choose from {SENTINEL})' "
+            "(choose from size, sent)",
+            "argument --sort: invalid choice (choose from size, sent)",
+        ),
+        (
+            f"argument --sort: invalid choice: '{SENTINEL}' (choose from "
+            "a b, c)",
+            "argument --sort: invalid choice",
+        ),
+        (
+            f"ambiguous option: --pass={SENTINEL} could match --password, "
+            "--password-cmd",
+            "ambiguous option: --pass could match --password, --password-cmd",
+        ),
+        (
+            f"unrecognized arguments: -p{SENTINEL} --{SENTINEL}=x",
+            f"unrecognized arguments: --{SENTINEL} and 1 other word",
+        ),
     ],
 )
-def test_the_json_line_never_quotes_a_word_argparse_could_not_use(
-    argv, capsys
+def test_a_value_argparse_quotes_is_dropped_and_the_names_kept(message, said):
+    """Each template that quotes a value keeps what names the mistake. A
+    long option is named up to its '=', so a password given as one is the
+    accepted limit; a short option is named only alone."""
+    assert json_output.rejection(message)[0] == said
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "message",
+    [
+        "argument --password-file: not allowed with argument -p/--password",
+        "argument --provider: expected one argument",
+        "argument --env-file: expected at most one argument",
+        "argument UID: expected at least one argument",
+        "the following arguments are required: name, --move-to",
+        "the following arguments are required: {add,list}",
+        "one of the arguments --read --unread is required",
+    ],
+)
+def test_a_message_naming_only_arguments_is_kept_as_argparse_wrote_it(
+    message,
 ):
-    """A word argparse refused may be a password that lost its option, so
-    the line says what kind of mistake it was and names options only. The
-    text above it still quotes argparse (#352 left it as it was)."""
-    with pytest.raises(SystemExit):
-        cli.main(argv)
+    assert json_output.rejection(message) == (
+        message,
+        "invalid_arguments",
+        None,
+    )
 
-    last = capsys.readouterr().err.splitlines()[-1]
 
-    assert json.loads(last)["error"]["code"]
-    assert SENTINEL not in last
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "message",
+    [
+        f"argument --password: {SENTINEL} is not a valid password",
+        f"invalid value {SENTINEL!r} for argument --password",
+        f"the following arguments are required: name (got '{SENTINEL}')",
+        f"argument --provider: expected one argument, not '{SENTINEL}'",
+        f"ambiguous option: -p{SENTINEL} could match -p, -P",
+        f"argument --sort: invalid choice '{SENTINEL}'",
+        "",
+    ],
+)
+def test_a_message_of_no_known_shape_is_refused_in_general_words(message):
+    """#364: a template a later Python rewords, or one never seen, may
+    quote a value, so it is never shown. Red if the fallback hands
+    argparse's message on."""
+    assert json_output.rejection(message) == (
+        json_output.REFUSED,
+        "invalid_arguments",
+        None,
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_message_of_no_known_shape_is_the_general_words_on_both_lines(
+    capsys, monkeypatch
+):
+    """The fail-closed path through the CLI end to end: an argparse that
+    worded its refusal in a way never seen prints neither its text nor the
+    value, on the error line or the --json line, and still exits 2."""
+    reworded = f"value {SENTINEL!r} is not one argparse knows"
+
+    def error(self, message):
+        return original(self, reworded)
+
+    original = cli.Parser.error
+    monkeypatch.setattr(cli.Parser, "error", error)
+
+    with pytest.raises(SystemExit) as rejected:
+        cli.main(["mail", "search", "--bogus", "--json"])
+
+    err = capsys.readouterr().err
+    lines = err.splitlines()
+
+    assert rejected.value.code == 2
+    assert SENTINEL not in err
+    assert lines[-2] == f"mailctl: error: {json_output.REFUSED}"
+    assert json.loads(lines[-1])["error"] == {
+        "message": json_output.REFUSED,
+        "code": "invalid_arguments",
+    }
 
 
 # ----------------------------------------------------------------------------

@@ -5142,7 +5142,7 @@ def parse_command_line(
 ) -> argparse.Namespace:
     """Parse the command line, and refuse what the parse alone lets by.
 
-    Every refusal here exits 2, through ``parser.error``, as a rejected
+    Every refusal here exits 2, through ``parser.refuse``, as a rejected
     command line does.
     """
     refuse_gone_command(parser, given)
@@ -5154,7 +5154,7 @@ def parse_command_line(
     if not args.reads_settings and (
         args.provider is not None or args.env_file is not None
     ):
-        parser.error(
+        parser.refuse(
             f"'{args.command}' reads no settings, so it takes neither "
             f"--provider nor --env-file"
         )
@@ -5169,7 +5169,7 @@ def parse_command_line(
     # --no-subscribe only shapes a folder this run creates. Accepting it
     # alone would be a flag that looks like it took effect and did not.
     if getattr(args, "no_subscribe", False) and not args.create_folder:
-        parser.error(
+        parser.refuse(
             "--no-subscribe only applies with --create-folder; to hide a "
             "folder that already exists, use 'mailctl folder unsubscribe "
             "FOLDER'",
@@ -5191,7 +5191,7 @@ def json_requested(argv: list[str]) -> bool:
 
 # ----------------------------------------------------------------------------
 def settings_options(
-    parser: argparse.ArgumentParser,
+    parser: "Parser",
     commands,
     default: object = argparse.SUPPRESS,
 ) -> None:
@@ -5210,7 +5210,7 @@ def settings_options(
         nargs="?",
         const=".env",
         default=default,
-        type=lambda path: env_file_before_command(path, commands()),
+        type=lambda path: env_file_before_command(path, commands(), parser),
         metavar="PATH",
         help="read MAILCTL_* settings from a dotenv-style file (default "
         ".env in the current directory); before the command, give the PATH",
@@ -5218,14 +5218,19 @@ def settings_options(
 
 
 # ----------------------------------------------------------------------------
-def env_file_before_command(path: str, commands) -> str:
+def env_file_before_command(path: str, commands, parser: "Parser") -> str:
     """``path`` as the env file named before the command, unless it is one
     of ``commands``: a bare --env-file there takes the next word as its
-    PATH, and that word is far likelier the command than a file."""
+    PATH, and that word is far likelier the command than a file.
+
+    Refused through ``parser`` rather than argparse's type error, which
+    would reach ``Parser.error`` as a message of no shape it knows.
+    """
     if path in commands:
-        raise argparse.ArgumentTypeError(
-            f"{path!r} is a command, not a file; before the command, give "
-            f"--env-file its PATH (--env-file .env {path} ...)"
+        parser.refuse(
+            f"argument --env-file: {path!r} is a command, not a file; "
+            f"before the command, give --env-file its PATH (--env-file "
+            f".env {path} ...)"
         )
 
     return path
@@ -5256,7 +5261,7 @@ def refuse_gone_command(parser: "Parser", argv) -> None:
             break
 
     if first in GONE_COMMANDS:
-        parser.error(
+        parser.refuse(
             f"'{first}' is now 'mailctl {GONE_COMMANDS[first]}'; the "
             f"commands are grouped (see 'mailctl help')",
             code="gone_command",
@@ -5274,7 +5279,7 @@ def refuse_gone_option(parser: "Parser", argv) -> None:
         old = word.split("=", 1)[0]
 
         if old in GONE_OPTIONS:
-            parser.error(
+            parser.refuse(
                 f"{old} is now {GONE_OPTIONS[old]}; the options are named "
                 f"the same for every provider",
                 code="gone_option",
@@ -5346,8 +5351,11 @@ class Parser(argparse.ArgumentParser):
     """argparse's parser, its refusals carrying a code.
 
     The subcommand parsers are made in the root's class, so a refusal at
-    any level comes here. What is printed, and the exit status, are
-    argparse's own.
+    any level comes here. The usage and the exit status are argparse's
+    own; its message is printed as ``json_output.rejection`` words it,
+    since argparse quotes what it could not use, and that may be a
+    password that lost its option. A refusal in mailctl's own words goes
+    through ``refuse`` instead, and is printed as written.
 
     An option is never taken by a prefix of its name: a script's ``--jso``
     working today would stop the day an option sharing the prefix is
@@ -5359,13 +5367,25 @@ class Parser(argparse.ArgumentParser):
         super().__init__(*args, allow_abbrev=allow_abbrev, **kwargs)
 
     # ------------------------------------------------------------------------
-    def error(self, message: str, code: str = ARGUMENTS) -> NoReturn:
+    def error(self, message: str) -> NoReturn:
+        self._reject(*json_output.rejection(message))
+
+    # ------------------------------------------------------------------------
+    def refuse(self, message: str, code: str = ARGUMENTS) -> NoReturn:
+        """Refuse the command line in mailctl's own words, which quote
+        nothing a user typed but a command or an option's name."""
+        self._reject(message, code, None)
+
+    # ------------------------------------------------------------------------
+    def _reject(
+        self, message: str, code: str, fields: dict[str, object] | None
+    ) -> NoReturn:
         try:
             super().error(message)
 
         except SystemExit as exc:
             raise CommandLineRejected(
-                exc.code, *json_output.rejection(message, code)
+                exc.code, message, code, fields
             ) from None
 
 

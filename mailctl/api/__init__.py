@@ -18,7 +18,7 @@ import os
 import sys
 
 from .protocol import Channel
-from .server import ArgumentsRejected, Server, build_parser, rejected_error
+from .server import ArgumentsRejected, Server, build_parser
 
 __all__ = ["main"]
 
@@ -30,9 +30,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     rejected = None
 
-    # A bad argument is said on stderr as argparse says it, and kept to
-    # answer the client's initialize with: exiting would reach the client
-    # as the end of its input, with nothing to say why.
+    # A bad argument is said on stderr, in words that quote no value given,
+    # and kept to answer the client's initialize with: exiting would reach
+    # the client as the end of its input, with nothing to say why.
     try:
         args = parser.parse_args(argv)
 
@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_usage(sys.stderr)
         print(f"{parser.prog}: error: {exc.message}", file=sys.stderr)
         args = parser.parse_args([])
-        rejected = rejected_error(exc.message)
+        rejected = exc.error
 
     stdout = sys.stdout.buffer
 
