@@ -997,12 +997,14 @@ def baseline_save_result(record, path: Path) -> dict:
 # ----------------------------------------------------------------------------
 def migration_result(record) -> dict:
     """What ``config migrate`` did: the two directories; each step was
-    sent as it landed."""
+    sent as it landed. ``restart`` is always true: a process reads its
+    settings once, so only one started after the move reads what moved."""
     return _document(
         result={
             "command": "config migrate",
             "old": str(record.old),
             "new": str(record.new),
+            "restart": True,
         }
     )
 

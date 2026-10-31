@@ -2953,9 +2953,10 @@ def old_config_dir() -> tuple[Path, Path]:
 def test_config_migrate_plans_then_moves_the_old_directory_once(start):
     """Red if the plan moves anything, if execute loses a file's mode or
     leaves the old directory, if a step is not sent as it lands, if a
-    connection is opened, which ``config migrate`` never needs, or if the
-    id runs twice. The old config.toml's password command holds the
-    sentinel, and no plan, event, or result may carry it."""
+    connection is opened, which ``config migrate`` never needs, if the id
+    runs twice, or if the result does not say that what moved is read by
+    a process started after it. The old config.toml's password command
+    holds the sentinel, and no plan, event, or result may carry it."""
     old, new = old_config_dir()
     client = initialized(start, "--debug")
     planned = client.request("config.migrate.plan")["result"]
@@ -2990,6 +2991,7 @@ def test_config_migrate_plans_then_moves_the_old_directory_once(start):
         "command": "config migrate",
         "old": str(old),
         "new": str(new),
+        "restart": True,
     }
     assert kinds.count("file_moved") == 2
     assert kinds[-2:] == ["reference_rewritten", "old_dir_removed"]
@@ -3042,3 +3044,109 @@ def test_config_migrate_refuses_to_overwrite_what_is_at_the_destination(
     assert (new / "backups" / "one.sieve").read_text(encoding="utf-8") == (
         "mine\n"
     )
+
+
+# ----------------------------------------------------------------------------
+def tree(root: Path) -> list[str]:
+    """Every path under ``root``, relative to it, sorted."""
+    return sorted(str(path.relative_to(root)) for path in root.rglob("*"))
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_refuses_a_plan_a_new_file_now_clashes_with(start):
+    """Red if execute starts moving before it finds that a destination
+    appeared after the plan: it would make the new directory's
+    subdirectories, move the files sorted before the clash, refuse
+    uncoded at it, and leave the old directory half-moved."""
+    home = Path(os.environ["XDG_CONFIG_HOME"])
+    old, new = home / "mxfilter", home / "mailctl"
+    (old / "backups").mkdir(parents=True)
+
+    for name in ("a.txt", "backups/one.sieve", "config.toml", "z.txt"):
+        (old / name).write_text(f"{name}\n", encoding="utf-8")
+
+    before = tree(old)
+    client = initialized(start)
+    planned = client.request("config.migrate.plan")["result"]
+
+    new.mkdir()
+    (new / "z.txt").write_text("mine\n", encoding="utf-8")
+
+    response = client.request(
+        "config.migrate.execute", {"plan_id": planned["plan_id"]}
+    )
+    error = refusal(response)
+
+    assert error["code"] == "migration_changed"
+    assert error["fields"] == {"operation": "config migrate"}
+    assert events(response) == []
+    assert tree(old) == before
+    assert tree(new) == ["z.txt"]
+    assert (new / "z.txt").read_text(encoding="utf-8") == "mine\n"
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_refuses_a_plan_a_baseline_saved_since_clashes_with(
+    start,
+):
+    """Red if a baseline saved in the same session, between the plan and
+    its execute, is met only by the move: it is refused uncoded, and the
+    baseline has made the new directory, so the old one's config.toml is
+    stranded with nothing left to report it. Refused coded, before
+    anything moves, it can be planned again and the clash shown."""
+    home = Path(os.environ["XDG_CONFIG_HOME"])
+    old = home / "mxfilter"
+    (old / "baselines").mkdir(parents=True)
+    (old / "baselines" / "mail.example.com.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    (old / "config.toml").write_text('host = "x"\n', encoding="utf-8")
+
+    before = tree(old)
+    client = initialized(start)
+    planned = client.request("config.migrate.plan")["result"]
+    save = client.request("server.baseline.save.plan")["result"]
+    client.request(
+        "server.baseline.save.execute", {"plan_id": save["plan_id"]}
+    )
+
+    response = client.request(
+        "config.migrate.execute", {"plan_id": planned["plan_id"]}
+    )
+    error = refusal(response)
+
+    assert error["code"] == "migration_changed"
+    assert events(response) == []
+    assert tree(old) == before
+    assert tree(home / "mailctl") == [
+        "baselines",
+        "baselines/mail.example.com.json",
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_never_expands_a_variable_into_a_config_path(
+    start, monkeypatch
+):
+    """Red if a config.toml path that reaches the old directory through a
+    variable is rewritten by expanding it: the variable's value -- here
+    the sentinel -- would be sent as the reference's new value and
+    written into the file. It is refused, naming only the key."""
+    old, _new = old_config_dir()
+    monkeypatch.setenv("MAILCTL_TEST_PW", f"{old}/{SENTINEL}")
+    toml = old / "config.toml"
+    toml.write_text('password_file = "$MAILCTL_TEST_PW"\n', encoding="utf-8")
+
+    client = initialized(start, "--debug")
+    error = refusal(client.request("config.migrate.plan"))
+
+    assert error["code"] == "migration_reference_unrewritable"
+    assert error["fields"] == {
+        "key": "password_file",
+        "operation": "config migrate",
+    }
+    assert toml.read_text(encoding="utf-8") == (
+        'password_file = "$MAILCTL_TEST_PW"\n'
+    )
+
+    assert_sentinel_absent(client)

@@ -5445,6 +5445,14 @@ ERROR_TEXT = {
     "migration_conflict": lambda message, fields: (
         f"{message}: {', '.join(str(path) for path in fields['conflicts'])}"
     ),
+    "migration_changed": lambda message, fields: (
+        f"{message}; run '{command_for(fields['operation'])}' again to see "
+        f"what it would move now"
+    ),
+    "migration_reference_unrewritable": lambda message, fields: (
+        f"{message}. Write {fields['key']} out without the variable, then "
+        f"run '{command_for(fields['operation'])}' again."
+    ),
     "uidvalidity_changed": lambda message, fields: (
         f"{message} '{command_for(fields['operation'])}' lists the folder's "
         f"UIDs as they are now, with the UIDVALIDITY to pass as "

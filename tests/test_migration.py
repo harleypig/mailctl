@@ -247,6 +247,120 @@ def test_migrate_points_config_paths_at_the_new_directory(dirs, old_setup):
 
 
 # ----------------------------------------------------------------------------
+def tree(root: Path) -> list[str]:
+    """Every path under ``root``, relative to it, sorted."""
+    return sorted(str(path.relative_to(root)) for path in root.rglob("*"))
+
+
+# ----------------------------------------------------------------------------
+def clash_appears(old: Path, new: Path) -> None:
+    new.mkdir()
+    (new / "config.toml").write_text("mine\n")
+
+
+# ----------------------------------------------------------------------------
+def source_appears(old: Path, new: Path) -> None:
+    (old / "later.txt").write_text("later\n")
+
+
+# ----------------------------------------------------------------------------
+def old_goes(old: Path, new: Path) -> None:
+    old.rename(old.with_name("elsewhere"))
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "change",
+    [clash_appears, source_appears, old_goes],
+    ids=lambda change: change.__name__,
+)
+def test_migrate_refuses_a_plan_the_directories_no_longer_match(
+    dirs, old_setup, change
+):
+    """Red if execute trusts a plan that has waited: a clash would be met
+    after the subdirectories were made and the backups moved, a file
+    added since would be left behind, and a vanished old directory would
+    fail uncoded. Each is refused, coded, with nothing made or moved."""
+    old, new = dirs
+    plan = planned()
+    change(old, new)
+    source = old if old.exists() else old.with_name("elsewhere")
+    before_source = tree(source)
+    before_new = tree(new) if new.exists() else None
+
+    with pytest.raises(MailctlError, match="nothing was moved") as caught:
+        utilities.migration.execute_config_migration(plan)
+
+    assert caught.value.code == "migration_changed"
+    assert caught.value.fields == {"operation": "config migrate"}
+    assert tree(source) == before_source
+    assert (tree(new) if new.exists() else None) == before_new
+
+
+# ----------------------------------------------------------------------------
+def test_migrate_keeps_a_variable_in_a_config_path_as_written(
+    dirs, old_setup, monkeypatch
+):
+    """Red if the path is rewritten from its expansion: the variable's
+    value would be written into the file in its place."""
+    old, new = dirs
+    monkeypatch.setenv("MAILCTL_TEST_HOME", str(old.parent))
+    (old / "config.toml").write_text(
+        'password_file = "${MAILCTL_TEST_HOME}/mxfilter/pw"\n'
+    )
+
+    plan = planned()
+
+    assert plan.references == (
+        utilities.migration.ConfigReference(
+            "password_file",
+            "${MAILCTL_TEST_HOME}/mxfilter/pw",
+            "${MAILCTL_TEST_HOME}/mailctl/pw",
+        ),
+    )
+
+    utilities.migration.execute_config_migration(plan)
+
+    assert (new / "config.toml").read_text() == (
+        'password_file = "${MAILCTL_TEST_HOME}/mailctl/pw"\n'
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "written", ["$MAILCTL_TEST_PW", "$MAILCTL_TEST_DIR/pw"]
+)
+def test_migrate_refuses_a_config_path_only_a_variable_reaches(
+    dirs, old_setup, monkeypatch, capsys, written
+):
+    """Red if a path that reaches the old directory only through a
+    variable is rewritten by expanding it: the variable's value would be
+    shown and written into the file -- the sentinel, where it holds one.
+    Refused, naming the key, and the file left as written."""
+    old, _new = dirs
+    monkeypatch.setenv("MAILCTL_TEST_PW", f"{old}/{SENTINEL}")
+    monkeypatch.setenv("MAILCTL_TEST_DIR", str(old))
+    toml = old / "config.toml"
+    toml.write_text(f'password_file = "{written}"\n')
+
+    with pytest.raises(MailctlError) as caught:
+        utilities.migration.plan_config_migration()
+
+    assert caught.value.code == "migration_reference_unrewritable"
+    assert caught.value.fields == {
+        "key": "password_file",
+        "operation": "config migrate",
+    }
+
+    assert cli.main(["config", "migrate", "--yes"]) == 1
+
+    out, err = capsys.readouterr()
+    assert SENTINEL not in out + err
+    assert "password_file" in err
+    assert toml.read_text() == f'password_file = "{written}"\n'
+
+
+# ----------------------------------------------------------------------------
 def test_the_cli_dry_run_lists_and_moves_nothing(old_setup, capsys):
     assert cli.main(["config", "migrate", "--dry-run"]) == 0
 

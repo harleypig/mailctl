@@ -1415,8 +1415,10 @@ def config_migrate_execute(
 ) -> dict:
     """Carry out a ``config.migrate.plan``: each file moved, keeping its
     mode, each config.toml path pointed at the new directory, and the old
-    directory removed once empty, each sent as an ``event``. A file that
-    appeared at the destination since the plan stops the move."""
+    directory removed once empty, each sent as an ``event``. Refused,
+    coded ``migration_changed``, before anything is made or moved where
+    either directory no longer matches the plan. The result's ``restart``
+    says what moved is read by a process started after it, not this one."""
     server._open()
     plan_id = params.take("plan_id", str)
     params.done()
