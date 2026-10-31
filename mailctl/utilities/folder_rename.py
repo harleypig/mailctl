@@ -573,27 +573,37 @@ def verify_folder_rename(
     if carried and plan.subscribed:
         label = f"{new!r} is subscribed, as {old!r} was"
 
+        # A rename asked for again carries the subscription with it.
+        fix = (
+            retry
+            if again
+            else {
+                "operation": "folder subscribe",
+                "arguments": (new,),
+            }
+        )
+
         checks.append(
             PostCondition(label, True)
             if listing.is_subscribed(new)
-            else PostCondition(
-                label,
-                False,
-                "webmail will not show it",
-                operation="folder subscribe",
-                arguments=(new,),
-            )
+            else PostCondition(label, False, "webmail will not show it", **fix)
         )
 
     if carried:
+        fix = (
+            retry
+            if again
+            else {
+                "operation": "folder unsubscribe",
+                "arguments": (old,),
+            }
+        )
+
         checks.append(
             PostCondition(f"{old!r} is off the subscription list", True)
             if not listing.is_subscribed(old)
             else PostCondition(
-                f"{old!r} is off the subscription list",
-                False,
-                operation="folder unsubscribe",
-                arguments=(old,),
+                f"{old!r} is off the subscription list", False, **fix
             )
         )
 
@@ -629,11 +639,20 @@ def verify_folder_rename(
             )
 
         # One check per folder left hidden, since the command that fixes
-        # it takes one folder.
+        # it takes one folder. A folder that is missing is the check
+        # above's; subscribing to it would fix nothing.
+        label = "those subscribed before are subscribed now"
+
         if carried and not hidden:
+            checks.append(PostCondition(label, True))
+
+        elif carried and again:
             checks.append(
                 PostCondition(
-                    "those subscribed before are subscribed now", True
+                    label,
+                    False,
+                    ", ".join(f"{move.new!r} is not" for move in hidden),
+                    **retry,
                 )
             )
 
@@ -647,6 +666,7 @@ def verify_folder_rename(
                     arguments=(move.new,),
                 )
                 for move in hidden
+                if listing.exists(move.new)
             )
 
     if listing.exists(new):

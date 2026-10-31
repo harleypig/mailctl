@@ -662,6 +662,15 @@ def test_a_rename_that_never_happened_fails_every_folder_check(live):
     assert fixes["'INBOX.Lists' is gone"] == retry
     assert fixes["the 1 folder under it moved with it"] == retry
 
+    # So does every subscription check: nothing is offered a subscribe
+    # for a folder that is not there, or an unsubscribe from the one
+    # still in use.
+    assert fixes["'INBOX.Archive' is subscribed, as 'INBOX.Lists' was"] == (
+        retry
+    )
+    assert fixes["'INBOX.Lists' is off the subscription list"] == retry
+    assert fixes["those subscribed before are subscribed now"] == retry
+
 
 # ----------------------------------------------------------------------------
 def test_an_old_name_left_beside_the_new_says_it_cannot_be_removed(
@@ -691,10 +700,9 @@ def test_a_child_lost_in_the_move_says_it_cannot_be_brought_back(
     ]
     imap_session.rename_folder("INBOX.Lists", "INBOX.Archive")
 
+    checks = verify_folder_rename(live, before)
     check = next(
-        c
-        for c in verify_folder_rename(live, before)
-        if c.label == "the 1 folder under it moved with it"
+        c for c in checks if c.label == "the 1 folder under it moved with it"
     )
 
     assert not check.ok
@@ -702,6 +710,8 @@ def test_a_child_lost_in_the_move_says_it_cannot_be_brought_back(
     assert check.detail == (
         "'INBOX.Archive.GitHub' is missing; mailctl cannot bring a folder back"
     )
+    # Subscribing to a folder that is not there would fix nothing.
+    assert ("INBOX.Archive.GitHub",) not in [c.arguments for c in checks]
 
 
 # ----------------------------------------------------------------------------
