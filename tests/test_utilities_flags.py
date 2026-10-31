@@ -270,3 +270,11 @@ def test_a_refused_store_is_raised_naming_the_folder(sessions, mailbox):
 
     with pytest.raises(MailctlError, match="could not clear flags in 'INBOX'"):
         flags.execute_mark(sessions, plan)
+
+
+# ----------------------------------------------------------------------------
+def test_a_plan_with_nothing_to_set_or_clear_is_refused_coded(sessions):
+    with pytest.raises(MailctlError, match="nothing to mark") as caught:
+        flags.plan_mark(sessions, "INBOX", [1], (), ())
+
+    assert caught.value.code == "no_marks"

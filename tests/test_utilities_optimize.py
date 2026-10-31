@@ -499,8 +499,10 @@ def test_a_rearrangement_that_does_not_read_back_is_refused(trio, monkeypatch):
     )
     monkeypatch.setattr(MxrouteDialect, "rearrange_rules", wrong)
 
-    with pytest.raises(MailctlError, match="does not read back"):
+    with pytest.raises(MailctlError, match="does not read back") as caught:
         plan_optimize(mxroute(sieve=trio))
+
+    assert caught.value.code == "optimize_defect"
 
 
 # ----------------------------------------------------------------------------
@@ -513,11 +515,16 @@ def test_nothing_to_change_is_a_plan_that_cannot_be_executed(
     assert not plan.changes
     assert plan.after == plan.before
 
-    with pytest.raises(MailctlError, match="nothing to change"):
+    with pytest.raises(MailctlError, match="changes nothing") as caught:
         execute_optimize(session, imap_config, plan)
+
+    assert caught.value.code == "nothing_to_change"
 
 
 # ----------------------------------------------------------------------------
 def test_an_empty_script_is_refused():
-    with pytest.raises(MailctlError, match="is empty"):
+    with pytest.raises(MailctlError, match="is empty") as caught:
         plan_optimize(mxroute(sieve=FakeSieveSession(script="")))
+
+    assert caught.value.code == "filterset_empty"
+    assert caught.value.fields["filterset"]

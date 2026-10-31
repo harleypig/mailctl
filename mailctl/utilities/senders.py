@@ -91,7 +91,9 @@ def count_senders(
     if by not in GROUPINGS:
         raise MailctlError(
             f"cannot group senders by {by!r}; use one of "
-            f"{', '.join(GROUPINGS)}"
+            f"{', '.join(GROUPINGS)}",
+            code="unknown_grouping",
+            fields={"grouping": by, "known": GROUPINGS},
         )
 
     for setting, label, value in (

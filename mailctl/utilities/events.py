@@ -8,12 +8,15 @@ without the utilities writing anything themselves.
 alert or a warning the server sent, which arrives as a message on the session's
 ``progress`` callback rather than here, since any command can meet one. The
 callback's channel is ``RULES`` or ``MAIL``, the half the message came from.
+
+``require_changes`` refuses to carry out a plan with no steps at all.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import MailctlError
 from ..providers.base import MAIL, RULES, FolderCreation, ServerAlert
 
 __all__ = [
@@ -26,6 +29,7 @@ __all__ = [
     "ScriptUploaded",
     "ServerAlert",
     "SubscriptionChanged",
+    "require_changes",
 ]
 
 # ############################################################################
@@ -76,3 +80,15 @@ class SubscriptionChanged:
 
 
 EventSink = Callable[[object], None]
+
+
+# ----------------------------------------------------------------------------
+def require_changes(changes: bool, command: str) -> None:
+    """Refuse to carry out a plan of ``command`` that changes nothing, as
+    a front-end stops after showing one: there are no steps to report."""
+    if not changes:
+        raise MailctlError(
+            f"the {command} plan changes nothing, so there is nothing to "
+            f"carry out",
+            code="nothing_to_change",
+        )

@@ -26,6 +26,19 @@ T = TypeVar("T")
 
 
 # ----------------------------------------------------------------------------
+def check_uid(uid: int) -> int:
+    """Return ``uid``; refuse one below 1, which no message has."""
+    if uid < 1:
+        raise MailctlError(
+            f"message UIDs start at 1, not {uid}",
+            code="uid_below_one",
+            fields={"uid": uid},
+        )
+
+    return uid
+
+
+# ----------------------------------------------------------------------------
 def require_pinnable(session: Session, uidvalidity: int | None) -> None:
     """Refuse a pin the provider cannot check or no folder could have.
 
@@ -39,7 +52,9 @@ def require_pinnable(session: Session, uidvalidity: int | None) -> None:
     if not 1 <= uidvalidity <= MAX_UIDVALIDITY:
         raise MailctlError(
             f"a UIDVALIDITY is a number from 1 to {MAX_UIDVALIDITY}, not "
-            f"{uidvalidity}"
+            f"{uidvalidity}",
+            code="uidvalidity_out_of_range",
+            fields={"uidvalidity": uidvalidity, "limit": MAX_UIDVALIDITY},
         )
 
 
@@ -75,7 +90,9 @@ def check_uidvalidity(
         raise MailctlError(
             f"the server reports no UIDVALIDITY for {folder!r}, so UIDs "
             f"given as valid under {expected} cannot be checked; none was "
-            f"used"
+            f"used",
+            code="no_uidvalidity",
+            fields={"folder": folder},
         )
 
     if current != expected:

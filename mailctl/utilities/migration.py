@@ -239,14 +239,20 @@ def execute_config_migration(
             if os.path.lexists(destination):
                 raise MailctlError(
                     f"{destination} appeared while migrating; it was left "
-                    f"alone and {source} was not moved"
+                    f"alone and {source} was not moved",
+                    code="migration_appeared",
+                    fields={"path": destination, "source": source},
                 )
 
             os.rename(source, destination)
             emit(FileMoved(source, destination))
 
     except OSError as exc:
-        raise MailctlError(f"could not migrate {plan.old}: {exc}") from exc
+        raise MailctlError(
+            f"could not migrate {plan.old}: {exc}",
+            code="migration_failed",
+            fields={"path": plan.old},
+        ) from exc
 
     for reference in plan.references:
         rewritten = _rewrite_reference(plan.new / "config.toml", reference)

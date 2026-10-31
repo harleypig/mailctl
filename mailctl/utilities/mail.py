@@ -30,6 +30,7 @@ from ..providers.base import (
 from .events import EventSink
 from .folders import FOLDER_MISSING, FolderPlan, realize_folder
 from .uids import (
+    check_uid,
     check_uidvalidity,
     current_uidvalidity,
     read_pinned,
@@ -443,8 +444,7 @@ def criteria_like(
     where the folder's is now another, the message is refused, since the
     UID may name a different one and a rule would be built from it.
     """
-    if uid < 1:
-        raise MailctlError(f"message UIDs start at 1, not {uid}")
+    check_uid(uid)
 
     require_pinnable(session, uidvalidity)
 

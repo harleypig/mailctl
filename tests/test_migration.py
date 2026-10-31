@@ -396,9 +396,54 @@ def test_the_cli_refuses_a_clash_and_names_it(dirs, old_setup, capsys):
 
     assert cli.main(["config", "migrate", "--yes"]) == 1
 
-    err = capsys.readouterr().err
-    assert str(new / "config.toml") in err
-    assert "refusing to migrate" in err
+    # Byte for byte what the CLI printed before it took the utility's
+    # coded refusal (#331).
+    assert capsys.readouterr().err == (
+        f"warning: already exists, and would be overwritten: "
+        f"{new / 'config.toml'}\n"
+        f"mailctl: refusing to migrate: nothing at the destination is "
+        f"overwritten. Move or remove what is listed above, then re-run.\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_a_destination_that_appears_mid_move_is_refused_coded(
+    dirs, old_setup, monkeypatch
+):
+    """Red if a file that appears at the destination after the plan was
+    checked is overwritten, or refused without its code."""
+    _old, new = dirs
+    plan = planned()
+    first = new / plan.files[0].relative
+    monkeypatch.setattr(utilities.migration, "check_current", lambda _: None)
+    first.parent.mkdir(parents=True, exist_ok=True)
+    first.write_text("appeared\n")
+
+    with pytest.raises(MailctlError, match="appeared while migrating") as e:
+        utilities.migration.execute_config_migration(plan)
+
+    assert e.value.code == "migration_appeared"
+    assert e.value.fields["path"] == first
+    assert first.read_text() == "appeared\n"
+
+
+# ----------------------------------------------------------------------------
+def test_a_move_the_filesystem_refuses_is_refused_coded(
+    dirs, old_setup, monkeypatch
+):
+    old, _new = dirs
+
+    def refuse(_source, _destination):
+        raise PermissionError(13, "Permission denied")
+
+    plan = planned()
+    monkeypatch.setattr(utilities.migration.os, "rename", refuse)
+
+    with pytest.raises(MailctlError, match="could not migrate") as caught:
+        utilities.migration.execute_config_migration(plan)
+
+    assert caught.value.code == "migration_failed"
+    assert caught.value.fields == {"path": old}
 
 
 # ############################################################################

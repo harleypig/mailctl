@@ -41,9 +41,14 @@ from ..engine import Session
 from ..providers.base import DisplayDiff
 from ..providers.registry import provider_for
 from ..rules import CERTAIN, POSSIBLE, Rule, Slot, covers
-from .events import EventSink
+from .events import EventSink, require_changes
 from .rules import require_capability
-from .scripts import activates, fetch_active, upload_script
+from .scripts import (
+    activates,
+    fetch_active,
+    require_not_empty,
+    upload_script,
+)
 
 REDUNDANT = "redundant"
 REORDER = "reorder"
@@ -121,7 +126,9 @@ def check_kinds(kinds: Iterable[str]) -> tuple[str, ...]:
     if unknown:
         raise MailctlError(
             f"unknown kind of change: {', '.join(unknown)}. Known: "
-            f"{', '.join(KINDS)}"
+            f"{', '.join(KINDS)}",
+            code="unknown_kind",
+            fields={"unknown": unknown, "known": KINDS},
         )
 
     return kinds
@@ -476,8 +483,7 @@ def plan_optimize(
 
     name, before, active = fetch_active(session, script)
 
-    if not before.strip():
-        raise MailctlError(f"filter set {name!r} is empty")
+    require_not_empty(name, before)
 
     dialect = session.dialect
     rules = dialect.read_rules(before)
@@ -492,7 +498,9 @@ def plan_optimize(
             raise MailctlError(
                 f"the rearranged filter set {name!r} does not read back as "
                 f"the filters proposed, so nothing is offered; this is a "
-                f"mailctl defect, not a problem with your filter set"
+                f"mailctl defect, not a problem with your filter set",
+                code="optimize_defect",
+                fields={"filterset": name},
             )
 
     return OptimizePlan(
@@ -516,8 +524,7 @@ def execute_optimize(
     on_event: EventSink | None = None,
 ) -> Path:
     """Upload a planned rearrangement; return the backup's path."""
-    if not plan.changes:
-        raise MailctlError(f"nothing to change in {plan.script!r}")
+    require_changes(plan.changes, "filter optimize")
 
     return upload_script(
         session,

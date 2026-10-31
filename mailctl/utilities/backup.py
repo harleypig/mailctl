@@ -12,7 +12,7 @@ from .. import MailctlError
 from ..config import Config, check_backup_location, expand_path
 from ..engine import Session
 from ..providers.base import DisplayDiff, Provider
-from .backup_files import write_backup
+from .backup_files import check_free, write_backup
 from .events import EventSink
 from .scripts import (
     activates,
@@ -69,6 +69,9 @@ def plan_backup(
     source = session.transport.read_rule_set(name)
     target = session.dialect.backup_target(output, name, config.backup_dir)
     numbered = output is None or target != Path(output)
+
+    if not numbered:
+        check_free(target)
 
     return BackupPlan(name, source, target, numbered)
 
@@ -183,12 +186,16 @@ def read_backup_file(
         reason = f"[Errno {exc.errno}] {exc.strerror}" if exc.errno else ""
         raise MailctlError(
             f"could not read backup {given} -- {reason or type(exc).__name__}"
-            f": {given!r}"
+            f": {given!r}",
+            code="backup_unreadable",
+            fields={"path": given},
         ) from exc
 
     except UnicodeDecodeError as exc:
         raise MailctlError(
-            f"could not read backup {given} -- it is not UTF-8 text"
+            f"could not read backup {given} -- it is not UTF-8 text",
+            code="backup_unreadable",
+            fields={"path": given},
         ) from exc
 
     if not text.strip() and not allow_empty:

@@ -1476,14 +1476,10 @@ def cmd_migrate_config(args) -> int:
             f"directory and becomes {reference.replacement}"
         )
 
-    if plan.conflicts:
-        for path in plan.conflicts:
-            warn(f"already exists, and would be overwritten: {path}")
+    for path in plan.conflicts:
+        warn(f"already exists, and would be overwritten: {path}")
 
-        raise MailctlError(
-            "refusing to migrate: nothing at the destination is "
-            "overwritten. Move or remove what is listed above, then re-run."
-        )
+    utilities.migration.check_conflicts(plan)
 
     if args.dry_run:
         print("\n[dry-run] nothing was moved.")
@@ -1913,7 +1909,7 @@ def report_folder_rename(result) -> int:
 
         if check.operation:
             fix = command_for(check.operation, check.arguments)
-            detail = f"{detail}; '{fix}' does"
+            detail = f"{detail}; '{fix}' fixes it"
 
         print(f"  {mark}  {check.label}{detail}")
 
@@ -2278,14 +2274,7 @@ def cmd_save_baseline(args) -> int:
 def cmd_show_baseline(args) -> int:
     """Print the saved baseline for the configured host; connect to nothing."""
     config = configure(args)
-    path = utilities.baseline.baseline_path(config)
-    baseline = utilities.baseline.read_baseline(path)
-
-    if baseline is None:
-        raise MailctlError(
-            f"no baseline has been saved for {path.stem} (looked for "
-            f"{path}); 'mailctl server baseline save' records one"
-        )
+    baseline = utilities.baseline.load_baseline(config)
 
     # Written as stored: the file is already one versioned document.
     if args.json:
@@ -5305,9 +5294,44 @@ ERROR_TEXT = {
         f"{message} -- use --read, --unread, --flag, --unflag, --keyword, "
         f"or --no-keyword"
     ),
+    "subscribe_needs_create": lambda message, _: (
+        f"{message}; --no-subscribe only applies with --create-folder"
+    ),
     # The message says all there is: no flag of this front-end acts on it.
     "auth_failed": lambda message, _: message,
+    "backup_exists": lambda message, _: message,
+    "backup_unreadable": lambda message, _: message,
+    "baseline_host_invalid": lambda message, _: message,
+    "baseline_read_failed": lambda message, _: message,
     "credentials_not_ascii": lambda message, _: message,
+    "criteria_and_raw": lambda message, _: message,
+    "file_unwritable": lambda message, _: message,
+    "filter_name_empty": lambda message, _: message,
+    "filterset_empty": lambda message, _: message,
+    "filterset_unnamed": lambda message, _: message,
+    "flag_set_and_cleared": lambda message, _: message,
+    "folder_case_variant": lambda message, _: message,
+    "folder_exists": lambda message, _: message,
+    "folder_not_planned": lambda message, _: message,
+    "keyword_invalid": lambda message, _: message,
+    "keyword_system_flag": lambda message, _: message,
+    "limit_below_one": lambda message, _: message,
+    "migration_appeared": lambda message, _: message,
+    "migration_failed": lambda message, _: message,
+    "no_such_message": lambda message, _: message,
+    "no_uids": lambda message, _: message,
+    "no_uidvalidity": lambda message, _: message,
+    "nothing_to_change": lambda message, _: message,
+    "optimize_defect": lambda message, _: message,
+    "probe_invalid": lambda message, _: message,
+    "rename_into_itself": lambda message, _: message,
+    "rename_not_started": lambda message, _: message,
+    "rename_same_name": lambda message, _: message,
+    "rename_subfolder_clash": lambda message, _: message,
+    "uid_below_one": lambda message, _: message,
+    "uidvalidity_out_of_range": lambda message, _: message,
+    "unknown_grouping": lambda message, _: message,
+    "unknown_kind": lambda message, _: message,
     "unknown_sort_key": lambda message, _: message,
     "no_password": lambda _, fields: (
         f"no password available -- pass --password-file, --password-cmd, "
@@ -5442,8 +5466,10 @@ ERROR_TEXT = {
         f"{message}; run '{command_for(fields['operation'])}' again to see "
         f"what it would replace now"
     ),
-    "migration_conflict": lambda message, fields: (
-        f"{message}: {', '.join(str(path) for path in fields['conflicts'])}"
+    # The CLI has warned of each conflicting path already, by name.
+    "migration_conflict": lambda _, __: (
+        "refusing to migrate: nothing at the destination is overwritten. "
+        "Move or remove what is listed above, then re-run."
     ),
     "migration_changed": lambda message, fields: (
         f"{message}; run '{command_for(fields['operation'])}' again to see "

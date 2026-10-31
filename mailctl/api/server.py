@@ -653,13 +653,6 @@ def filter_add_plan(server: Server, params: Params, _ident: object) -> dict:
     subscribe = params.take("subscribe", bool, True)
     params.done()
 
-    if not subscribe and not create:
-        raise MailctlError(
-            "subscribe only shapes a folder this change creates; it needs "
-            "create_folder",
-            code="subscribe_needs_create",
-        )
-
     utilities.rules.reject_actions(config, refused)
     utilities.rules.check_rule(config, request)
 
@@ -718,13 +711,6 @@ def filter_apply_plan(server: Server, params: Params, _ident: object) -> dict:
     subscribe = params.take("subscribe", bool, True)
     params.done()
 
-    if not subscribe and not create:
-        raise MailctlError(
-            "subscribe only shapes a folder this change creates; it needs "
-            "create_folder",
-            code="subscribe_needs_create",
-        )
-
     if max_messages < 0:
         raise RpcError(INVALID_PARAMS, "'max_messages' cannot be negative")
 
@@ -774,7 +760,7 @@ def filter_apply_execute(
     entry = server._take_plan(plan_id, "filter apply")
 
     record = entry.record
-    require_changes(record.changes, "filter apply")
+    utilities.events.require_changes(record.changes, "filter apply")
 
     # changes is only true where a mail plan was made.
     assert record.mail is not None
@@ -895,14 +881,7 @@ def filter_optimize_plan(
     skip = params.take("skip", list, [])
     params.done()
 
-    unknown = sorted(set(skip) - set(OPTIMIZE_KINDS))
-
-    if unknown:
-        raise RpcError(
-            INVALID_PARAMS,
-            f"'skip' takes only {', '.join(OPTIMIZE_KINDS)}",
-        )
-
+    utilities.optimize.check_kinds(skip)
     utilities.optimize.check_optimize(config)
     kinds = [kind for kind in OPTIMIZE_KINDS if kind not in skip]
     plan = utilities.optimize.plan_optimize(
@@ -938,7 +917,7 @@ def script_execute(
         entry = server._take_plan(plan_id, command)
 
         record = entry.record
-        require_changes(record.changes, command)
+        utilities.events.require_changes(record.changes, command)
         backup = execute(session, config, record, server._events(ident))
 
         # A plan that changes something is uploaded, and every upload is
@@ -952,18 +931,6 @@ def script_execute(
     method.__doc__ = script_execute.__doc__
 
     return method
-
-
-# ----------------------------------------------------------------------------
-def require_changes(changes: bool, command: str) -> None:
-    """Refuse to carry out a plan that changes nothing, as the CLI stops
-    after showing one; the plan is used up either way."""
-    if not changes:
-        raise MailctlError(
-            f"the {command} plan changes nothing, so there is nothing to "
-            f"carry out",
-            code="nothing_to_change",
-        )
 
 
 # ----------------------------------------------------------------------------
@@ -1100,7 +1067,7 @@ def folder_create_execute(
     entry = server._take_plan(plan_id, "folder create")
 
     record = entry.record
-    require_changes(record.changes, "folder create")
+    utilities.events.require_changes(record.changes, "folder create")
     created = utilities.folders.execute_folder_creation(session, record)
 
     # changes is only true where the folder is not there yet.
@@ -1149,7 +1116,7 @@ def subscription_execute(
         entry = server._take_plan(plan_id, command)
 
         record = entry.record
-        require_changes(record.changes, command)
+        utilities.events.require_changes(record.changes, command)
         utilities.folders.execute_subscription(session, record)
 
         return json_output.subscription_result(command, record)
@@ -1247,7 +1214,7 @@ def mail_mark_execute(server: Server, params: Params, _ident: object) -> dict:
     entry = server._take_plan(plan_id, "mail mark")
 
     record = entry.record
-    require_changes(not record.is_empty, "mail mark")
+    utilities.events.require_changes(not record.is_empty, "mail mark")
     result = utilities.flags.execute_mark(session, record)
 
     return json_output.mark_result(record, result)
@@ -1425,7 +1392,7 @@ def config_migrate_execute(
     entry = server._take_plan(plan_id, "config migrate")
 
     record = entry.record
-    require_changes(record is not None, "config migrate")
+    utilities.events.require_changes(record is not None, "config migrate")
     utilities.migration.execute_config_migration(record, server._events(ident))
 
     return json_output.migration_result(record)

@@ -129,8 +129,28 @@ def test_creating_a_folder_that_was_not_planned_for_it_is_refused(
 ):
     plan = utilities.folders.plan_folder(sessions, imap_config, "Lists")
 
-    with pytest.raises(MailctlError, match="not planned for IMAP creation"):
+    with pytest.raises(
+        MailctlError, match="not planned for IMAP creation"
+    ) as caught:
         utilities.folders.create_folder(sessions, plan)
+
+    assert caught.value.code == "folder_not_planned"
+    assert caught.value.fields["folder"] == plan.folder
+
+
+# ----------------------------------------------------------------------------
+def test_leaving_a_folder_unsubscribed_without_creating_it_is_refused(
+    sessions, imap_config
+):
+    """Red if an unsubscribed folder that is not created plans, which is a
+    setting that looks taken and does nothing; the CLI refuses the same in
+    its parser, the API through here."""
+    with pytest.raises(MailctlError, match="creates none") as caught:
+        utilities.folders.plan_folder(
+            sessions, imap_config, "Lists", subscribe=False
+        )
+
+    assert caught.value.code == "subscribe_needs_create"
 
 
 # ----------------------------------------------------------------------------

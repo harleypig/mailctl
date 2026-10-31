@@ -227,3 +227,16 @@ def test_two_probes_of_an_unchanged_server_differ_only_in_the_time(
             '  "taken": "2026-12-28T14:30:05Z",',
         )
     ]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "document",
+    [[], {"version": 99}, {"version": utilities.reports.PROBE_VERSION}],
+    ids=["not-an-object", "another-version", "a-key-missing"],
+)
+def test_what_is_not_a_probe_document_is_refused_coded(document):
+    with pytest.raises(utilities.reports.MailctlError) as caught:
+        utilities.reports.load_probe(document)
+
+    assert caught.value.code == "probe_invalid"

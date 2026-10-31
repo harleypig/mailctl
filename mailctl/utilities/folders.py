@@ -329,10 +329,19 @@ def plan_folder(
     plain ``fileinto`` and IMAP, where there is a session, makes the
     folder.
 
-    On a host that does not show folders by subscription nothing is
-    subscribed, and ``subscribe`` false is refused before anything is read
-    (:func:`shows_by_subscription`).
+    ``subscribe`` false shapes only a folder this change creates, so
+    without ``create`` it is refused, as a setting that would look taken
+    and do nothing. On a host that does not show folders by subscription
+    nothing is subscribed, and ``subscribe`` false is refused before
+    anything is read (:func:`shows_by_subscription`).
     """
+    if not subscribe and not create:
+        raise MailctlError(
+            "leaving a folder unsubscribed shapes only a folder this "
+            "change creates, and this change creates none",
+            code="subscribe_needs_create",
+        )
+
     shown = shows_by_subscription(session, subscribe)
     subscribe = subscribe and shown
     requested = requested or config.default_folder or ""
@@ -431,7 +440,9 @@ def create_folder(session: Session, plan: FolderPlan) -> FolderCreation:
     if not plan.imap_creates:
         raise MailctlError(
             f"folder {plan.folder!r} is not planned for IMAP creation "
-            f"({plan.status})"
+            f"({plan.status})",
+            code="folder_not_planned",
+            fields={"folder": plan.folder, "status": plan.status},
         )
 
     transport = session.transport
@@ -561,7 +572,9 @@ def plan_folder_creation(
             f"not creating {folder!r}: {case_variant_hint(variants)}"
             f"Creating it would put a second folder beside "
             f"{'it' if len(variants) == 1 else 'them'}. To use the existing "
-            f"folder, give its name as listed."
+            f"folder, give its name as listed.",
+            code="folder_case_variant",
+            fields={"folder": folder, "variants": variants},
         )
 
     parts = folder.split(delimiter) if delimiter else [folder]

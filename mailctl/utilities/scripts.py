@@ -81,9 +81,24 @@ def read_script(session: Session, name: str | None = None) -> ScriptText:
     name = name or session.transport.active_rule_set()
 
     if not name:
-        raise MailctlError("no active filter set; name one explicitly")
+        raise MailctlError(
+            "no active filter set; name one explicitly",
+            code="filterset_unnamed",
+        )
 
     return ScriptText(name, session.transport.read_rule_set(name), session)
+
+
+# ----------------------------------------------------------------------------
+def require_not_empty(name: str, source: str) -> None:
+    """Refuse to edit the filter set ``name`` where ``source`` holds
+    nothing to edit."""
+    if not source.strip():
+        raise MailctlError(
+            f"filter set {name!r} is empty",
+            code="filterset_empty",
+            fields={"filterset": name},
+        )
 
 
 # ############################################################################
