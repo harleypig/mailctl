@@ -25,6 +25,11 @@ readonly DIAG_WIDTH=160
 # The offline tests set this to 0; against the live account leave it alone.
 PAUSE=${LIVECHECK_PAUSE:-2}
 
+# `--env-file PATH`, put before every mailctl call's own arguments when the
+# option is given, and empty otherwise. The script never opens the file:
+# mailctl reads it, with its mode check and its Secret, and never exports it.
+ENV_ARGS=()
+
 # In run order. `unchanged` stays last: it compares against the baseline
 # taken before the first test.
 readonly TESTS=(
@@ -335,7 +340,7 @@ readonly CHANGED_RE
 #-----------------------------------------------------------------------------
 usage() {
   cat << 'EOF'
-Usage: live-readonly.sh [--list] [-h|--help] [TEST...]
+Usage: live-readonly.sh [--env-file PATH] [--list] [-h|--help] [TEST...]
 
 Run read-only checks against the live account mailctl is configured for and
 report them as TAP. With no TEST names, run them all; with names, run only
@@ -348,8 +353,13 @@ in the temporary directory this run makes and removes on exit: it reads
 the filter set and writes nothing on the server.
 
 Options:
-  --list      print the test names and exit
-  -h, --help  print this help and exit
+  --env-file PATH  pass --env-file PATH to every mailctl call, for an
+                   account configured by an env file. mailctl reads the
+                   file; this script never does. Given more than once,
+                   the later wins. A PATH that is not a readable file is
+                   a usage error, before any test runs.
+  --list           print the test names and exit
+  -h, --help       print this help and exit
 
 Requires python3, to parse the --json documents.
 
@@ -437,7 +447,8 @@ run_mailctl() {
     return "$RC"
   fi
 
-  timeout "$CALL_TIMEOUT" "$MAILCTL_BIN" "$@" < /dev/null > "$RAW" 2> "$ERR"
+  timeout "$CALL_TIMEOUT" "$MAILCTL_BIN" "${ENV_ARGS[@]}" "$@" \
+    < /dev/null > "$RAW" 2> "$ERR"
   RC=$?
 
   sed 's/\r$//' "$RAW" > "$OUT"
@@ -1306,7 +1317,7 @@ run_one() {
 
 #-----------------------------------------------------------------------------
 main() {
-  local arg name number=0
+  local arg name number=0 env_file='' env_given=0
   local -a selected=() wanted=()
 
   if [[ ${1:-} == --selftest-guard ]]; then
@@ -1321,8 +1332,26 @@ main() {
     exit 3
   fi
 
-  for arg in "$@"; do
+  while (($# > 0)); do
+    arg=$1
+    shift
+
     case $arg in
+      --env-file)
+        (($# > 0)) || {
+          echo 'live-readonly.sh: --env-file needs a PATH' >&2
+          exit 2
+        }
+        env_file=$1
+        env_given=1
+        shift
+        ;;
+
+      --env-file=*)
+        env_file=${arg#--env-file=}
+        env_given=1
+        ;;
+
       -h | --help)
         usage
         exit 0
@@ -1348,6 +1377,18 @@ main() {
         ;;
     esac
   done
+
+  # Tested, never read: the path alone is named, so nothing of the file's
+  # contents can reach the output from here.
+  if ((env_given)); then
+    [[ -n $env_file && -f $env_file && -r $env_file ]] || {
+      printf 'live-readonly.sh: env file is not a readable file: %s\n' \
+        "$env_file" >&2
+      exit 2
+    }
+
+    ENV_ARGS=(--env-file "$env_file")
+  fi
 
   for name in "${TESTS[@]}"; do
     if ((${#wanted[@]} == 0)) || in_list "$name" "${wanted[@]}"; then
