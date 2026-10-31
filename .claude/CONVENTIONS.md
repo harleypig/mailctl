@@ -291,11 +291,16 @@ layer may call.
     each operation one exchange handed to a layer-1 session.
   - `mxroute/managesieve.py` — the transport's ManageSieve side:
     `sieve_session()` maps `Config` onto a `SieveSession`, and a failed
-    connection or login gains MXroute's advice.
+    connection or login gains MXroute's advice. A failed connection keeps
+    its code, `connection_failed` or `tls_failed`, and the advice is also
+    in its `fields`, `advice` `try_setting` naming the other TLS mode
+    ([#352][i352]).
   - `mxroute/imap.py` — the same for IMAP: `imap_session()` maps `Config`
     onto an `ImapSession` (port 143 is STARTTLS, any other implicit TLS),
     with the full-address login advice and the hints that name mailctl's
-    settings.
+    settings; a connection that fails is `connection_failed`, with
+    `advice` `check_settings` and the settings in its `fields`
+    ([#352][i352]).
   - `mxroute/records.py` — the translation between the neutral model and
     the `imap` component's own records.
 - `mailctl/components/` — **layer 1** ([ADR 0006][adr6]): one library per
@@ -308,7 +313,11 @@ layer may call.
     CAPABILITY response, a configurable read timeout, debug output
     impossible), an OK's text read whole, a script sent unchanged and every
     name quoted and escaped alike under sievelib 1.5 and 1.6 ([#232][i232]),
-    and `SieveSession` on it, taking plain connection parameters.
+    and `SieveSession` on it, taking plain connection parameters. An open
+    that fails once the socket is up — a refused login or STARTTLS, a
+    greeting cut short — closes the socket without a LOGOUT and keeps its
+    own code; `close` sends LOGOUT and then closes the socket, which
+    sievelib's LOGOUT leaves open ([#362][i362]).
   - `managesieve/capabilities.py` — the CAPABILITY response as data.
   - `managesieve/responses.py` — `ServerWarning`, and the `WARNINGS` a
     status response carries; offline.
@@ -334,7 +343,11 @@ layer may call.
     `SELECT` or `EXAMINE` reports, kept for the selected folder so reading
     it costs no round trip. Every `ALERT` the server sends once TLS is up
     goes to `progress`, read by wrapping imaplib's response reader. The
-    re-check itself is the mail utility's.
+    re-check itself is the mail utility's. An open that does not log in —
+    refused, or its password prompt stopped — shuts the connection down
+    without a LOGOUT ([#349][i349]); one whose folders or namespace then
+    cannot be read logs out, and a LOGOUT that fails still shuts the
+    socket ([#362][i362]).
   - `imap/alerts.py` — `ServerAlert`, the component's record of an
     `ALERT`, and whether a response line carries one and what it says;
     offline.
@@ -495,9 +508,11 @@ another operation, an error or a record names the operation in a field
 (`operation`), never `mailctl <command>`; the CLI renders the command line
 (`cli.command_for`, [#183][i183]). The API hands its client the error
 document in the JSON-RPC error's `data`, and the client branches on its
-`code`, never on the message. So every error the utilities build carries
-a code, and `tests/test_core_no_presentation.py` walks `utilities/` for
-one built without ([#331][i331]).
+`code`, never on the message. So every error in the package carries a
+code, the interfaces' own included, since a refusal the CLI makes reaches
+a script's `--json` line as surely as the core's; and
+`tests/test_core_no_presentation.py` walks every module for one built
+without ([#331][i331], [#352][i352]).
 
 **Safety policy lives in the utilities, not the front-end or the
 provider**: the backup before every upload (`scripts.upload_script`, the
@@ -616,8 +631,22 @@ a group none of whose commands is offered is hidden whole: `filterset` goes
 with `rule_sets`. A hidden command still parses and runs, as a hidden
 option does. The old
 flat names are a clean break, never aliases: each is refused, exit 2,
-naming the command it is now (`cli.GONE_COMMANDS`). `mailctl help [group
-[action]]` prints the same as `--help` there ([#153][i153]).
+naming the command it is now (`cli.GONE_COMMANDS`), coded `gone_command`.
+`mailctl help [group [action]]` prints the same as `--help` there
+([#153][i153]).
+
+**No option is taken by a prefix of its name** (`allow_abbrev=False`, in
+the CLI's parsers and the API's): a script's `--jso` working today would
+stop the day an option sharing the prefix is added ([#352][i352]).
+
+**A command line is refused through `cli.Parser`.** mailctl's own
+refusals go through `Parser.refuse`, in words that quote nothing typed
+but a command or an option's name; argparse's go through `Parser.error`,
+which words them by `json_output.rejection` (*Credentials*). Either way
+the exit is 2 after argparse's usage block, and the refusal carries a
+code: `invalid_arguments` unless it has one of its own, such as
+`gone_command`, `gone_option`, or `setting_invalid` for a bad value given
+to a connection flag ([#352][i352], [#364][i364]).
 
 **`--provider` and `--env-file` may come before the command, between a
 group and its action, or after it** ([#243][i243], [#265][i265]); given
@@ -700,7 +729,11 @@ its layout is not a contract; the contract is its exit code. The API's
 probes by `utilities.server_test`, never from the CLI's text. On a write
 command `--json` prints the `--dry-run` plan and is refused without
 `--dry-run`, since a document on stdout leaves no room for a prompt; stdout
-holds the document alone, and a failure is one JSON line on stderr.
+holds the document alone, and a failure is one JSON line, the last on
+stderr, carrying the refusal's code where it is one. A command line
+refused before any command runs is the same: under `--json`, wherever it
+stands, exit 2's usage block and error line end with a coded JSON line
+([#352][i352]).
 
 ## Providers
 
@@ -777,6 +810,9 @@ fails before any login or password prompt (decided on [#137][i137]).
 **The API holds one session for its process**: `initialize` resolves the
 configuration from the process's own arguments, as the CLI does, and opens
 the session, connecting nothing; `shutdown` or the end of input closes it.
+A bad argument does not end the process, which a client would read as the
+end of its input: it is said on stderr and answers `initialize`, coded,
+in the CLI's words for it (*Credentials*; [#352][i352], [#364][i364]).
 Requests are handled one at a time, in order. **A request can be cancelled
 between exchanges, never after its first write** ([#280][i280]). The
 client sends `$/cancelRequest`, the Language Server Protocol's
@@ -811,7 +847,10 @@ is taken as declined, since its answer could no longer be read
   which provider they have.
 - **Refused before any network work.** `utilities.rules.check_rule`
   refuses a rule the provider cannot express, through one error naming the
-  provider, the construct, and why.
+  provider, the construct, and why (`providers.base.refuse`). It takes a
+  code: `unsupported` for what the provider declares it cannot do, which a
+  front-end can learn before asking, or one of its own where the server
+  or a setting is the cause ([#352][i352]).
 - **Every provider answers every operation.** Each half implements or
   explicitly declines (`@declined`) every operation of its interface —
   `Dialect` or `Transport`, `mail_noop` among them — and what the two
@@ -1248,7 +1287,17 @@ and it is enforced by construction rather than by care:
   IMAP cannot send, since imaplib sends `LOGIN` as ASCII, is refused as
   `credentials_not_ascii`, quoting nothing. A cancel of the request ends
   the prompt's wait; a late answer to that prompt answers nothing, and the
-  next request asks again ([#280][i280]).
+  next request asks again ([#280][i280]). The half connects before it
+  asks, so the cancel also closes that connection ([#349][i349]).
+- **A refused command line quotes no word argparse could not use.** That
+  word may be a password that lost its option, so `json_output.rejection`
+  words every argparse refusal before it is shown — on the CLI's error
+  line and its `--json` line, and on the API's stderr and in its answer
+  to `initialize`. A long option is named up to its `=`, a short one only
+  alone; a word straight after an option, or after `--`, with no `=` may
+  be that option's value, so it is counted, never named; and a message of
+  no shape it knows reads *the command line was refused*
+  (`json_output.REFUSED`), never argparse's text ([#364][i364]).
 - **A password command reads nothing of mailctl's stdin.** It runs with
   stdin from `/dev/null` on either interface: under the API stdin is the
   client's pipe, and under the CLI it may be a `--filter -` document
@@ -1722,6 +1771,10 @@ will read it.
 [i341]: https://github.com/harleypig/mailctl/issues/341
 [i346]: https://github.com/harleypig/mailctl/issues/346
 [i347]: https://github.com/harleypig/mailctl/issues/347
+[i349]: https://github.com/harleypig/mailctl/issues/349
+[i352]: https://github.com/harleypig/mailctl/issues/352
+[i362]: https://github.com/harleypig/mailctl/issues/362
+[i364]: https://github.com/harleypig/mailctl/issues/364
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147
