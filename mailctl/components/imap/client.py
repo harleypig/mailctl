@@ -85,6 +85,10 @@ class ImapTLSError(MailctlError):
     """The server was reached and TLS failed."""
 
 
+class NoSuchMessage(MailctlError):
+    """The selected folder holds no message with the UID asked for."""
+
+
 class ImapAuthenticationError(MailctlError):
     """The server was reached and refused the credentials.
 
@@ -1112,7 +1116,7 @@ class ImapSession:
         data = fetched.get(uid)
 
         if not data:
-            raise MailctlError(f"no message with uid {uid} in {folder!r}")
+            raise NoSuchMessage(f"no message with uid {uid} in {folder!r}")
 
         return data
 

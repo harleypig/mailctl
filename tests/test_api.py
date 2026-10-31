@@ -570,7 +570,9 @@ def test_mail_search_like_and_build_filter_refuse_what_the_cli_refuses(start):
     def error(params: dict) -> dict:
         return client.request("mail.search", params)["error"]
 
-    assert error({"like": {"uid": 0}})["code"] == -32602
+    assert refusal(client.request("mail.search", {"like": {"uid": 0}}))[
+        "code"
+    ] == ("uid_below_one")
     assert error({"like": {}})["code"] == -32602
     assert error({"like": {"uid": 1, "folder": "x"}})["code"] == -32602
     assert (
@@ -3229,6 +3231,30 @@ def test_each_refusal_the_utilities_make_reaches_the_client_coded(
             {"uidvalidity": 0},
         ),
         ("mail.view", {"uid": 0}, "uid_below_one", {"uid": 0}),
+        (
+            "mail.view",
+            {"uid": 99},
+            "no_such_message",
+            {"folder": "INBOX", "uids": [99]},
+        ),
+        (
+            "mail.search",
+            {"like": {"uid": 0}},
+            "uid_below_one",
+            {"uid": 0},
+        ),
+        (
+            "mail.search",
+            {"like": {"uid": 99}},
+            "no_such_message",
+            {"folder": "INBOX", "uids": [99]},
+        ),
+        (
+            "mail.search",
+            {"like": {"uid": 99}, "build_filter": True},
+            "no_such_message",
+            {"folder": "INBOX", "uids": [99]},
+        ),
         (
             "mail.view",
             {"uid": 1, "folder": "INBOX.spam", "uidvalidity": 7},

@@ -417,6 +417,7 @@ def read_message(
     source, flags = read_pinned(
         session,
         folder,
+        uid,
         uidvalidity,
         lambda: transport.message_source(folder, uid),
     )

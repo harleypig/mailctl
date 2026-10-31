@@ -365,8 +365,13 @@ def test_a_plain_message_is_decoded(sessions, fake_imap):
 def test_a_missing_uid_names_the_uid_and_folder(sessions, fake_imap):
     fake_imap.messages = {1: PLAIN}
 
-    with pytest.raises(MailctlError, match="no message with uid 99 in"):
+    with pytest.raises(MailctlError) as caught:
         utilities.messages.read_message(sessions, "INBOX", 99)
+
+    assert str(caught.value) == "no message with uid 99 in 'INBOX'"
+    assert caught.value.code == "no_such_message"
+    assert dict(caught.value.fields) == {"folder": "INBOX", "uids": [99]}
+    assert [call[0] for call in fake_imap.calls].count("fetch") == 1
 
 
 # ----------------------------------------------------------------------------

@@ -896,15 +896,17 @@ class Transport(ABC):
 
     @abstractmethod
     @classified(Operation(READ, MAIL))
-    def message_headers(self, folder: str, uid: int) -> Message:
-        """One message's headers, as an ``email.message.Message``."""
+    def message_headers(self, folder: str, uid: int) -> Message | None:
+        """One message's headers, as an ``email.message.Message``; None
+        where ``folder`` holds no message ``uid``."""
 
     @abstractmethod
     @classified(Operation(READ, MAIL))
     def message_source(
         self, folder: str, uid: int
-    ) -> tuple[bytes, tuple[str, ...]]:
-        """One message's exact bytes and its flags, left unread."""
+    ) -> tuple[bytes, tuple[str, ...]] | None:
+        """One message's exact bytes and its flags, left unread; None where
+        ``folder`` holds no message ``uid``."""
 
     @abstractmethod
     @classified(Operation(READ, MAIL))

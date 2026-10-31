@@ -456,6 +456,7 @@ def criteria_like(
     headers = read_pinned(
         session,
         folder,
+        uid,
         uidvalidity,
         lambda: transport.message_headers(folder, uid),
     )
