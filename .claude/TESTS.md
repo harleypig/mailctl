@@ -102,7 +102,21 @@ root `pytest` (*The TUI*).
      ([#192][i192]). `test_utilities_server_report.py` pins the redaction:
      servers echo a sentinel address, host, IPv4 address, folder, and
      script name back, and none of them, the password, or the script's
-     text may reach the report ([#39][i39]). `test_utilities_uids.py` pins
+     text may reach the report ([#39][i39]). `test_utilities_baseline.py`
+     refuses a save, coded `baseline_changed` and writing nothing, where
+     the file changed after the plan ([#279][i279]).
+     `test_utilities_backup.py` refuses a restore of a password file from
+     any rung or of the env file, unopened and links followed, coded
+     `credential_file`, and names a file it cannot read as given, never
+     expanded. `test_backup.py` holds that a backup never replaces a file
+     ([#330][i330]): two uploads in one frozen second leave two files,
+     named apart by the millisecond; a file planted at the name is kept
+     and the backup goes to `-2`, into the default directory or a named
+     one; `--output` onto an existing file is refused, exit 1, the file
+     kept; and a parent that is a file still fails as a write, never
+     read as a taken name. A baseline still replaces its file.
+     `utilities/server_test.py` has no file of its own; *The API* covers
+     it through `server.test`. `test_utilities_uids.py` pins
      the UIDVALIDITY check ([#204][i204]): a stale pin given to `mail mark`
      refused before any write, and before its flags are read; `mail view` and
      `--like` refusing one, a UID lost in the renumbering included; a plan's
@@ -142,7 +156,11 @@ root `pytest` (*The TUI*).
      the server lacks the extension anyway. Its ladder is in
      `test_config.py`.
    - **The old name** (`test_migration.py`) — `config migrate` moving the
-     old config directory (modes kept, a clash refused, `--dry-run` inert),
+     old config directory (modes kept, `--dry-run` inert), refusing with
+     nothing moved a clash (`migration_conflict`), a plan the directories
+     no longer match (`migration_changed`), and a `config.toml` path only
+     a variable reaches (`migration_reference_unrewritable`), while one a
+     variable merely spells keeps it as written,
      the old-directory warning and when it stays silent, and old
      `MXROUTE_*` names reported by name — checked against a sentinel value
      that must never appear in any output. The `mxfilter` script's reuse is
@@ -177,7 +195,16 @@ root `pytest` (*The TUI*).
      document for every event type; an alert tagged with its channel in
      the user-facing noun; what the rename left behind as names and
      places, with null for no old directory ([#307][i307]); an
-     execute's result naming what it did and where the backup is; and
+     execute's result naming what it did and where the backup is, with
+     `filter` null for a change to the whole filter set ([#279][i279]);
+     the existing-mail result counting what was flagged, moved, deleted,
+     and copied, with source and destination; a filter set shown as its
+     text, `filters` null where it does not parse; a backup result saying
+     where, and whether it was written; a folder creation result keeping
+     a failed subscription apart; a subscription result naming the folder
+     as the server does; a folder rename result carrying each check with
+     the `operation` that fixes a failed one, and naming no filter set
+     where no filter was repointed; and
      each filter's `steps` beside its unchanged `actions` ([#259][i259]),
      every step with its `kind`, `argument`, and `creates`, the kind in
      the document's word and never the model's, and every kind the
@@ -189,8 +216,16 @@ root `pytest` (*The TUI*).
      it. It starts `tests/api_child.py`, the real API with the two protocol
      clients replaced by doubles that keep their state in a file the test
      can change between a plan and its execute, and holding only the
-     password's SHA-256. Covered: `initialize` connecting nothing, refusing
-     a bad setting and a second `initialize`, and a method before it;
+     password's SHA-256. The state file also counts each ManageSieve
+     connection (`sieve_connects`) and IMAP login (`imap_connects`), so a
+     test sees which halves a method opened; records what the IMAP double
+     is asked to write (`imap_writes`); reads UIDVALIDITY afresh on every
+     SELECT, so a folder can be renumbered between plan and execute;
+     refuses CHECKSCRIPT where its `checkscript` is false; and advertises
+     its `imap_caps`. `MAILCTL_TEST_DECLINE` names capabilities the
+     provider is to declare false. Covered: `initialize` connecting
+     nothing, refusing a bad setting and a second `initialize`, and a
+     method before it;
      `initialize` naming what the rename left behind ([#307][i307]) — an
      old setting from the env file, one from the environment, and an old
      config directory with no new one — each with a sentinel (the old
@@ -212,6 +247,39 @@ root `pytest` (*The TUI*).
      refused once
      discarded, or at execute once the filter set changed; and `log` only
      where `initialize` asked, `server.alert` always and once per session.
+     Every other command's method ([#279][i279]), each opening only the
+     halves its CLI command opens: the `filter` writes (remove, move,
+     rename, enable, disable, optimize) planned, then stored once behind a
+     backup, with `optimize`'s `skip` obeyed and a taken name refused;
+     `filter.apply` moving the mail once, creating its folder at execute
+     with no ManageSieve call and saying so first, and refusing a missing
+     folder, a pass over its ceiling, and a folder renumbered since the
+     plan — beside it the `apply-create-dry-json` snapshot pins the CLI's
+     plan the same way; `filterset.list` and `.show` reading no mail, and
+     `.show` returning text that does not parse; `filterset.backup`
+     writing the server's bytes, nothing on `dry_run`, and nothing outside
+     the backup root; `filterset.restore` backing the set up first, not
+     storing what CHECKSCRIPT rejects, expanding nothing in `file`, and
+     refusing a credential file unread; the `folder` group listing,
+     counting, creating, subscribing, and renaming with its filters
+     repointed; `mail.mark` and `mail.senders` on the mail half only;
+     `server.test` and `server.probe`, a baseline that cannot be compared
+     reported and the test going on, and the report redacted;
+     `server.baseline.save` writing once and refusing a file changed since
+     the plan, `show` and `check` reading it, `no_baseline` coded; and
+     `config.migrate` moving the old directory once, refusing a clash, a
+     plan a file or a baseline since clashes with, and a variable expanded
+     into a `config.toml` path. The server group never sends the password.
+     Across them: an execute of a plan that changes nothing refused,
+     `nothing_to_change`, while `filter.add.execute` still carries it out;
+     a plan running only under its own command's execute; a bad execute
+     parameter refused without using up the plan, for every execute of the
+     `folder`, `filterset`, `mail`, and `server` groups; a command the
+     provider does not declare refused before anything is read; and the
+     stale-plan refusals, a changed filter set and a switched active one,
+     for `filter.add` and the `filter` remove, move, rename, disable, and
+     optimize, `filterset.restore` over a
+     set that parses and one that does not, and `folder.rename`.
      The password bar: a sentinel given through `credentials.prompt` logs
      in on both halves and appears on no line of stdout and nowhere on
      stderr, `--debug`'s tracebacks included; a login the server refuses,
@@ -225,9 +293,11 @@ root `pytest` (*The TUI*).
      Parameters: an action the provider will not emit, criteria a delivered
      message cannot meet, a malformed parameter, and a plan's own content
      sent to its execute are each refused, every value refusal with a code.
-     And two structural checks: every method but the
-     protocol's own is a CLI command path, a `.plan` with its `.execute`;
-     and the API takes the CLI's connection settings except `--password`.
+     And two structural checks. The method set matches the command tree
+     both ways: every method but the protocol's own is a CLI command
+     path, a `.plan` with its `.execute`, and every command has a method
+     unless `NOT_IN_THE_API` names it with its reason (only `help`). And
+     the API takes the CLI's connection settings except `--password`.
    - **The API's framing** (`test_api_protocol.py`) — what is easier to pin
      in-process: every string `password` a `Secret` as the line is parsed,
      a line that does not parse refused without quoting it, each message
@@ -768,4 +838,6 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i299]: https://github.com/harleypig/mailctl/issues/299
 [i307]: https://github.com/harleypig/mailctl/issues/307
 [i308]: https://github.com/harleypig/mailctl/issues/308
+[i279]: https://github.com/harleypig/mailctl/issues/279
+[i330]: https://github.com/harleypig/mailctl/issues/330
 [i325]: https://github.com/harleypig/mailctl/issues/325
