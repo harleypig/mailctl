@@ -6,7 +6,7 @@ exit: SystemExit(2)
 usage: mailctl [-h] [--version] [--verbose] [--debug] [--provider PROVIDER]
                [--env-file [PATH]]
                {mail,folder,filter,filterset,server,config,help} ...
-mailctl: error: unrecognized arguments: --max-messages 1
+mailctl: error: unrecognized arguments: --max-messages and 1 other word
 
 --- sieve calls
 --- imap calls

@@ -419,6 +419,39 @@ def test_a_bad_argument_answers_initialize_rather_than_ending_the_input(
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--pasword", "Sentinel-7f3a"],
+        ["--pasword=Sentinel-7f3a"],
+        ["--password", "Sentinel-7f3a"],
+        ["--pasword", "--Sentinel-7f3a"],
+        ["--password", "--Sentinel-7f3a"],
+        ["--", "--Sentinel-7f3a"],
+        ["-pSentinel-7f3a"],
+        ["--debug=Sentinel-7f3a"],
+        ["--imap-port", "Sentinel-7f3a"],
+        ["--sieve-tls", "Sentinel-7f3a"],
+    ],
+)
+def test_a_bad_argument_is_said_on_stderr_quoting_no_value(start, argv):
+    """#364: the refusal printed on stderr at startup is worded as the one
+    initialize answers with, so a password given to an option the API does
+    not take is in neither answer nor anywhere on stderr. Red if the
+    startup prints argparse's own message."""
+    client = start(*argv)
+    refused = refusal(client.request("initialize"))
+    client.request("shutdown")
+    status, raw = client.close()
+    stderr = raw.decode()
+
+    assert status == 0
+    assert f"mailctl-api: error: {refused['message']}" in stderr
+    assert "Sentinel-7f3a" not in stderr
+    assert "Sentinel-7f3a" not in json.dumps(refused)
+
+
+# ----------------------------------------------------------------------------
 def test_a_connection_failure_reaches_the_client_with_a_code(start):
     """Red if a server that cannot be reached is refused uncoded (#352):
     the code names the condition, the same on either half, and the

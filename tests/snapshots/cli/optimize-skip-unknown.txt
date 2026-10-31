@@ -15,7 +15,7 @@ usage: mailctl filter optimize [-h] [--verbose] [--debug]
                                [--disable-extension NAME] [--dry-run] [--yes]
                                [--json] [--filterset NAME] [--activate]
                                [--skip KIND]
-mailctl filter optimize: error: argument --skip: invalid choice: 'tidy' (choose from redundant, reorder, merge)
+mailctl filter optimize: error: argument --skip: invalid choice (choose from redundant, reorder, merge)
 
 --- sieve calls
 --- imap calls

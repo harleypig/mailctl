@@ -145,31 +145,100 @@ def _document(**body) -> dict:
     return {"version": JSON_VERSION, **body}
 
 
-# argparse's words for a value it could not take, up to the value itself:
-# "argument --imap-port: invalid int value", "argument group: invalid
-# choice". Its full message quotes the value, which may be a password typed
-# into the wrong place.
-_INVALID = re.compile(r"(argument (\S+): invalid [^:]*)(?::.*)?", re.DOTALL)
+# What a refused command line is called when argparse's message is not one
+# of the shapes below. A template argparse rewords in a later Python lands
+# here rather than being shown, since it may quote what the user typed.
+REFUSED = "the command line was refused"
+
+# An action's name as argparse writes it into a message: its option strings
+# joined by '/', its metavar or dest, or its choices in braces. Never a
+# quote, so no value fits.
+_NAME = r"[\w{},/-]+"
+
+# A choice as argparse lists it, quoted before 3.14 and bare from it.
+_CHOICE = r"(?:'[\w.-]+'|[\w.-]+)"
+
+# A value argparse could not take, up to the value itself: "argument
+# --imap-port: invalid int value", "argument group: invalid choice", and
+# the choices it lists last. The value it quotes between them may be a
+# password typed into the wrong place. The choices are read only from the
+# message's end and only as words, so no part of a value can pass as one.
+_INVALID = re.compile(
+    rf"(argument ({_NAME}): invalid (?:choice|[\w<>]+ value))(?:[:,].*?)?"
+    rf"(?: \(choose from ({_CHOICE}(?:, {_CHOICE})*)\))?",
+    re.DOTALL,
+)
+
+# A flag that takes no value, given one with '=': the value is quoted.
+_IGNORED = re.compile(
+    rf"(argument {_NAME}: ignored explicit argument)(?: .*)?", re.DOTALL
+)
+
+_AMBIGUOUS = re.compile(
+    rf"ambiguous option: (\S+) could match ({_NAME}(?:, {_NAME})*)"
+)
+
+# argparse's messages with no room for anything the user typed: every slot
+# is an action's name.
+_NAMES_ONLY = re.compile(
+    rf"(?:argument {_NAME}: )?(?:"
+    r"expected (?:one|at most one|at least one|\d+) arguments?"
+    rf"|not allowed with argument {_NAME}"
+    rf"|the following arguments are required: {_NAME}(?:, {_NAME})*"
+    rf"|one of the arguments {_NAME}(?: {_NAME})* is required"
+    r")"
+)
 
 _UNRECOGNIZED = "unrecognized arguments: "
+
+
+# ----------------------------------------------------------------------------
+def _option_name(word: str) -> str | None:
+    """The option ``word`` names, or None where it may be a value: a long
+    option up to its '=', a short one only alone, since anything after
+    ``-x`` is a value attached to it."""
+    if word.startswith("--"):
+        name = word.split("=", 1)[0]
+
+        return name if len(name) > 2 else None
+
+    if len(word) == 2 and word[0] == "-" and word[1] != "-":
+        return word
+
+    return None
+
+
+# ----------------------------------------------------------------------------
+def _may_be_a_value(before: str) -> bool:
+    """Whether the word after ``before`` may be its value, and so is never
+    named however it is spelt: ``before`` is an option, or ``--``, with no
+    '=' to have taken one already. A password may start with '-'."""
+    return before.startswith("-") and "=" not in before
 
 
 # ----------------------------------------------------------------------------
 def rejection(
     message: str, code: str = "invalid_arguments"
 ) -> tuple[str, str, dict[str, object] | None]:
-    """The failure document's message, code, and fields for a command
-    line argparse refused with ``message``: the CLI's --json line, and
-    the API's answer to ``initialize`` when its own arguments were bad.
+    """The words, code, and fields for a command line argparse refused
+    with ``message``: the CLI's error line and its --json line, and the
+    API's on stderr and in its answer to ``initialize``.
 
     Built from the kind of refusal rather than copied, since argparse
     quotes what it could not use, and a word it did not recognise may be
     a password that lost its option. What is kept is what names the
-    mistake: an option's name, never a value.
+    mistake: an option's name, never a value, so a word that may be the
+    value of the one before it is counted. A message of no known shape
+    is ``REFUSED``, never argparse's text.
     """
     if message.startswith(_UNRECOGNIZED):
         words = message[len(_UNRECOGNIZED) :].split()
-        options = [word.split("=", 1)[0] for word in words if word[:1] == "-"]
+        options = [
+            name
+            for before, word in zip(["", *words[:-1]], words, strict=True)
+            if not _may_be_a_value(before)
+            and (name := _option_name(word)) is not None
+        ]
         others = len(words) - len(options)
         said = ", ".join(options)
 
@@ -185,16 +254,42 @@ def rejection(
 
     invalid = _INVALID.fullmatch(message)
 
-    if invalid is None:
+    if invalid is not None:
+        said = invalid.group(1)
+
+        if invalid.group(3) is not None:
+            choices = invalid.group(3).replace("'", "")
+            said += f" (choose from {choices})"
+
+        flag = invalid.group(2).split("/")[-1]
+        setting = flag.removeprefix("--").replace("-", "_")
+
+        if flag.startswith("--") and setting in CONNECTION_SETTINGS:
+            return said, "setting_invalid", {"setting": setting}
+
+        return said, code, None
+
+    ignored = _IGNORED.fullmatch(message)
+
+    if ignored is not None:
+        return ignored.group(1), code, None
+
+    ambiguous = _AMBIGUOUS.fullmatch(message)
+
+    if ambiguous is not None:
+        option = _option_name(ambiguous.group(1))
+
+        if option is not None:
+            return (
+                f"ambiguous option: {option} could match {ambiguous.group(2)}",
+                code,
+                None,
+            )
+
+    if _NAMES_ONLY.fullmatch(message):
         return message, code, None
 
-    flag = invalid.group(2).split("/")[-1]
-    setting = flag.removeprefix("--").replace("-", "_")
-
-    if flag.startswith("--") and setting in CONNECTION_SETTINGS:
-        return invalid.group(1), "setting_invalid", {"setting": setting}
-
-    return invalid.group(1), code, None
+    return REFUSED, code, None
 
 
 # ----------------------------------------------------------------------------

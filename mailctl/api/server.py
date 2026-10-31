@@ -1741,12 +1741,17 @@ PROTOCOL_METHODS = frozenset(
 
 # ----------------------------------------------------------------------------
 class ArgumentsRejected(Exception):
-    """The process's own arguments were refused, with argparse's words."""
+    """The process's own arguments were refused. ``message`` is
+    ``json_output.rejection``'s words for argparse's, so it quotes no
+    value given, and ``error`` the refusal ``initialize`` answers with."""
 
     # ------------------------------------------------------------------------
-    def __init__(self, message: str):
-        super().__init__(message)
-        self.message = message
+    def __init__(self, argparse_message: str):
+        said, code, fields = json_output.rejection(argparse_message)
+
+        super().__init__(said)
+        self.message = said
+        self.error = MailctlError(said, code=code, fields=fields)
 
 
 # ----------------------------------------------------------------------------
@@ -1766,15 +1771,6 @@ class Parser(argparse.ArgumentParser):
     # ------------------------------------------------------------------------
     def error(self, message: str) -> NoReturn:
         raise ArgumentsRejected(message)
-
-
-# ----------------------------------------------------------------------------
-def rejected_error(message: str) -> MailctlError:
-    """The refusal ``initialize`` answers with for arguments refused with
-    ``message``, in words that quote no value given."""
-    said, code, fields = json_output.rejection(message)
-
-    return MailctlError(said, code=code, fields=fields)
 
 
 # ----------------------------------------------------------------------------
