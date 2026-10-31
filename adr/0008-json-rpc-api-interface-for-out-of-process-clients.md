@@ -3,8 +3,8 @@
 - Status: accepted
 - Date: 2026-10-28
 - Accepted: 2026-10-29, by the operator on [#224][i224]
-- Amended: 2026-10-30, for [#258][i258] and again for [#307][i307] (see
-  *Amendment*)
+- Amended: 2026-10-30, for [#258][i258] and again for [#307][i307];
+  2026-10-31, for [#281][i281] (see *Amendment*)
 - Amends [ADR 0003][adr3] (see its *Amendment*). Builds on [ADR
   0007][adr7]. Recorded for [#224][i224].
 
@@ -430,6 +430,30 @@ refuses nothing for that, so in practice the findings arrive whenever a session 
 `initialize` is refused for another reason, the client learns of the
 old names only from an `initialize` that succeeds.
 
+### The HTTP carrier waits for the web UI's slice (#281)
+
+Added on 2026-10-31, for [#281][i281]. §1 says the API goes over HTTP
+later and leaves the carrier to the web slice's ADR. That stands: **the
+HTTP carrier is not built now, and is decided with the web UI's slice,
+when that slice starts.**
+
+- **No client needs it.** The TUI speaks stdio, and the order is CLI,
+  then TUI, then GUI and web (CONVENTIONS *The CLI comes first*). The web
+  UI has no issue and no design yet.
+- **Choosing now would pre-empt what §1 defers.** The server library, how
+  a browser authenticates (§4), and one session per user (§3) are argued
+  *"against the libraries current then"*; picked today, they would be
+  argued against nothing.
+- **Building it costs now and serves nobody.** It adds a third runtime
+  dependency, since `http.server` is *"not recommended for production"*
+  ([http.server][hs]), and a network listener that needs a token and
+  somewhere to keep it.
+- **Clients lose nothing by waiting.** The message set is fixed here, so
+  a web backend will make the same calls as the TUI.
+
+**Revisit when the web UI's slice is filed.** Its ADR decides the
+binding (loopback only by default), the authentication, and the library.
+
 ## Sources
 
 Fetched 2026-10-28.
@@ -467,6 +491,7 @@ Fetched 2026-10-28.
 [i257]: https://github.com/harleypig/mailctl/issues/257
 [i258]: https://github.com/harleypig/mailctl/issues/258
 [i307]: https://github.com/harleypig/mailctl/issues/307
+[i281]: https://github.com/harleypig/mailctl/issues/281
 [ice-tui]: ../ICEBOX.md#tui-front-end
 [jsonrpc]: https://www.jsonrpc.org/specification
 [mcp]: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports
