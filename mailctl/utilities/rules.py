@@ -163,6 +163,7 @@ def require_capability(
         provider.name,
         construct or CAPABILITY_CONSTRUCTS[name],
         f"it does not declare the {name!r} capability",
+        code="unsupported",
     )
 
 
@@ -278,6 +279,7 @@ def check_rule(
             provider.name,
             f"emit {', '.join(sorted(unsupported))}",
             f"it declares only {', '.join(sorted(caps.actions)) or 'none'}",
+            code="unsupported",
         )
 
     if request.placement is not None:

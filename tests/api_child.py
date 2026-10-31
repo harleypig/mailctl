@@ -24,7 +24,7 @@ refuses every script where the file's ``checkscript`` is false, and the
 IMAP double advertises the file's ``imap_caps`` beside its own. Where the
 file's ``unreachable`` is set, neither server can be reached: each
 connection fails as a refused socket does, before any login, or, where it
-is ``"tls"``, the IMAP one fails its TLS handshake.
+is ``"tls"``, fails its TLS handshake.
 
 What the IMAP double is asked to write is appended to the file's
 ``imap_writes``, and its UIDVALIDITY is read from the file on every
@@ -50,10 +50,10 @@ import hashlib
 import json
 import os
 import socket
-import ssl
 import sys
 import time
 from pathlib import Path
+from ssl import SSLError
 
 from api_support import TIMEOUT
 from conftest import FakeIMAPClient
@@ -155,6 +155,9 @@ class FileSieveClient:
     # ------------------------------------------------------------------------
     def connect(self, user, password, starttls=False, ssl=False) -> bool:
         state = load()
+
+        if state.get("unreachable") == "tls":
+            raise SSLError("handshake failed")
 
         if state.get("unreachable"):
             raise ConnectionRefusedError("connection refused")
@@ -354,7 +357,7 @@ if __name__ == "__main__":
         unreachable = load().get("unreachable")
 
         if unreachable == "tls":
-            raise ssl.SSLError("handshake failed")
+            raise SSLError("handshake failed")
 
         if unreachable:
             raise ConnectionRefusedError("connection refused")

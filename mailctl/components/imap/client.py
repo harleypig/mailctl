@@ -250,7 +250,7 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(
-                f"mail server error -- {exc}", code="server_error"
+                f"mail server error -- {exc}", code="connection_failed"
             ) from exc
 
         self.client = client
@@ -329,7 +329,7 @@ class ImapSession:
         """Return the live client or fail loudly."""
         if self.client is None:
             raise MailctlError(
-                "IMAP session is not open", code="session_not_open"
+                "IMAP session is not open", code="internal_error"
             )
 
         return self.client

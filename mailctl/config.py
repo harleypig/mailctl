@@ -699,7 +699,7 @@ def read_env_file(path: Path) -> EnvFile:
     except UnicodeDecodeError as exc:
         raise MailctlError(
             f"env file {path}: not valid UTF-8 -- {exc.reason}",
-            code="env_file_invalid",
+            code="env_file_not_utf8",
         ) from exc
 
     env_file = EnvFile(path=path)
@@ -886,7 +886,7 @@ def read_password_file(path: Path) -> Secret:
     except UnicodeDecodeError as exc:
         raise MailctlError(
             f"{path}: password file is not valid UTF-8 -- {exc.reason}",
-            code="password_file_invalid",
+            code="password_file_not_utf8",
         ) from exc
 
     value = strip_one_newline(raw)

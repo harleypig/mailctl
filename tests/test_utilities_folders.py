@@ -689,9 +689,13 @@ def test_inbox_is_matched_whatever_case_the_server_gives_it(
 def test_without_list_status_it_is_refused_naming_it(sessions, fake_imap):
     """Refused rather than counted folder by folder: that would be a
     request per folder, and nothing here loops over the server."""
-    with pytest.raises(MailctlError, match="does not advertise LIST-STATUS"):
+    with pytest.raises(
+        MailctlError, match="does not advertise LIST-STATUS"
+    ) as caught:
         utilities.folders.list_folder_counts(sessions)
 
+    assert caught.value.code == "server_capability_missing"
+    assert caught.value.fields == {"capability": "LIST-STATUS"}
     assert list_commands(fake_imap) == []
 
 

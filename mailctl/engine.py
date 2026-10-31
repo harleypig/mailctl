@@ -374,6 +374,8 @@ def check_settings(provider: Provider, config: Config) -> None:
                 provider.name,
                 f"take {origin.describe()}",
                 f"it does not read the {name!r} setting",
+                code="setting_not_read",
+                fields={"setting": name},
             )
 
     if config.disabled_extensions and not provider.capabilities.extensions:
@@ -384,6 +386,8 @@ def check_settings(provider: Provider, config: Config) -> None:
             provider.name,
             f"take disabled_extensions{where}",
             "it does not declare the 'extensions' capability",
+            code="setting_not_read",
+            fields={"setting": "disabled_extensions"},
         )
 
 

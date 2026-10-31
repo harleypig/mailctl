@@ -559,7 +559,7 @@ class SieveSession:
         """Return the live client or fail loudly."""
         if self.client is None:
             raise MailctlError(
-                "ManageSieve session is not open", code="session_not_open"
+                "ManageSieve session is not open", code="internal_error"
             )
 
         return self.client

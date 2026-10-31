@@ -173,7 +173,12 @@ class FakeDialect(Dialect):
     @classmethod
     def check_criteria(cls, config, criteria, advertised):
         if criteria.body:
-            raise refuse(cls.name, "test a message's body", "it keeps From")
+            raise refuse(
+                cls.name,
+                "test a message's body",
+                "it keeps From",
+                code="unsupported",
+            )
 
     @classmethod
     def describe_actions(cls, actions):
@@ -1345,8 +1350,11 @@ def test_mxroute_declares_no_specifics_so_any_is_refused():
         specifics={"gmail.label": "work"},
     )
 
-    with pytest.raises(MailctlError, match="declared: none"):
+    with pytest.raises(MailctlError, match="declared: none") as caught:
         utilities.rules.check_rule(Config(), request)
+
+    assert caught.value.code == "setting_invalid"
+    assert caught.value.fields == {"setting": "gmail.label"}
 
 
 # ----------------------------------------------------------------------------
@@ -1624,6 +1632,23 @@ def test_the_test_report_is_laid_out_from_the_providers_data(
 
 
 # ----------------------------------------------------------------------------
+def test_a_connection_flag_the_provider_does_not_read_is_refused_coded(
+    fakes, monkeypatch
+):
+    """#352: a setting refusal, coded as one, not as a capability the
+    provider declines."""
+    monkeypatch.setenv("MAILCTL_PROVIDER", "stopless")
+    config = load_config(argparse.Namespace(imap_host="mail.example.com"))
+
+    with pytest.raises(MailctlError) as caught, engine.connect(config):
+        pass
+
+    assert caught.value.code == "setting_not_read"
+    assert caught.value.fields == {"setting": "imap_host"}
+    assert StoplessTransport.opened == 0
+
+
+# ----------------------------------------------------------------------------
 def test_disabled_extensions_is_refused_by_a_host_without_extensions(
     fakes, monkeypatch
 ):
@@ -1639,6 +1664,8 @@ def test_disabled_extensions_is_refused_by_a_host_without_extensions(
         "the stopless provider cannot take disabled_extensions (from "
         "environment): it does not declare the 'extensions' capability"
     )
+    assert caught.value.code == "setting_not_read"
+    assert caught.value.fields == {"setting": "disabled_extensions"}
     assert StoplessTransport.opened == 0
 
 

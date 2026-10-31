@@ -51,7 +51,7 @@ def sieve_session(
         session.open()
 
     except SieveConnectionError as exc:
-        raise _advice(config).error(str(exc)) from exc
+        raise _advice(config).error(str(exc), exc.code) from exc
 
     except SieveAuthenticationError as exc:
         raise MailctlError(
@@ -98,12 +98,14 @@ class _Hint:
         )
 
     # ------------------------------------------------------------------------
-    def error(self, reason: str) -> MailctlError:
-        """The connection failure ``reason``, with this advice."""
+    def error(self, reason: str, code: str | None) -> MailctlError:
+        """The connection failure ``reason``, coded ``code``, with this
+        advice: the other value of a setting to try."""
         return MailctlError(
             f"{reason} {self.text()}",
-            code="try_setting",
+            code=code,
             fields={
+                "advice": "try_setting",
                 "before": f"{reason} {self.before}",
                 "setting": "sieve_tls",
                 "value": self.mode,

@@ -393,9 +393,36 @@ def test_a_setting_refused_reaches_the_client_with_a_code(
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("argv", "code", "fields"),
+    [
+        (["--imap-port", "many"], "setting_invalid", {"setting": "imap_port"}),
+        (["--pasword", "Sentinel-7f3a"], "invalid_arguments", {}),
+        (["--fol", "INBOX"], "invalid_arguments", {}),
+    ],
+)
+def test_a_bad_argument_answers_initialize_rather_than_ending_the_input(
+    start, argv, code, fields
+):
+    """#352: a process that exits on a bad argument reaches its client as
+    the end of its output. It answers initialize with a code instead,
+    quoting no value given, and takes no option by a prefix."""
+    client = start(*argv)
+    refused = refusal(client.request("initialize"))
+    client.request("shutdown")
+    status, _stderr = client.close()
+
+    assert refused["code"] == code
+    assert refused["fields"] == fields
+    assert "Sentinel-7f3a" not in json.dumps(refused)
+    assert status == 0
+
+
+# ----------------------------------------------------------------------------
 def test_a_connection_failure_reaches_the_client_with_a_code(start):
-    """Red if a server that cannot be reached is refused uncoded (#352),
-    on either half: each failure carries the provider's advice, coded."""
+    """Red if a server that cannot be reached is refused uncoded (#352):
+    the code names the condition, the same on either half, and the
+    provider's advice rides in ``fields``."""
     client = initialized(start)
     state = client.read_state()
     state["unreachable"] = True
@@ -406,14 +433,19 @@ def test_a_connection_failure_reaches_the_client_with_a_code(start):
 
     state["unreachable"] = "tls"
     client.write_state(state)
-    tls = refusal(client.request("mail.search", {"filter": GITHUB_FILTER}))
+    rules_tls = refusal(client.request("filter.list"))
+    mail_tls = refusal(
+        client.request("mail.search", {"filter": GITHUB_FILTER})
+    )
 
-    assert rules["code"] == "try_setting"
+    assert rules["code"] == mail["code"] == "connection_failed"
     assert "cannot reach" in rules["message"]
-    assert mail["code"] == "check_settings"
     assert "cannot reach" in mail["message"]
-    assert tls["code"] == "tls_failed"
-    assert "TLS failure" in tls["message"]
+    assert rules["fields"]["advice"] == "try_setting"
+    assert mail["fields"]["advice"] == "check_settings"
+    assert rules_tls["code"] == mail_tls["code"] == "tls_failed"
+    assert "TLS failure" in rules_tls["message"]
+    assert "TLS failure" in mail_tls["message"]
 
 
 # ----------------------------------------------------------------------------

@@ -214,6 +214,10 @@ def test_a_coded_failure_under_json_carries_its_code(monkeypatch, capsys):
         (["mail", "search", "--json", "--fileinto", "x"], "gone_option"),
         (["mail", "search", "--fileinto", "x", "--json"], "gone_option"),
         (
+            ["folder", "list", "--imap-port", "many", "--json"],
+            "setting_invalid",
+        ),
+        (
             [
                 "filter",
                 "add",
@@ -251,7 +255,84 @@ def test_a_rejected_command_line_under_json_ends_in_a_coded_line(
     assert lines[:-1] == capsys.readouterr().err.splitlines()
     assert failure["version"] == json_output.JSON_VERSION
     assert failure["error"]["code"] == code
-    assert lines[-2].endswith(f": error: {failure['error']['message']}")
+    assert f": error: {failure['error']['message']}" in lines[-2]
+
+
+# ----------------------------------------------------------------------------
+def test_an_option_is_never_taken_by_a_prefix_of_its_name(capsys):
+    """--jso is not --json: a prefix that works today breaks the day an
+    option sharing it is added, and the command line is a contract."""
+    with pytest.raises(SystemExit) as rejected:
+        cli.main(["mail", "search", "--jso", "--json"])
+
+    failure = json.loads(capsys.readouterr().err.splitlines()[-1])
+
+    assert rejected.value.code == 2
+    assert failure["error"] == {
+        "message": "unrecognized arguments: --jso",
+        "code": "invalid_arguments",
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_a_bad_setting_flag_is_a_setting_refusal_naming_it(capsys):
+    """The same code a bad value from the environment or the config file
+    gets; still exit 2, as a rejected command line."""
+    with pytest.raises(SystemExit) as rejected:
+        cli.main(["folder", "list", "--sieve-tls", "bad", "--json"])
+
+    failure = json.loads(capsys.readouterr().err.splitlines()[-1])
+
+    assert rejected.value.code == 2
+    assert failure["error"] == {
+        "message": "argument --sieve-tls: invalid choice",
+        "code": "setting_invalid",
+    }
+
+
+SENTINEL = "Sentinel-Not-A-Real-Password-7f3a"
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["filter", "list", "--pasword", SENTINEL, "--json"],
+        ["filter", "list", f"--pasword={SENTINEL}", "--json"],
+        ["config", "migrate", "--password", SENTINEL, "--json"],
+        ["--password", SENTINEL, "filter", "list", "--json"],
+        ["folder", "list", "--imap-port", SENTINEL, "--json"],
+        ["folder", "list", "--sieve-tls", SENTINEL, "--json"],
+    ],
+)
+def test_the_json_line_never_quotes_a_word_argparse_could_not_use(
+    argv, capsys
+):
+    """A word argparse refused may be a password that lost its option, so
+    the line says what kind of mistake it was and names options only. The
+    text above it still quotes argparse (#352 left it as it was)."""
+    with pytest.raises(SystemExit):
+        cli.main(argv)
+
+    last = capsys.readouterr().err.splitlines()[-1]
+
+    assert json.loads(last)["error"]["code"]
+    assert SENTINEL not in last
+
+
+# ----------------------------------------------------------------------------
+def test_an_unrecognised_word_is_counted_and_an_option_named():
+    message, code, fields = json_output.rejection(
+        "unrecognized arguments: --pasword=x secret other --flag"
+    )
+
+    assert message == (
+        "unrecognized arguments: --pasword, --flag and 2 other words"
+    )
+    assert (code, fields) == ("invalid_arguments", None)
+    assert json_output.rejection("unrecognized arguments: a")[0] == (
+        "unrecognized arguments: 1 word"
+    )
 
 
 # ----------------------------------------------------------------------------

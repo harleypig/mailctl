@@ -1826,8 +1826,12 @@ def test_the_cli_names_the_flag_for_the_other_tls_mode(tls, other):
     """#51: the provider names the mode; the CLI says how to choose it, in
     the words it always used."""
     config = load_config(argparse.Namespace(sieve_tls=tls))
-    error = mxroute_managesieve._advice(config).error("refused.")
+    error = mxroute_managesieve._advice(config).error(
+        "refused.", "connection_failed"
+    )
 
+    assert error.code == "connection_failed"
+    assert error.fields["advice"] == "try_setting"
     assert "--sieve-tls " not in str(error)
     assert f"The other TLS mode, {other}, is the alternative." in str(error)
     assert f" Try --sieve-tls {other} as the alternative. Also " in (

@@ -91,8 +91,9 @@ def imap_session(
     except ImapConnectionError as exc:
         raise MailctlError(
             f"{exc} Check the IMAP host and port settings.",
-            code="check_settings",
+            code="connection_failed",
             fields={
+                "advice": "check_settings",
                 "reason": str(exc),
                 "settings": ("imap_host", "imap_port"),
             },

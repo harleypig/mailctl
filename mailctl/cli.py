@@ -568,7 +568,7 @@ def read_filter(path: str) -> Criteria:
         except UnicodeDecodeError as exc:
             raise MailctlError(
                 f"filter file {path!r} is not UTF-8 text",
-                code="filter_file_unreadable",
+                code="filter_file_not_utf8",
             ) from exc
 
     try:
@@ -5322,18 +5322,23 @@ class Refusal(MailctlError):
 
 # ----------------------------------------------------------------------------
 class CommandLineRejected(SystemExit):
-    """argparse's exit for a rejected command line, with what it said.
-
-    ``message`` is argparse's, or the CLI's own check's, without the
-    usage and program name around it, and ``refusal`` its code; both are
-    for the --json failure line, which argparse knows nothing of.
-    """
+    """argparse's exit for a rejected command line, with the --json
+    failure line's ``message`` and ``refusal`` code, which argparse knows
+    nothing of. ``fields`` are the API's; the CLI's line, like every other
+    failure it prints, carries none."""
 
     # ------------------------------------------------------------------------
-    def __init__(self, status: object, message: str, refusal: str):
+    def __init__(
+        self,
+        status: object,
+        message: str,
+        refusal: str,
+        fields: dict[str, object] | None = None,
+    ):
         super().__init__(status)
         self.message = message
         self.refusal = refusal
+        self.fields = fields
 
 
 # ----------------------------------------------------------------------------
@@ -5343,7 +5348,15 @@ class Parser(argparse.ArgumentParser):
     The subcommand parsers are made in the root's class, so a refusal at
     any level comes here. What is printed, and the exit status, are
     argparse's own.
+
+    An option is never taken by a prefix of its name: a script's ``--jso``
+    working today would stop the day an option sharing the prefix is
+    added, and the command line is a contract (RELEASING, v1).
     """
+
+    # ------------------------------------------------------------------------
+    def __init__(self, *args, allow_abbrev: bool = False, **kwargs):
+        super().__init__(*args, allow_abbrev=allow_abbrev, **kwargs)
 
     # ------------------------------------------------------------------------
     def error(self, message: str, code: str = ARGUMENTS) -> NoReturn:
@@ -5351,7 +5364,9 @@ class Parser(argparse.ArgumentParser):
             super().error(message)
 
         except SystemExit as exc:
-            raise CommandLineRejected(exc.code, message, code) from None
+            raise CommandLineRejected(
+                exc.code, *json_output.rejection(message, code)
+            ) from None
 
 
 # ----------------------------------------------------------------------------
@@ -5373,6 +5388,28 @@ SENDERS_FLAGS = {
     "minimum": "--min",
     "max_messages": "--max-messages",
 }
+
+
+# ----------------------------------------------------------------------------
+def with_advice(message: str, fields) -> str:
+    """A connection failure's message, with the flags its ``advice`` field
+    names: the settings to check, or the other value of one to try."""
+    advice = fields.get("advice")
+
+    if advice == "check_settings":
+        return (
+            f"{fields['reason']} Check "
+            f"{' and '.join(flag_for(name) for name in fields['settings'])}."
+        )
+
+    if advice == "try_setting":
+        return (
+            f"{fields['before']} Try {flag_for(fields['setting'])} "
+            f"{fields['value']}{fields['note']} as the alternative. "
+            f"{fields['after']}"
+        )
+
+    return message
 
 
 # What the CLI says for each coded error (MailctlError.code). The core's
@@ -5419,7 +5456,6 @@ ERROR_TEXT = {
     "compare_invalid": lambda message, _: message,
     "config_invalid": lambda message, _: message,
     "config_unreadable": lambda message, _: message,
-    "connection_failed": lambda message, _: message,
     "copy_failed": lambda message, _: message,
     "credentials_not_ascii": lambda message, _: message,
     "criteria_and_raw": lambda message, _: message,
@@ -5429,6 +5465,7 @@ ERROR_TEXT = {
     "delete_failed": lambda message, _: message,
     "env_file_invalid": lambda message, _: message,
     "env_file_mode": lambda message, _: message,
+    "env_file_not_utf8": lambda message, _: message,
     "env_file_unreadable": lambda message, _: message,
     "extension_disabled": lambda message, _: message,
     "fetch_failed": lambda message, _: message,
@@ -5487,8 +5524,8 @@ ERROR_TEXT = {
     "password_command_failed": lambda message, _: message,
     "password_command_no_output": lambda message, _: message,
     "password_file_empty": lambda message, _: message,
-    "password_file_invalid": lambda message, _: message,
     "password_file_mode": lambda message, _: message,
+    "password_file_not_utf8": lambda message, _: message,
     "password_file_unreadable": lambda message, _: message,
     "probe_invalid": lambda message, _: message,
     "raw_query_failed": lambda message, _: message,
@@ -5499,12 +5536,11 @@ ERROR_TEXT = {
     "rename_subfolder_clash": lambda message, _: message,
     "search_failed": lambda message, _: message,
     "search_value_invalid": lambda message, _: message,
-    "server_error": lambda message, _: message,
-    "session_not_open": lambda message, _: message,
+    "server_capability_missing": lambda message, _: message,
     "setting_invalid": lambda message, _: message,
+    "setting_not_read": lambda message, _: message,
     "subscribe_unconfirmed": lambda message, _: message,
     "subscription_failed": lambda message, _: message,
-    "tls_failed": lambda message, _: message,
     "uid_below_one": lambda message, _: message,
     "uidvalidity_out_of_range": lambda message, _: message,
     "unknown_grouping": lambda message, _: message,
@@ -5521,15 +5557,8 @@ ERROR_TEXT = {
         f"Set {', '.join(flag_for(name) for name in fields['settings'])}, "
         f"the matching MAILCTL_* variable, or add it to {fields['config']}"
     ),
-    "check_settings": lambda _, fields: (
-        f"{fields['reason']} Check "
-        f"{' and '.join(flag_for(name) for name in fields['settings'])}."
-    ),
-    "try_setting": lambda _, fields: (
-        f"{fields['before']} Try {flag_for(fields['setting'])} "
-        f"{fields['value']}{fields['note']} as the alternative. "
-        f"{fields['after']}"
-    ),
+    "connection_failed": lambda message, fields: with_advice(message, fields),
+    "tls_failed": lambda message, fields: with_advice(message, fields),
     "needs_mail": lambda _, fields: (
         f"{fields['reason']} and --no-mail was given, so "
         f"{fields['folder']!r} cannot be created"

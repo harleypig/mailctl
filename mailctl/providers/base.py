@@ -232,15 +232,26 @@ class ProviderCapabilities:
 
 
 # ----------------------------------------------------------------------------
-def refuse(provider: str, construct: str, why: str) -> MailctlError:
+def refuse(
+    provider: str,
+    construct: str,
+    why: str,
+    *,
+    code: str,
+    fields: Mapping[str, object] | None = None,
+) -> MailctlError:
     """The one error for something a provider cannot express or do.
 
+    ``code`` says which kind it is: ``unsupported`` for what the provider
+    declares it cannot do, which a front-end can learn before asking, and
+    a code of its own where the server or a setting is the cause.
     Returned rather than raised so a caller writes ``raise refuse(...)``
     and the traceback points at the refusal, not at this helper.
     """
     return MailctlError(
         f"the {provider} provider cannot {construct}: {why}",
-        code="unsupported",
+        code=code,
+        fields=fields,
     )
 
 
@@ -261,6 +272,8 @@ def validate_specifics(
                 provider,
                 f"take the specific {key!r}",
                 "a provider specific is namespaced, as <namespace>.<name>",
+                code="setting_invalid",
+                fields={"setting": key},
             )
 
         spec = schema.get(key)
@@ -272,6 +285,8 @@ def validate_specifics(
                 provider,
                 f"take the specific {key!r}",
                 f"it is not one this provider declares (declared: {known})",
+                code="setting_invalid",
+                fields={"setting": key},
             )
 
         if not isinstance(value, spec.kind):
@@ -279,6 +294,8 @@ def validate_specifics(
                 provider,
                 f"take {key}={value!r}",
                 f"it must be a {spec.kind.__name__}",
+                code="setting_invalid",
+                fields={"setting": key},
             )
 
 
@@ -294,7 +311,12 @@ def declined(operation: Callable) -> Callable:
     name = operation.__name__
 
     def refused(self_or_cls, *args, **kwargs):
-        raise refuse(self_or_cls.name, f"perform {name!r}", "it is declined")
+        raise refuse(
+            self_or_cls.name,
+            f"perform {name!r}",
+            "it is declined",
+            code="unsupported",
+        )
 
     refused.__name__ = name
     refused.__qualname__ = operation.__qualname__
