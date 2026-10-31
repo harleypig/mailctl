@@ -130,14 +130,16 @@ mailctl filterset backup
 `*` and `(active)` marking the active one, and then one line from `backup`:
 
 ```text
-wrote 3 filter(s) to /home/you/.config/mailctl/backups/managesieve-20260814T095659Z.sieve
+wrote 3 filter(s) to /home/you/.config/mailctl/backups/managesieve-20260814T095659.412Z.sieve
 ```
 
 That file is the script **exactly as the server has it** — no banner lines,
 nothing reformatted, mode `0600`. It goes in `~/.config/mailctl/backups`
 beside your `config.toml`; `--output PATH` puts it somewhere else, and a PATH ending in
 `/` (or naming a directory that exists) means "in here" while anything else
-is the exact file to write. Then read it:
+is the exact file to write. A backup never replaces a file: an exact file
+that already exists is refused, and a name mailctl chose that is taken gets
+`-2`, `-3`, and so on. Then read it:
 
 ```bash
 cat "$(ls -t ~/.config/mailctl/backups/*.sieve | head -1)"
@@ -370,9 +372,10 @@ read the diff — it is the raw difference between the file and what the server
 has now, so anything added since the backup shows as removed. Then run it
 without `--dry-run` and confirm. The current script is backed up first, so a
 restore is itself reversible the same way. Once it is restored, run `mailctl
-filterset backup --output ./after-restore.sieve` and `diff` it against the
-file you were putting back; `mailctl filterset show` is fine for reading, but
-its banner lines make it the wrong thing to compare.
+filterset backup --output ./after-restore.sieve` (a file that does not exist
+yet, since one that does is refused) and `diff` it against the file you were
+putting back; `mailctl filterset show` is fine for reading, but its banner
+lines make it the wrong thing to compare.
 
 If the backup and the current script differ in ways you did not expect, that
 is worth reporting with both files in hand — they are the whole evidence of

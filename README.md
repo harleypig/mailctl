@@ -706,6 +706,7 @@ rename` after `filter optimize` gives it one that fits.
 
 ```bash
 # Save the active filter set, byte for byte, before you touch anything.
+# --output names a new file: one that exists is refused, never replaced.
 mailctl filterset backup
 mailctl filterset backup --output ~/mailctl-before-first-run.sieve
 
@@ -843,8 +844,12 @@ and save again.
   copy on demand, without changing anything on the server.
 * Backups land in `$XDG_CONFIG_HOME/mailctl/backups` (usually
   `~/.config/mailctl/backups`) — beside your `config.toml`, one file per
-  backup, named after the filter set and the UTC time (on MXRoute,
-  `<name>-<UTC timestamp>.sieve`). XDG would call a backup
+  backup, named after the filter set and the UTC time to the millisecond
+  (on MXRoute, `<name>-<UTC timestamp>.sieve`). A backup never replaces a
+  file: where the name mailctl chose is taken, it writes
+  `<name>-<UTC timestamp>-2.sieve`, then `-3`, and so on, and
+  `filterset backup --output FILE` naming a file that exists is refused,
+  leaving the file as it was. XDG would call a backup
   *state* rather than config; keeping it here is a deliberate departure from
   that, not something XDG endorses, because a backup you cannot find is not a
   backup. `--backup-dir`, `MAILCTL_BACKUP_DIR`, and `backup_dir` in
@@ -868,10 +873,11 @@ and save again.
   cannot
   parse ([ADR 0005][adr5]). An empty FILE would remove every filter, so it is
   refused unless `--allow-empty` is given. FILE is read and checked before
-  mailctl connects, and `~` and `$VAR` in it are expanded. If the account has
-  no active filter set, restore refuses rather than guess, and `--filterset
-  NAME` is
-  the way back: NAME is restored and made active.
+  mailctl connects, and `~` and `$VAR` in it are expanded. A FILE this run
+  reads the password from, a password file or the env file, is refused
+  unopened, since its contents would come back as the diff. If the account
+  has no active filter set, restore refuses rather than guess, and
+  `--filterset NAME` is the way back: NAME is restored and made active.
 * Filters are merged into the parsed existing filter set, never appended
   blindly, so other filters survive. If the existing filter set cannot be
   parsed, mailctl stops rather than overwrite it.
@@ -1019,8 +1025,9 @@ exit status. `server probe --json` prints its own versioned document (see
 **An error's `code`** is a short name for the condition, so a script can
 tell one refusal from another without reading the message: for example
 `no_criteria`, `no_action`, `max_messages`, `senders_ceiling`,
-`no_such_folder`, `state_in_rule`, `missing_settings`, and
-`uidvalidity_changed`. An error with no condition of its own has no `code`.
+`no_such_folder`, `folder_missing`, `state_in_rule`, `missing_settings`,
+`credential_file`, and `uidvalidity_changed`. An error with no condition of
+its own has no `code`.
 
 **Exit status**, on every command:
 
@@ -1079,19 +1086,77 @@ and does not start the API.
 
 ### Methods
 
+Every command of the command line is a method, named by its path with
+dots: `filter list` is `filter.list`. A command that changes something is
+a pair, `.plan` and `.execute` (see *Plan, decide, execute* below). The one
+command left out is `help`, which describes the command line's own
+options; a client learns what it can call from `initialize`'s
+`capabilities` and from this list. `initialize`, `shutdown`, and
+`plan.discard` are the protocol's own.
+
 Parameters are passed by name, and one the method does not know is
-refused. A `?` marks one that may be left out or sent as `null`.
+refused. A `?` marks one that may be left out or sent as `null`. A method
+the provider does not offer, by its `capabilities`, is refused before
+anything connects, as the command line refuses the option it hides.
 
 | Method | Parameters | Result |
 |--------|------------|--------|
 | `initialize` | `log?` | `{"protocol", "json_version", "mailctl", "provider", "capabilities", "old_name"}` |
 | `shutdown` | | `null` |
+| `plan.discard` | `plan_id` | `null` |
 | `filter.list` | `filterset?` | the `filter list --json` document |
+| `filterset.list` | | the `filterset list --json` document |
+| `filterset.show` | `name?` | `{"version", "filterset": {"name", "source", "filters"}}` |
+| `filterset.backup` | `output?`, `dry_run?` | `{"version", "result": {"command", "filterset", "path", "filters", "written"}}` |
+| `folder.list` | `counts?` | the `folder list --json` document, with `counts` as `--counts` gives it |
 | `mail.search` | `folder?`, `filter?`, `raw?`, `limit?`, `sort?`, `like?`, `build_filter?` | the `mail search --json` document, or with `build_filter` a filter document |
 | `mail.view` | `uid`, `folder?`, `uidvalidity?` | the `mail view --json` document |
-| `filter.add.plan` | see below | `{"plan_id", "document"}` |
-| `filter.add.execute` | `plan_id` | `{"version", "result": {"command", "filter", "filterset", "activated", "backup"}}` |
-| `plan.discard` | `plan_id` | `null` |
+| `mail.senders` | `folder?`, `filter?`, `by?`, `top?`, `minimum?`, `max_messages?` | the `mail senders --json` document |
+| `server.test` | | `{"version", "test": {…}}` (below) |
+| `server.probe` | `report?` | the `server probe --json` document, or with `report` `{"version", "report"}` |
+| `server.baseline.show` | | the saved baseline, as `server baseline show --json` prints it |
+| `server.baseline.check` | | the `server baseline check --json` document |
+
+The pairs. Every `.plan` returns `{"plan_id", "document"}`, and every
+`.execute` takes `plan_id` and nothing else.
+
+| Command | `.plan` takes | `.execute` returns, inside `{"version", "result": …}` |
+|---------|---------------|--------------------------------------------------------|
+| `filter.add` | `filter`, `actions`, `name?`, `filterset?`, `replace?`, `placement?`, `activate?`, `create_folder?`, `subscribe?` | a filter set change |
+| `filter.apply` | `filter`, `actions`, `folder?`, `max_messages?`, `create_folder?`, `subscribe?` | `{"command", "source", "destination", "flagged", "moved", "deleted", "copied"}` |
+| `filter.remove` | `name`, `filterset?`, `activate?` | a filter set change |
+| `filter.move` | `name`, `placement`, `filterset?`, `activate?` | a filter set change |
+| `filter.rename` | `name`, `new_name`, `filterset?`, `activate?` | a filter set change; `filter` is the new name |
+| `filter.enable`, `filter.disable` | `name`, `filterset?`, `activate?` | a filter set change |
+| `filter.optimize` | `filterset?`, `activate?`, `skip?` | a filter set change; `filter` is `null` |
+| `filterset.restore` | `file`, `filterset?`, `activate?`, `allow_empty?` | a filter set change; `filter` is `null` |
+| `folder.create` | `folder`, `subscribe?` | `{"command", "folder", "subscribed", "subscribe_error", "by_subscription"}` |
+| `folder.rename` | `old`, `new` | `{"command", "old", "new", "filterset", "backup", "subscribed", "unsubscribed", "subscription_errors", "ok", "checks"}` |
+| `folder.subscribe`, `folder.unsubscribe` | `folder` | `{"command", "folder", "subscribed"}` |
+| `mail.mark` | `uids`, `folder?`, `uidvalidity?`, `read?`, `flagged?`, `keywords?`, `no_keywords?` | `{"command", "folder", "added", "removed"}` |
+| `server.baseline.save` | | `{"command", "host", "path", "taken"}` |
+| `config.migrate` | | `{"command", "old", "new", "restart"}` |
+
+A filter set change is `{"command", "filter", "filterset", "activated",
+"backup"}`: the filter by the name it has once the change is made, the
+filter set, whether it is now the active one, and the copy taken before
+the upload.
+
+A plan's `document` is the plan `--dry-run --json` prints for the same
+command (see *Output for scripts*), with the same options given. `server
+baseline save` and `config migrate` print no plan document on the command
+line, so theirs are the API's own:
+
+* `server baseline save`: `host`, `path`, `taken`, `previous_taken`,
+  `requires_known`, `drift` (as in `server baseline check`), and `diff`,
+  the file's diff, `null` where none was saved before. `changes` is
+  always `true`, since a save at least moves the date.
+* `config migrate`: `old`, `new`, `entries` (`{"path", "mode",
+  "directory"}`), and `references` (`{"key", "old", "new"}`, each
+  `config.toml` path pointed at the new directory). With no old
+  directory, `changes` is `false` and `old` and `new` are `null`.
+
+#### The reads
 
 * **`initialize`.** `protocol` versions the methods and the envelope;
   `json_version` versions the documents inside, as in *Output for
@@ -1107,11 +1172,11 @@ refused. A `?` marks one that may be left out or sent as `null`.
   no old name, so its setting comes from somewhere else or is unset.
   `config_dir` is `null`, or `{"old", "new", "operation"}` while the old
   config directory exists and the new one does not; `operation` is
-  `config migrate`, the command that moves it, which the API does not
-  offer. Names and places only: no old value is read, so none is sent.
-  With nothing left behind, `settings` is `[]` and `config_dir` is
-  `null`. It describes the settings the session started with, so it
-  holds until `shutdown`.
+  `config migrate`, the command that moves it, which is
+  `config.migrate.plan` here. Names and places only: no old value is
+  read, so none is sent. With nothing left behind, `settings` is `[]`
+  and `config_dir` is `null`. It describes the settings the session
+  started with, so it holds until `shutdown`.
 * **`mail.search`.** `filter` is a filter document (see *Filter
   documents*), and `raw` a query in the host's own search language.
   `limit` is the most messages to list: 20 unless given, and every
@@ -1127,15 +1192,70 @@ refused. A `?` marks one that may be left out or sent as `null`.
   since, it is refused with `uidvalidity_changed` before the UID is used.
 * **`build_filter: true`** returns the filter document the criteria make,
   `{"version": 1, "criteria": {…}}`, in place of the listing: the
-  document `filter.add.plan` takes as `filter`, so `like` and
-  `build_filter` together fill a new filter in from a message. Nothing is
-  listed or saved. With no criteria, or a message with nothing to take
-  them from, it is refused with `no_criteria`.
+  document `filter.add.plan` and `filter.apply.plan` take as `filter`, so
+  `like` and `build_filter` together fill a filter in from a message.
+  Nothing is listed or saved. With no criteria, or a message with nothing
+  to take them from, it is refused with `no_criteria`.
 * `mail.search` refuses with `-32602`: a `like` with no `uid`, a `uid`
   below 1, or a key it does not know; `raw` with `like` or `build_filter`;
   and `sort` with `build_filter`. These are the combinations `mail search`
   refuses. A `uid` the folder does not hold is refused too, with no
   `code` yet, as `mail.view` refuses one.
+* **`mail.senders`.** `by` is `address` (unless given), `domain`, or
+  `list-id`. `top` is the rows kept, 20 unless given and every row where
+  it is null; `minimum` leaves out a row counting fewer messages, 1
+  unless given; `max_messages` is the ceiling, 5000 unless given, above
+  which it is refused whole with `senders_ceiling`. A `top`, `minimum`,
+  or `max_messages` below 1 is refused with `at_least_one`.
+* **`filterset.show`** returns the filter set's text exactly as the server
+  holds it, and its filters' names in order. `filters` is `null` where the
+  text does not parse; the command line prints the text and then fails.
+* **`server.test`** has a document of its own; the command line lays the
+  same probes out for a person and offers none. `test` holds `provider`;
+  `sources`, the files and places consulted; `settings`, as `{"name",
+  "value", "source"}`; `password`, `{"state", "source"}`, where `state` is
+  a fixed word and never the password; `connection`; `rules`, the
+  extensions as `{"name", "advertised", "required", "enabled",
+  "disabled_by"}` beside the `active` and `others` filter sets; `mail`,
+  the `delimiter`, the number of `folders`, the `unsubscribed` ones, and
+  the server's `facts`; `unrecognised`, as `filter` or `mail`; `baseline`;
+  and `notes`. A `source` is `{"kind", "name", "path"}`, never a value.
+  `baseline` is `null` where none is saved, `{"checked": true, "taken",
+  "serious", "informational"}` where one is, and `{"checked": false,
+  "error"}` where one is and cannot be compared.
+* **`server.probe` with `report: true`** returns the redacted issue body
+  `server probe --report` prints, as `{"title", "unrecognised", "body"}`,
+  or `null` where mailctl recognises every server. Nothing is sent.
+* **`server.baseline.show`** connects nothing. Its `version` is the
+  baseline file's own, as stored.
+
+#### Plan, decide, execute
+
+**A change is plan, decide, execute.** A `.plan` changes nothing. Show its
+`document`, let the user decide, then send the `.execute` with the
+`plan_id` and nothing else. The plan's content is never sent back, so what
+was shown is what runs.
+
+* A plan id is used once. Once an execute has taken it, whether it then
+  worked or was refused, or once `plan.discard` has, the id is refused
+  with `plan_unknown`. Plans live in the process and end with it.
+* **An execute refused for its parameters keeps its plan.** The parameters
+  are checked before the plan is taken, so an unknown or missing one is
+  answered `-32602` and the same id still works. A `plan_id` that belongs
+  to another command is refused with `plan_unknown` and left waiting.
+* **A plan that changes nothing is refused at execute** with
+  `nothing_to_change`, sending nothing: the command line stops after
+  showing such a plan. `filter.add.execute` is the exception and carries
+  it out, as `filter add` does: a filter replaced by itself is still
+  uploaded, with its backup. `folder.rename` and `server.baseline.save`
+  always change something.
+* If the filter set changed on the server after the plan was made (in
+  webmail, say), or another filter set was made active, an execute that
+  uploads is refused with `filterset_changed` and nothing is uploaded.
+  Make a new plan.
+* `filter.apply.execute` holds the plan to its own ceiling again, and it
+  and `mail.mark.execute` check the folder's UIDVALIDITY again, refusing
+  with `max_messages` or `uidvalidity_changed` and touching nothing.
 * **`filter.add.plan`** takes `filter`, a filter document, and `actions`,
   both required; then `name?`, `filterset?`, `replace?`, `activate?`,
   `create_folder?`, and `subscribe?` (true unless given, and false only
@@ -1146,19 +1266,54 @@ refused. A `?` marks one that may be left out or sent as `null`.
   actions mean to `filter add`. `redirect`, `notify`, and `vacation` are
   taken as strings and refused, with the same pointer the command line
   gives.
-
-**A change is plan, decide, execute.** `filter.add.plan` changes nothing.
-Its `document` is the plan `filter add --dry-run --json` prints: show it,
-let the user decide, then send `filter.add.execute` with the `plan_id` and
-nothing else. The plan's content is never sent back, so what was shown is
-what runs.
-
-* A plan id is used once. After an execute, whether it worked or failed,
-  or a `plan.discard`, the id is refused with `plan_unknown`. Plans live in
-  the process and end with it.
-* If the filter set changed on the server after the plan was made (in
-  webmail, say), execute is refused with `filterset_changed` and nothing
-  is uploaded. Make a new plan.
+* **`filter.apply.plan`** acts on mail already delivered and saves no
+  filter. Its `actions` are `filter.add.plan`'s without `stop`, which
+  means nothing to a message already in a folder. `folder` is the folder
+  to search, `--folder`'s default unless given, and `max_messages` the
+  ceiling, 500 unless given: a plan over it is returned with `over_limit`
+  true, and its execute is refused whole with `max_messages`. A folder
+  `move_to` names that does not exist is refused with `folder_missing`
+  unless `create_folder` is true; one it creates is sent as a
+  `folder_created` event before any message is touched. `--like` has no
+  counterpart: `mail.search` with `like` and `build_filter` makes the
+  filter document.
+* **`filter.move.plan`**'s `placement` is required, in
+  `filter.add.plan`'s shape. **`filter.optimize.plan`**'s `skip` lists
+  the kinds of change not to propose: `redundant`, `reorder`, or
+  `merge`.
+* **`filterset.restore.plan`**'s `file` is a path on the API's host. The
+  API expands nothing in it, neither `~` nor `$VAR`, and every message
+  names the path as given; a relative one is taken from the API's working
+  directory. The file is read when the plan is made, so the execute
+  uploads what the plan showed. A file the session reads the password
+  from, a password file or the env file, is refused unopened with
+  `credential_file`.
+* **`filterset.backup` is one method, not a pair**: nothing on the server
+  changes. `output` is a file or a directory, as `filterset backup
+  --output` takes it, and the backup directory unless given; a file that
+  exists is refused, since a backup never replaces one. With `dry_run`
+  true the file is named and not written, and `written` is `false`.
+* **`folder.rename.execute`**'s `checks` are what reading the account back
+  found, each `{"label", "ok", "detail", "operation", "arguments"}`;
+  `ok` is `false` where any failed, and a failed one's `operation` names
+  the command that would set it right. `filterset` and `backup` are
+  `null` where no filter files into the folder.
+* **`mail.mark.plan`**'s `read` and `flagged` are `true` to set, `false`
+  to clear, and absent to leave alone; `keywords` are set and
+  `no_keywords` cleared. With none of them it is refused with `no_marks`.
+* **`server.baseline.save.execute`** writes the configured host's file
+  under the config directory, never a path the client gave. It is refused
+  with `baseline_changed`, writing nothing, where the file changed after
+  the plan was made, since writing over it would lose another save.
+* **`config.migrate`** moves files on the API's host only. A plan that
+  would overwrite anything is refused with `migration_conflict`. Its
+  execute is refused with `migration_changed`, before anything moves,
+  where either directory no longer matches the plan, and the plan with
+  `migration_reference_unrewritable` where a `config.toml` path reaches
+  the old directory through a variable it cannot be rewritten without.
+  The result's `restart` is always `true`: the API read its settings
+  when it started, so only a process started afterwards reads what
+  moved.
 
 ### The password
 
@@ -1192,9 +1347,20 @@ it came from: `filter` or `mail`.
 
 | Method | Parameters | Sent |
 |--------|------------|------|
-| `event` | `{"request", "document": {"version", "event": {"kind", ...}}}` | for each step of a change as it lands. `kind` is `filterset_backed_up` (with the backup's `path`), `filterset_uploaded`, `folder_created`, `folder_renamed`, or `subscription_changed` |
+| `event` | `{"request", "document": {"version", "event": {"kind", ...}}}` | for each step of a change as it lands; `kind` and the keys beside it are in the table below |
 | `server.alert` | `{"request", "document": {"version", "alert": {"channel", "kind", "text"}}}` | always, for an alert or warning a server sent; the same one once per session |
 | `log` | `{"request", "channel", "message"}` | for the protocol exchange `--verbose` shows, only after `initialize` with `log: true` |
+
+| Event `kind` | Keys beside it | Sent by |
+|--------------|----------------|---------|
+| `filterset_backed_up` | `filterset`, `path` | every execute that uploads a filter set, before it uploads |
+| `filterset_uploaded` | `filterset`, `activated` | the same, once it has uploaded |
+| `folder_created` | `folder`, `subscribed`, `subscribe_error`, `by_subscription` | `filter.add`, and `filter.apply` before it touches a message |
+| `folder_renamed` | `old`, `new`, `children` | `folder.rename` |
+| `subscription_changed` | `folder`, `subscribed` | `folder.rename` |
+| `file_moved` | `source`, `destination` | `config.migrate` |
+| `reference_rewritten` | `key`, `new`, `rewritten` | `config.migrate` |
+| `old_dir_removed` | `path` | `config.migrate` |
 
 ### Errors
 
@@ -1211,9 +1377,11 @@ A refusal's `data` is the error document from *Output for scripts*,
 `{"version", "error": {"message", "code", "fields"}}`, where `code` names
 the condition. Branch on it, never on the message. Among them are
 `not_initialized`, `already_initialized`, `plan_unknown`,
-`password_declined`, `filterset_changed`, `auth_failed`,
-`credentials_not_ascii`, `subscribe_needs_create`, and `unknown_sort_key`,
-beside the command line's own.
+`nothing_to_change`, `password_declined`, `filterset_changed`,
+`auth_failed`, `credentials_not_ascii`, `subscribe_needs_create`,
+`unknown_sort_key`, `folder_missing`, `credential_file`,
+`baseline_changed`, `migration_conflict`, `migration_changed`, and
+`migration_reference_unrewritable`, beside the command line's own.
 
 ### An exchange
 
