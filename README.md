@@ -1065,8 +1065,7 @@ tell one refusal from another without reading the message: for example
 `no_such_folder`, `folder_missing`, `state_in_rule`, `missing_settings`,
 `credential_file`, `uidvalidity_changed`, `no_such_message`, and
 `backup_exists`. Every refusal from the work a command does carries one;
-some of the command line's own checks on its arguments, and a UID the
-server does not hold on `mail search` or `mail view`, have none yet.
+some of the command line's own checks on its arguments have none yet.
 
 **Exit status**, on every command:
 
@@ -1077,6 +1076,11 @@ server does not hold on `mail search` or `mail view`, have none yet.
 | 2 | the argument parser rejected the command line — an unknown command or flag, a value it cannot read, `--no-subscribe` without `--create-folder`; the message is plain text, even under `--json` |
 | 3, 4 | `server baseline check` only: informational, or serious, drift |
 | 130 | interrupted |
+
+**From v1.0.0 these are a promise.** The documents, the error codes, and
+the exit statuses above, with the API below, are kept for every 1.x
+release; what is kept, and what may still change, is in
+[RELEASING.md › *What v1 promises*][promise].
 
 ## API
 
@@ -1106,8 +1110,8 @@ list. Two settings are its own:
 * `--debug` writes a failed request's traceback to stderr. It names the
   request by its id and method, never by its parameters.
 
-`mailctl-api --help` lists them all. The Docker image runs `mailctl` only,
-and does not start the API.
+`mailctl-api --help` lists them all. The Docker image starts it with `api`
+as its first word (see *In Docker*).
 
 ### The stream
 
@@ -1280,6 +1284,9 @@ was shown is what runs.
 * A plan id is used once. Once an execute has taken it, whether it then
   worked or was refused, or once `plan.discard` has, the id is refused
   with `plan_unknown`. Plans live in the process and end with it.
+* **Only the newest 32 plans wait.** Making another drops the oldest, and
+  its id is then refused with `plan_unknown`, as a used one is. Execute or
+  discard a plan before making 32 more.
 * **An execute refused for its parameters keeps its plan.** The parameters
   are checked before the plan is taken, so an unknown or missing one is
   answered `-32602` and the same id still works. A `plan_id` that belongs
@@ -1380,6 +1387,8 @@ server needs it:
 * To decline, answer with an error. The request that needed the password
   is then refused with `password_declined`. An answer that does not parse
   is answered `-32700` and counts as declining, and so does input ending.
+  So do 64 messages sent while the prompt waits with no answer among
+  them, since mailctl reads no further until some are served.
 * When a server refuses a prompted password (`auth_failed`), mailctl
   forgets it and asks again on the next request.
 * Cancelling the request that needed the password ends the wait (see
@@ -1409,6 +1418,9 @@ name for it, with the id of the request to stop:
   reuses an answered id is never stopped by a cancel sent before it.
 * A cancel is answered with nothing. Sent as a request, with an id, it
   waits its turn like any other and is answered `null`.
+* **mailctl reads at most 64 messages ahead of the one it is serving.**
+  A cancel sent behind 64 others not yet served is not read, and so not
+  seen, until some of them have been answered.
 * `filter.apply.execute` is not stopped between batches of messages: it
   hands the whole plan to the server as one write, and its
   `max_messages` ceiling bounds how long that runs.
@@ -1670,6 +1682,7 @@ filters need domain-owner credentials, and mailctl logs in as a mailbox. So:
 
 [adr2]: adr/0002-non-destructive-script-merge.md
 [adr5]: adr/0005-restore-may-replace-an-unparseable-script.md
+[promise]: RELEASING.md#what-v1-promises
 [adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
 [adr9]: adr/0009-python-textual-tui-as-a-separate-package.md
 [reader]: docs/MAIL-READER-REQUIREMENTS.md

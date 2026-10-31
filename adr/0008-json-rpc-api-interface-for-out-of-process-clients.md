@@ -4,8 +4,8 @@
 - Date: 2026-10-28
 - Accepted: 2026-10-29, by the operator on [#224][i224]
 - Amended: 2026-10-30, for [#258][i258] and again for [#307][i307];
-  2026-10-31, for [#281][i281], [#279][i279], and [#280][i280] (see
-  *Amendment*)
+  2026-10-31, for [#281][i281], [#279][i279], [#280][i280], and
+  [#346][i346] (see *Amendment*)
 - Amends [ADR 0003][adr3] (see its *Amendment*). Builds on [ADR
   0007][adr7]. Recorded for [#224][i224].
 
@@ -546,6 +546,33 @@ one-at-a-time, in-order handling stands around it.
   the wait ends there. A late answer answers nothing, and the next
   request that needs the password asks again.
 
+### The plan table and the read-ahead are bounded (#346)
+
+Added on 2026-10-31, for [#346][i346]. §2 has unexecuted plans *"die
+with the session"*. That stands, and a plan can now go sooner: **only
+the newest 32 plans wait** (`api.server.PLANS_KEPT`). Making another
+drops the oldest, and its id is then refused with `plan_unknown`, as a
+used one is. A client that makes plans and abandons them without
+`plan.discard` could otherwise grow the table for the life of the
+session. 32 is far more than a client deciding one plan at a time
+needs, and single use is unchanged: a dropped id is gone like any
+other.
+
+The input thread of *Cancelling a request* is bounded the same way. It
+holds at most 64 messages read and not yet served
+(`api.protocol.INBOX_LIMIT`) and reads no further until one is served,
+so a client that floods the stream cannot grow its memory without bound.
+Two consequences follow, and both are in the README:
+
+- **A cancel sent behind 64 unserved messages is not seen** until some
+  of them have been served, since it has not been read.
+- **A `credentials.prompt` with 64 messages held and no answer among
+  them is taken as declined.** The answer could not be read, so waiting
+  would never end.
+
+The thread is stopped when the API stops serving, at `shutdown` or the
+end of its input, rather than left running.
+
 ## Sources
 
 Fetched 2026-10-28.
@@ -589,6 +616,7 @@ Fetched 2026-10-28.
 [i281]: https://github.com/harleypig/mailctl/issues/281
 [i279]: https://github.com/harleypig/mailctl/issues/279
 [i280]: https://github.com/harleypig/mailctl/issues/280
+[i346]: https://github.com/harleypig/mailctl/issues/346
 [ice-tui]: ../ICEBOX.md#tui-front-end
 [jsonrpc]: https://www.jsonrpc.org/specification
 [mcp]: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports
