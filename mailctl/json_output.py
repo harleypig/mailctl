@@ -29,6 +29,7 @@ __all__ = [
     "activation",
     "add_plan",
     "alert",
+    "apply_plan",
     "capabilities",
     "change",
     "dumps",
@@ -37,18 +38,23 @@ __all__ = [
     "folder_listing",
     "folder_plan",
     "mail_plan",
+    "mail_result",
     "mark_plan",
     "message",
     "message_listing",
+    "move_plan",
     "old_name",
     "optimize_plan",
     "placement",
     "plan",
+    "removal_plan",
+    "rename_plan",
     "rules_report",
     "script_change_result",
     "scripts",
     "sender_report",
     "step",
+    "switch_plan",
 ]
 
 JSON_VERSION = 2
@@ -471,6 +477,76 @@ def add_plan(record, spec, missing) -> dict:
 
 
 # ----------------------------------------------------------------------------
+def apply_plan(criteria, spec, folder, max_messages: int, mail) -> dict:
+    """``filter apply``: what the existing-mail pass would do. ``mail`` is
+    null, and ``changes`` false, where the actions leave matching mail as
+    it is, so nothing was searched; ``over_limit`` is whether more match
+    than ``max_messages``, which refuses the whole pass."""
+    return plan(
+        "filter apply",
+        changes=bool(mail and mail.changes),
+        criteria=criteria.to_dict(),
+        actions=actions(spec),
+        folder=folder_plan(folder),
+        max_messages=max_messages,
+        over_limit=bool(mail and mail.count > max_messages),
+        mail=None if mail is None else mail_plan(mail),
+    )
+
+
+# ----------------------------------------------------------------------------
+def removal_plan(record) -> dict:
+    """``filter remove``: the filter taken out, not yet uploaded."""
+    return plan(
+        "filter remove",
+        **change(record.before != record.after, record.diff),
+        filter=record.rule,
+        **activation(record),
+    )
+
+
+# ----------------------------------------------------------------------------
+def move_plan(record) -> dict:
+    """``filter move``: where the filter is and where it would be, both
+    counting from 1 over ``count`` filters, and what the new place would
+    stop or be stopped by."""
+    return plan(
+        "filter move",
+        **change(record.changes, record.diff),
+        filter=record.rule,
+        from_position=record.from_index + 1,
+        to_position=record.to_index + 1,
+        count=record.count,
+        placement=placement(record.placement),
+        **activation(record),
+    )
+
+
+# ----------------------------------------------------------------------------
+def switch_plan(record) -> dict:
+    """``filter enable`` or ``filter disable``, as ``enable`` says."""
+    return plan(
+        "filter enable" if record.enable else "filter disable",
+        **change(record.changes, record.diff),
+        filter=record.rule,
+        enable=record.enable,
+        **activation(record),
+    )
+
+
+# ----------------------------------------------------------------------------
+def rename_plan(record) -> dict:
+    """``filter rename``: the filter's name now, and the one asked for."""
+    return plan(
+        "filter rename",
+        **change(record.changes, record.diff),
+        filter=record.rule,
+        new_name=record.new_name,
+        **activation(record),
+    )
+
+
+# ----------------------------------------------------------------------------
 def mark_plan(record) -> dict:
     """``mark``: the flags asked for, and what each message would gain and
     lose -- only what would really change, so both are empty for a message
@@ -569,17 +645,39 @@ def optimize_plan(record) -> dict:
 
 
 # ----------------------------------------------------------------------------
-def script_change_result(command: str, record, backup: Path) -> dict:
-    """What a filter-set change did once carried out: the filter, the
-    filter set, whether it is now the active one, and where the copy
-    taken before the upload was written."""
+def script_change_result(
+    command: str, name: str | None, record, backup: Path
+) -> dict:
+    """What a filter-set change did once carried out: the filter it
+    changed, by the name it has once the change is made (null for a
+    change to the whole set), the filter set, whether it is now the
+    active one, and where the copy taken before the upload was
+    written."""
     return _document(
         result={
             "command": command,
-            "filter": record.name,
+            "filter": name,
             "filterset": record.script,
             "activated": record.activate,
             "backup": str(backup),
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def mail_result(record, mail) -> dict:
+    """What ``filter apply`` did once carried out: how many messages were
+    flagged, moved, deleted, and copied, from ``source`` to
+    ``destination`` (empty where nothing is filed)."""
+    return _document(
+        result={
+            "command": "filter apply",
+            "source": mail.source,
+            "destination": mail.destination,
+            "flagged": record.flagged,
+            "moved": record.moved,
+            "deleted": record.deleted,
+            "copied": record.copied,
         }
     )
 

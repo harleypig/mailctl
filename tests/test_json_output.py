@@ -24,7 +24,7 @@ from mailctl.config import (
     Secret,
     Source,
 )
-from mailctl.providers.base import FolderCreation
+from mailctl.providers.base import FolderCreation, MailActionResult
 from mailctl.providers.model import FILEINTO, OTHER, STOP, ActionStep
 from mailctl.providers.mxroute.sieve import _ACTION_KINDS
 from mailctl.rules import Rule
@@ -447,7 +447,7 @@ def test_an_execute_result_names_what_it_did_and_where_the_backup_is():
     )
 
     assert json_output.script_change_result(
-        "filter add", record, Path("/b/managesieve.sieve")
+        "filter add", record.name, record, Path("/b/managesieve.sieve")
     ) == {
         "version": json_output.JSON_VERSION,
         "result": {
@@ -456,6 +456,38 @@ def test_an_execute_result_names_what_it_did_and_where_the_backup_is():
             "filterset": "managesieve",
             "activated": True,
             "backup": "/b/managesieve.sieve",
+        },
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_a_change_to_the_whole_filter_set_names_no_filter():
+    record = argparse.Namespace(script="managesieve", activate=False)
+    result = json_output.script_change_result(
+        "filter optimize", None, record, Path("/b/managesieve.sieve")
+    )["result"]
+
+    assert result["filter"] is None
+    assert result["activated"] is False
+
+
+# ----------------------------------------------------------------------------
+def test_an_existing_mail_result_counts_each_thing_done_and_where():
+    """Red if a count is dropped or read from the wrong field of the
+    result: a client reports these to the user as what happened."""
+    done = MailActionResult(flagged=1, moved=2, deleted=3, copied=4)
+    plan = argparse.Namespace(source="INBOX", destination="INBOX.Lists")
+
+    assert json_output.mail_result(done, plan) == {
+        "version": json_output.JSON_VERSION,
+        "result": {
+            "command": "filter apply",
+            "source": "INBOX",
+            "destination": "INBOX.Lists",
+            "flagged": 1,
+            "moved": 2,
+            "deleted": 3,
+            "copied": 4,
         },
     }
 

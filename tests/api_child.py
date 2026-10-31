@@ -14,9 +14,17 @@ only its SHA-256, which a login is checked against, so a password that
 reached the connection is known to have done so without being written
 anywhere.
 
+What the IMAP double is asked to write is appended to the file's
+``imap_writes``, and its UIDVALIDITY is read from the file on every
+SELECT, so a test can see what an execute did to the mail and renumber a
+folder between a plan and its execute. ``MAILCTL_TEST_DECLINE`` names
+capabilities, comma separated, the provider is to declare false, so a
+test reaches the refusal a provider without them meets.
+
 Nothing here prints. Whatever this process writes to stdout is the API's.
 """
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -30,6 +38,19 @@ from imapclient.exceptions import LoginError
 from mailctl import api
 from mailctl.components.imap import client as imap_client
 from mailctl.components.managesieve import client as sieve_client
+from mailctl.providers import registry
+
+# Every IMAP command the double takes that changes the mailbox.
+IMAP_WRITES = (
+    "add_flags",
+    "remove_flags",
+    "move",
+    "copy",
+    "uid_expunge",
+    "expunge",
+    "create_folder",
+    "subscribe_folder",
+)
 
 STATE = Path(os.environ["MAILCTL_TEST_STATE"])
 
@@ -137,6 +158,18 @@ def imap_double() -> FakeIMAPClient:
 
     client.login = login
 
+    for name in IMAP_WRITES:
+        setattr(client, name, recorded(name, getattr(client, name)))
+
+    select = client.select_folder
+
+    def selecting(folder, readonly=True):
+        client.uidvalidity.update(load().get("uidvalidity", {}))
+
+        return select(folder, readonly)
+
+    client.select_folder = selecting
+
     alert = state.get("alert")
 
     # Sent during every SEARCH, so a second search meets it again: the
@@ -158,12 +191,42 @@ def imap_double() -> FakeIMAPClient:
 
 
 # ----------------------------------------------------------------------------
+def recorded(name: str, write):
+    """``write``, appending its name and arguments to the file's
+    ``imap_writes`` before it runs."""
+
+    def call(*args):
+        state = load()
+        state.setdefault("imap_writes", []).append(
+            json.loads(json.dumps([name, *args], default=str))
+        )
+        save(state)
+
+        return write(*args)
+
+    return call
+
+
+# ----------------------------------------------------------------------------
+def decline(names: str) -> None:
+    """Register mxroute again, declaring each capability ``names`` lists
+    false."""
+    provider = registry.PROVIDERS["mxroute"]
+    declined = {name: False for name in names.split(",") if name}
+    registry.PROVIDERS["mxroute"] = dataclasses.replace(
+        provider,
+        capabilities=dataclasses.replace(provider.capabilities, **declined),
+    )
+
+
+# ----------------------------------------------------------------------------
 def refuse_network(*_args, **_kwargs):
     raise OSError("the API test double opens no socket")
 
 
 if __name__ == "__main__":
     socket.socket.connect = refuse_network  # type: ignore[method-assign]
+    decline(os.environ.get("MAILCTL_TEST_DECLINE", ""))
 
     double = imap_double()
     imap_client.IMAPClient = lambda *_a, **_k: double  # type: ignore[assignment]
