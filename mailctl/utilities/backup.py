@@ -28,11 +28,17 @@ from .scripts import (
 
 @dataclass(frozen=True)
 class BackupPlan:
-    """The active script, and where a copy of it would be written."""
+    """The active script, and where a copy of it would be written.
+
+    ``numbered`` is True where mailctl chose the file's name, so a file
+    already there is kept and the next free name taken; a name the user
+    gave is refused instead (``write_backup``).
+    """
 
     script: str
     source: str
     target: Path
+    numbered: bool
 
 
 # ----------------------------------------------------------------------------
@@ -62,14 +68,19 @@ def plan_backup(
 
     source = session.transport.read_rule_set(name)
     target = session.dialect.backup_target(output, name, config.backup_dir)
+    numbered = output is None or target != Path(output)
 
-    return BackupPlan(name, source, target)
+    return BackupPlan(name, source, target, numbered)
 
 
 # ----------------------------------------------------------------------------
 def execute_backup(plan: BackupPlan) -> Path:
-    """Write the server's exact bytes to the planned target."""
-    return write_backup(plan.source, plan.target)
+    """Write the server's exact bytes to a new file, and return it.
+
+    That is the planned target, or with ``plan.numbered`` the next free
+    name beside it where a file already holds the target.
+    """
+    return write_backup(plan.source, plan.target, plan.numbered)
 
 
 # ----------------------------------------------------------------------------

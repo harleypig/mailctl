@@ -245,7 +245,7 @@ def upload_script(
     check_backup_location(config, target, "backup_dir")
 
     current = require_unchanged(session, name, before, active)
-    path = write_backup(current, target)
+    path = write_backup(current, target, numbered=True)
     emit(ScriptBackedUp(name, path))
 
     transport.check_rule_set(after)

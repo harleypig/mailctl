@@ -12,12 +12,23 @@ from pathlib import Path
 
 from .. import MailctlError
 
-__all__ = ["write_backup", "write_private"]
+__all__ = ["FileTaken", "write_backup", "write_private"]
+
+
+class FileTaken(Exception):
+    """An exclusive write found a file already at its target."""
 
 
 # ----------------------------------------------------------------------------
-def write_backup(text: str, target: Path) -> Path:
-    """Write a script to ``target`` for the owner's eyes only.
+def write_backup(text: str, target: Path, numbered: bool = False) -> Path:
+    """Write a script to a new file at ``target`` for the owner's eyes only.
+
+    Returns the file written. A backup never replaces a file: one already
+    at ``target`` is refused, or, with ``numbered``, the first free name of
+    ``<stem>-2<suffix>``, ``<stem>-3<suffix>``, ... is taken instead. Pass
+    ``numbered`` for a name mailctl chose, never for one the user named.
+    Each name is created exclusively, so a file that appears between a
+    check and the write is never truncated.
 
     The file is created ``0600`` and any directory made for it ``0700``. A
     Sieve script is not a credential, but it does say who the user
@@ -29,16 +40,36 @@ def write_backup(text: str, target: Path) -> Path:
     script the server sent with CRLF line endings comes back byte for byte.
     A backup that is not byte-identical is not a backup.
     """
-    return write_private(text, target, "backup")
+    target = Path(target)
+    candidate, number = target, 1
+
+    while True:
+        try:
+            return write_private(text, candidate, "backup", exclusive=True)
+
+        except FileTaken:
+            if not numbered:
+                raise MailctlError(
+                    f"{candidate} already exists, and a backup never "
+                    f"replaces a file."
+                ) from None
+
+        number += 1
+        candidate = target.with_name(f"{target.stem}-{number}{target.suffix}")
 
 
 # ----------------------------------------------------------------------------
-def write_private(text: str, target: Path, what: str) -> Path:
+def write_private(
+    text: str, target: Path, what: str, exclusive: bool = False
+) -> Path:
     """Write ``text`` to ``target`` exactly, mode ``0600``, in ``0700``.
 
-    ``what`` names the file in the error a failed write raises.
+    ``what`` names the file in the error a failed write raises. Without
+    ``exclusive`` a file already at ``target`` is replaced; with it,
+    ``FileTaken`` is raised and the file is left as it was.
     """
     target = Path(target)
+    mode = "x" if exclusive else "w"
 
     try:
         _make_private_dir(target.parent)
@@ -50,13 +81,24 @@ def write_private(text: str, target: Path, what: str) -> Path:
             return os.open(path, flags, 0o600)
 
         with open(
-            target, "w", encoding="utf-8", newline="", opener=private
+            target, mode, encoding="utf-8", newline="", opener=private
         ) as stream:
             stream.write(text)
 
         os.chmod(target, 0o600)
 
     except OSError as exc:
+        # The directory step raises FileExistsError too, for a parent that
+        # is a file: a failed write, not a taken name.
+        taken = (
+            isinstance(exc, FileExistsError)
+            and exc.filename is not None
+            and Path(exc.filename) == target
+        )
+
+        if exclusive and taken:
+            raise FileTaken(target) from None
+
         raise MailctlError(
             f"could not write {what} to {target}: {exc}"
         ) from exc
