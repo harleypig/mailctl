@@ -41,9 +41,18 @@ compatibility:
   `execute_config_migration`) that lists what moves, honours `--dry-run` and
   `--yes`, moves by rename so every file keeps its mode, merges into a new
   directory that already exists, refuses outright if anything at the
-  destination would be overwritten, points a `config.toml` `password_file` /
-  `backup_dir` that named the old directory at the new one, and removes the
-  old directory once empty.
+  destination would be overwritten (coded `migration_conflict`), points a
+  `config.toml` `password_file` / `backup_dir` that named the old
+  directory at the new one, and removes the old directory once empty. A
+  path reached through a variable keeps the variable as written; one only
+  a variable reaches is refused, coded `migration_reference_unrewritable`,
+  rather than its value written into the file. The execute derives the
+  plan again and refuses, coded `migration_changed`, before anything moves
+  if either directory no longer matches it. The API offers it as
+  `config.migrate.plan` / `.execute` ([#279][i279]); its plan carries
+  `config.toml`'s path keys, never its text, and its result says
+  `restart: true`, because a process reads its settings once and only one
+  started after the move reads what moved.
 - **An old setting name is a finding, by name only.**
   `config.LEGACY_ENV_NAMES` is the table of every old name and its new one.
   An old name present — in the environment or the env file — without its new
@@ -190,8 +199,8 @@ layer may call.
     uploaded. `upload_script` is the one upload path, and takes the backup
     first.
   - `backup.py` — backing up the active script, and restoring one.
-  - `backup_files.py` — writing a backup's exact bytes to disk, and a
-    baseline's.
+  - `backup_files.py` — writing a backup's exact bytes to a new file, and
+    a baseline's over its old one.
   - `baseline.py` — a saved probe per host, and drift from it: the
     comparison is a pure function over two probe records and what the
     active script requires.
@@ -199,7 +208,9 @@ layer may call.
     read-only plan of what changes per message, then separate add and
     remove writes.
   - `folders.py` — listing and subscribing folders, and planning a rule's
-    target folder (created on execute only).
+    target folder (created on execute only). The existing-mail pass saves
+    no rule, so it plans its folder with `delivery_route=False` and never
+    asks the rules half.
   - `folder_rename.py` — a folder renamed with the folders under it, their
     subscriptions carried, and the rules filing into them repointed in
     place; then the account read back.
@@ -217,6 +228,10 @@ layer may call.
     extension's state.
   - `server_report.py` — which servers no module recognised, and the
     redacted issue body `server probe --report` prints for them ([#39][i39]).
+  - `server_test.py` — everything `server test` reports, gathered as one
+    record from the same probes (`examine_servers`), read-only, for a
+    front-end that wants the whole of it at once; the API's `server.test`
+    returns it.
   - `events.py` — the steps of a change, as a front-end is told of them,
     and `ServerAlert` re-exported for a front-end to recognise one.
   - `uids.py` — a UID kept between runs, pinned to the folder's
@@ -437,7 +452,12 @@ returns the id beside the plan's document; the `.execute` method takes the
 id and nothing the plan already holds, so what was shown is what runs. An
 id is used once: executed, failed, or discarded (`plan.discard`), it is
 gone, and using it again is refused, coded `plan_unknown`. That is the
-session's *a write is never sent again* held across a lost response.
+session's *a write is never sent again* held across a lost response. An
+execute checks its parameters before it takes the plan, so a request
+refused as malformed leaves the plan to run. And an execute of a plan that
+changes nothing is refused, coded `nothing_to_change`, as the CLI stops
+after showing one; `filter.add.execute` is the exception and carries it
+out, as `filter add` does.
 
 **Nothing below the front-end writes to the terminal, progress included.**
 `--verbose` protocol chatter leaves `SieveSession` and `ImapSession` through
@@ -488,14 +508,22 @@ is a gap in the others, not a design choice.
 `mail.search`, and a write command as a pair, `filter.add.plan` and
 `filter.add.execute` — so the API and the help name an operation alike;
 `initialize`, `shutdown`, and `plan.discard` are the protocol's own.
-`tests/test_api.py` holds every other method to a command of the CLI. The
-API offers `filter list`, `mail search`, `mail view`, and `filter add`
-([#258][i258]). `mail.search` takes `like` and `build_filter`, the CLI's
-`--like` and `--build-filter`, and each filter in `filter.list` carries
-its neutral `steps` beside its `actions` ([#259][i259]), so a client
-fills a filter in from a message and words what a filter does without
-deriving either itself. Every other command is a gap in the API under
-this rule, left to the later slices [ADR 0008][adr8] names.
+**The API offers every command but `help`** ([#258][i258],
+[#279][i279]). `help` is the CLI's help for its own command line; a client
+learns what it can call from `initialize`'s capabilities and the method
+set. `tests/test_api.py` holds this in both directions: every other method
+is a command of the CLI, and every command has a method unless
+`NOT_IN_THE_API` names it with its reason, so a command added later fails
+until it has one or the other. A command that changes something is a
+pair, without the CLI's `--dry-run`, `--yes`, and `--json`, since the plan
+is the dry run and calling execute is the confirmation. `filterset.backup`
+is one method, with `dry_run`: nothing on the server changes and the CLI
+asks nothing, so there is no decision for a plan to wait on. Each method
+opens the halves its CLI command opens. `mail.search` takes `like` and
+`build_filter`, the CLI's `--like` and `--build-filter`, and each filter in
+`filter.list` carries its neutral `steps` beside its `actions`
+([#259][i259]), so a client fills a filter in from a message and words
+what a filter does without deriving either itself.
 
 **An interface may leave out an operation that does not fit its medium**
 (operator, 2026-09-28, [#145][i145]). "Next message" is a stateless
@@ -647,7 +675,9 @@ refused above `--max-messages` (default 5000) before any header is read.
 
 **`--json` is offered where the output is data a script consumes**
 ([#151][i151]). A report for a person, such as `server test`, offers none, and
-its layout is not a contract; the contract is its exit code. On a write
+its layout is not a contract; the contract is its exit code. The API's
+`server.test` returns a document of its own instead, built from the same
+probes by `utilities.server_test`, never from the CLI's text. On a write
 command `--json` prints the `--dry-run` plan and is refused without
 `--dry-run`, since a document on stdout leaves no room for a prompt; stdout
 holds the document alone, and a failure is one JSON line on stderr.
@@ -963,7 +993,11 @@ and the active script per account; `server baseline check` compares a fresh
 probe with it and says what each difference means for the account, exiting 0,
 3 (informational drift), or 4 (serious drift). The file is on one machine and
 is not versioned, so the record still transcribes what a probe saw; a refresh
-is *save a baseline, then copy what changed into the record*.
+is *save a baseline, then copy what changed into the record*. A save is
+refused, coded `baseline_changed`, with nothing written, when the file is
+no longer what its plan read ([#279][i279]): a plan carries every other
+account's part of the file as it read them, so writing over a save made
+since would lose that account's part.
 
 ### Discover, don't hardcode
 
@@ -1033,14 +1067,24 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   by the literal's declared length, CRLF and final newline included
   ([#90][i90]), and `write_backup` writes what it was handed, with newline
   translation off, mode `0600` in a directory
-  created `0700`. Nothing decorates it — `mailctl filterset show` adds banner
-  lines for a reader and is therefore *not* a backup, which is exactly the
+  created `0700`. **A backup never replaces a file** ([#330][i330]). It
+  is named `<set>-<YYYYmmddTHHMMSS.mmmZ>.sieve`, UTC to the millisecond,
+  and created exclusively. Where mailctl chose the name, a clash takes the
+  next free one, `<stem>-2.sieve`, `-3`, and on; where the user named the
+  file (`filterset backup --output FILE`), a clash is refused and the file
+  kept. A baseline is the exception: refreshing one is an explicit
+  command, so it replaces its file. Nothing decorates a backup —
+  `mailctl filterset show` adds banner lines for a reader and is therefore
+  *not* a backup, which is exactly the
   trap redirecting `filterset show` to a file used to set. `mailctl filterset
   restore` puts one back over the active script only: it shows a raw diff,
   asks for confirmation, backs up the current script, and runs CHECKSCRIPT
   before sending. It is the one write path that replaces instead of merging,
   and it may replace a script mailctl cannot parse ([ADR 0005][adr5],
-  [#13][i13]).
+  [#13][i13]). It refuses, unopened, a file this run reads the password
+  from — a password file from any rung, or the env file, links followed —
+  coded `credential_file`, since its contents would come back as the diff
+  (*Credentials*).
 - **Show, then change.** Every mutating subcommand works out what would
   change, shows it (a diff for the script, a preview for the messages), and
   only then applies it. `--dry-run` stops after the "show it" step.
@@ -1157,6 +1201,12 @@ and it is enforced by construction rather than by care:
   file, a command, or a setting is kept. On either interface, a password
   IMAP cannot send, since imaplib sends `LOGIN` as ASCII, is refused as
   `credentials_not_ascii`, quoting nothing.
+- **The API expands nothing in a path a client sends.** The client has no
+  shell on the API's host, so `filterset.restore`'s `file` is read as
+  given, and every message names it as given: expanded,
+  `$MAILCTL_PASSWORD` would be the password. A restore of a password file
+  or the env file is refused, coded `credential_file`, on either interface
+  (*Rule conventions*).
 - The same bar binds test doubles and throwaway debug shims. To tell two
   credentials apart, emit a non-reversible discriminator (a literal
   `set`/`unset`, a length, a short hash prefix) — never the value. See the
@@ -1605,6 +1655,8 @@ will read it.
 [i265]: https://github.com/harleypig/mailctl/issues/265
 [i307]: https://github.com/harleypig/mailctl/issues/307
 [i308]: https://github.com/harleypig/mailctl/issues/308
+[i279]: https://github.com/harleypig/mailctl/issues/279
+[i330]: https://github.com/harleypig/mailctl/issues/330
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147
