@@ -30,6 +30,118 @@ pipx install .               # same, via pipx
 The console entry point is `mailctl` (`mailctl.cli:main`), and
 `python -m mailctl` works from a checkout without installing anything.
 
+## What v1 promises
+
+From `v1.0.0` on, everything under *Frozen* below stays as it is for every
+1.x release. A change that breaks any of it ships only in a new major
+version, 2.0.0, and is listed under `BREAKING CHANGES:` in the
+[changelog](CHANGELOG.md). Everything under *Free to change* can change in
+any release. The operator settled the two open questions on [#282]: the
+API is frozen as well as the command line, and a break after v1 is clean,
+with no deprecation period.
+
+### Frozen
+
+**The command line (`mailctl`):**
+
+1. **Command paths and their options.** Every `mailctl <group> <action>`
+   path, and every option each takes, keeps its name and meaning. An
+   option may gain new accepted values. It never loses one.
+2. **Exit status.** `0` done, including "nothing to change". `1` a
+   failure or refusal. `2` the command line was rejected. `3` and `4`
+   `server baseline check` drift, informational and serious. `130`
+   interrupted.
+3. **`--json` documents.** Every document listed under *Output for
+   scripts* in the [README](README.md), at `"version": 2`. stdout holds
+   the document alone. A failure or refusal, exit status 1, is one JSON
+   line, the last one on stderr.
+4. **Documents with their own version.** The filter document
+   (`--build-filter --json`, read by `--filter`), version 1; the `server
+   probe --json` document, version 1; a saved baseline, version 1; and
+   the drift report, version 1. Each keeps its own version number.
+   mailctl 1.x reads every filter document and baseline that any 1.x
+   release wrote.
+5. **`mail search --uids-only`**: one UID per line, nothing else.
+6. **Error codes.** A refusal that carries a `code` keeps that code. A
+   code is never renamed or removed, and never reused for a different
+   condition. New codes may be added, and a refusal with no code may gain
+   one. A script should treat an unknown code as an ordinary failure.
+7. **Settings.** Every `MAILCTL_*` variable, every `config.toml` key, the
+   config directory (`$XDG_CONFIG_HOME/mailctl/`), the order settings are
+   resolved in (flag, env file, environment, config file, default), and
+   the password ladder.
+8. **Backups.** Where they go by default
+   (`$XDG_CONFIG_HOME/mailctl/backups`), that each holds the server's
+   exact bytes, that one never replaces another file, and the file name
+   `<filterset>-<YYYYmmddTHHMMSS.mmmZ>.sieve`.
+9. **Safety behaviour.** Merge, never overwrite. A backup before every
+   upload. *Show, then change*. The `--max-messages` ceiling. The refusal
+   when the filter set changed, or another was made active, since the
+   plan was shown. No 1.x release removes or weakens any of these.
+
+**The API (`mailctl-api`):**
+
+1. **The carrier and framing.** JSON-RPC 2.0 over stdin and stdout, one
+   message per line. stderr is diagnostics only.
+2. **The protocol, at version 1** (`initialize`'s `protocol`). Method
+   names, their parameters, and their results. The plan, decide and
+   execute pairing, with single-use plan ids, and at least the newest
+   32 plans kept waiting. `credentials.prompt`. `$/cancelRequest` and
+   `-32800`. The notifications `event`, `server.alert` and `log`, and
+   every event `kind`. The JSON-RPC error codes in the README's table,
+   and a refusal's `data.code`, held to the same rule as the command
+   line's error codes.
+3. **Results are the `--json` documents**, at the same version.
+
+**The Docker image:**
+
+1. **How it is run.** The `/config/mailctl` mount it requires, the
+   refusal to run as root, `MAILCTL_BACKUP_ROOT` fixed to the mount, and
+   the first word that picks what runs: `api` for the API, `tui` for the
+   terminal UI, and anything else passed to `mailctl`. The image is not
+   published, so this covers building and running it from a checkout.
+
+### Additive, so allowed in any 1.x release
+
+- A new command, group, or API method.
+- A new optional option or parameter, whose absence means what it meant
+  before.
+- A new key in a JSON document, or a new event `kind`. Consumers must
+  ignore keys they do not know.
+- A new error code, or a code on a refusal that had none.
+- A new provider, or a new capability a provider declares.
+- A refusal of something that was always unsafe or wrong, where accepting
+  it was a bug.
+
+### Free to change
+
+- Every message meant for a person: stderr text, prompts, progress and
+  event lines, the wording of an error's `message`. Scripts branch on
+  exit status and `code`, never on text.
+- The layout of `server test`, the `server probe` text report, and
+  `server baseline show`'s text output. Their exit status is frozen and
+  their text is not.
+- Help text and its layout.
+- What `--verbose` and the API's `log` notification carry.
+- The order of entries where a document does not say it is ordered.
+- Everything inside the Python package. mailctl offers no Python library:
+  `import mailctl` is not supported, whatever it exposes.
+- The TUI (`mailctl-tui`). It is a separate package with its own version
+  number, and its screens, keys and options are not covered by mailctl's
+  v1. It reaches mailctl only through the API, which is frozen.
+- The provider record's observations about MXroute, which describe the
+  host rather than mailctl.
+
+### How a break is made after v1
+
+A break waits for the next major version. When it lands, it is a **clean
+break, with no aliases**. The old command, option, or setting name is
+refused with a message naming its replacement, as `mxfilter` was in the
+rename and the flat command names were in 0.11.0. A retired command or
+option fails with exit status 2. A retired setting name is reported by
+name and never read. A document key that changes raises that document's
+`version`. An API change that breaks raises `protocol`.
+
 ## Cutting a tag
 
 Versioning is `repo`-scope semver — the full policy is in
@@ -42,11 +154,14 @@ short:
 - **No API-major alignment.** The sibling provider ties its MAJOR to the
   MXroute REST API's major; this tool speaks ManageSieve and IMAP, which have
   no vendor version to track. Do not import that policy.
-- The `0 → 1` jump is a deliberate decision of its own, and is not near.
-  **One gate on it is recorded:** the rename (`mxfilter` → `mailctl`, and
-  `MXROUTE_*` → `MAILCTL_*`) had to land before v1, because a name is part
-  of the compatibility promise v1 makes and renaming afterwards costs a
-  major version. It has landed (#45), so that gate is met.
+- **`v1.0.0` is the tag that makes the promise in *What v1 promises*,
+  below.** From it on, a break waits for a new major version. Two gates
+  on it are recorded. The rename (`mxfilter` → `mailctl`, and
+  `MXROUTE_*` → `MAILCTL_*`) had to land first, because a name is part of
+  the promise and renaming afterwards costs a major version; it has
+  landed (#45). And every refusal, the command line's own checks on its
+  arguments included, is to carry a `code` before the promise freezes the
+  codes (#352); that gate is open.
 
 Steps:
 
@@ -73,3 +188,5 @@ the sibling provider: there, pushing a tag triggers a Registry release that
 marker on history — cheap, and carrying no outward-facing consequence. It is
 still immutable once pushed (`git.md`): a mistake gets a **new** tag, never a
 moved one.
+
+[#282]: https://github.com/harleypig/mailctl/issues/282
