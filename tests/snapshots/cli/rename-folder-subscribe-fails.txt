@@ -45,7 +45,7 @@ Checked after the rename:
   FAIL  'INBOX.Archive' is subscribed, as 'INBOX.Lists' was -- webmail will not show it; 'mailctl folder subscribe INBOX.Archive' fixes it
   ok    'INBOX.Lists' is off the subscription list
   ok    the 1 folder under it moved with it
-  FAIL  those subscribed before are subscribed now -- 'INBOX.Archive.GitHub' is not
+  FAIL  'INBOX.Archive.GitHub' is subscribed, as 'INBOX.Lists.GitHub' was -- webmail will not show it; 'mailctl folder subscribe INBOX.Archive.GitHub' fixes it
   ok    'INBOX.Archive' holds 360 messages; 'INBOX.Lists' held 360
   ok    no filter in 'managesieve' files into 'INBOX.Lists' or a folder under it
 
