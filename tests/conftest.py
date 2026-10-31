@@ -332,6 +332,10 @@ class FakeIMAPClient:
         self.calls.append(("logout",))
 
     # ------------------------------------------------------------------------
+    def shutdown(self) -> None:
+        self.calls.append(("shutdown",))
+
+    # ------------------------------------------------------------------------
     def list_folders(self):
         self._maybe_fail("list_folders")
 

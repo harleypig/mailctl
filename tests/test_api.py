@@ -3768,6 +3768,51 @@ def test_a_cancel_while_the_password_is_asked_ends_the_wait(start):
 
 
 # ----------------------------------------------------------------------------
+def open_imap(client: ChildClient) -> int:
+    """How many IMAP connections the double holds open."""
+    state = client.read_state()
+
+    return state.get("imap_opened", 0) - state.get("imap_closed", 0)
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_while_the_password_is_asked_closes_the_connection(start):
+    """The IMAP connection is made before the password is asked for, so a
+    cancel during the prompt leaves one open with nobody logged in. It is
+    closed as the request stops; the next request connects afresh, asks
+    again, and logs in on one connection. Red if the cancelled half's
+    socket is left open until the session ends (two open after the next
+    request, one after the cancel)."""
+    client = start(password=SENTINEL, configured=False)
+    client.request("initialize")
+    search = post(client, "mail.search", {"filter": GITHUB_FILTER})
+
+    assert client.receive()["method"] == "credentials.prompt"
+    assert open_imap(client) == 1
+
+    cancel(client, search)
+
+    assert client.until(search)["error"] == CANCELLED
+    assert client.read_state()["imap_opened"] == 1
+    assert open_imap(client) == 0
+
+    client.answer = {"result": {"password": SENTINEL}}
+    viewed = client.request("mail.view", {"uid": 1})
+
+    assert viewed["result"]["message"]["uid"] == 1
+    assert client.prompted == 1
+    assert client.read_state()["logins"] == 1
+    assert open_imap(client) == 1
+
+    client.request("shutdown")
+    code, stderr = client.close()
+
+    assert code == 0
+    assert open_imap(client) == 0
+    nowhere(client, stderr, SENTINEL)
+
+
+# ----------------------------------------------------------------------------
 def test_a_password_command_gets_no_input_and_the_client_is_still_heard(
     start, tmp_path, monkeypatch
 ):
