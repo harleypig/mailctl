@@ -7,7 +7,7 @@ runs.
 
 import gc
 
-from conftest import FILTERS, SIZE, digest, settle
+from conftest import FILTERS, SIZE, digest, reach, settle
 from mailctl_tui.app import MailctlApp, PasswordScreen
 from rich.text import Text
 from textual.widgets import DataTable, Input, RichLog, Static
@@ -185,7 +185,7 @@ async def test_the_password_is_asked_masked_and_kept_nowhere(scene):
     app = scene.app()
 
     async with app.run_test(size=SIZE) as pilot:
-        await settle(pilot, lambda: isinstance(app.screen, PasswordScreen))
+        await reach(pilot, app, PasswordScreen)
 
         field = app.screen.query_one(Input)
 
@@ -229,7 +229,7 @@ async def test_a_declined_prompt_is_answered_as_declined(scene):
     app = scene.app()
 
     async with app.run_test(size=SIZE) as pilot:
-        await settle(pilot, lambda: isinstance(app.screen, PasswordScreen))
+        await reach(pilot, app, PasswordScreen)
         await pilot.press("escape")
         await settle(pilot, lambda: "refused" in shown(app, "#status"))
 

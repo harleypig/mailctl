@@ -16,6 +16,7 @@ from conftest import (
     LISTING,
     PLAN,
     SIZE,
+    reach,
     settle,
 )
 from mailctl_tui.screens import (
@@ -68,7 +69,7 @@ async def ready(pilot, app) -> None:
 async def search(pilot, app, folder: str = "Lists", sender: str = "") -> None:
     await ready(pilot, app)
     await pilot.press("s")
-    await settle(pilot, lambda: isinstance(app.screen, SearchScreen))
+    await reach(pilot, app, SearchScreen)
     app.screen.query_one("#folder", Input).value = folder
     app.screen.query_one("#search-from", Input).value = sender
     app.screen.query_one("#folder", Input).focus()
@@ -80,14 +81,14 @@ async def search(pilot, app, folder: str = "Lists", sender: str = "") -> None:
 async def open_message(pilot, app) -> None:
     await search(pilot, app)
     await pilot.press("enter")
-    await settle(pilot, lambda: isinstance(app.screen, MessageScreen))
+    await reach(pilot, app, MessageScreen)
 
 
 # ----------------------------------------------------------------------------
 async def open_form(pilot, app) -> None:
     await open_message(pilot, app)
     await pilot.press("a")
-    await settle(pilot, lambda: isinstance(app.screen, AddScreen))
+    await reach(pilot, app, AddScreen)
 
 
 # ----------------------------------------------------------------------------
@@ -96,7 +97,7 @@ async def open_plan(pilot, app) -> None:
     app.screen.query_one("#move_to", Input).value = "GitHub"
     app.screen.query_one("#mark_read", Checkbox).value = True
     await pilot.press("ctrl+s")
-    await settle(pilot, lambda: isinstance(app.screen, PlanScreen))
+    await reach(pilot, app, PlanScreen)
 
 
 # ----------------------------------------------------------------------------
@@ -164,7 +165,7 @@ async def test_an_empty_search_leaves_the_folder_to_the_api(scene):
     async with app.run_test(size=SIZE) as pilot:
         await ready(pilot, app)
         await pilot.press("s")
-        await settle(pilot, lambda: isinstance(app.screen, SearchScreen))
+        await reach(pilot, app, SearchScreen)
         await pilot.press("enter")
         await settle(
             pilot, lambda: "No messages" in shown(app, "#search-status")
@@ -401,7 +402,7 @@ async def test_cancelling_the_plan_discards_it(scene):
     async with app.run_test(size=SIZE) as pilot:
         await open_plan(pilot, app)
         await pilot.press("escape")
-        await settle(pilot, lambda: isinstance(app.screen, AddScreen))
+        await reach(pilot, app, AddScreen)
 
     assert scene.params("plan.discard") == [{"plan_id": "p-1"}]
     assert scene.params("filter.add.execute") == []
@@ -464,7 +465,7 @@ async def test_a_failed_save_says_so_and_goes_back(scene):
         )
 
         await pilot.press("enter")
-        await settle(pilot, lambda: isinstance(app.screen, AddScreen))
+        await reach(pilot, app, AddScreen)
 
 
 # ############################################################################
@@ -555,7 +556,7 @@ async def test_the_filter_lists_keys_are_not_offered_over_it(scene):
         assert {"r", "s", "q"} <= footer_keys(app)
 
         await pilot.press("s")
-        await settle(pilot, lambda: isinstance(app.screen, SearchScreen))
+        await reach(pilot, app, SearchScreen)
 
         assert not footer_keys(app) & {"r", "s", "q"}
         assert app.check_action("search", ()) is False
@@ -573,7 +574,7 @@ async def test_webmail_visibility_is_sent_only_beside_creating(scene):
         await open_form(pilot, app)
         app.screen.query_one("#subscribe", Checkbox).value = False
         await pilot.press("ctrl+s")
-        await settle(pilot, lambda: isinstance(app.screen, PlanScreen))
+        await reach(pilot, app, PlanScreen)
 
     sent = scene.params("filter.add.plan")[0]
 
@@ -599,7 +600,7 @@ async def test_options_given_are_sent_and_defaults_left_to_the_api(scene):
         form.query_one("#where", Select).value = "before"
         form.query_one("#anchor", Select).value = "announce"
         await pilot.press("ctrl+s")
-        await settle(pilot, lambda: isinstance(app.screen, PlanScreen))
+        await reach(pilot, app, PlanScreen)
 
     sent = scene.params("filter.add.plan")[0]
 
