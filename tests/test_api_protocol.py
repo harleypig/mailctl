@@ -10,6 +10,7 @@ import argparse
 import io
 import json
 import os
+import resource
 import threading
 import time
 from collections.abc import Callable
@@ -18,6 +19,7 @@ from typing import TypeGuard
 import pytest
 
 from mailctl import MailctlError
+from mailctl.api import protocol
 from mailctl.api import server as server_module
 from mailctl.api.protocol import (
     INVALID_PARAMS,
@@ -316,6 +318,232 @@ def test_lines_split_across_reads_arrive_whole(size):
     assert link.receive() is None
 
 
+# ----------------------------------------------------------------------------
+def numbered(count: int) -> list[bytes]:
+    """``count`` request lines, ids 0 up."""
+    return [
+        b'{"jsonrpc": "2.0", "id": %d, "method": "filter.list"}\n' % n
+        for n in range(count)
+    ]
+
+
+# ----------------------------------------------------------------------------
+def unserved(link: Channel, count: int) -> None:
+    """Wait until ``count`` messages are read and not yet served."""
+    deadline = time.monotonic() + 5
+
+    while link._unserved < count:
+        assert time.monotonic() < deadline, "the lines were never read"
+        time.sleep(0.001)
+
+
+# ----------------------------------------------------------------------------
+def closed_within(link: Channel, seconds: float) -> bool:
+    """Whether ``close`` returned within ``seconds``; a close that hangs
+    is left to its daemon thread rather than hanging the run."""
+    closer = threading.Thread(target=link.close, daemon=True)
+    closer.start()
+    closer.join(seconds)
+
+    return not closer.is_alive()
+
+
+# ----------------------------------------------------------------------------
+def test_a_client_flooding_input_is_read_no_further_than_the_limit(
+    monkeypatch,
+):
+    """Every byte is in the reader's hands at its first read, so only the
+    bound stops it handing over all ten and ending (#346 - bound the input
+    queue). Red if the input thread reads past the limit, or if take,
+    moving what has arrived into the held messages, makes room for more."""
+    monkeypatch.setattr(protocol, "INBOX_LIMIT", 4)
+    link, _out = channel(*numbered(10))
+    unserved(link, 4)
+
+    # A thread that never waits ends at once; this one is waiting.
+    link._pump.join(timeout=0.5)
+
+    assert link._pump.is_alive()
+    assert link._inbox.qsize() == 4
+
+    link.take(nothing)
+    link._pump.join(timeout=0.5)
+
+    assert link._pump.is_alive()
+    assert len(link._held) + link._inbox.qsize() == 4
+
+    assert [ident(link.receive()) for _ in range(10)] == list(range(10))
+    assert link.receive() is None
+
+
+# ----------------------------------------------------------------------------
+def test_close_stops_an_input_thread_waiting_for_room(monkeypatch):
+    """Red if close leaves the thread waiting on a full inbox, so close
+    never returns."""
+    monkeypatch.setattr(protocol, "INBOX_LIMIT", 2)
+    link, _out = channel(*numbered(5))
+    unserved(link, 2)
+
+    assert closed_within(link, 5)
+
+    link._pump.join(timeout=5)
+
+    assert not link._pump.is_alive()
+
+
+# ----------------------------------------------------------------------------
+def test_a_wait_with_the_limit_held_is_declined_rather_than_hung(
+    monkeypatch,
+):
+    """While a password is asked, everything else the client sends is
+    held; once the limit is held the input thread reads no further, so
+    the answer can never arrive. The wait ends as a declined answer and
+    the held messages keep their turn. Red if the wait goes on reading:
+    it hangs."""
+    monkeypatch.setattr(protocol, "INBOX_LIMIT", 3)
+    link, _out = channel(*numbered(5))
+    declined: list[RpcError] = []
+
+    def ask() -> None:
+        try:
+            link.request("credentials.prompt", {})
+
+        except RpcError as error:
+            declined.append(error)
+
+    asker = threading.Thread(target=ask, daemon=True)
+    asker.start()
+    asker.join(5)
+
+    assert declined, "the wait never ended"
+    assert [ident(link.receive()) for _ in range(5)] == list(range(5))
+    assert link.receive() is None
+
+
+# ----------------------------------------------------------------------------
+def all_served(link: Channel) -> int:
+    """Receive what is left, then the count still taken as unserved: zero
+    unless a message left the channel without making room."""
+    while True:
+        try:
+            if link.receive() is None:
+                break
+
+        except RpcError:
+            pass
+
+    return link._unserved
+
+
+# ----------------------------------------------------------------------------
+def test_a_line_that_does_not_parse_while_an_answer_waits_makes_room():
+    """Each message consumed without making room costs a slot for good,
+    and after INBOX_LIMIT of them the API reads nothing more. Red if the
+    wait's declined bad line keeps its slot."""
+    link, _out = channel(b"{bad\n", REQUEST_8)
+    read_all(link)
+
+    with pytest.raises(RpcError):
+        link.request("credentials.prompt", {})
+
+    assert all_served(link) == 0
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_that_ends_a_wait_makes_room():
+    """Red if the cancel that ended the wait keeps its slot."""
+    link, _out = channel(REQUEST_8, CANCEL_7)
+    read_all(link)
+
+    with pytest.raises(RequestCancelled):
+        link.request("credentials.prompt", {}, interrupt=is_cancel)
+
+    assert all_served(link) == 0
+
+
+# ----------------------------------------------------------------------------
+def test_a_held_cancel_that_ends_a_wait_makes_room():
+    """Red if a cancel already held when the wait begins keeps its slot
+    when it is taken."""
+    link, _out = channel(REQUEST_8, CANCEL_7)
+    read_all(link)
+    link.take(nothing)
+
+    with pytest.raises(RequestCancelled):
+        link.request("credentials.prompt", {}, interrupt=is_cancel)
+
+    assert all_served(link) == 0
+
+
+# ----------------------------------------------------------------------------
+def test_an_input_descriptor_past_1024_is_read():
+    """``select`` refuses a descriptor of 1024 or more, which a process
+    holding many files hands out; the input then read as ended. Red if the
+    thread waits on the input with select."""
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+
+    if hard != resource.RLIM_INFINITY and hard < 1200:
+        pytest.skip("the descriptor limit stops short of 1024")
+
+    resource.setrlimit(resource.RLIMIT_NOFILE, (max(soft, 1200), hard))
+    filler = [os.open(os.devnull, os.O_RDONLY) for _ in range(1100)]
+
+    try:
+        reader, writer = os.pipe()
+
+        assert reader >= 1024
+
+        with open(reader, "rb", buffering=0) as stream:
+            link = Channel(stream, io.BytesIO())
+            os.write(writer, REQUEST_8)
+
+            assert ident(link.receive()) == 8
+
+            assert closed_within(link, 5)
+            os.close(writer)
+
+    finally:
+        for fd in filler:
+            os.close(fd)
+
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+
+
+class Blocking(io.RawIOBase):
+    """A stream with no descriptor whose read waits until released."""
+
+    # ------------------------------------------------------------------------
+    def __init__(self):
+        self.release = threading.Event()
+
+    # ------------------------------------------------------------------------
+    def readable(self) -> bool:
+        return True
+
+    # ------------------------------------------------------------------------
+    def readinto(self, buffer) -> int:
+        self.release.wait()
+        buffer[:1] = b"\n"
+
+        return 1
+
+
+# ----------------------------------------------------------------------------
+def test_close_does_not_wait_on_a_read_it_cannot_wake():
+    """With no descriptor there is nothing to wake the read, so close
+    leaves the thread to end at its next step, as a daemon. Red if close
+    joins it: run would never return."""
+    stream = Blocking()
+    link = Channel(stream, io.BytesIO())
+
+    assert closed_within(link, 5)
+
+    stream.release.set()
+    link._pump.join(timeout=5)
+
+    assert not link._pump.is_alive()
+
+
 # ############################################################################
 # Parameters
 # ############################################################################
@@ -511,8 +739,51 @@ def piped(monkeypatch):
     yield make
 
     for each in made:
+        each.link.close()
         each.close()
         each.reader.close()
+
+
+# ----------------------------------------------------------------------------
+def test_no_input_thread_is_left_reading_once_run_returns(piped):
+    """Run in-process, as a test or an embedding would: after shutdown the
+    client's pipe is still open and empty, and nothing may be left blocked
+    reading it (#346 - stop the reader). Red if run returns without
+    stopping the input thread."""
+    client = piped()
+    client.line(request(1, "shutdown"))
+    client.server.run()
+
+    assert [(a["id"], a.get("result")) for a in client.answers()] == [
+        (1, None)
+    ]
+    assert not client.link._pump.is_alive()
+    assert client.link._pump not in threading.enumerate()
+
+
+# ----------------------------------------------------------------------------
+def test_the_input_thread_is_stopped_even_when_closing_the_session_fails(
+    piped, monkeypatch
+):
+    """Red if a failure closing the session skips stopping the reader.
+    ``shutdown`` closes the session itself, so only run's own close, the
+    second, fails."""
+    client = piped()
+    calls: list[None] = []
+
+    def failing() -> None:
+        calls.append(None)
+
+        if len(calls) > 1:
+            raise RuntimeError("closing failed")
+
+    monkeypatch.setattr(client.server, "_close", failing)
+    client.line(request(1, "shutdown"))
+
+    with pytest.raises(RuntimeError):
+        client.server.run()
+
+    assert not client.link._pump.is_alive()
 
 
 # ----------------------------------------------------------------------------
