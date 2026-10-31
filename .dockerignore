@@ -1,10 +1,14 @@
-# Allowlist: the build needs the package, its metadata, and the entrypoint.
+# Allowlist: the build needs the package, the TUI's, their metadata, and
+# the entrypoint.
 # Everything else -- .git, tests, the venv, a local .env or config.toml --
 # stays out of the build context, so no credential can reach a layer.
 *
 !pyproject.toml
 !README.md
 !mailctl/
+!clients/tui/pyproject.toml
+!clients/tui/README.md
+!clients/tui/src/
 !docker/entrypoint.sh
 **/__pycache__
 **/*.py[cod]

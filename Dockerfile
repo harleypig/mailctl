@@ -1,4 +1,5 @@
-# A build-it-yourself image of mailctl: `make image`, or
+# A build-it-yourself image of mailctl -- the CLI, the API, and the TUI:
+# `make image`, or
 #   docker build -t mailctl .
 # Nothing is published; the README's *Docker* section says how to run it.
 #
@@ -17,11 +18,14 @@ WORKDIR /src
 
 COPY pyproject.toml README.md ./
 COPY mailctl ./mailctl
+COPY clients/tui ./clients/tui
 
-# pip compiles what it installs, which matters because the runtime user
-# cannot write __pycache__.
+# mailctl and the TUI share the venv, so the TUI finds mailctl-api on PATH
+# (ADR 0009); the TUI's Textual and Rich are its own dependencies, not
+# mailctl's. pip compiles what it installs, which matters because the
+# runtime user cannot write __pycache__.
 RUN python -m venv /opt/mailctl/venv \
-    && /opt/mailctl/venv/bin/pip install . \
+    && /opt/mailctl/venv/bin/pip install . ./clients/tui \
     && /opt/mailctl/venv/bin/pip uninstall --yes pip
 
 # ############################################################################
