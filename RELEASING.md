@@ -46,7 +46,9 @@ with no deprecation period.
 
 1. **Command paths and their options.** Every `mailctl <group> <action>`
    path, and every option each takes, keeps its name and meaning. An
-   option may gain new accepted values. It never loses one.
+   option may gain new accepted values. It never loses one. An option is
+   matched by its whole name, never by a prefix, so a new option cannot
+   change what an old command line means.
 2. **Exit status.** `0` done, including "nothing to change". `1` a
    failure or refusal. `2` the command line was rejected. `3` and `4`
    `server baseline check` drift, informational and serious. `130`
@@ -54,7 +56,9 @@ with no deprecation period.
 3. **`--json` documents.** Every document listed under *Output for
    scripts* in the [README](README.md), at `"version": 2`. stdout holds
    the document alone. A failure or refusal, exit status 1, is one JSON
-   line, the last one on stderr.
+   line, the last one on stderr. A command line rejected with exit status
+   2 ends the same way: its usage and reason come first, as text, and one
+   coded JSON line follows them.
 4. **Documents with their own version.** The filter document
    (`--build-filter --json`, read by `--filter`), version 1; the `server
    probe --json` document, version 1; a saved baseline, version 1; and
@@ -155,13 +159,14 @@ short:
   MXroute REST API's major; this tool speaks ManageSieve and IMAP, which have
   no vendor version to track. Do not import that policy.
 - **`v1.0.0` is the tag that makes the promise in *What v1 promises*,
-  below.** From it on, a break waits for a new major version. Two gates
+  above.** From it on, a break waits for a new major version. Two gates
   on it are recorded. The rename (`mxfilter` → `mailctl`, and
   `MXROUTE_*` → `MAILCTL_*`) had to land first, because a name is part of
   the promise and renaming afterwards costs a major version; it has
   landed (#45). And every refusal, the command line's own checks on its
-  arguments included, is to carry a `code` before the promise freezes the
-  codes (#352); that gate is open.
+  arguments included, had to carry a `code` before the promise freezes
+  the codes; that has landed too (#352). [docs/ERROR-CODES.md][codes] lists
+  them.
 
 Steps:
 
@@ -170,12 +175,12 @@ Steps:
    `release-tag` skill, which automates this:
 
    ```sh
-   git tag -a v0.1.0 -m "v0.1.0"
-   git push origin v0.1.0
+   git tag -a v1.0.0 -m "v1.0.0"
+   git push origin v1.0.0
    ```
 
 3. Move the accumulated [CHANGELOG.md](CHANGELOG.md) entries from
-   `## Unreleased` under a `## 0.1.0` heading in the same change, and bump
+   `## Unreleased` under a `## 1.0.0` heading in the same change, and bump
    `version` in `pyproject.toml`. That is the only file the version is
    written in: `mailctl.__version__`, and so `mailctl --version`, is read
    from the installed package's metadata (#106). An editable install
@@ -190,3 +195,4 @@ still immutable once pushed (`git.md`): a mistake gets a **new** tag, never a
 moved one.
 
 [#282]: https://github.com/harleypig/mailctl/issues/282
+[codes]: docs/ERROR-CODES.md
