@@ -15,7 +15,10 @@ reached the connection is known to have done so without being written
 anywhere.
 
 Each ManageSieve connection is counted in the file's ``sieve_connects``,
-so a test can see that a method never touched the rules half.
+and each IMAP login in its ``imap_connects``, so a test can see that a
+method never touched the half its command does not open. CHECKSCRIPT
+refuses every script where the file's ``checkscript`` is false, and the
+IMAP double advertises the file's ``imap_caps`` beside its own.
 
 What the IMAP double is asked to write is appended to the file's
 ``imap_writes``, and its UIDVALIDITY is read from the file on every
@@ -53,6 +56,8 @@ IMAP_WRITES = (
     "expunge",
     "create_folder",
     "subscribe_folder",
+    "unsubscribe_folder",
+    "rename_folder",
 )
 
 STATE = Path(os.environ["MAILCTL_TEST_STATE"])
@@ -116,7 +121,7 @@ class FileSieveClient:
 
     # ------------------------------------------------------------------------
     def checkscript(self, content: str) -> bool:
-        return True
+        return load().get("checkscript", True)
 
     # ------------------------------------------------------------------------
     def putscript(self, name: str, content: str) -> bool:
@@ -151,12 +156,17 @@ def imap_double() -> FakeIMAPClient:
         int(uid): raw.encode("utf-8") for uid, raw in state["messages"].items()
     }
     client.uidvalidity.update(state.get("uidvalidity", {}))
+    client.caps.update(state.get("imap_caps", []))
 
     def login(user, password):
         # As imaplib's _command sends LOGIN's arguments, so a password it
         # cannot send fails here as it does there, naming the character.
         bytes(user, "ascii")
         bytes(password, "ascii")
+
+        counted = load()
+        counted["imap_connects"] = counted.get("imap_connects", 0) + 1
+        save(counted)
 
         if not accepted(password):
             raise LoginError("[AUTHENTICATIONFAILED] Authentication failed.")

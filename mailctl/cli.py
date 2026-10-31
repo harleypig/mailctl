@@ -1357,13 +1357,10 @@ def cmd_restore(args) -> int:
 
             return emit_json(
                 args,
-                json_output.plan(
-                    "filterset restore",
-                    **json_output.change(plan.changes, plan.diff),
-                    source=str(plan.source),
-                    filters_before=count(sessions, plan.before),
-                    filters_after=count(sessions, plan.after),
-                    **json_output.activation(plan),
+                json_output.restore_plan(
+                    plan,
+                    count(sessions, plan.before),
+                    count(sessions, plan.after),
                 ),
             )
 
@@ -1637,16 +1634,7 @@ def cmd_subscribe(args) -> int:
 
         if args.json:
             return emit_json(
-                args,
-                json_output.plan(
-                    args.command,
-                    changes=plan.changes,
-                    requested=plan.requested,
-                    folder=plan.folder,
-                    delimiter=plan.delimiter,
-                    subscribe=plan.subscribe,
-                    subscribed_now=plan.subscribed_now,
-                ),
+                args, json_output.subscription_plan(args.command, plan)
             )
 
         if plan.requested != plan.folder:
@@ -1695,16 +1683,7 @@ def cmd_create_folder(args) -> int:
         target = plan.target
 
         if args.json:
-            return emit_json(
-                args,
-                json_output.plan(
-                    "folder create",
-                    changes=not plan.exists,
-                    folder=json_output.folder_plan(target),
-                    subscribed_now=plan.subscribed_now,
-                    missing_parents=list(plan.missing_parents),
-                ),
-            )
+            return emit_json(args, json_output.folder_creation_plan(plan))
 
         if target.requested != target.folder:
             print(

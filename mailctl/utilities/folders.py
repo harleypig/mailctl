@@ -512,6 +512,12 @@ class FolderCreationPlan:
         """Whether the folder is already there, so nothing is created."""
         return self.target.status == FOLDER_EXISTS
 
+    # ------------------------------------------------------------------------
+    @property
+    def changes(self) -> bool:
+        """Whether executing the plan would create anything."""
+        return not self.exists
+
 
 # ----------------------------------------------------------------------------
 def plan_folder_creation(

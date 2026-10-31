@@ -11,6 +11,7 @@ import argparse
 import json
 from dataclasses import fields, is_dataclass
 from pathlib import Path
+from typing import cast
 
 import pytest
 from cli_support import command_parsers
@@ -29,6 +30,11 @@ from mailctl.providers.model import FILEINTO, OTHER, STOP, ActionStep
 from mailctl.providers.mxroute.sieve import _ACTION_KINDS
 from mailctl.rules import Rule
 from mailctl.utilities import events
+from mailctl.utilities.folder_rename import (
+    FolderRenamePlan,
+    FolderRenameResult,
+    PostCondition,
+)
 from mailctl.utilities.migration import ConfigDirPending
 from mailctl.utilities.rules import RulesReport
 
@@ -490,6 +496,151 @@ def test_an_existing_mail_result_counts_each_thing_done_and_where():
             "copied": 4,
         },
     }
+
+
+# ----------------------------------------------------------------------------
+def test_a_filter_set_is_shown_as_its_text_and_null_where_it_will_not_parse():
+    """Red if the text is altered, or a set whose filters cannot be read
+    loses its text or reports an empty list for them."""
+    shown = json_output.filterset_source("managesieve", "keep;\r\n", ["a"])
+    broken = json_output.filterset_source("broken", "if {", None)
+
+    assert shown == {
+        "version": json_output.JSON_VERSION,
+        "filterset": {
+            "name": "managesieve",
+            "source": "keep;\r\n",
+            "filters": ["a"],
+        },
+    }
+    assert broken["filterset"]["filters"] is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_backup_result_says_where_and_whether_it_was_written():
+    record = argparse.Namespace(script="managesieve")
+
+    assert json_output.backup_result(
+        record, Path("/b/managesieve.sieve"), None, False
+    ) == {
+        "version": json_output.JSON_VERSION,
+        "result": {
+            "command": "filterset backup",
+            "filterset": "managesieve",
+            "path": "/b/managesieve.sieve",
+            "filters": None,
+            "written": False,
+        },
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_a_folder_creation_result_keeps_a_failed_subscription_apart():
+    """Red if a subscription that failed reads as one declined: the
+    folder is invisible either way, and only one needs fixing."""
+    failed = FolderCreation("INBOX.New", False, "NO [LIMIT] too many")
+    declined = FolderCreation("INBOX.New", False)
+
+    assert json_output.folder_creation_result(failed)["result"] == {
+        "command": "folder create",
+        "folder": "INBOX.New",
+        "subscribed": False,
+        "subscribe_error": "NO [LIMIT] too many",
+        "by_subscription": True,
+    }
+
+    result = json_output.folder_creation_result(declined)["result"]
+
+    assert result["subscribe_error"] is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_subscription_result_names_the_folder_as_the_server_does():
+    record = argparse.Namespace(folder="INBOX.spam", subscribe=False)
+
+    assert json_output.subscription_result("folder unsubscribe", record) == {
+        "version": json_output.JSON_VERSION,
+        "result": {
+            "command": "folder unsubscribe",
+            "folder": "INBOX.spam",
+            "subscribed": False,
+        },
+    }
+
+
+# ----------------------------------------------------------------------------
+def rename_plan(rules_change: bool) -> FolderRenamePlan:
+    """The four fields a rename's result reads off its plan."""
+    record = argparse.Namespace(
+        old="INBOX.Lists",
+        new="INBOX.Feeds",
+        script="managesieve",
+        rules_change=rules_change,
+    )
+
+    return cast(FolderRenamePlan, record)
+
+
+# ----------------------------------------------------------------------------
+def test_a_folder_rename_result_carries_each_check_and_its_remedy():
+    """Red if a failed check loses the operation that would fix it, or
+    ``ok`` stops following the checks: a client tells the user from these
+    whether the rename landed."""
+    done = FolderRenameResult(
+        plan=rename_plan(True),
+        backup=Path("/b/managesieve.sieve"),
+        subscribed=("INBOX.Feeds",),
+        unsubscribed=(),
+        subscription_errors=("NO unsubscribe failed",),
+        checks=(
+            PostCondition("'INBOX.Lists' is gone", True),
+            PostCondition(
+                "'INBOX.Feeds' is subscribed",
+                False,
+                "webmail will not show it",
+                operation="folder subscribe",
+                arguments=("INBOX.Feeds",),
+            ),
+        ),
+    )
+
+    assert json_output.folder_rename_result(done)["result"] == {
+        "command": "folder rename",
+        "old": "INBOX.Lists",
+        "new": "INBOX.Feeds",
+        "filterset": "managesieve",
+        "backup": "/b/managesieve.sieve",
+        "subscribed": ["INBOX.Feeds"],
+        "unsubscribed": [],
+        "subscription_errors": ["NO unsubscribe failed"],
+        "ok": False,
+        "checks": [
+            {
+                "label": "'INBOX.Lists' is gone",
+                "ok": True,
+                "detail": None,
+                "operation": None,
+                "arguments": [],
+            },
+            {
+                "label": "'INBOX.Feeds' is subscribed",
+                "ok": False,
+                "detail": "webmail will not show it",
+                "operation": "folder subscribe",
+                "arguments": ["INBOX.Feeds"],
+            },
+        ],
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_a_folder_rename_that_repoints_no_filter_names_no_filter_set():
+    done = FolderRenameResult(rename_plan(False), None, (), (), (), ())
+    result = json_output.folder_rename_result(done)["result"]
+
+    assert result["filterset"] is None
+    assert result["backup"] is None
+    assert result["ok"] is True
 
 
 # ----------------------------------------------------------------------------
