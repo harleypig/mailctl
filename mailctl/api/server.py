@@ -8,11 +8,15 @@ closes it. Requests are handled one at a time, in order.
 
 A request in hand can be cancelled with the ``$/cancelRequest``
 notification, naming its id. It stops before the next exchange with the
-server, or before it starts, and is answered with ``REQUEST_CANCELLED``,
-its data saying nothing was sent. A request that has sent a write is never
+server, or before it starts, and is answered with ``REQUEST_CANCELLED``.
+No write was sent, so nothing on the server changed: its data's
+``written`` is false, meaning exactly that, though a read may have sent
+the server text to check. Where the request wrote a backup first, the
+data's ``backup`` is its path. A request that has sent a write is never
 stopped -- a write may have landed, and is never sent again -- so it runs
 to its end and is answered as it would have been: a result means it ran.
-A cancel for an id that is not in hand or waiting its turn is ignored.
+A cancel names only a request sent before it, so one for an id that is
+not in hand or waiting its turn ahead of it is ignored.
 
 A change is plan, decide, execute across the boundary. A ``.plan`` method
 keeps the plan record here under a fresh id and returns the id beside the
@@ -35,7 +39,7 @@ from typing import Any, TextIO, TypeGuard
 from .. import MailctlError, __version__, engine, json_output, utilities
 from ..config import SIEVE_TLS_MODES, Config, Secret, load_config
 from ..criteria import Criteria, dump_filter, load_filter
-from ..utilities.events import ServerAlert
+from ..utilities.events import ScriptBackedUp, ServerAlert
 from ..utilities.folders import FolderPlan
 from ..utilities.mail import DEFAULT_MAX_MESSAGES, MailActionPlan
 from ..utilities.messages import DEFAULT_LIST_LIMIT, SortOrder
@@ -232,6 +236,9 @@ class Server:
         # Ids of requests cancelled while they waited their turn.
         self._cancelled_waiting: set[str | int] = set()
 
+        # A backup the request in hand wrote before anything was stored.
+        self._backup: str | None = None
+
     # ------------------------------------------------------------------------
     def run(self) -> None:
         """Serve requests until ``shutdown`` or the end of input, then
@@ -299,6 +306,7 @@ class Server:
 
         self._current = ident
         self._cancel_asked = self._committed = False
+        self._backup = None
 
         try:
             if waited_cancelled:
@@ -317,13 +325,19 @@ class Server:
             result = method(self, Params(params), ident)
 
         except RequestCancelled:
+            data: dict = {"written": False}
+
+            if self._backup is not None:
+                data["backup"] = self._backup
+
             return self._answer(
                 notification,
                 ident,
                 RpcError(
                     REQUEST_CANCELLED,
-                    "the request was cancelled; nothing was sent",
-                    {"sent": False},
+                    "the request was cancelled; nothing on the server was "
+                    "changed",
+                    data,
                 ),
             )
 
@@ -354,6 +368,7 @@ class Server:
         finally:
             self._current = None
             self._cancel_asked = self._committed = False
+            self._backup = None
 
         if not notification:
             try:
@@ -385,8 +400,8 @@ class Server:
         if self._committed:
             return
 
-        for cancel in self.channel.take(is_cancel):
-            self._cancel(cancel["params"]["id"])
+        for cancel, ahead in self.channel.take(is_cancel):
+            self._cancel(cancel["params"]["id"], ahead)
 
         if self._cancel_asked:
             raise RequestCancelled(self._current)
@@ -394,9 +409,11 @@ class Server:
         self._committed = write
 
     # ------------------------------------------------------------------------
-    def _cancel(self, target: str | int) -> None:
+    def _cancel(self, target: str | int, ahead: tuple[object, ...]) -> None:
         """Mark ``target`` cancelled: the request in hand, or one waiting
-        its turn. Any other id is not in hand, and is ignored."""
+        its turn among ``ahead``, the messages sent before the cancel. A
+        request sent after it may reuse an answered id, so it is never the
+        one meant; any other id is not in hand, and is ignored."""
         if self._current is not None and target == self._current:
             self._cancel_asked = True
 
@@ -404,7 +421,7 @@ class Server:
 
         waiting = {
             message.get("id")
-            for message in self.channel.held()
+            for message in ahead
             if isinstance(message, dict)
             and "method" in message
             and is_id(message.get("id"))
@@ -487,6 +504,9 @@ class Server:
         """An ``on_event`` sink sending each step as it lands."""
 
         def sink(record: object) -> None:
+            if isinstance(record, ScriptBackedUp):
+                self._backup = str(record.path)
+
             self.channel.notify(
                 "event",
                 {"request": ident, "document": json_output.event(record)},
@@ -1503,14 +1523,11 @@ def plan_discard(server: Server, params: Params, _ident: object) -> None:
 # ----------------------------------------------------------------------------
 def cancel_request(server: Server, params: Params, _ident: object) -> None:
     """``$/cancelRequest``, met in its turn rather than while a request
-    runs: a request it names still waiting behind it is cancelled, and any
-    other id -- answered already, or never sent -- is ignored. Sent as a
-    request, it is answered with null."""
-    target = params.take("id", object)
+    runs, and ignored. Every request sent before it has had its turn, and
+    a request sent after it may reuse an answered id, so it names none
+    still in hand. Sent as a request, it is answered with null."""
+    params.take("id", object)
     params.done()
-
-    if is_id(target):
-        server._cancel(target)
 
 
 # ----------------------------------------------------------------------------

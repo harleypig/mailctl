@@ -9,6 +9,10 @@ arrive while it waits, and that no refusal quotes what the client sent.
 import argparse
 import io
 import json
+import os
+import threading
+import time
+from collections.abc import Callable
 from typing import TypeGuard
 
 import pytest
@@ -203,6 +207,11 @@ def is_cancel(message: object) -> TypeGuard[dict]:
 
 
 # ----------------------------------------------------------------------------
+def nothing(_message: object) -> TypeGuard[dict]:
+    return False
+
+
+# ----------------------------------------------------------------------------
 def ident(message: object) -> object:
     assert isinstance(message, dict)
 
@@ -227,8 +236,11 @@ def test_take_picks_out_what_it_selects_and_leaves_the_rest_in_order():
 
     taken = link.take(is_cancel)
 
-    assert [message["params"]["id"] for message in taken] == [7, 7]
-    assert [ident(message) for message in link.held()] == [8, 9]
+    assert [message["params"]["id"] for message, _ahead in taken] == [7, 7]
+    assert [[ident(m) for m in ahead] for _message, ahead in taken] == [
+        [8],
+        [8, 9],
+    ]
     assert ident(link.receive()) == 8
 
     with pytest.raises(RpcError):
@@ -236,6 +248,23 @@ def test_take_picks_out_what_it_selects_and_leaves_the_rest_in_order():
 
     assert ident(link.receive()) == 9
     assert link.receive() is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_held_message_the_wait_is_interrupted_by_ends_it_before_asking():
+    """A cancel already held when the wait begins -- read while a request
+    ran, and passed over for another's sake -- ends it before anything is
+    asked. Red if the wait looks only at what arrives after it: the
+    question goes out and the input's end answers it."""
+    link, out = channel(REQUEST_8, CANCEL_7)
+    read_all(link)
+    link.take(nothing)
+
+    with pytest.raises(RequestCancelled):
+        link.request("credentials.prompt", {}, interrupt=is_cancel)
+
+    assert out.getvalue() == b""
+    assert ident(link.receive()) == 8
 
 
 # ----------------------------------------------------------------------------
@@ -391,3 +420,211 @@ def test_a_result_that_cannot_be_sent_is_an_internal_error_and_serving_goes_on(
         {"jsonrpc": "2.0", "id": 2, "result": None},
     ]
     assert SENTINEL.encode() not in out.getvalue()
+
+
+# ############################################################################
+# Cancelling, in-process
+# ############################################################################
+
+
+def request(ident: object, method: str) -> dict:
+    return {"jsonrpc": "2.0", "id": ident, "method": method, "params": {}}
+
+
+def cancel_of(ident: object) -> dict:
+    return {
+        "jsonrpc": "2.0",
+        "method": "$/cancelRequest",
+        "params": {"id": ident},
+    }
+
+
+class Piped:
+    """A server reading a pipe the test writes to as the client would,
+    while it serves; each line is in the channel's hands before
+    :meth:`line` returns."""
+
+    # ------------------------------------------------------------------------
+    def __init__(self):
+        reader, self._writer = os.pipe()
+        self.out = io.BytesIO()
+        # Outlives this call; the ``piped`` fixture closes it.
+        self.reader = open(reader, "rb", buffering=0)  # noqa: SIM115
+        self.link = Channel(self.reader, self.out)
+        self.server = Server(argparse.Namespace(debug=False), self.link)
+
+    # ------------------------------------------------------------------------
+    def line(self, message: dict) -> None:
+        before = self.link._inbox.qsize()
+        os.write(self._writer, (json.dumps(message) + "\n").encode())
+        deadline = time.monotonic() + 5
+
+        while self.link._inbox.qsize() <= before:
+            assert time.monotonic() < deadline, "the line was never read"
+            time.sleep(0.001)
+
+    # ------------------------------------------------------------------------
+    def last(self, message: dict) -> None:
+        """Send ``message``, then end the input."""
+        self.line(message)
+        self.close()
+
+    # ------------------------------------------------------------------------
+    def close(self) -> None:
+        """End the input, as a client that hangs up does; once."""
+        writer, self._writer = self._writer, -1
+
+        if writer != -1:
+            os.close(writer)
+
+    # ------------------------------------------------------------------------
+    def answers(self) -> list[dict]:
+        return [json.loads(line) for line in self.out.getvalue().splitlines()]
+
+
+# ----------------------------------------------------------------------------
+def after_answer(piped: Piped, result: object, then: Callable[[], None]):
+    """Run ``then`` once ``result`` has been answered, as a client reacting
+    to the answer would."""
+    respond = piped.link.respond
+
+    def answering(ident: object, value: object) -> None:
+        respond(ident, value)
+
+        if value == result:
+            then()
+
+    piped.link.respond = answering  # type: ignore[method-assign]
+
+
+# ----------------------------------------------------------------------------
+@pytest.fixture
+def piped(monkeypatch):
+    monkeypatch.setitem(server_module.METHODS, "test.again", lambda *_: "ran")
+    made: list[Piped] = []
+
+    def make() -> Piped:
+        made.append(Piped())
+
+        return made[-1]
+
+    yield make
+
+    for each in made:
+        each.close()
+        each.reader.close()
+
+
+# ----------------------------------------------------------------------------
+def test_a_late_cancel_met_in_its_turn_spares_a_request_reusing_the_id(
+    piped, monkeypatch
+):
+    """Id 5 is answered, its cancel arrives too late for any checkpoint,
+    and the client, having its answer, sends a new request as id 5. The
+    cancel, met in its turn, names nothing in hand: the new request runs.
+    Red if a cancel in its turn cancels a request queued behind it."""
+    client = piped()
+
+    def quick(*_args) -> str:
+        client.line(cancel_of(5))
+
+        return "first"
+
+    monkeypatch.setitem(server_module.METHODS, "test.quick", quick)
+    after_answer(
+        client,
+        "first",
+        lambda: client.last(request(5, "test.again")),
+    )
+    client.line(request(5, "test.quick"))
+    client.server.run()
+
+    assert [(a["id"], a.get("result")) for a in client.answers()] == [
+        (5, "first"),
+        (5, "ran"),
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_late_cancel_taken_by_a_checkpoint_spares_a_request_after_it(
+    piped, monkeypatch
+):
+    """The same late cancel, taken instead by the next request's checkpoint
+    with the reused id 5 already waiting behind it: a request sent after
+    the cancel is never the one it meant. Red if a checkpoint cancels a
+    waiting request whatever side of the cancel it was sent on."""
+    client = piped()
+
+    def quick(*_args) -> str:
+        client.line(request(6, "test.again"))
+        client.line(cancel_of(5))
+
+        return "first"
+
+    monkeypatch.setitem(server_module.METHODS, "test.quick", quick)
+    after_answer(
+        client,
+        "first",
+        lambda: client.last(request(5, "test.again")),
+    )
+    client.line(request(5, "test.quick"))
+    client.server.run()
+
+    assert [(a["id"], a.get("result")) for a in client.answers()] == [
+        (5, "first"),
+        (6, "ran"),
+        (5, "ran"),
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_arriving_while_a_checkpoint_takes_another_ends_the_prompt(
+    piped, monkeypatch
+):
+    """A cancel for another id is taken at a checkpoint; the cancel for the
+    request in hand lands just after the checkpoint read what had arrived.
+    The password is then asked, and the cancel ends the wait: the answer
+    is cancelled, not a declined password once the input ends. Red if the
+    cancel is moved where the wait does not look, as the checkpoint once
+    did on its way to the other id, and the wait looks only at what
+    arrives after it begins."""
+    client = piped()
+    drain = client.link._drain
+    armed: list[bool] = []
+
+    def draining() -> None:
+        drain()
+
+        if armed:
+            armed.clear()
+            client.line(cancel_of(7))
+
+    def login(server, *_args) -> object:
+        client.line(cancel_of(99))
+        armed.append(True)
+        server._checkpoint(False)
+
+        return server._prompt("Password: ")
+
+    client.link._drain = draining  # type: ignore[method-assign]
+    monkeypatch.setitem(server_module.METHODS, "test.login", login)
+    client.line(request(7, "test.login"))
+
+    # A client that never answers the prompt hangs up in the end, so a
+    # wait the cancel did not end is answered declined rather than hung.
+    hang_up = threading.Timer(2, client.close)
+    hang_up.start()
+
+    try:
+        client.server.handle(client.link.receive())
+
+    finally:
+        hang_up.cancel()
+        client.close()
+
+    # The prompt may or may not have gone out before the cancel was seen;
+    # either way the request ends cancelled.
+    answer = client.answers()[-1]
+
+    assert answer["id"] == 7
+    assert answer["error"]["code"] == -32800

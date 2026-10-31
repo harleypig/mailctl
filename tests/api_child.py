@@ -29,7 +29,8 @@ test reaches the refusal a provider without them meets.
 
 The file's ``hold`` slows a request down so a test can cancel it in
 flight: it maps a double's method (``fetch``, ``create_folder``,
-``getscript_bytes``, ``putscript``) to how many of its next calls wait.
+``getscript_bytes``, ``checkscript``, ``putscript``) to how many of its
+next calls wait.
 Each such call appends the method's name to ``held``, then waits until
 the client has sent the API another line, unread, before it runs. A test
 waits for ``held`` to grow, sends the line, and so knows the request was
@@ -172,6 +173,8 @@ class FileSieveClient:
 
     # ------------------------------------------------------------------------
     def checkscript(self, content: str) -> bool:
+        hold("checkscript")
+
         return load().get("checkscript", True)
 
     # ------------------------------------------------------------------------

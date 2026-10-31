@@ -3394,8 +3394,8 @@ THREE_MESSAGES = {"1": GITHUB_MAIL, "2": BOSS_MAIL, "3": GITHUB_MAIL}
 
 CANCELLED = {
     "code": -32800,
-    "message": "the request was cancelled; nothing was sent",
-    "data": {"sent": False},
+    "message": "the request was cancelled; nothing on the server was changed",
+    "data": {"written": False},
 }
 
 
@@ -3566,8 +3566,11 @@ def test_a_cancel_before_an_executes_first_write_sends_nothing(start):
 
     wait_held(client, 1)
     cancel(client, execute)
+    error = client.until(execute)["error"]
 
-    assert client.until(execute)["error"] == CANCELLED
+    # The re-read is followed by the backup before the next exchange.
+    assert Path(error["data"].pop("backup")).is_file()
+    assert error == CANCELLED
 
     state = client.read_state()
 
@@ -3583,6 +3586,41 @@ def test_a_cancel_before_an_executes_first_write_sends_nothing(start):
 
     assert "result" in done, done
     assert client.read_state()["stored"] == ["managesieve"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_cancel_after_the_backup_names_it_and_stores_nothing(
+    start, tmp_path
+):
+    """Held while the server checks the new filter set -- the backup on
+    disk, the text sent, nothing stored -- the execute is cancelled before
+    its first write. The answer says nothing on the server changed and
+    names the backup, which holds the filter set as it was. Red if the
+    cancel's data leaves the backup out, or the execute stores after the
+    cancel."""
+    client = initialized(start)
+    plan_id = add_plan(client)["result"]["plan_id"]
+    state = client.read_state()
+    state["hold"] = {"checkscript": 1}
+    client.write_state(state)
+
+    execute = post(client, "filter.add.execute", {"plan_id": plan_id})
+
+    wait_held(client, 1)
+    cancel(client, execute)
+    response = client.until(execute)
+    error = response["error"]
+    backup = Path(error["data"].pop("backup"))
+
+    assert error == CANCELLED
+    assert backup.parent == tmp_path / "backups"
+    assert backup.read_bytes() == ROUNDCUBE.encode()
+    assert events(response)[-1] == {
+        "kind": "filterset_backed_up",
+        "filterset": "managesieve",
+        "path": str(backup),
+    }
+    assert "stored" not in client.read_state()
 
 
 # ----------------------------------------------------------------------------
@@ -3679,3 +3717,36 @@ def test_a_cancel_while_the_password_is_asked_ends_the_wait(start):
 
     assert code == 0
     nowhere(client, stderr, SENTINEL)
+
+
+# ----------------------------------------------------------------------------
+def test_a_password_command_gets_no_input_and_the_client_is_still_heard(
+    start, tmp_path, monkeypatch
+):
+    """The password command runs while the client's next request is on
+    the way. Reading its stdin, it must meet the end at once rather than
+    the client's pipe, and that request is answered after the login. Red
+    if the command inherits the API's stdin: it finds a pipe that stays
+    open with nothing for it, gives up, and the login is refused."""
+    helper = tmp_path / "password-helper.py"
+    helper.write_text(
+        "import select, sys\n"
+        "ready, _, _ = select.select([sys.stdin], [], [], 2)\n"
+        "if not ready:\n"
+        "    sys.exit(4)\n"
+        "if sys.stdin.read():\n"
+        "    sys.exit(3)\n"
+        f"print({PASSWORD!r})\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MAILCTL_PASSWORD_CMD", f"{sys.executable} {helper}")
+    client = start(configured=False)
+    client.request("initialize")
+
+    viewing = post(client, "mail.view", {"uid": 1})
+    listing = post(client, "filter.list")
+
+    assert client.until(viewing)["result"]["message"]["uid"] == 1
+    assert "result" in client.until(listing)
+    assert client.read_state()["logins"] == 2
+    assert client.prompted == 0

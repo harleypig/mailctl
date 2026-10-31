@@ -58,7 +58,7 @@ INTERNAL_ERROR = -32603
 # what a client branches on.
 REFUSED = 1
 
-# A request the client cancelled before anything was sent, as the Language
+# A request the client cancelled before it sent a write, as the Language
 # Server Protocol numbers it: outside the range JSON-RPC reserves.
 REQUEST_CANCELLED = -32800
 
@@ -267,21 +267,28 @@ class Channel:
     # ------------------------------------------------------------------------
     def take(
         self, select: Callable[[object], TypeGuard[_Taken]]
-    ) -> list[_Taken]:
+    ) -> list[tuple[_Taken, tuple[object, ...]]]:
         """Take out of what the client has sent so far, without waiting
         for more, the messages ``select`` picks, in order.
 
-        The rest stay held, in order, and :meth:`receive` returns them as
-        it would have.
+        Each comes with the messages still held ahead of it, in order --
+        what the client sent before it, so what it can name -- lines that
+        did not parse left out. The rest stay held, in order, and
+        :meth:`receive` returns them as it would have.
         """
         self._drain()
 
-        taken: list[_Taken] = []
+        taken: list[tuple[_Taken, tuple[object, ...]]] = []
         kept: deque[object | RpcError] = deque()
 
         for message in self._held:
             if not isinstance(message, RpcError) and select(message):
-                taken.append(message)
+                ahead = tuple(
+                    earlier
+                    for earlier in kept
+                    if not isinstance(earlier, RpcError)
+                )
+                taken.append((message, ahead))
 
             else:
                 kept.append(message)
@@ -289,19 +296,6 @@ class Channel:
         self._held = kept
 
         return taken
-
-    # ------------------------------------------------------------------------
-    def held(self) -> tuple[object, ...]:
-        """What the client has sent so far and nothing has received yet,
-        in order, without waiting for more; lines that did not parse are
-        left out."""
-        self._drain()
-
-        return tuple(
-            message
-            for message in self._held
-            if not isinstance(message, RpcError)
-        )
 
     # ------------------------------------------------------------------------
     def receive(self) -> object | None:
@@ -357,6 +351,11 @@ class Channel:
         is taken, and :class:`RequestCancelled` raised. An answer sent
         after that answers nothing anyone is waiting on.
         """
+        # What was held before the wait began was never put to
+        # ``interrupt``, so it is first.
+        if interrupt is not None and self._interrupted(interrupt):
+            raise RequestCancelled(method)
+
         self._sent_requests += 1
         ident = f"mailctl-{self._sent_requests}"
 
@@ -397,3 +396,14 @@ class Channel:
                 return message.get("result")
 
             self._held.append(message)
+
+    # ------------------------------------------------------------------------
+    def _interrupted(self, interrupt: Callable[[object], bool]) -> bool:
+        """Take the first held message ``interrupt`` picks, if any."""
+        for message in self._held:
+            if not isinstance(message, RpcError) and interrupt(message):
+                self._held.remove(message)
+
+                return True
+
+        return False

@@ -910,9 +910,15 @@ def run_password_command(command: str) -> Secret:
     if not argv:
         raise MailctlError("password command is empty")
 
+    # Its stdin is never ours to lend: under the API it is the client's
+    # pipe, and a helper reading it would take the client's requests.
     try:
         completed = subprocess.run(
-            argv, capture_output=True, text=True, check=False
+            argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
         )
 
     except OSError as exc:
