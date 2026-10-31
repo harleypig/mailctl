@@ -1020,14 +1020,17 @@ def filterset_restore_plan(
 
     The file is read here, so the execute uploads what this plan showed,
     whatever happens to the file in between."""
-    session, _config = server._open()
+    session, config = server._open()
     path = params.take("file", str)
     filterset = params.take("filterset", str, None)
     activate = params.take("activate", bool, False)
     allow_empty = params.take("allow_empty", bool, False)
     params.done()
 
-    backup = utilities.backup.read_backup_file(path, allow_empty)
+    # The client has no shell here, so nothing in the path is expanded.
+    backup = utilities.backup.read_backup_file(
+        path, config, allow_empty, expand=False
+    )
     plan = utilities.backup.plan_restore(session, backup, filterset, activate)
     count = utilities.backup.count_rules
 

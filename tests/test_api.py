@@ -1529,6 +1529,63 @@ def test_filterset_restore_refuses_what_the_cli_refuses(start):
 
 
 # ----------------------------------------------------------------------------
+def test_filterset_restore_expands_nothing_in_the_file_it_is_given(
+    start, monkeypatch
+):
+    """A client has no shell, so its path is taken as written. Red if
+    ``$VAR``, ``${VAR}``, or ``~`` is expanded in the API's environment,
+    or if a refusal quotes the expanded path: the variable here holds
+    the sentinel, and it must reach no output, ``--debug`` on."""
+    monkeypatch.setenv("MAILCTL_PASSWORD", SENTINEL)
+    client = start("--debug")
+    client.request("initialize")
+
+    for spelled in ("$MAILCTL_PASSWORD", "${MAILCTL_PASSWORD}", "~"):
+        error = refusal(
+            client.request("filterset.restore.plan", {"file": spelled})
+        )
+
+        assert error["message"].startswith(
+            f"could not read backup {spelled} --"
+        )
+
+    assert client.read_state().get("logins", 0) == 0
+
+    assert_sentinel_absent(client)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("name", ["password", "password-link", "mailctl.env"])
+def test_filterset_restore_refuses_a_credential_file_unread(
+    start, tmp_path, name
+):
+    """Red if the password file, a link to it, or the env file in use is
+    read as a backup: its contents would come back as the diff. Each is
+    unreadable once the API has started, so a read would fail as
+    ``could not read`` and not with this code."""
+    secret = tmp_path / "password"
+    env_file = tmp_path / "mailctl.env"
+    env_file.write_text(f"MAILCTL_PASSWORD={SENTINEL}\n", encoding="utf-8")
+    env_file.chmod(0o600)
+    (tmp_path / "password-link").symlink_to(secret)
+
+    client = start("--debug", "--env-file", str(env_file), password=SENTINEL)
+    client.request("initialize")
+    secret.chmod(0)
+    env_file.chmod(0)
+
+    response = client.request(
+        "filterset.restore.plan", {"file": name, "allow_empty": True}
+    )
+
+    assert "result" not in response
+    assert refusal(response)["code"] == "credential_file"
+    assert client.read_state().get("logins", 0) == 0
+
+    assert_sentinel_absent(client)
+
+
+# ----------------------------------------------------------------------------
 def test_filterset_restore_of_what_the_server_holds_is_not_carried_out(
     start,
 ):
@@ -1850,28 +1907,46 @@ def test_folder_rename_refuses_what_the_cli_refuses(start):
 # The two new filter set writes, held to the stale-plan refusals
 # ############################################################################
 
+# A filter set mailctl cannot parse, which only a restore may replace
+# (ADR 0005).
+UNPARSEABLE = "if header :contains {{{ not sieve\n"
+
 # Each command in these groups that uploads the filter set: its method,
-# and what its plan is given. Both start from TWO_FILTERS, and the file a
-# restore reads differs from it.
+# what its plan is given, and the filter set it starts from. The file a
+# restore reads differs from each.
 STALE_WRITES = {
-    "filterset restore": ("filterset.restore", {"file": "restore.sieve"}),
+    "filterset restore": (
+        "filterset.restore",
+        {"file": "restore.sieve"},
+        TWO_FILTERS,
+    ),
+    "filterset restore over an unparseable set": (
+        "filterset.restore",
+        {"file": "restore.sieve"},
+        UNPARSEABLE,
+    ),
     "folder rename": (
         "folder.rename",
         {"old": "INBOX.Lists", "new": "INBOX.Feeds"},
+        TWO_FILTERS,
     ),
 }
 
 
 # ----------------------------------------------------------------------------
-def stale_plan(start, case: str) -> tuple[ChildClient, str, str]:
-    method, params = STALE_WRITES[case]
-    client = initialized(start, scripts={"managesieve": TWO_FILTERS})
+def stale_plan(start, case: str) -> tuple[ChildClient, str, str, str]:
+    method, params, before = STALE_WRITES[case]
+    client = initialized(start, scripts={"managesieve": before})
     restore_file(client, MERGEABLE)
     result = client.request(f"{method}.plan", params)["result"]
+    plan = result["document"]["plan"]
 
-    assert result["document"]["plan"]["changes"] is True
+    assert plan["changes"] is True
 
-    return client, method, result["plan_id"]
+    if before is UNPARSEABLE:
+        assert plan["filters_before"] is None
+
+    return client, method, result["plan_id"], before
 
 
 # ----------------------------------------------------------------------------
@@ -1881,10 +1956,10 @@ def test_a_group_write_refuses_a_filter_set_changed_since_the_plan(
 ):
     """Red if execute uploads over another client's edit (#257), or a
     rename moves the folder before finding the set changed."""
-    client, method, plan_id = stale_plan(start, case)
+    client, method, plan_id, before = stale_plan(start, case)
 
     state = client.read_state()
-    edited = TWO_FILTERS + "# rule:[made-elsewhere]\nkeep;\n"
+    edited = before + "# rule:[made-elsewhere]\nkeep;\n"
     state["scripts"]["managesieve"] = edited
     client.write_state(state)
 
@@ -1909,7 +1984,7 @@ def test_a_group_write_refuses_an_active_set_switched_since_the_plan(
 ):
     """Red if execute uploads once another client has made another filter
     set active (#308)."""
-    client, method, plan_id = stale_plan(start, case)
+    client, method, plan_id, before = stale_plan(start, case)
 
     state = client.read_state()
     state["scripts"]["elsewhere"] = "keep;\n"
@@ -1922,7 +1997,7 @@ def test_a_group_write_refuses_an_active_set_switched_since_the_plan(
     assert error["code"] == "filterset_changed"
     assert error["fields"] == {"operation": "filterset list", "arguments": []}
     assert after["active"] == "elsewhere"
-    assert after["scripts"]["managesieve"] == TWO_FILTERS
+    assert after["scripts"]["managesieve"] == before
     assert "stored" not in after
     assert "imap_writes" not in after
     assert not (client.state.parent / "backups").exists()
@@ -1973,9 +2048,6 @@ def test_group_parameters_are_refused_as_parameters(start):
     does not take reaches the utilities, or an execute takes more than
     its plan's id."""
     client = initialized(start)
-    plan_id = client.request("folder.create.plan", {"folder": "INBOX.New"})[
-        "result"
-    ]["plan_id"]
     asks = [
         ("filterset.list", {"name": "x"}),
         ("filterset.show", {"name": 1}),
@@ -1985,7 +2057,6 @@ def test_group_parameters_are_refused_as_parameters(start):
         ("folder.create.plan", {}),
         ("folder.rename.plan", {"old": "INBOX.Lists"}),
         ("folder.subscribe.plan", {"folder": "INBOX.spam", "yes": True}),
-        ("folder.create.execute", {"plan_id": plan_id, "folder": "x"}),
     ]
 
     for method, params in asks:
@@ -1994,9 +2065,34 @@ def test_group_parameters_are_refused_as_parameters(start):
             params,
         )
 
-    # Refused as a request, so the plan is not used up by it.
+
+# ----------------------------------------------------------------------------
+# Each execute of these groups, and a plan for it that changes something.
+GROUP_EXECUTES = {
+    "folder.create": {"folder": "INBOX.New"},
+    "folder.subscribe": {"folder": "INBOX.spam"},
+    "folder.unsubscribe": {"folder": "INBOX.Lists"},
+    "folder.rename": {"old": "INBOX.Lists", "new": "INBOX.Feeds"},
+    "filterset.restore": {"file": "restore.sieve"},
+}
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("method", sorted(GROUP_EXECUTES))
+def test_a_bad_execute_parameter_does_not_use_up_the_plan(start, method):
+    """Red if an execute takes its plan before refusing a parameter it
+    does not take: refused as a request, the plan must still run."""
+    client = initialized(start)
+    restore_file(client)
+    plan_id = client.request(f"{method}.plan", GROUP_EXECUTES[method])[
+        "result"
+    ]["plan_id"]
+
+    bad = client.request(f"{method}.execute", {"plan_id": plan_id, "x": 1})
+
+    assert bad["error"]["code"] == -32602
     assert "result" in client.request(
-        "folder.create.execute", {"plan_id": plan_id}
+        f"{method}.execute", {"plan_id": plan_id}
     )
 
 

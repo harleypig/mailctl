@@ -1345,7 +1345,9 @@ def cmd_backup(args) -> int:
 def cmd_restore(args) -> int:
     """Replace a script with a backup file, after showing it."""
     config = configure(args)
-    backup = utilities.backup.read_backup_file(args.file, args.allow_empty)
+    backup = utilities.backup.read_backup_file(
+        args.file, config, args.allow_empty
+    )
 
     with connect(config, args) as sessions:
         plan = utilities.backup.plan_restore(
@@ -5364,6 +5366,9 @@ ERROR_TEXT = {
         f"{fields['count']} (or higher) to process every match. Note that "
         f"--yes does NOT lift this cap: it skips the confirmation prompt, "
         f"whereas the cap is a ceiling you set deliberately."
+    ),
+    "credential_file": lambda message, _: (
+        f"{message} Name the backup file to restore."
     ),
     "empty_backup": lambda message, _: (
         f"{message} Pass --allow-empty if that is what you want."

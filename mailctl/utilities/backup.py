@@ -124,36 +124,81 @@ class BackupFile:
 
 # ----------------------------------------------------------------------------
 def read_backup_file(
-    path: str | Path, allow_empty: bool = False
+    path: str | Path,
+    config: Config,
+    allow_empty: bool = False,
+    expand: bool = True,
 ) -> BackupFile:
     """Read a backup file exactly as written, newline translation off.
 
     Needs no server, so a front-end calls it before connecting: a mistyped
-    path or an empty file is reported without costing a login. ``~`` and
-    ``$VAR`` / ``${VAR}`` are expanded, as for every other path setting.
+    path or an empty file is reported without costing a login. With
+    ``expand``, ``~`` and ``$VAR`` / ``${VAR}`` are expanded, as for every
+    other path setting; a front-end with no shell behind it, the API,
+    passes False, since expanding there reads the API's environment for
+    the client. Every message quotes the path as given, never expanded.
+
+    A file this run reads a password from (``Config.credential_files``) is
+    refused before it is opened, coded ``credential_file``: its contents
+    would come back as the diff.
 
     A file holding nothing but whitespace is refused unless
     ``allow_empty``: uploading it removes every rule, and an empty file is
     as likely to be a truncated copy or the wrong path as a deliberate
     wipe.
     """
-    source = expand_path(str(path))
+    # Any other file the user can read may still be named. That is no
+    # more than the client can already do, only because the API's one
+    # peer over stdio runs as the same user (ADR 0008); a carrier that
+    # serves another user, such as HTTP (#281, deferred), must revisit it.
+    given = str(path)
+    source = expand_path(given) if expand else Path(given)
+
+    if any(_same_file(source, held) for held in config.credential_files()):
+        raise MailctlError(
+            f"{given} is a file this run reads the password from, so it is "
+            f"not read as a backup.",
+            code="credential_file",
+        )
 
     try:
         with source.open(encoding="utf-8", newline="") as handle:
             text = handle.read()
 
-    except (OSError, UnicodeDecodeError) as exc:
-        raise MailctlError(f"could not read backup {source} -- {exc}") from exc
+    except OSError as exc:
+        # The shape of str(exc), but naming the path as given: str(exc)
+        # names the expanded one, and ``$MAILCTL_PASSWORD`` expands to
+        # the password.
+        reason = f"[Errno {exc.errno}] {exc.strerror}" if exc.errno else ""
+        raise MailctlError(
+            f"could not read backup {given} -- {reason or type(exc).__name__}"
+            f": {given!r}"
+        ) from exc
+
+    except UnicodeDecodeError as exc:
+        raise MailctlError(
+            f"could not read backup {given} -- it is not UTF-8 text"
+        ) from exc
 
     if not text.strip() and not allow_empty:
         raise MailctlError(
-            f"backup {source} is empty; restoring it would remove every "
+            f"backup {given} is empty; restoring it would remove every "
             f"filter from the filter set.",
             code="empty_backup",
         )
 
     return BackupFile(source, text)
+
+
+# ----------------------------------------------------------------------------
+def _same_file(path: Path, other: Path) -> bool:
+    """Whether two paths name one file, links followed; stats, never
+    opens."""
+    try:
+        return path.resolve() == other.resolve() or path.samefile(other)
+
+    except (OSError, RuntimeError):
+        return False
 
 
 # ----------------------------------------------------------------------------

@@ -431,6 +431,23 @@ class Config:
         return [entry for entry in candidates if entry[1]]
 
     # ------------------------------------------------------------------------
+    def credential_files(self) -> list[Path]:
+        """Return every file this run could read a password from: each
+        configured password file, whichever rung would win, and the env
+        file, which may hold ``MAILCTL_PASSWORD`` itself. Paths only;
+        nothing is opened."""
+        files = [
+            expand_path(value)
+            for kind, value, _origin in self.password_sources()
+            if kind == "file" and isinstance(value, str)
+        ]
+
+        if self.env_file is not None:
+            files.append(self.env_file.path)
+
+        return files
+
+    # ------------------------------------------------------------------------
     def password_origin(self) -> Source | None:
         """Report where the password comes (or came) from, never what it is.
 
