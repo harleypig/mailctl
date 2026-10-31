@@ -207,11 +207,11 @@ class Channel:
         self._room = threading.Condition()
         self._closing = False
 
-        # A read on a descriptor cannot be interrupted, so the thread waits
-        # until the input or a wake pipe is readable, and ``close`` writes
-        # to the pipe. Held as the input's descriptor and the pipe's read
-        # and write ends; None for a reader with no descriptor, whose read
-        # never waits.
+        # A read on a descriptor cannot be interrupted, so the thread polls
+        # the input and a wake pipe, reading once the input is ready, and
+        # ``close`` writes to the pipe. Held as the input's descriptor and
+        # the pipe's read and write ends; None for a reader with none. Poll,
+        # not select, which refuses a descriptor of 1024 or more.
         try:
             source: int | None = reader.fileno()
 
@@ -267,9 +267,13 @@ class Channel:
             return not self._closing
 
         source, woken, _ = self._wake
-        ready, _, _ = select.select([source, woken], [], [])
+        poller = select.poll()
+        poller.register(source, select.POLLIN)
+        poller.register(woken, select.POLLIN)
 
-        return woken not in ready
+        # Any event on the input -- data, hang-up, error -- is for the read
+        # to report, as data, the end, or a failure.
+        return woken not in {fd for fd, _event in poller.poll()}
 
     # ------------------------------------------------------------------------
     def _accept(self, line: bytes) -> bool:
@@ -307,8 +311,12 @@ class Channel:
 
     # ------------------------------------------------------------------------
     def close(self) -> None:
-        """Stop the input thread and wait for it to end; once is enough,
-        and more is harmless."""
+        """Stop the input thread; once is enough, and more is harmless.
+
+        A reader with a descriptor is woken and the thread waited for. One
+        without may be inside a read nothing can interrupt, so the thread
+        is told to stop and left to end at its next step, a daemon as
+        before, rather than waited on for ever."""
         with self._room:
             if self._closing:
                 return
@@ -316,14 +324,13 @@ class Channel:
             self._closing = True
             self._room.notify_all()
 
-        if self._wake is not None:
-            os.write(self._wake[2], b"\0")
+        if self._wake is None:
+            return
 
+        os.write(self._wake[2], b"\0")
         self._pump.join()
-
-        if self._wake is not None:
-            os.close(self._wake[1])
-            os.close(self._wake[2])
+        os.close(self._wake[1])
+        os.close(self._wake[2])
 
     # ------------------------------------------------------------------------
     def _read(self) -> object | RpcError | None:

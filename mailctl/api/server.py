@@ -265,8 +265,11 @@ class Server:
                     return
 
         finally:
-            self._close()
-            self.channel.close()
+            try:
+                self._close()
+
+            finally:
+                self.channel.close()
 
     # ------------------------------------------------------------------------
     def handle(self, message: object) -> bool:
