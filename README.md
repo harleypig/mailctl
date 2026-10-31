@@ -794,9 +794,12 @@ and save again.
   folder list alone: it reads the account back and checks the new name is
   subscribed where the old one was, holds at least the messages the old
   one did, and that no filter still files into an old name, exiting
-  non-zero naming any that failed. A step that fails part-way is not
-  retried; the error says what was done and how to undo it
-  (`mailctl folder rename NEW OLD`).
+  non-zero naming any that failed and, where one exists, the command that
+  fixes it. A step that fails part-way is not retried; the error says what
+  was done and how to undo it (`mailctl folder rename NEW OLD`). If the
+  filter set changed after the rename was planned, or another filter set
+  was made active, it is refused and nothing is touched, even when no
+  filter files into the folder.
 * `search`, `view`, and `senders` **never mark mail read**. The folder
   is opened read-only, and the message is fetched in the form that leaves
   its read flag alone, so either guard alone would be enough.
@@ -849,7 +852,7 @@ and save again.
   file: where the name mailctl chose is taken, it writes
   `<name>-<UTC timestamp>-2.sieve`, then `-3`, and so on, and
   `filterset backup --output FILE` naming a file that exists is refused,
-  leaving the file as it was. XDG would call a backup
+  `--dry-run` included, leaving the file as it was. XDG would call a backup
   *state* rather than config; keeping it here is a deliberate departure from
   that, not something XDG endorses, because a backup you cannot find is not a
   backup. `--backup-dir`, `MAILCTL_BACKUP_DIR`, and `backup_dir` in
@@ -1026,8 +1029,10 @@ exit status. `server probe --json` prints its own versioned document (see
 tell one refusal from another without reading the message: for example
 `no_criteria`, `no_action`, `max_messages`, `senders_ceiling`,
 `no_such_folder`, `folder_missing`, `state_in_rule`, `missing_settings`,
-`credential_file`, and `uidvalidity_changed`. An error with no condition of
-its own has no `code`.
+`credential_file`, `uidvalidity_changed`, `no_such_message`, and
+`backup_exists`. Every refusal from the work a command does carries one;
+some of the command line's own checks on its arguments, and a UID the
+server does not hold on `mail search` or `mail view`, have none yet.
 
 **Exit status**, on every command:
 
@@ -1252,6 +1257,8 @@ was shown is what runs.
 * If the filter set changed on the server after the plan was made (in
   webmail, say), or another filter set was made active, an execute that
   uploads is refused with `filterset_changed` and nothing is uploaded.
+  `folder.rename.execute` with no filter to repoint uploads nothing and is
+  refused the same way, before the folder is touched.
   Make a new plan.
 * `filter.apply.execute` holds the plan to its own ceiling again, and it
   and `mail.mark.execute` check the folder's UIDVALIDITY again, refusing
@@ -1280,7 +1287,7 @@ was shown is what runs.
 * **`filter.move.plan`**'s `placement` is required, in
   `filter.add.plan`'s shape. **`filter.optimize.plan`**'s `skip` lists
   the kinds of change not to propose: `redundant`, `reorder`, or
-  `merge`.
+  `merge`; any other is refused with `unknown_kind`.
 * **`filterset.restore.plan`**'s `file` is a path on the API's host. The
   API expands nothing in it, neither `~` nor `$VAR`, and every message
   names the path as given; a relative one is taken from the API's working
@@ -1300,7 +1307,9 @@ was shown is what runs.
   `null` where no filter files into the folder.
 * **`mail.mark.plan`**'s `read` and `flagged` are `true` to set, `false`
   to clear, and absent to leave alone; `keywords` are set and
-  `no_keywords` cleared. With none of them it is refused with `no_marks`.
+  `no_keywords` cleared. With none of them it is refused with `no_marks`,
+  and a `uid` the folder does not hold with `no_such_message`, marking
+  nothing.
 * **`server.baseline.save.execute`** writes the configured host's file
   under the config directory, never a path the client gave. It is refused
   with `baseline_changed`, writing nothing, where the file changed after
@@ -1375,13 +1384,16 @@ it came from: `filter` or `mail`.
 
 A refusal's `data` is the error document from *Output for scripts*,
 `{"version", "error": {"message", "code", "fields"}}`, where `code` names
-the condition. Branch on it, never on the message. Among them are
-`not_initialized`, `already_initialized`, `plan_unknown`,
-`nothing_to_change`, `password_declined`, `filterset_changed`,
+the condition. Branch on it, never on the message. The API's own are
+`not_initialized`, `already_initialized`, `plan_unknown`, and
+`password_declined`. The rest come from the work both interfaces share,
+so the command line's `--json` carries the same ones: among them
+`nothing_to_change`, `filterset_changed`, `filterset_empty`,
 `auth_failed`, `credentials_not_ascii`, `subscribe_needs_create`,
-`unknown_sort_key`, `folder_missing`, `credential_file`,
-`baseline_changed`, `migration_conflict`, `migration_changed`, and
-`migration_reference_unrewritable`, beside the command line's own.
+`unknown_sort_key`, `unknown_kind`, `folder_missing`, `folder_exists`,
+`no_such_message`, `backup_exists`, `credential_file`,
+`baseline_changed`, `baseline_read_failed`, `migration_conflict`,
+`migration_changed`, and `migration_reference_unrewritable`.
 
 ### An exchange
 

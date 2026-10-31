@@ -96,6 +96,21 @@ ENHANCEMENTS:
   `uidvalidity_changed`, nothing to build a filter from with
   `no_criteria`, and the combinations `mail search` refuses with
   `-32602`.
+* **Every refusal from the work a command does carries a `code`**
+  ([#331]), with the fields a client needs, so a script or an API client
+  can tell each one apart without reading the message; the README's
+  *API* section lists the main ones. What the command line prints is
+  unchanged, but `mail mark`'s and `server baseline show`'s `--json`
+  failure lines now carry theirs, `no_such_message` and `no_baseline`.
+  The API's `nothing_to_change` and `subscribe_needs_create` are now the
+  command line's too, and an unknown kind in `filter.optimize.plan`'s
+  `skip` is refused with `unknown_kind`.
+* **`folder rename`'s read-back names the command that fixes a failed
+  check** ([#331], [#332]), as `'<command>' fixes it`: `folder rename
+  OLD NEW` where the old folder is still there and the new one is not,
+  `folder subscribe NEW` or `folder unsubscribe OLD` for a subscription
+  left wrong, and `folder rename NEW OLD` where a filter still files into
+  the old name.
 
 BUG FIXES:
 
@@ -126,6 +141,17 @@ BUG FIXES:
   planned** ([#279]). The file carries every account's part, so writing
   over a save made in between lost that one. It is now refused with
   `baseline_changed`, writing nothing.
+* **`filterset backup --dry-run` no longer promises a file the real run
+  refuses** ([#331]). With `--output FILE` naming a file that exists,
+  the dry run showed it as the file it would write; it is now refused
+  with `backup_exists`, as the real run is.
+* **`folder rename` no longer moves a folder after the filter set
+  changed, when no filter needed repointing** ([#332]). With no filter
+  filing into the folder, it renamed without reading the filter set
+  again, so a filter added in between that files into the old name was
+  left pointing at a folder that no longer existed. It now reads the
+  filter set and which one is active again before renaming, and on any
+  difference refuses with `filterset_changed`, touching nothing.
 
 * **A password with a character outside ASCII no longer shows part of
   itself** ([#258]). IMAP's login sends ASCII only, and the error it
@@ -1714,3 +1740,5 @@ NOTES:
 [#308]: https://github.com/harleypig/mailctl/issues/308
 [#279]: https://github.com/harleypig/mailctl/issues/279
 [#330]: https://github.com/harleypig/mailctl/issues/330
+[#331]: https://github.com/harleypig/mailctl/issues/331
+[#332]: https://github.com/harleypig/mailctl/issues/332

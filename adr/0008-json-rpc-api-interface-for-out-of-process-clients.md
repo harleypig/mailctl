@@ -401,10 +401,12 @@ during a `filter add` confirmation prompt is refused instead of
 overwritten."* `filter add` asks nothing (CONVENTIONS *The command
 surface*), so there is no such prompt. The check, built in [#257][i257],
 sits in `scripts.upload_script` and so covers every command that uploads
-a filter set. On the command line the window it closes is widest on the
-commands that confirm before they upload: `filter remove`, `filter move`,
-`filter rename`, `filter enable` and `filter disable`, `filter optimize`,
-`folder rename`, and `filterset restore`.
+a filter set; `folder rename` with no filter to repoint uploads nothing
+and calls the same check, `scripts.require_unchanged`, before it moves
+the folder ([#332][i332]). On the command line the window it closes is
+widest on the commands that confirm before they upload: `filter remove`,
+`filter move`, `filter rename`, `filter enable` and `filter disable`,
+`filter optimize`, `folder rename`, and `filterset restore`.
 
 ### `initialize` names what the rename left behind (#307)
 
@@ -536,6 +538,7 @@ Fetched 2026-10-28.
 [i257]: https://github.com/harleypig/mailctl/issues/257
 [i258]: https://github.com/harleypig/mailctl/issues/258
 [i307]: https://github.com/harleypig/mailctl/issues/307
+[i332]: https://github.com/harleypig/mailctl/issues/332
 [i281]: https://github.com/harleypig/mailctl/issues/281
 [i279]: https://github.com/harleypig/mailctl/issues/279
 [ice-tui]: ../ICEBOX.md#tui-front-end
