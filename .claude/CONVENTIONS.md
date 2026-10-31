@@ -457,7 +457,9 @@ execute checks its parameters before it takes the plan, so a request
 refused as malformed leaves the plan to run. And an execute of a plan that
 changes nothing is refused, coded `nothing_to_change`, as the CLI stops
 after showing one; `filter.add.execute` is the exception and carries it
-out, as `filter add` does.
+out, as `filter add` does. The refusal is the utilities'
+(`events.require_changes`, [#331][i331]), so both interfaces give the one
+code.
 
 **Nothing below the front-end writes to the terminal, progress included.**
 `--verbose` protocol chatter leaves `SieveSession` and `ImapSession` through
@@ -481,7 +483,9 @@ another operation, an error or a record names the operation in a field
 (`operation`), never `mailctl <command>`; the CLI renders the command line
 (`cli.command_for`, [#183][i183]). The API hands its client the error
 document in the JSON-RPC error's `data`, and the client branches on its
-`code`, never on the message.
+`code`, never on the message. So every error the utilities build carries
+a code, and `tests/test_core_no_presentation.py` walks `utilities/` for
+one built without ([#331][i331]).
 
 **Safety policy lives in the utilities, not the front-end or the
 provider**: the backup before every upload (`scripts.upload_script`, the
@@ -1057,6 +1061,11 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   Every execute that uploads goes through it, `filterset restore` and
   `folder rename` included, and a byte compare needs no parse, so a
   restore over an unparseable script ([ADR 0005][adr5]) is held to it too.
+  A `folder rename` with no filter to repoint uploads nothing, and still
+  reads the filter set and which one is active again before the folder
+  moves, refusing the same way before any write ([#332][i332]): a filter
+  filing into the old name, added since, would be left pointing at a
+  folder that no longer exists.
   **So is an upload once the active filter set is not the one the plan
   was made against** ([#308][i308]): the same code, nothing backed up or
   sent, and the refusal points at `filterset list` rather than at one
@@ -1072,8 +1081,9 @@ refreshing the baseline is an explicit command that shows the diff and asks.
   and created exclusively. Where mailctl chose the name, a clash takes the
   next free one, `<stem>-2.sieve`, `-3`, and on; where the user named the
   file (`filterset backup --output FILE`), a clash is refused and the file
-  kept. A baseline is the exception: refreshing one is an explicit
-  command, so it replaces its file. Nothing decorates a backup —
+  kept, at the plan too, so `--dry-run` never promises a write the run
+  refuses ([#331][i331]). A baseline is the exception: refreshing one is
+  an explicit command, so it replaces its file. Nothing decorates a backup —
   `mailctl filterset show` adds banner lines for a reader and is therefore
   *not* a backup, which is exactly the
   trap redirecting `filterset show` to a file used to set. `mailctl filterset
@@ -1657,6 +1667,8 @@ will read it.
 [i308]: https://github.com/harleypig/mailctl/issues/308
 [i279]: https://github.com/harleypig/mailctl/issues/279
 [i330]: https://github.com/harleypig/mailctl/issues/330
+[i331]: https://github.com/harleypig/mailctl/issues/331
+[i332]: https://github.com/harleypig/mailctl/issues/332
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147

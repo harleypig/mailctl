@@ -116,7 +116,19 @@ root `pytest` (*The TUI*).
      kept; and a parent that is a file still fails as a write, never
      read as a taken name. A baseline still replaces its file.
      `utilities/server_test.py` has no file of its own; *The API* covers
-     it through `server.test`. `test_utilities_uids.py` pins
+     it through `server.test`. Refusals once uncoded are pinned to their
+     codes ([#331][i331]): a named backup file that exists refused by the
+     plan, `backup_exists`, so `--dry-run` promises no write the run
+     refuses; a mark plan with nothing to set or clear, `no_marks`; what
+     is not a probe document, `probe_invalid`; an unsubscribed folder
+     that is not created, `subscribe_needs_create`; and a migration whose
+     destination appeared mid-move or whose move the filesystem refused,
+     `migration_appeared` and `migration_failed`. The folder rename's
+     read-back names the operation that fixes a failed check where there
+     is one: `folder rename` back for a filter left on the old name
+     ([#332][i332]), `folder rename` again where the rename never
+     happened, `folder unsubscribe` for an old name still subscribed, and
+     nothing where mailctl cannot fix it. `test_utilities_uids.py` pins
      the UIDVALIDITY check ([#204][i204]): a stale pin given to `mail mark`
      refused before any write, and before its flags are read; `mail view` and
      `--like` refusing one, a UID lost in the renumbering included; a plan's
@@ -133,8 +145,11 @@ root `pytest` (*The TUI*).
      the plan ([#308][i308]) is refused the same way, unsent, for every
      kind of script plan, for a rearrangement, and for a rename; so is a
      set activated since a plan made with none active, and a set planned
-     as not running that another client has since activated. The fakes
-     they share are `tests/utilities_support.py`.
+     as not running that another client has since activated. A rename
+     with no filter to repoint is held to both ([#332][i332]): a set
+     changed or switched since stops it before the folder moves, and an
+     unchanged one still renames. The fakes they share are
+     `tests/utilities_support.py`.
    - **The session** (`test_engine.py`) — only what is about the
      connection: a half opens the first time a utility uses it and never if
      the command did not ask for it; a read the server cut off is sent once
@@ -277,9 +292,10 @@ root `pytest` (*The TUI*).
      `folder`, `filterset`, `mail`, and `server` groups; a command the
      provider does not declare refused before anything is read; and the
      stale-plan refusals, a changed filter set and a switched active one,
-     for `filter.add` and the `filter` remove, move, rename, disable, and
-     optimize, `filterset.restore` over a
-     set that parses and one that does not, and `folder.rename`.
+     for `filter.add` and the `filter` remove, move, rename, enable,
+     disable, and optimize, `filterset.restore` over a set that parses and
+     one that does not, and `folder.rename` with and without a filter to
+     repoint ([#332][i332]).
      The password bar: a sentinel given through `credentials.prompt` logs
      in on both halves and appears on no line of stdout and nowhere on
      stderr, `--debug`'s tracebacks included; a login the server refuses,
@@ -293,6 +309,14 @@ root `pytest` (*The TUI*).
      Parameters: an action the provider will not emit, criteria a delivered
      message cannot meet, a malformed parameter, and a plan's own content
      sent to its execute are each refused, every value refusal with a code.
+     Each refusal the utilities make reaches the client coded, with the
+     fields a client needs ([#331][i331]): the `mail.mark`, `mail.view`,
+     `mail.search`, and `mail.senders` refusals, the `folder.rename` and
+     `folder.create` ones, an empty filter name, `filter.optimize.plan`'s
+     unknown `skip` kind as `unknown_kind` rather than a JSON-RPC
+     parameter error, a backup file that exists or cannot be written or
+     read, an empty filter set to edit, no active one to show, and a
+     baseline that cannot be read or named.
      And two structural checks. The method set matches the command tree
      both ways: every method but the protocol's own is a CLI command
      path, a `.plan` with its `.execute`, and every command has a method
@@ -355,8 +379,14 @@ root `pytest` (*The TUI*).
      followed by any of the parser's own commands, or by an interpolated
      value, is refused, so the tool's name in prose is not. Every
      operation a core error or record names in its place is one of those
-     commands ([#183][i183]). Each guard carries a planted case it is seen
-     to catch.
+     commands ([#183][i183]). Every call under `utilities/` building a
+     `MailctlError` or a subclass of it passes a `code`, and not a written
+     `None` ([#331][i331]). The walk reads names in the source, so it
+     takes a code passed through `**` or from a variable on trust (a
+     variable that is `None` at run time escapes it), and does not see an
+     error built outside `utilities/` and re-raised there, or one built
+     through an alias of its class. Each guard carries a planted case it
+     is seen to catch.
    - The **layer-purity guard** (`test_layer_purity.py`) — the four layers
      of [ADR 0007][adr7] over the components of [ADR 0006][adr6], held line
      by line:
@@ -840,4 +870,6 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i308]: https://github.com/harleypig/mailctl/issues/308
 [i279]: https://github.com/harleypig/mailctl/issues/279
 [i330]: https://github.com/harleypig/mailctl/issues/330
+[i331]: https://github.com/harleypig/mailctl/issues/331
+[i332]: https://github.com/harleypig/mailctl/issues/332
 [i325]: https://github.com/harleypig/mailctl/issues/325
