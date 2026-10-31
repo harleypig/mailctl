@@ -45,10 +45,14 @@ root `pytest` (*The TUI*).
    - `imap` (`test_imap.py`) — folder-name normalization across both
      separators (`Lists/GitHub` ≡ `INBOX.Lists.GitHub`) against a reported
      delimiter, and the session over the `fake_imap` double built from
-     plain parameters. What MXroute and `Config` add — the port-to-TLS
-     rule and the login and connection advice — is
-     `test_mxroute_imap.py`; server-module selection by `ID` is
-     `test_imap_servers.py`.
+     plain parameters. A connection that does not log in, its login
+     refused or its password prompt stopped, is shut down and not logged out
+     ([#349][i349]); one whose `LIST`, `LSUB`, or namespace read fails
+     after login is logged out, the failure raised as it was, and a LOGOUT
+     that fails still shuts the socket ([#362][i362]). What MXroute and
+     `Config` add — the port-to-TLS rule and the login and connection
+     advice — is `test_mxroute_imap.py`; server-module selection by `ID`
+     is `test_imap_servers.py`.
    - **Non-ASCII search** (`test_imap_search.py`) — a non-ASCII subject,
      from address, and list-id, each flat and inside an `OR`, run through
      IMAPClient's **real** `search` serializer over a recording transport,
@@ -222,6 +226,8 @@ root `pytest` (*The TUI*).
      there, for every one; the groups are listed in their decided order; and
      every old flat name is refused, exit 2, naming the command it is now,
      wherever it is the command word and never as an argument ([#219][i219]).
+     An unknown command or action is refused listing the choices, never
+     echoing the word given ([#364][i364]).
    - **`--json`** (`test_json_output.py`) — a `Secret` refused rather than
      serialised, failures as one JSON line, and which commands offer it.
      The mappings the API shares ([#258][i258]): an error carrying its
@@ -245,7 +251,23 @@ root `pytest` (*The TUI*).
      every step with its `kind`, `argument`, and `creates`, the kind in
      the document's word and never the model's, and every kind the
      `mxroute` dialect reports (read off its table, not listed) with a
-     word of its own.
+     word of its own. A command line refused before any command runs
+     ([#352][i352]): under `--json`, before or after the fault, the same
+     exit 2 and the same lines as without it, then one coded line —
+     `invalid_arguments`, `gone_command`, `gone_option`, `setting_invalid`
+     for a bad connection flag, and a refusal of the CLI's own; a refusal
+     the CLI makes before the core can carrying the core's code; no JSON
+     without `--json`, which is read only before `--`; and no option taken
+     by a prefix. No refused command line quotes a word argparse could not
+     use ([#364][i364]): every shape a password takes into one — an option
+     mistyped, spaced, with `=`, or short and attached; a password option
+     where none is taken; a word after an option or after `--`; a value
+     for an option that takes none or another kind — is on neither the
+     error line nor the `--json` line, exit 2 and the usage kept; each
+     template that quotes a value drops it and keeps the names; a message
+     naming only arguments is kept as argparse wrote it; and one of no
+     known shape reads `json_output.REFUSED`, alone and through the CLI on
+     both lines.
    - **The API** (`test_api.py`, [#258][i258]) — driven across a real
      process boundary by a plain line-reading client
      (`tests/api_support.py`), as a client in any language would drive
@@ -254,7 +276,11 @@ root `pytest` (*The TUI*).
      can change between a plan and its execute, and holding only the
      password's SHA-256. The state file also counts each ManageSieve
      connection (`sieve_connects`) and IMAP login (`imap_connects`), so a
-     test sees which halves a method opened; records what the IMAP double
+     test sees which halves a method opened, and each IMAP connection
+     made (`imap_opened`) and closed (`imap_closed`), so it sees how many
+     are still open ([#349][i349]); where its `unreachable` is set, makes
+     either server refuse the connection, or fail its TLS handshake where
+     it is `"tls"` ([#352][i352]); records what the IMAP double
      is asked to write (`imap_writes`); reads UIDVALIDITY afresh on every
      SELECT, so a folder can be renumbered between plan and execute;
      refuses CHECKSCRIPT where its `checkscript` is false; advertises its
@@ -266,6 +292,14 @@ root `pytest` (*The TUI*).
      capabilities the provider is to declare false. Covered: `initialize`
      connecting nothing, refusing a bad setting and a second
      `initialize`, and a method before it;
+     a refused setting reaching the client coded (`unknown_provider`, a
+     bad port from the environment as `setting_invalid` with its
+     setting, `password_file_mode`); a bad argument answering
+     `initialize`, coded, rather than ending the input, taking no option
+     by a prefix ([#352][i352]), and said on stderr in the same words,
+     with a sentinel in neither ([#364][i364]); a server that cannot be
+     reached refused on either half as `connection_failed`, or
+     `tls_failed`, with the advice in `fields` ([#352][i352]);
      `initialize` naming what the rename left behind ([#307][i307]) — an
      old setting from the env file, one from the environment, and an old
      config directory with no new one — each with a sentinel (the old
@@ -358,9 +392,11 @@ root `pytest` (*The TUI*).
      nothing, and one cancelled after its backup, held on CHECKSCRIPT,
      names the backup and stores nothing; an execute or a `filter.apply`
      pass cancelled after its first write runs to its end; a cancel while
-     `credentials.prompt` waits ends the wait, a late answer to it answers
-     nothing, and the next request asks again; and a password command gets
-     no input while the client's next request is still answered.
+     `credentials.prompt` waits ends the wait and closes the IMAP
+     connection made before it, a late answer to it answers nothing, and
+     the next request asks again on a fresh one ([#349][i349]); and a
+     password command gets no input while the client's next request is
+     still answered.
      And two structural checks. The method set matches the command tree
      both ways: every method but the protocol's own is a CLI command
      path, a `.plan` with its `.execute`, and every command has a method
@@ -404,7 +440,12 @@ root `pytest` (*The TUI*).
      alike by GETSCRIPT and every other command, a name holding CR, LF, or
      NUL refused unsent, and sievelib still having the formatters the
      client replaces — all of it under sievelib 1.5 and 1.6, which CI runs
-     both of (`Test on the oldest sievelib allowed`, [#232][i232]). Its
+     both of (`Test on the oldest sievelib allowed`, [#232][i232]). A
+     refused login or STARTTLS, a greeting cut short, and a server
+     offering no SASL each close the socket once, send no LOGOUT, and
+     raise their own code; a connection that cannot be made closes
+     nothing; and `close` sends LOGOUT and then closes the socket, whether
+     or not the LOGOUT is answered ([#362][i362]). Its
      server-module selection and capability parsing are
      `test_managesieve_servers.py`.
    - **Packaging** (`test_packaging.py`, [#229][i229]) — a wheel built from
@@ -440,14 +481,15 @@ root `pytest` (*The TUI*).
      followed by any of the parser's own commands, or by an interpolated
      value, is refused, so the tool's name in prose is not. Every
      operation a core error or record names in its place is one of those
-     commands ([#183][i183]). Every call under `utilities/` building a
-     `MailctlError` or a subclass of it passes a `code`, and not a written
-     `None` ([#331][i331]). The walk reads names in the source, so it
-     takes a code passed through `**` or from a variable on trust (a
-     variable that is `None` at run time escapes it), and does not see an
-     error built outside `utilities/` and re-raised there, or one built
-     through an alias of its class. Each guard carries a planted case it
-     is seen to catch.
+     commands ([#183][i183]). Every call in every module of the package,
+     the interfaces included, building a `MailctlError` or a subclass of
+     it passes a `code`, and not a written `None` ([#331][i331],
+     [#352][i352]); errors planted in a component, a provider, and the
+     CLI are each found, so the walk reaches beyond `utilities/`. It reads
+     names in the source, so it takes a code passed through `**` or from a
+     variable on trust (a variable that is `None` at run time escapes it),
+     and does not see one built through an alias of its class. Each guard
+     carries a planted case it is seen to catch.
    - The **layer-purity guard** (`test_layer_purity.py`) — the four layers
      of [ADR 0007][adr7] over the components of [ADR 0006][adr6], held line
      by line:
@@ -531,8 +573,9 @@ root `pytest` (*The TUI*).
      a pin is refused, while listing and reading still work; without
      `rule_sets` the `filterset` group is not listed, and its commands still
      parse and run; a connection flag the provider does not read is hidden and
-     refused; a `filterset` command is refused by the utility, naming the
-     provider, before anything is read; without `folder_visibility` `folder
+     refused, coded `setting_not_read` ([#352][i352]); a `filterset`
+     command is refused by the utility, naming the provider, before
+     anything is read; without `folder_visibility` `folder
      subscribe` and `folder unsubscribe` are not listed and `--no-subscribe`
      is not offered, each refused by the utility before anything is read, a
      created folder is not subscribed, a rename carries and checks no
@@ -954,6 +997,10 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i346]: https://github.com/harleypig/mailctl/issues/346
 [i347]: https://github.com/harleypig/mailctl/issues/347
 [i348]: https://github.com/harleypig/mailctl/issues/348
+[i349]: https://github.com/harleypig/mailctl/issues/349
 [i350]: https://github.com/harleypig/mailctl/issues/350
 [i351]: https://github.com/harleypig/mailctl/issues/351
+[i352]: https://github.com/harleypig/mailctl/issues/352
+[i362]: https://github.com/harleypig/mailctl/issues/362
+[i364]: https://github.com/harleypig/mailctl/issues/364
 [i325]: https://github.com/harleypig/mailctl/issues/325
