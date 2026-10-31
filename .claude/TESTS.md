@@ -634,7 +634,13 @@ It is **not** the pytest live tier above, and the difference is the point:
   only the interfaces print*), so this is the check that its commands work
   against a real server.
 - **It uses the normal mailctl config** — the same settings, env file, and
-  password source the user runs with, not a test-only set.
+  password source the user runs with, not a test-only set. An env file is
+  named with `--env-file PATH`, which the script hands to every mailctl
+  call as `--env-file PATH`, so mailctl reads it as it always does (the
+  mode check, `Secret`, never exported); the script never reads or exports
+  it. Through make it rides in `TESTARGS`:
+  `make livecheck TESTARGS='--env-file PATH reread-bytes'`. A path that
+  does not exist is refused, exit 2, before any test runs ([#325][i325]).
 - **It paces itself.** The account is real, so there are no loops over the
   server and there is a pause between tests.
 
@@ -716,6 +722,7 @@ make testtui           # the TUI: its pyright, then its own pytest suite
 make livecheck         # read-only live check (normal mailctl config)
 scripts/live-readonly.sh --list        # the read-only check's test names
 scripts/live-readonly.sh list rules    # run only the named checks
+scripts/live-readonly.sh --env-file PATH  # an account set by an env file
 ```
 
 `TESTARGS` passes extra flags through, e.g. a run filter for a scoped live
@@ -761,3 +768,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i299]: https://github.com/harleypig/mailctl/issues/299
 [i307]: https://github.com/harleypig/mailctl/issues/307
 [i308]: https://github.com/harleypig/mailctl/issues/308
+[i325]: https://github.com/harleypig/mailctl/issues/325
