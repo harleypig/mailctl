@@ -1207,11 +1207,11 @@ line, so theirs are the API's own:
   `like` and `build_filter` together fill a filter in from a message.
   Nothing is listed or saved. With no criteria, or a message with nothing
   to take them from, it is refused with `no_criteria`.
-* `mail.search` refuses with `-32602`: a `like` with no `uid`, a `uid`
-  below 1, or a key it does not know; `raw` with `like` or `build_filter`;
-  and `sort` with `build_filter`. These are the combinations `mail search`
-  refuses. A `uid` the folder does not hold is refused too, with no
-  `code` yet, as `mail.view` refuses one.
+* `mail.search` refuses with `-32602`: a `like` with no `uid` or with a
+  key it does not know; `raw` with `like` or `build_filter`; and `sort`
+  with `build_filter`. These are the combinations `mail search` refuses.
+  A `uid` below 1 is refused with `uid_below_one`, and one the folder does
+  not hold with `no_such_message`, as `mail.view` refuses both.
 * **`mail.senders`.** `by` is `address` (unless given), `domain`, or
   `list-id`. `top` is the rows kept, 20 unless given and every row where
   it is null; `minimum` leaves out a row counting fewer messages, 1
@@ -1433,7 +1433,7 @@ so the command line's `--json` carries the same ones: among them
 `nothing_to_change`, `filterset_changed`, `filterset_empty`,
 `auth_failed`, `credentials_not_ascii`, `subscribe_needs_create`,
 `unknown_sort_key`, `unknown_kind`, `folder_missing`, `folder_exists`,
-`no_such_message`, `backup_exists`, `credential_file`,
+`no_such_message`, `uid_below_one`, `backup_exists`, `credential_file`,
 `baseline_changed`, `baseline_read_failed`, `migration_conflict`,
 `migration_changed`, and `migration_reference_unrewritable`.
 

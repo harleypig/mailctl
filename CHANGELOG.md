@@ -121,6 +121,12 @@ ENHANCEMENTS:
   `folder subscribe NEW` or `folder unsubscribe OLD` for a subscription
   left wrong, and `folder rename NEW OLD` where a filter still files into
   the old name.
+* **`mail view` and `mail search --like` code a UID the folder does not
+  hold** ([#341]). Their `--json` failure lines now carry
+  `no_such_message`, with the folder and the UID, as `mail mark`'s do, and
+  the API's `mail.view` and `mail.search` `like` refuse it the same way.
+  The API's `like` refuses a UID below 1 with `uid_below_one`, as
+  `mail.view` does, where it answered `-32602`.
 
 BUG FIXES:
 
@@ -1758,3 +1764,4 @@ NOTES:
 [#331]: https://github.com/harleypig/mailctl/issues/331
 [#332]: https://github.com/harleypig/mailctl/issues/332
 [#280]: https://github.com/harleypig/mailctl/issues/280
+[#341]: https://github.com/harleypig/mailctl/issues/341
