@@ -252,13 +252,28 @@ def test_the_root_holds_without_the_entrypoint(image, mount):
 
 
 # The three commands, each as it starts with nothing more given: the API
-# and the TUI run with no arguments, which is the CLI's help.
+# and the TUI run with no arguments, which is the CLI's help. Then a help
+# word that does not stop the command: after ``--`` it is an argument, and
+# the TUI hands any argument it does not know to the API it starts.
+CONNECT = ("--host", "127.0.0.1", "--user", "user@example.test")
 COMMANDS = [
     pytest.param(BACKUP, id="cli"),
     pytest.param(("api",), id="api"),
     pytest.param(("api", "help"), id="api-help"),
     pytest.param(("tui",), id="tui"),
     pytest.param(("tui", "--version"), id="tui-version"),
+    pytest.param(
+        ("folder", "create", *CONNECT, "--", "--help"), id="cli-dashdash"
+    ),
+    pytest.param(
+        ("filter", "rename", *CONNECT, "--", "old", "--help"),
+        id="cli-dashdash-later",
+    ),
+    pytest.param(("filterset", "show", "--", "-h"), id="cli-dashdash-h"),
+    pytest.param(("tui", "--", "-h"), id="tui-dashdash"),
+    pytest.param(("api", "--", "--help"), id="api-dashdash"),
+    pytest.param(("tui", "--host", "127.0.0.1", "-h"), id="tui-not-alone"),
+    pytest.param(("api", *CONNECT, "--version"), id="api-not-alone"),
 ]
 
 
@@ -266,9 +281,10 @@ COMMANDS = [
 @pytest.mark.parametrize("argv", COMMANDS)
 def test_without_the_mount_the_run_is_refused(image, argv):
     """Red if a command the CLI would take as help, no arguments or
-    ``help``, skips the guard for the API or the TUI, which it starts;
-    or if the TUI's ``--version``, which it hands to the API and keeps
-    running, does."""
+    ``help``, skips the guard for the API or the TUI, which it starts; if
+    the TUI's ``--version``, which it hands to the API and keeps running,
+    does; if a help word after ``--``, a positional the command runs with,
+    does; or if one beside other arguments does for the API or the TUI."""
     result = run_image(image, None, *argv, stdin="")
 
     assert result.returncode == 2, result.stderr
@@ -288,6 +304,39 @@ def test_as_root_the_run_is_refused(image, mount, argv):
 def test_the_tui_without_a_terminal_is_refused(image, mount):
     """Red if ``docker run`` without ``-t`` starts the TUI on a pipe."""
     result = run_image(image, mount, "tui", stdin="")
+
+    assert result.returncode == 2, result.stderr
+    assert "the TUI needs a terminal" in result.stderr
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "argv",
+    [
+        pytest.param(("--api", "sh"), id="separate"),
+        pytest.param(("--api=sh",), id="equals"),
+        pytest.param(("--ap", "sh"), id="prefix"),
+        pytest.param(("--a=sh",), id="prefix-equals"),
+        pytest.param(("--host", "127.0.0.1", "--api", "sh"), id="later"),
+        pytest.param(("-h", "--api", "sh"), id="beside-help"),
+    ],
+)
+def test_the_tui_will_not_start_another_api(image, mount, argv):
+    """Red if ``tui --api COMMAND``, in any spelling the TUI's parser
+    takes, gets through: the command it names need not keep the backup
+    root, which ``env MAILCTL_BACKUP_ROOT=/ mailctl-api`` would lift."""
+    result = run_image(image, mount, "tui", *argv, stdin="")
+
+    assert result.returncode == 2, result.stderr
+    assert "runs its own API for the TUI" in result.stderr
+
+
+# ----------------------------------------------------------------------------
+def test_an_api_word_after_dashdash_is_the_apis(image, mount):
+    """The control: after ``--`` the TUI hands ``--api`` on rather than
+    taking it, so it is not refused as the TUI's; the terminal guard is
+    what stops this run."""
+    result = run_image(image, mount, "tui", "--", "--api", "sh", stdin="")
 
     assert result.returncode == 2, result.stderr
     assert "the TUI needs a terminal" in result.stderr
@@ -420,7 +469,9 @@ def test_a_backup_dir_in_the_mount_passes_the_guard(image, mount, argv):
     [
         pytest.param(("--version",), "mailctl ", id="cli"),
         pytest.param(("api", "--version"), "mailctl ", id="api"),
+        pytest.param(("api", "-h"), "usage: mailctl-api", id="api-h"),
         pytest.param(("tui", "--help"), "usage: mailctl-tui", id="tui"),
+        pytest.param(("tui", "-h"), "usage: mailctl-tui", id="tui-h"),
     ],
 )
 def test_help_and_the_version_need_no_mount(image, argv, expected):

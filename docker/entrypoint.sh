@@ -14,7 +14,8 @@
 #
 # The guards run the same whichever command is chosen: the TUI reaches the
 # server only through the mailctl-api it starts, which inherits this
-# environment.
+# environment. Naming another command for it (the TUI's --api) is refused,
+# since that command need not keep the guards.
 
 set -eu
 
@@ -28,23 +29,49 @@ refuse() {
 
 # ----------------------------------------------------------------------------
 # Help and the version write nothing, so they run without any mount. Only
-# what makes $command exit before it reads a setting counts: no arguments
-# and `help` are the CLI's help but start the API or the TUI, and the TUI
-# hands --version to the API it starts and then keeps running.
+# what makes $command exit before it reads a setting counts. After `--` a
+# help word is an argument, not an option. No arguments and `help` are the
+# CLI's help but start the API or the TUI; and the TUI hands every argument
+# it does not know to the API it starts, so for those two only a help word
+# given alone counts -- and --version not for the TUI, which hands it on
+# and keeps running.
 needs_guard() {
-  if [ "$command" = mailctl ]; then
-    [ "$#" -eq 0 ] && return 1
-    [ "$1" = help ] && return 1
+  if [ "$command" != mailctl ]; then
+    [ "$#" -eq 1 ] || return 0
+
+    case "$1" in
+      --help | -h) return 1 ;;
+      --version) [ "$command" = mailctl-tui ] || return 1 ;;
+    esac
+
+    return 0
   fi
+
+  [ "$#" -eq 0 ] && return 1
+  [ "$1" = help ] && return 1
 
   for arg in "$@"; do
     case "$arg" in
-      --help | -h) return 1 ;;
-      --version) [ "$command" = mailctl-tui ] || return 1 ;;
+      --) return 0 ;;
+      --help | -h | --version) return 1 ;;
     esac
   done
 
   return 0
+}
+
+# ----------------------------------------------------------------------------
+# The TUI's --api, in every spelling its parser takes: a prefix of the name
+# is accepted, and so is the value after `=`.
+refuse_tui_api() {
+  for arg in "$@"; do
+    case "$arg" in
+      --) return 0 ;;
+      --a | --ap | --api | --a=* | --ap=* | --api=*)
+        refuse "the image runs its own API for the TUI; --api is not taken."
+        ;;
+    esac
+  done
 }
 
 # ############################################################################
@@ -63,6 +90,8 @@ case "${1-}" in
 
   *) command=mailctl ;;
 esac
+
+[ "$command" != mailctl-tui ] || refuse_tui_api "$@"
 
 if needs_guard "$@"; then
   [ "$(id -u)" -ne 0 ] \
