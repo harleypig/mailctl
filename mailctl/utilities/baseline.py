@@ -58,6 +58,7 @@ __all__ = [
     "compare_probes",
     "execute_save_baseline",
     "find_baseline",
+    "load_baseline",
     "plan_save_baseline",
     "read_baseline",
 ]
@@ -244,6 +245,23 @@ def find_baseline(
     path = baseline_path(config, directory)
 
     return path if path.exists() else None
+
+
+# ----------------------------------------------------------------------------
+def load_baseline(config: Config, directory: Path | None = None) -> Baseline:
+    """The baseline saved for ``config``'s host; refused where there is
+    none, naming the operation that records one."""
+    path = baseline_path(config, directory)
+    baseline = read_baseline(path)
+
+    if baseline is None:
+        raise MailctlError(
+            f"no baseline has been saved for {path.stem} (looked for {path})",
+            code="no_baseline",
+            fields={"operation": "server baseline save"},
+        )
+
+    return baseline
 
 
 # ----------------------------------------------------------------------------
@@ -445,7 +463,31 @@ def plan_save_baseline(
 
 # ----------------------------------------------------------------------------
 def execute_save_baseline(plan: BaselineSavePlan) -> Path:
-    """Write the planned baseline file, ``0600`` in a ``0700`` directory."""
+    """Write the planned baseline file, ``0600`` in a ``0700`` directory.
+
+    Refused, writing nothing, where the file is not what the plan read: a
+    save made since, by this account or another, would be overwritten, and
+    the plan carries the other accounts' parts as they were then.
+    """
+    try:
+        now = plan.path.read_text(encoding="utf-8")
+
+    except FileNotFoundError:
+        now = None
+
+    except (OSError, UnicodeDecodeError) as exc:
+        raise MailctlError(
+            f"could not read baseline {plan.path}: {exc}"
+        ) from exc
+
+    if now != (None if plan.previous is None else plan.previous.text):
+        raise MailctlError(
+            f"the baseline for {plan.host} changed after the plan was made; "
+            f"nothing was written",
+            code="baseline_changed",
+            fields={"operation": "server baseline save"},
+        )
+
     return write_private(plan.text, plan.path, "baseline")
 
 
@@ -562,16 +604,8 @@ def check_baseline(
     ``require``s can be told from one it does not use; where it will not
     parse, every lost extension is treated as one it might need.
     """
-    path = baseline_path(config, directory)
-    baseline = read_baseline(path)
-
-    if baseline is None:
-        raise MailctlError(
-            f"no baseline has been saved for {path.stem} (looked for {path})",
-            code="no_baseline",
-            fields={"operation": "server baseline save"},
-        )
-
+    baseline = load_baseline(config, directory)
+    path = baseline.path
     record = probe_servers(session, config, now=now)
 
     if record.provider != baseline.server.provider:

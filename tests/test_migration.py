@@ -206,9 +206,11 @@ def test_migrate_refuses_to_overwrite_anything_at_the_destination(
 
     assert plan.conflicts == (new / "config.toml",)
 
-    with pytest.raises(MailctlError, match="refusing to migrate"):
+    with pytest.raises(MailctlError, match="refusing to migrate") as caught:
         utilities.migration.execute_config_migration(plan)
 
+    assert caught.value.code == "migration_conflict"
+    assert caught.value.fields == {"conflicts": (new / "config.toml",)}
     assert (new / "config.toml").read_text() == "mine\n"
     assert (old / "config.toml").exists()
     assert (old / "backups" / "spare.sieve").exists()

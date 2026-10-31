@@ -176,6 +176,18 @@ def plan_config_migration(
 
 
 # ----------------------------------------------------------------------------
+def check_conflicts(plan: ConfigMigrationPlan) -> None:
+    """Refuse a plan that would overwrite anything at the destination."""
+    if plan.conflicts:
+        raise MailctlError(
+            f"refusing to migrate: {len(plan.conflicts)} path(s) already "
+            f"exist in {plan.new} and would be overwritten",
+            code="migration_conflict",
+            fields={"conflicts": plan.conflicts},
+        )
+
+
+# ----------------------------------------------------------------------------
 def execute_config_migration(
     plan: ConfigMigrationPlan, on_event: EventSink | None = None
 ) -> None:
@@ -186,11 +198,7 @@ def execute_config_migration(
     mode of the one it stands in for. A destination that appeared since
     the plan was made stops the move rather than being overwritten.
     """
-    if plan.conflicts:
-        raise MailctlError(
-            f"refusing to migrate: {len(plan.conflicts)} path(s) already "
-            f"exist in {plan.new} and would be overwritten"
-        )
+    check_conflicts(plan)
 
     emit = on_event or (lambda _event: None)
 

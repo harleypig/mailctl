@@ -25,6 +25,9 @@ DEFAULT_MAX_MESSAGES = 5000
 
 GROUPINGS = ("address", "domain", "list-id")
 
+# The rows a report keeps when a front-end asks for no other number.
+DEFAULT_TOP = 20
+
 
 @dataclass(frozen=True)
 class SenderCount:

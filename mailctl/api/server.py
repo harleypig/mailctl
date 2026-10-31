@@ -41,6 +41,8 @@ from ..utilities.rules import (
     Placement,
     RuleRequest,
 )
+from ..utilities.senders import DEFAULT_MAX_MESSAGES as SENDERS_MAX_MESSAGES
+from ..utilities.senders import DEFAULT_TOP as SENDERS_TOP
 from .protocol import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -74,6 +76,9 @@ KINDS = {
     dict: "an object",
     list: "a list of strings",
 }
+
+# A list's type, as an error names it, by the type of its items.
+LIST_KINDS = {str: "a list of strings", int: "a list of whole numbers"}
 
 _ABSENT = object()
 
@@ -109,10 +114,12 @@ class Params:
         default: Any = _ABSENT,
         *,
         null: Any = _ABSENT,
+        items: type = str,
     ) -> Any:
         """``name``'s value, of ``kind``; absent is ``default``, and refused
         where there is none. An explicit null is ``null`` where one is
-        given, and otherwise the same as absent."""
+        given, and otherwise the same as absent. A list's members are of
+        ``items``."""
         value = self._values.pop(name, _ABSENT)
 
         if value is None and null is not _ABSENT:
@@ -130,10 +137,15 @@ class Params:
         )
 
         if kind is list and isinstance(value, list) and not wrong:
-            wrong = not all(isinstance(item, str) for item in value)
+            wrong = not all(
+                isinstance(item, items) and not isinstance(item, bool)
+                for item in value
+            )
 
         if wrong:
-            raise RpcError(INVALID_PARAMS, f"{name!r} must be {KINDS[kind]}")
+            named = LIST_KINDS[items] if kind is list else KINDS[kind]
+
+            raise RpcError(INVALID_PARAMS, f"{name!r} must be {named}")
 
         return value
 
@@ -1190,6 +1202,234 @@ def folder_rename_execute(
 
 
 # ----------------------------------------------------------------------------
+def mail_mark_plan(server: Server, params: Params, _ident: object) -> dict:
+    """Plan ``mail mark``: what setting and clearing flags on ``uids`` in
+    ``folder`` would change, each message's flags read and none marked.
+
+    ``read`` and ``flagged`` are true to set, false to clear, and absent
+    to leave alone; ``keywords`` are set and ``no_keywords`` cleared.
+    ``uidvalidity`` refuses the plan where the folder's is now another;
+    the execute checks the folder's again either way."""
+    session, config = server._open()
+    uids = params.take("uids", list, items=int)
+    folder = params.take("folder", str, config.source_folder)
+    uidvalidity = params.take("uidvalidity", int, None)
+    read = params.take("read", bool, None)
+    flagged = params.take("flagged", bool, None)
+    keywords = params.take("keywords", list, [])
+    no_keywords = params.take("no_keywords", list, [])
+    params.done()
+
+    add, remove = utilities.flags.mark_flags(
+        read=read,
+        flagged=flagged,
+        add_keywords=keywords,
+        remove_keywords=no_keywords,
+    )
+    plan = utilities.flags.plan_mark(
+        session, folder, uids, add, remove, uidvalidity
+    )
+
+    return {
+        "plan_id": server._keep("mail mark", plan),
+        "document": json_output.mark_plan(plan),
+    }
+
+
+# ----------------------------------------------------------------------------
+def mail_mark_execute(server: Server, params: Params, _ident: object) -> dict:
+    """Carry out a ``mail.mark.plan``: at most one write adding flags and
+    one removing them. Refused, writing nothing, once the folder's UIDs
+    have been renumbered since the plan."""
+    session, _config = server._open()
+    plan_id = params.take("plan_id", str)
+    params.done()
+    entry = server._take_plan(plan_id, "mail mark")
+
+    record = entry.record
+    require_changes(not record.is_empty, "mail mark")
+    result = utilities.flags.execute_mark(session, record)
+
+    return json_output.mark_result(record, result)
+
+
+# ----------------------------------------------------------------------------
+def mail_senders(server: Server, params: Params, _ident: object) -> dict:
+    """``mail senders``: the mail in ``folder`` that ``filter`` (a filter
+    document; absent for all of it) selects, counted by ``by`` (address,
+    domain, or list-id), busiest first. ``top`` keeps that many rows,
+    null for all; ``minimum`` leaves out the smaller ones. Refused whole,
+    reading no header, where more than ``max_messages`` match."""
+    session, config = server._open()
+    folder = params.take("folder", str, config.source_folder)
+    document = params.take("filter", dict, None)
+    by = params.take("by", str, "address")
+    top = params.take("top", int, SENDERS_TOP, null=None)
+    minimum = params.take("minimum", int, 1)
+    max_messages = params.take("max_messages", int, SENDERS_MAX_MESSAGES)
+    params.done()
+
+    report = utilities.senders.count_senders(
+        session,
+        folder,
+        criteria=None if document is None else filter_criteria(document),
+        by=by,
+        top=top,
+        minimum=minimum,
+        max_messages=max_messages,
+    )
+
+    return json_output.sender_report(report)
+
+
+# ----------------------------------------------------------------------------
+def server_test(server: Server, params: Params, _ident: object) -> dict:
+    """``server test``: the settings and where each came from, what both
+    servers support, the account's shape, and drift since a saved
+    baseline. The CLI lays this out for a person and offers no document;
+    this one is built from the same probes."""
+    session, config = server._open()
+    params.done()
+
+    return json_output.server_test(
+        utilities.server_test.examine_servers(session, config)
+    )
+
+
+# ----------------------------------------------------------------------------
+def server_probe(server: Server, params: Params, _ident: object) -> dict:
+    """``server probe``: what each server says about itself, as the
+    versioned document ``server probe --json`` prints. With ``report``
+    true, the redacted issue body for the servers mailctl does not
+    recognise instead, as ``--report`` prints it; nothing is sent."""
+    session, config = server._open()
+    report = params.take("report", bool, False)
+    params.done()
+
+    if report:
+        found = utilities.server_report.build_server_report(session, config)
+        body = (
+            None
+            if found is None
+            else utilities.server_report.render_server_report(found)
+        )
+
+        return json_output.server_report(found, body)
+
+    return utilities.reports.probe_document(
+        utilities.reports.probe_servers(session, config)
+    )
+
+
+# ----------------------------------------------------------------------------
+def server_baseline_save_plan(
+    server: Server, params: Params, _ident: object
+) -> dict:
+    """Plan ``server baseline save``: both servers probed, and the
+    baseline file for the configured host that would result, with what
+    changed since the one saved already. Only that file, on the API's
+    host, is ever written; nothing on the server changes."""
+    session, config = server._open()
+    params.done()
+
+    plan = utilities.baseline.plan_save_baseline(session, config)
+
+    return {
+        "plan_id": server._keep("server baseline save", plan),
+        "document": json_output.baseline_save_plan(plan, config.user),
+    }
+
+
+# ----------------------------------------------------------------------------
+def server_baseline_save_execute(
+    server: Server, params: Params, _ident: object
+) -> dict:
+    """Carry out a ``server.baseline.save.plan``: the file written, mode
+    0600. Refused, writing nothing, where the file changed after the plan
+    was made."""
+    server._open()
+    plan_id = params.take("plan_id", str)
+    params.done()
+    entry = server._take_plan(plan_id, "server baseline save")
+
+    path = utilities.baseline.execute_save_baseline(entry.record)
+
+    return json_output.baseline_save_result(entry.record, path)
+
+
+# ----------------------------------------------------------------------------
+def server_baseline_show(
+    server: Server, params: Params, _ident: object
+) -> dict:
+    """``server baseline show``: the baseline saved for the configured
+    host, as ``--json`` prints it -- the file as stored. Connects
+    nothing."""
+    _session, config = server._open()
+    params.done()
+
+    return json.loads(utilities.baseline.load_baseline(config).text)
+
+
+# ----------------------------------------------------------------------------
+def server_baseline_check(
+    server: Server, params: Params, _ident: object
+) -> dict:
+    """``server baseline check``: both servers probed and compared with
+    the saved baseline, as ``--json`` prints it. Refuses nothing over
+    drift; ``serious`` and ``informational`` count it."""
+    session, config = server._open()
+    params.done()
+
+    return json_output.drift_check(
+        utilities.baseline.check_baseline(session, config)
+    )
+
+
+# ----------------------------------------------------------------------------
+def config_migrate_plan(
+    server: Server, params: Params, _ident: object
+) -> dict:
+    """Plan ``config migrate``: what would move from the config directory
+    of the tool's old name to the one it reads now, on the API's host.
+    Refused where anything at the destination would be overwritten.
+
+    This process resolved its configuration when it was initialized, so
+    what moves is read by the next process started, not by this one."""
+    server._open()
+    params.done()
+
+    plan = utilities.migration.plan_config_migration()
+
+    if plan is not None:
+        utilities.migration.check_conflicts(plan)
+
+    return {
+        "plan_id": server._keep("config migrate", plan),
+        "document": json_output.migration_plan(plan),
+    }
+
+
+# ----------------------------------------------------------------------------
+def config_migrate_execute(
+    server: Server, params: Params, ident: object
+) -> dict:
+    """Carry out a ``config.migrate.plan``: each file moved, keeping its
+    mode, each config.toml path pointed at the new directory, and the old
+    directory removed once empty, each sent as an ``event``. A file that
+    appeared at the destination since the plan stops the move."""
+    server._open()
+    plan_id = params.take("plan_id", str)
+    params.done()
+    entry = server._take_plan(plan_id, "config migrate")
+
+    record = entry.record
+    require_changes(record is not None, "config migrate")
+    utilities.migration.execute_config_migration(record, server._events(ident))
+
+    return json_output.migration_result(record)
+
+
+# ----------------------------------------------------------------------------
 def plan_discard(server: Server, params: Params, _ident: object) -> None:
     """Drop a waiting plan, whichever command made it."""
     plan_id = params.take("plan_id", str)
@@ -1342,6 +1582,17 @@ METHODS: dict[str, Callable[[Server, Params, object], Any]] = {
     "folder.subscribe.execute": subscription_execute(True),
     "folder.unsubscribe.plan": subscription_plan(False),
     "folder.unsubscribe.execute": subscription_execute(False),
+    "mail.mark.plan": mail_mark_plan,
+    "mail.mark.execute": mail_mark_execute,
+    "mail.senders": mail_senders,
+    "server.test": server_test,
+    "server.probe": server_probe,
+    "server.baseline.save.plan": server_baseline_save_plan,
+    "server.baseline.save.execute": server_baseline_save_execute,
+    "server.baseline.show": server_baseline_show,
+    "server.baseline.check": server_baseline_check,
+    "config.migrate.plan": config_migrate_plan,
+    "config.migrate.execute": config_migrate_execute,
 }
 
 PROTOCOL_METHODS = frozenset({"initialize", "shutdown", "plan.discard"})
