@@ -45,7 +45,13 @@ LIVE_FLAG = "MAILCTL_LIVE"
 LIVE_VALUE = "1"
 
 REQUIRED_SETTINGS = ("MAILCTL_HOST", "MAILCTL_USER")
-PASSWORD_SETTINGS = ("MAILCTL_PASSWORD", "MAILCTL_PASSWORD_CMD")
+# In the order mailctl's config ladder reads them; the first two keep the
+# value out of the environment, so the message names them as preferred.
+PASSWORD_SETTINGS = (
+    "MAILCTL_PASSWORD_FILE",
+    "MAILCTL_PASSWORD_CMD",
+    "MAILCTL_PASSWORD",
+)
 
 
 # ############################################################################
@@ -75,9 +81,9 @@ def gate_reason() -> str | None:
     if not any(os.environ.get(name) for name in PASSWORD_SETTINGS):
         return (
             f"live tier needs a credential: set one of "
-            f"{' or '.join(PASSWORD_SETTINGS)} "
-            f"({PASSWORD_SETTINGS[1]} is preferred -- it keeps the value "
-            f"out of the environment)"
+            f"{', '.join(PASSWORD_SETTINGS[:-1])} or {PASSWORD_SETTINGS[-1]} "
+            f"({PASSWORD_SETTINGS[0]} or {PASSWORD_SETTINGS[1]} is preferred "
+            f"-- either keeps the value out of the environment)"
         )
 
     return None
