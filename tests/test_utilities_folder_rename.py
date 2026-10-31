@@ -7,6 +7,8 @@ read-back after a rename sees the stored script; the IMAP side is the real
 subscription list alone as RFC 3501 section 6.3.5 says a server's does.
 """
 
+from dataclasses import replace
+
 import pytest
 from imapclient.exceptions import IMAPClientError
 from utilities_support import FakeSieveSession, mxroute
@@ -464,11 +466,25 @@ def test_a_failed_subscribe_is_reported_and_the_rules_still_follow(
     )
     assert not result.ok
 
-    failed = [check.label for check in result.checks if not check.ok]
+    failed = [
+        (check.label, check.operation, check.arguments)
+        for check in result.checks
+        if not check.ok
+    ]
 
+    # Each folder left hidden names the subscribe that shows it (#350).
     assert failed == [
-        "'INBOX.Archive' is subscribed, as 'INBOX.Lists' was",
-        "those subscribed before are subscribed now",
+        (
+            "'INBOX.Archive' is subscribed, as 'INBOX.Lists' was",
+            "folder subscribe",
+            ("INBOX.Archive",),
+        ),
+        (
+            "'INBOX.Archive.GitHub' is subscribed, as 'INBOX.Lists.GitHub' "
+            "was",
+            "folder subscribe",
+            ("INBOX.Archive.GitHub",),
+        ),
     ]
 
 
@@ -537,10 +553,56 @@ def test_an_unsubscribed_new_name_fails_the_check(live, imap_session):
     before = plan(live)
     imap_session.rename_folder("INBOX.Lists", "INBOX.Archive")
 
-    failed = [c.label for c in verify_folder_rename(live, before) if not c.ok]
+    checks = {c.label: c for c in verify_folder_rename(live, before)}
+    check = checks["'INBOX.Archive' is subscribed, as 'INBOX.Lists' was"]
 
-    assert "'INBOX.Archive' is subscribed, as 'INBOX.Lists' was" in failed
-    assert "'INBOX.Lists' is off the subscription list" in failed
+    assert not checks["'INBOX.Lists' is off the subscription list"].ok
+    assert not check.ok
+    assert (check.operation, check.arguments) == (
+        "folder subscribe",
+        ("INBOX.Archive",),
+    )
+
+
+# ----------------------------------------------------------------------------
+def test_an_unsubscribed_child_names_the_subscribe_for_it(live, imap_session):
+    """One check per hidden folder, since the subscribe takes one (#350)."""
+    before = plan(live)
+    imap_session.rename_folder("INBOX.Lists", "INBOX.Archive")
+    imap_session.subscribe("INBOX.Archive")
+    imap_session.unsubscribe("INBOX.Lists")
+    imap_session.unsubscribe("INBOX.Lists.GitHub")
+
+    failed = [
+        (c.label, c.detail, c.operation, c.arguments)
+        for c in verify_folder_rename(live, before)
+        if not c.ok and "subscribed" in c.label
+    ]
+
+    assert failed == [
+        (
+            "'INBOX.Archive.GitHub' is subscribed, as 'INBOX.Lists.GitHub' "
+            "was",
+            "webmail will not show it",
+            "folder subscribe",
+            ("INBOX.Archive.GitHub",),
+        )
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_no_subscription_is_checked_or_offered_without_visibility(
+    live, imap_session
+):
+    """A host that does not show folders by subscription has no subscribe
+    to offer, whatever the subscription list says."""
+    before = replace(plan(live), by_subscription=False)
+    imap_session.rename_folder("INBOX.Lists", "INBOX.Archive")
+
+    checks = verify_folder_rename(live, before)
+
+    assert not any("subscri" in c.label for c in checks)
+    assert not any(c.operation == "folder subscribe" for c in checks)
 
 
 # ----------------------------------------------------------------------------
@@ -578,6 +640,8 @@ def test_fewer_messages_after_fails_the_check(live, mailbox, imap_session):
     assert count.label == (
         "'INBOX.Archive' holds 359 messages; 'INBOX.Lists' held 360"
     )
+    assert "mailctl cannot bring them back" in count.detail
+    assert count.operation == ""
 
 
 # ----------------------------------------------------------------------------
@@ -591,15 +655,53 @@ def test_a_rename_that_never_happened_fails_every_folder_check(live):
 
     fixes = {c.label: (c.operation, c.arguments) for c in checks}
 
-    # The old name still there is the rename to ask for again; a folder
-    # mailctl cannot remove, and children it cannot name one by one, are
-    # offered nothing.
-    assert fixes["'INBOX.Archive' exists"] == (
-        "folder rename",
-        ("INBOX.Lists", "INBOX.Archive"),
+    # Asking for the rename again fixes each of the three (#350).
+    retry = ("folder rename", ("INBOX.Lists", "INBOX.Archive"))
+
+    assert fixes["'INBOX.Archive' exists"] == retry
+    assert fixes["'INBOX.Lists' is gone"] == retry
+    assert fixes["the 1 folder under it moved with it"] == retry
+
+
+# ----------------------------------------------------------------------------
+def test_an_old_name_left_beside_the_new_says_it_cannot_be_removed(
+    live, imap_session
+):
+    before = plan(live)
+    imap_session.create_folder("INBOX.Archive")
+
+    check = next(
+        c
+        for c in verify_folder_rename(live, before)
+        if c.label == "'INBOX.Lists' is gone"
     )
-    assert fixes["'INBOX.Lists' is gone"] == ("", ())
-    assert fixes["the 1 folder under it moved with it"] == ("", ())
+
+    assert not check.ok
+    assert check.operation == ""
+    assert check.detail == "mailctl cannot remove a folder"
+
+
+# ----------------------------------------------------------------------------
+def test_a_child_lost_in_the_move_says_it_cannot_be_brought_back(
+    live, mailbox, imap_session
+):
+    before = plan(live)
+    mailbox.listing = [
+        entry for entry in mailbox.listing if b"GitHub" not in entry[2]
+    ]
+    imap_session.rename_folder("INBOX.Lists", "INBOX.Archive")
+
+    check = next(
+        c
+        for c in verify_folder_rename(live, before)
+        if c.label == "the 1 folder under it moved with it"
+    )
+
+    assert not check.ok
+    assert check.operation == ""
+    assert check.detail == (
+        "'INBOX.Archive.GitHub' is missing; mailctl cannot bring a folder back"
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -617,6 +719,9 @@ def test_a_new_name_missing_with_the_old_gone_offers_nothing(
 
     assert not check.ok
     assert check.operation == ""
+    assert check.detail == (
+        "neither name is listed, and mailctl cannot bring the folder back"
+    )
 
 
 # ----------------------------------------------------------------------------

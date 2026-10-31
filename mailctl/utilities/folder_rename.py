@@ -531,27 +531,42 @@ def verify_folder_rename(
 
     old, new = plan.old, plan.new
 
-    # No operation is offered for an old name still there: mailctl removes
-    # no folder, and where the new one is missing the next check offers
-    # the rename again.
-    checks.append(PostCondition(f"{old!r} is gone", not listing.exists(old)))
+    # Asking for the rename again is the fix only while the old name is
+    # there and the new one is not; mailctl removes no folder, and with
+    # neither name listed no command brings the folder back.
+    again = listing.exists(old) and not listing.exists(new)
+    retry = {"operation": "folder rename", "arguments": (old, new)}
+
+    label = f"{old!r} is gone"
+
+    if not listing.exists(old):
+        checks.append(PostCondition(label, True))
+
+    elif again:
+        checks.append(PostCondition(label, False, **retry))
+
+    else:
+        checks.append(
+            PostCondition(label, False, "mailctl cannot remove a folder")
+        )
 
     label = f"{new!r} exists"
 
     if listing.exists(new):
         checks.append(PostCondition(label, True))
 
-    # Only where the old name is still there is asking again the fix;
-    # with neither name listed, no command brings the folder back.
-    elif listing.exists(old):
-        checks.append(
-            PostCondition(
-                label, False, operation="folder rename", arguments=(old, new)
-            )
-        )
+    elif again:
+        checks.append(PostCondition(label, False, **retry))
 
     else:
-        checks.append(PostCondition(label, False))
+        checks.append(
+            PostCondition(
+                label,
+                False,
+                "neither name is listed, and mailctl cannot bring the "
+                "folder back",
+            )
+        )
 
     carried = plan.by_subscription
 
@@ -587,28 +602,51 @@ def verify_folder_rename(
             move.new for move in plan.children if not listing.exists(move.new)
         ]
         hidden = [
-            move.new
+            move
             for move in plan.children
             if move.subscribed and not listing.is_subscribed(move.new)
         ]
         count = len(plan.children)
-
-        checks.append(
-            PostCondition(
-                f"the {count} folder{'s' if count != 1 else ''} under it "
-                f"moved with it",
-                not missing,
-                ", ".join(f"{name!r} is missing" for name in missing),
-            )
+        label = (
+            f"the {count} folder{'s' if count != 1 else ''} under it "
+            f"moved with it"
         )
+        lost = ", ".join(f"{name!r} is missing" for name in missing)
 
-        if carried:
+        if not missing:
+            checks.append(PostCondition(label, True))
+
+        elif again:
+            checks.append(PostCondition(label, False, lost, **retry))
+
+        else:
             checks.append(
                 PostCondition(
-                    "those subscribed before are subscribed now",
-                    not hidden,
-                    ", ".join(f"{name!r} is not" for name in hidden),
+                    label,
+                    False,
+                    f"{lost}; mailctl cannot bring a folder back",
                 )
+            )
+
+        # One check per folder left hidden, since the command that fixes
+        # it takes one folder.
+        if carried and not hidden:
+            checks.append(
+                PostCondition(
+                    "those subscribed before are subscribed now", True
+                )
+            )
+
+        elif carried:
+            checks.extend(
+                PostCondition(
+                    f"{move.new!r} is subscribed, as {move.old!r} was",
+                    False,
+                    "webmail will not show it",
+                    operation="folder subscribe",
+                    arguments=(move.new,),
+                )
+                for move in hidden
             )
 
     if listing.exists(new):
@@ -621,7 +659,10 @@ def verify_folder_rename(
                     f"{'s' if count != 1 else ''}; {old!r} held "
                     f"{plan.messages}",
                     count >= plan.messages,
-                    "" if count >= plan.messages else "messages are missing",
+                    ""
+                    if count >= plan.messages
+                    else "messages are missing, and mailctl cannot bring "
+                    "them back",
                 )
             )
 
