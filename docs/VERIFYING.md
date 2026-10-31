@@ -1,13 +1,23 @@
 # Verifying mailctl against a real mailbox
 
-**Reads and dry runs have been run against a live MXRoute account; no
-write ever has.** The probes, listings, and `--dry-run` plans have run
-against one real account, and a read-only check (`make livecheck`) repeats
-them without changing anything. Every write — saving a filter, moving,
-flagging, or discarding mail — has been tested only offline and against a
-throwaway local mail server, never against a real mailbox. So the steps that
-change something are a **first-run procedure**, not a regression checklist:
-you are finding out whether they work, not confirming that they still do.
+**Reads, dry runs, and one filter save have been run against a live MXRoute
+account; nothing mailctl does to mail has.** The probes, listings, and
+`--dry-run` plans have run against one real account, and a read-only check
+(`make livecheck`) repeats them without changing anything. Saving a filter
+(step 5) has run there once, on 2026-10-31: `mailctl filter add` backed up
+the active filter set, merged a new filter into it, and uploaded it. The
+test then put the filter set back as it was by its own means, not with
+mailctl. That filter matched nothing and only kept mail, so it never filed a
+message.
+
+Everything else that changes something has been tested only offline and
+against a throwaway local mail server, never against a real mailbox: moving,
+flagging, or discarding mail with `filter apply`, creating and subscribing a
+folder, removing a filter, and `filterset restore`. So step 6 and the
+recovery steps at the end are a **first-run procedure**, not a regression
+checklist: you are finding out whether they work, not confirming that they
+still do. Step 5 has worked once, on one account, and is worth checking as
+carefully as if it had not.
 
 Work through the steps **in order**. They are arranged from *touches nothing*
 to *cannot be undone*, so you can stop at any point and have changed nothing

@@ -322,6 +322,12 @@ NOTES:
   `pytest` run warned that pytest-asyncio's loop scope was unset. The root
   suite has no async test, so it now blocks that plugin; the TUI's own
   suite still uses it.
+* **A filter has been saved on a real MXroute account** ([#283]). The
+  live write smoke test ran `mailctl filter add` against the maintainer's
+  account on 2026-10-31 and passed, and its guards put the filter set back
+  as it was. Nothing that moves, flags, or discards mail has run on a real
+  account yet; [docs/VERIFYING.md](docs/VERIFYING.md) says which steps are
+  still a first run.
 
 ## 0.12.0
 
@@ -1870,6 +1876,7 @@ NOTES:
 [#280]: https://github.com/harleypig/mailctl/issues/280
 [#341]: https://github.com/harleypig/mailctl/issues/341
 [#282]: https://github.com/harleypig/mailctl/issues/282
+[#283]: https://github.com/harleypig/mailctl/issues/283
 [#346]: https://github.com/harleypig/mailctl/issues/346
 [#347]: https://github.com/harleypig/mailctl/issues/347
 [#350]: https://github.com/harleypig/mailctl/issues/350
