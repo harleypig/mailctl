@@ -65,6 +65,16 @@ FEATURES:
   that waits for the password ends the wait, and the next request asks
   again.
 
+* **The Docker image runs the API and the terminal UI too** ([#347]).
+  The first word picks what runs: `api` starts `mailctl-api`, `tui`
+  starts `mailctl-tui`, and anything else goes to `mailctl` as before;
+  neither word is a mailctl command. Every guard holds for all three: the
+  config directory must be a mount, root is refused, and a backup outside
+  the mount is refused. The terminal UI needs `docker run -it`, and is
+  refused without a terminal; it starts the API inside the same container,
+  and its `--api` option is refused there. README › Install › *In Docker*
+  gives the commands.
+
 ENHANCEMENTS:
 
 * **`--env-file` and `--provider` may come before the command** ([#243]).
@@ -121,6 +131,15 @@ ENHANCEMENTS:
   `folder subscribe NEW` or `folder unsubscribe OLD` for a subscription
   left wrong, and `folder rename NEW OLD` where a filter still files into
   the old name.
+* **`folder rename`'s read-back covers every check it can fail**
+  ([#350]). Each folder under the renamed one that was subscribed and is
+  not now is a failed check of its own, naming `folder subscribe` with
+  that folder, as the folder itself already was; the read-back used to
+  report them together, naming none. Where the rename never happened,
+  every folder and subscription check offers the rename again, since that
+  carries the subscriptions, rather than a subscribe of a folder that does
+  not exist. Where mailctl has no fix, such as an old name still there
+  beside the new one or messages lost, the check says so.
 * **`mail view` and `mail search --like` code a UID the folder does not
   hold** ([#341]). Their `--json` failure lines now carry
   `no_such_message`, with the folder and the UID, as `mail mark`'s do, and
@@ -218,6 +237,31 @@ BUG FIXES:
   sending nothing, backing nothing up, and keeping the switch, and names
   `mailctl filterset list` to see which is active. The refusal is the
   same `filterset_changed` as above.
+* **The API no longer keeps every plan, or reads without limit, for the
+  life of the process** ([#346]). Only the newest 32 plans wait; making
+  another drops the oldest, whose id is then refused with `plan_unknown`,
+  as a used one is. A client that made plans and never executed or
+  discarded them grew the table for as long as the API ran. The API reads
+  at most 64 messages ahead of the one it is serving, so a cancel sent
+  behind 64 others is seen only once some are answered, and a password
+  prompt with 64 messages waiting and no answer among them is taken as
+  declined. The reader stops when the API does.
+
+NOTES:
+
+* **What v1.0.0 promises is written down** ([#282]). RELEASING.md ›
+  *What v1 promises* lists what stays as it is for every 1.x release (the
+  command paths and options, exit statuses, the `--json` and versioned
+  documents, error codes, settings, backups, the safety behaviour, the
+  API at protocol version 1, and how the Docker image is run), what may
+  be added, and what is free to change. A break after v1 waits for 2.0.0
+  and is a clean break, with no aliases. Nothing changes until v1.0.0 is
+  tagged.
+* **The root test suite no longer warns about pytest-asyncio** ([#351]).
+  With the TUI's test tools installed into the same `.venv`, every
+  `pytest` run warned that pytest-asyncio's loop scope was unset. The root
+  suite has no async test, so it now blocks that plugin; the TUI's own
+  suite still uses it.
 
 ## 0.12.0
 
@@ -1765,3 +1809,8 @@ NOTES:
 [#332]: https://github.com/harleypig/mailctl/issues/332
 [#280]: https://github.com/harleypig/mailctl/issues/280
 [#341]: https://github.com/harleypig/mailctl/issues/341
+[#282]: https://github.com/harleypig/mailctl/issues/282
+[#346]: https://github.com/harleypig/mailctl/issues/346
+[#347]: https://github.com/harleypig/mailctl/issues/347
+[#350]: https://github.com/harleypig/mailctl/issues/350
+[#351]: https://github.com/harleypig/mailctl/issues/351
