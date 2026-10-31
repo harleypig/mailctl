@@ -1537,7 +1537,7 @@ Full dimension status:
 | 5. Security | **Active (secrets, Dockerfile, image report-only)** — `gitleaks`, `detect-private-key`; `hadolint` on the Dockerfile; `trivy` on the built image, report only and not a required check, since the base image carries HIGH findings with no fix ([#238][i238]). SAST is **Off**: the attack surface is two outbound TLS client sessions and no untrusted input parsing beyond the user's own Sieve script |
 | 6. Tests | **Active** — the offline tier is green (`make test` / `pytest`), and the TUI's suite (`make testtui`) beside it; see [TESTS.md](TESTS.md) |
 | 7. UI/UX & accessibility | **Active (TUI behaviour); accessibility Missing** — the TUI's screen is driven headless with Textual's Pilot (`clients/tui/tests/`): the masked password field, server text shown as plain characters, an alert shown as it arrives, and a command hidden without its capability. Nothing checks accessibility (contrast, colour-only meaning, screen-reader output), and no decision to build that check has been taken. The CLI's terminal output is covered by the *show, then change* convention |
-| 8. End-to-end | **Scaffolded, gated** — `tests/live/` exists and skips unless `MAILCTL_LIVE=1`; its write guards are built and proved on the container tier, and it has never written to a real account ([#9][i9]) |
+| 8. End-to-end | **Active (manual, gated)** — `tests/live/` skips unless `MAILCTL_LIVE=1`, and writes only with `MAILCTL_LIVE_WRITE=1` as well; run by hand, never in CI. Its write guards were proved on the container tier ([#9][i9]), and its write smoke test ran against the real account on 2026-10-31 and passed, the guards restoring everything ([#283][i283]) |
 | 9. Compatibility | **Active** — CPython 3.11 through 3.14, every one tested in CI, and sievelib at both ends of its bound (1.5.0 and the newest below 2); the TUI on 3.11 and 3.14 only, the oldest and newest; no external contract we publish ([#231][i231], [#232][i232]) |
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
@@ -1724,6 +1724,7 @@ will read it.
 [adr2]: ../adr/0002-non-destructive-script-merge.md
 [provider]: https://github.com/harleypig/terraform-provider-mxroute
 [i9]: https://github.com/harleypig/mailctl/issues/9
+[i283]: https://github.com/harleypig/mailctl/issues/283
 [adr5]: ../adr/0005-restore-may-replace-an-unparseable-script.md
 [adr8]: ../adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
 [adr9]: ../adr/0009-python-textual-tui-as-a-separate-package.md
