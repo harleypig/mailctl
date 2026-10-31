@@ -209,6 +209,14 @@ def _option_name(word: str) -> str | None:
 
 
 # ----------------------------------------------------------------------------
+def _may_be_a_value(before: str) -> bool:
+    """Whether the word after ``before`` may be its value, and so is never
+    named however it is spelt: ``before`` is an option, or ``--``, with no
+    '=' to have taken one already. A password may start with '-'."""
+    return before.startswith("-") and "=" not in before
+
+
+# ----------------------------------------------------------------------------
 def rejection(
     message: str, code: str = "invalid_arguments"
 ) -> tuple[str, str, dict[str, object] | None]:
@@ -219,13 +227,17 @@ def rejection(
     Built from the kind of refusal rather than copied, since argparse
     quotes what it could not use, and a word it did not recognise may be
     a password that lost its option. What is kept is what names the
-    mistake: an option's name, never a value. A message of no known shape
+    mistake: an option's name, never a value, so a word that may be the
+    value of the one before it is counted. A message of no known shape
     is ``REFUSED``, never argparse's text.
     """
     if message.startswith(_UNRECOGNIZED):
         words = message[len(_UNRECOGNIZED) :].split()
         options = [
-            name for name in map(_option_name, words) if name is not None
+            name
+            for before, word in zip(["", *words[:-1]], words, strict=True)
+            if not _may_be_a_value(before)
+            and (name := _option_name(word)) is not None
         ]
         others = len(words) - len(options)
         said = ", ".join(options)

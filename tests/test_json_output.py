@@ -303,13 +303,17 @@ LEAKY_COMMAND_LINES = [
     ["filter", "list", f"--pasword={SENTINEL}"],
     ["filter", "list", "--passwd", SENTINEL],
     ["filter", "list", "--pasword-cmd", SENTINEL],
-    ["filter", "list", f"--password-cmd={SENTINEL}", "--password-file", "x"],
     ["filter", "list", f"-P{SENTINEL}"],
     ["config", "migrate", "--password", SENTINEL],
     ["config", "migrate", f"-p{SENTINEL}"],
     ["--password", SENTINEL, "filter", "list"],
     ["help", f"--password={SENTINEL}"],
-    ["help", "filter", SENTINEL],
+    ["filter", SENTINEL],
+    ["filter", "list", "--pasword", f"--{SENTINEL}"],
+    ["filter", "list", "--pasword", f"--{SENTINEL}=x"],
+    ["--password", f"--{SENTINEL}", "filter", "list"],
+    ["config", "migrate", "--password", f"--{SENTINEL}"],
+    ["filter", "list", "--", f"--{SENTINEL}"],
     ["filter", "list", f"--debug={SENTINEL}"],
     ["mail", "view", SENTINEL],
     ["folder", "list", "--imap-port", SENTINEL],
@@ -328,8 +332,11 @@ def test_a_refused_command_line_never_quotes_a_word_argparse_could_not_use(
     say what kind of mistake it was and name options only. Exit 2 and the
     usage block are argparse's own. Red if Parser.error hands argparse's
     message on unfiltered."""
+    # Nothing after '--' is an option, so --json goes before it.
+    at = argv.index("--") if "--" in argv else len(argv)
+
     with pytest.raises(SystemExit) as rejected:
-        cli.main([*argv, *json_flag])
+        cli.main([*argv[:at], *json_flag, *argv[at:]])
 
     out, err = capsys.readouterr()
 
@@ -341,6 +348,30 @@ def test_a_refused_command_line_never_quotes_a_word_argparse_could_not_use(
 
     if json_flag:
         assert json.loads(err.splitlines()[-1])["error"]["code"]
+
+
+# ----------------------------------------------------------------------------
+def test_a_mutual_exclusion_names_options_only(capsys):
+    """A guard, not a falsifier of the filter: argparse's message for two
+    options that cannot be combined holds their names alone, so the value
+    given to one is on neither line with the filter or without it."""
+    with pytest.raises(SystemExit) as rejected:
+        cli.main(
+            [
+                "filter",
+                "list",
+                f"--password-cmd={SENTINEL}",
+                "--password-file",
+                "x",
+                "--json",
+            ]
+        )
+
+    out, err = capsys.readouterr()
+
+    assert rejected.value.code == 2
+    assert "not allowed with argument" in err
+    assert SENTINEL not in out + err
 
 
 # ----------------------------------------------------------------------------
@@ -384,14 +415,35 @@ def test_a_refused_command_line_never_quotes_a_word_argparse_could_not_use(
         ),
         (
             f"unrecognized arguments: -p{SENTINEL} --{SENTINEL}=x",
-            f"unrecognized arguments: --{SENTINEL} and 1 other word",
+            "unrecognized arguments: 2 words",
+        ),
+        (
+            f"unrecognized arguments: --pasword --{SENTINEL}",
+            "unrecognized arguments: --pasword and 1 other word",
+        ),
+        (
+            f"unrecognized arguments: --pasword --{SENTINEL}=x",
+            "unrecognized arguments: --pasword and 1 other word",
+        ),
+        (
+            "unrecognized arguments: --pasword -S",
+            "unrecognized arguments: --pasword and 1 other word",
+        ),
+        (
+            f"unrecognized arguments: -- --{SENTINEL}",
+            "unrecognized arguments: 2 words",
+        ),
+        (
+            "unrecognized arguments: --pasword=x --typo",
+            "unrecognized arguments: --pasword, --typo",
         ),
     ],
 )
 def test_a_value_argparse_quotes_is_dropped_and_the_names_kept(message, said):
-    """Each template that quotes a value keeps what names the mistake. A
-    long option is named up to its '=', so a password given as one is the
-    accepted limit; a short option is named only alone."""
+    """Each template that quotes a value keeps what names the mistake. An
+    option is named up to its '=', a short one only alone, and never a
+    word straight after an option or ``--`` with no '=': that word may be
+    the option's value, and a password may start with '-'."""
     assert json_output.rejection(message)[0] == said
 
 
