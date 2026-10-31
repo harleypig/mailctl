@@ -8,11 +8,11 @@ package). This file records what belongs here.
 **The offline tier is written and green** (`make test`); the only skips are
 the live- and container-gated ones. `pytest -q` reports the current count;
 none is kept here, because a count nobody re-derives is only ever stale.
-The live tier is scaffolded (`tests/live/`) and skipped by default; it stays
-open until it has run against a real account. The write guards it needs
-before anything writes to one are built and proved on the container tier
-([#9](https://github.com/harleypig/mailctl/issues/9)); nothing has yet
-written to the real account. The container tier
+The live tier (`tests/live/`) is skipped by default and run by hand. Its
+write guards were built and proved on the container tier
+([#9](https://github.com/harleypig/mailctl/issues/9)), and its write smoke
+test ran against the real account on 2026-10-31 and passed, the guards
+restoring everything ([#283][i283]). The container tier
 (`tests/container/`) is written and green against a local server; it is
 where every write path is proved first. The TUI's tests are a separate
 suite with their own configuration, run by `make testtui` and never by the
@@ -984,6 +984,7 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i258]: https://github.com/harleypig/mailctl/issues/258
 [i259]: https://github.com/harleypig/mailctl/issues/259
 [i294]: https://github.com/harleypig/mailctl/issues/294
+[i283]: https://github.com/harleypig/mailctl/issues/283
 [i298]: https://github.com/harleypig/mailctl/issues/298
 [i299]: https://github.com/harleypig/mailctl/issues/299
 [i307]: https://github.com/harleypig/mailctl/issues/307
