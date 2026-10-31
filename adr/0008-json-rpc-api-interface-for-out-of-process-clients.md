@@ -4,7 +4,7 @@
 - Date: 2026-10-28
 - Accepted: 2026-10-29, by the operator on [#224][i224]
 - Amended: 2026-10-30, for [#258][i258] and again for [#307][i307];
-  2026-10-31, for [#281][i281] and again for [#279][i279] (see
+  2026-10-31, for [#281][i281], [#279][i279], and [#280][i280] (see
   *Amendment*)
 - Amends [ADR 0003][adr3] (see its *Amendment*). Builds on [ADR
   0007][adr7]. Recorded for [#224][i224].
@@ -174,7 +174,8 @@ lives as long as the app does* with the app being the client.
 - **Requests are handled one at a time, in order.** The session already
   serialises calls per half, and IMAP and ManageSieve are one command
   after another. A second request waits for the first. Cancelling a
-  request in flight is not offered in the first slice.
+  request in flight is not offered in the first slice; it is now (see
+  *Amendment*, *Cancelling a request*).
 - **Idle connections go stale, and a write must not be the call that
   finds out.** A server may log out an idle client: IMAP allows *"an
   inactivity autologout timer"* of *"at least 30 minutes"* ([RFC
@@ -501,6 +502,50 @@ open:
 `server.test` has a document of its own, built from the same probes as
 the CLI's report, which offers none.
 
+### Cancelling a request (#280)
+
+Added on 2026-10-31, for [#280][i280]. §3 says cancelling a request in
+flight is not offered in the first slice. It is offered now, and §3's
+one-at-a-time, in-order handling stands around it.
+
+- **The LSP's name and code.** A client sends the `$/cancelRequest`
+  notification with the request's id, and a request stopped in time is
+  answered with `-32800`, the LSP's `RequestCancelled`. The LSP is
+  already the precedent for `credentials.prompt` (*Sources*), and it
+  holds that
+  *"a request that got canceled still needs to return from the server
+  and send a response back"* ([LSP 3.17][lsp]), so every cancelled
+  request is still answered. The error's `data` carries `written:
+  false`, and `backup`, the path of a backup the request wrote before it
+  stopped, where there is one.
+- **The client's lines are read on a thread of their own**
+  (`api/protocol.py`), so a cancel is in hand while the request it names
+  runs. Handling and every line written stay on the serving thread.
+- **The session checks before each transport operation.** `engine.connect`
+  takes a `checkpoint` callback, beside `progress` and `on_event`, and
+  the session calls it before every operation, saying whether it is a
+  write; one that raises stops the operation before it is sent. So a
+  request stops between exchanges with the server, never during one, and
+  the utilities do not know a request can be stopped.
+- **Never after the first write.** A write may have landed, and §3 never
+  sends one again, so a request that has sent a write runs to its end
+  and is answered as usual. A cancelled request has therefore changed
+  nothing on the server, though a read such as CHECKSCRIPT may have sent
+  it text.
+- **`filter.apply` is not stopped between batches.** Its batches are
+  inside one transport write, so the checkpoint never falls between
+  them; the plan's `max_messages` ceiling bounds how long that write
+  runs.
+- **A cancel names only a request sent before it**: the one in hand, or
+  one waiting its turn ahead of it, which is refused when its turn comes.
+  Any other id is ignored, so a request that reuses an answered id after
+  a late cancel is never the one stopped. A cancel met in its own turn
+  names nothing still in hand and is ignored too.
+- **A cancel ends a wait for the password.** The client may not answer
+  `credentials.prompt` once it has cancelled the request that asked, so
+  the wait ends there. A late answer answers nothing, and the next
+  request that needs the password asks again.
+
 ## Sources
 
 Fetched 2026-10-28.
@@ -514,7 +559,9 @@ Fetched 2026-10-28.
 - [Language Server Protocol 3.17, *Base Protocol*][lsp] — the
   `Content-Length` header framing, and a server sending requests to the
   client (`window/showMessageRequest`), the precedent for
-  `credentials.prompt`.
+  `credentials.prompt`; and, fetched 2026-10-31 for the amendment's
+  *Cancelling a request*, `$/cancelRequest`, the `RequestCancelled`
+  code (`-32800`), and that a cancelled request is still answered.
 - [Python `http.server`][hs] — *"not recommended for production. It
   only implements basic security checks."*
 - [RFC 9051][rfc9051] §5.4 — the IMAP inactivity autologout timer, at
@@ -541,6 +588,7 @@ Fetched 2026-10-28.
 [i332]: https://github.com/harleypig/mailctl/issues/332
 [i281]: https://github.com/harleypig/mailctl/issues/281
 [i279]: https://github.com/harleypig/mailctl/issues/279
+[i280]: https://github.com/harleypig/mailctl/issues/280
 [ice-tui]: ../ICEBOX.md#tui-front-end
 [jsonrpc]: https://www.jsonrpc.org/specification
 [mcp]: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports

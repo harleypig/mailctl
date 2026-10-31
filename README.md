@@ -184,6 +184,10 @@ exported, and a literal value never beats an instruction about where to
 fetch one. The config file never holds the password itself — only
 `password_file` or `password_cmd`.
 
+A password command gets nothing on its standard input; only its first line
+of output is read. mailctl's own input is never passed to it: that may be
+a `--filter -` document, or, under the API, the client's requests.
+
 `--password-file` is refused unless the file's mode is `0600` or `0400`; the
 error names the `chmod` that fixes it. Keep that file on the Linux
 filesystem — anything under `/mnt/c` or another Windows mount (WSL) reports
@@ -1082,7 +1086,8 @@ and does not start the API.
 * stdout carries the protocol and nothing else. stderr is diagnostics, for
   the client to show or log.
 * Requests are answered one at a time, in the order they came. A batch (a
-  JSON array) is refused.
+  JSON array) is refused. A request can be cancelled while it runs or
+  waits its turn (see *Cancelling a request*).
 * Send `initialize` first. It reads the settings and connects nothing: each
   server is connected the first time a method needs it, so a bad setting is
   reported before any login.
@@ -1096,8 +1101,8 @@ dots: `filter list` is `filter.list`. A command that changes something is
 a pair, `.plan` and `.execute` (see *Plan, decide, execute* below). The one
 command left out is `help`, which describes the command line's own
 options; a client learns what it can call from `initialize`'s
-`capabilities` and from this list. `initialize`, `shutdown`, and
-`plan.discard` are the protocol's own.
+`capabilities` and from this list. `initialize`, `shutdown`,
+`plan.discard`, and `$/cancelRequest` are the protocol's own.
 
 Parameters are passed by name, and one the method does not know is
 refused. A `?` marks one that may be left out or sent as `null`. A method
@@ -1109,6 +1114,7 @@ anything connects, as the command line refuses the option it hides.
 | `initialize` | `log?` | `{"protocol", "json_version", "mailctl", "provider", "capabilities", "old_name"}` |
 | `shutdown` | | `null` |
 | `plan.discard` | `plan_id` | `null` |
+| `$/cancelRequest` | `id` | none: a notification (see *Cancelling a request*) |
 | `filter.list` | `filterset?` | the `filter list --json` document |
 | `filterset.list` | | the `filterset list --json` document |
 | `filterset.show` | `name?` | `{"version", "filterset": {"name", "source", "filters"}}` |
@@ -1201,11 +1207,11 @@ line, so theirs are the API's own:
   `like` and `build_filter` together fill a filter in from a message.
   Nothing is listed or saved. With no criteria, or a message with nothing
   to take them from, it is refused with `no_criteria`.
-* `mail.search` refuses with `-32602`: a `like` with no `uid`, a `uid`
-  below 1, or a key it does not know; `raw` with `like` or `build_filter`;
-  and `sort` with `build_filter`. These are the combinations `mail search`
-  refuses. A `uid` the folder does not hold is refused too, with no
-  `code` yet, as `mail.view` refuses one.
+* `mail.search` refuses with `-32602`: a `like` with no `uid` or with a
+  key it does not know; `raw` with `like` or `build_filter`; and `sort`
+  with `build_filter`. These are the combinations `mail search` refuses.
+  A `uid` below 1 is refused with `uid_below_one`, and one the folder does
+  not hold with `no_such_message`, as `mail.view` refuses both.
 * **`mail.senders`.** `by` is `address` (unless given), `domain`, or
   `list-id`. `top` is the rows kept, 20 unless given and every row where
   it is null; `minimum` leaves out a row counting fewer messages, 1
@@ -1346,7 +1352,36 @@ server needs it:
   is answered `-32700` and counts as declining, and so does input ending.
 * When a server refuses a prompted password (`auth_failed`), mailctl
   forgets it and asks again on the next request.
+* Cancelling the request that needed the password ends the wait (see
+  *Cancelling a request*). An answer sent after that answers nothing, and
+  the next request that needs the password asks again.
 * The client is holding the user's password. Never log it.
+
+### Cancelling a request
+
+Send the `$/cancelRequest` notification, the Language Server Protocol's
+name for it, with the id of the request to stop:
+
+```text
+> {"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":7}}
+```
+
+* **A request stops between exchanges with the server, never after its
+  first write.** A write may have landed, and is never sent again, so a
+  request that has sent one runs to its end and is answered as usual: a
+  result means it ran. One stopped in time is refused with `-32800` (see
+  *Errors*).
+* **A cancel names only a request sent before it**: the one in hand, or
+  one still waiting its turn ahead of it, which is then refused when its
+  turn comes, without running. A cancel for any other id is ignored: one
+  that is unknown, one already answered, and one met in its own turn,
+  once every request before it has been answered. So a request that
+  reuses an answered id is never stopped by a cancel sent before it.
+* A cancel is answered with nothing. Sent as a request, with an id, it
+  waits its turn like any other and is answered `null`.
+* `filter.apply.execute` is not stopped between batches of messages: it
+  hands the whole plan to the server as one write, and its
+  `max_messages` ceiling bounds how long that runs.
 
 ### Notifications
 
@@ -1380,7 +1415,14 @@ it came from: `filter` or `mail`.
 | `-32601` | no such method |
 | `-32602` | a parameter missing, unknown, or of the wrong type, or a `password` |
 | `-32603` | an unexpected failure; the message names its type only, and `--debug` shows the rest on stderr |
+| `-32800` | the request was cancelled, and nothing on the server was changed |
 | `1` | mailctl refused the request |
+
+A cancelled request's message is `the request was cancelled; nothing on
+the server was changed`, and its `data` is `{"written": false}`: no write
+was sent, though a read, such as the server's check of a filter set, may
+already have sent it text. Where the request wrote a backup before it
+stopped, `data` also carries `backup`, the backup's path.
 
 A refusal's `data` is the error document from *Output for scripts*,
 `{"version", "error": {"message", "code", "fields"}}`, where `code` names
@@ -1391,7 +1433,7 @@ so the command line's `--json` carries the same ones: among them
 `nothing_to_change`, `filterset_changed`, `filterset_empty`,
 `auth_failed`, `credentials_not_ascii`, `subscribe_needs_create`,
 `unknown_sort_key`, `unknown_kind`, `folder_missing`, `folder_exists`,
-`no_such_message`, `backup_exists`, `credential_file`,
+`no_such_message`, `uid_below_one`, `backup_exists`, `credential_file`,
 `baseline_changed`, `baseline_read_failed`, `migration_conflict`,
 `migration_changed`, and `migration_reference_unrewritable`.
 
