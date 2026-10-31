@@ -35,6 +35,7 @@ stores (ADR 0007). One module per subject:
 ``migration``  what the rename from ``mxfilter`` left behind
 ``reports``    probes, provider wording, and extension state
 ``server_report`` a redacted report of a server mailctl does not recognise
+``server_test`` everything ``server test`` reports, as one record
 ``uids``       message UIDs kept between runs, checked against UIDVALIDITY
 ``events``     the steps of a change, as a front-end is told of them
 """
@@ -56,6 +57,7 @@ from . import (
     scripts,
     senders,
     server_report,
+    server_test,
     uids,
 )
 
@@ -76,5 +78,6 @@ __all__ = [
     "scripts",
     "senders",
     "server_report",
+    "server_test",
     "uids",
 ]

@@ -19,10 +19,12 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import Secret
-from .utilities import events, rules
+from .utilities import events, migration, rules
+from .utilities.reports import TIME_FORMAT
 
 __all__ = [
     "CHANNELS",
+    "DRIFT_VERSION",
     "JSON_VERSION",
     "STEP_KINDS",
     "actions",
@@ -31,8 +33,11 @@ __all__ = [
     "alert",
     "apply_plan",
     "backup_result",
+    "baseline_save_plan",
+    "baseline_save_result",
     "capabilities",
     "change",
+    "drift_check",
     "dumps",
     "error",
     "event",
@@ -45,8 +50,11 @@ __all__ = [
     "mail_plan",
     "mail_result",
     "mark_plan",
+    "mark_result",
     "message",
     "message_listing",
+    "migration_plan",
+    "migration_result",
     "move_plan",
     "old_name",
     "optimize_plan",
@@ -59,6 +67,9 @@ __all__ = [
     "script_change_result",
     "scripts",
     "sender_report",
+    "server_report",
+    "server_test",
+    "source",
     "step",
     "subscription_plan",
     "subscription_result",
@@ -66,6 +77,10 @@ __all__ = [
 ]
 
 JSON_VERSION = 2
+
+# The version of ``server baseline check``'s document, which predates the
+# shared ``version`` and keeps its own.
+DRIFT_VERSION = 1
 
 # How the IMAP component writes a message's INTERNALDATE: local time, the
 # zone already dropped, so the ISO form carries no offset either.
@@ -331,6 +346,152 @@ def sender_report(report) -> dict:
 
 
 # ----------------------------------------------------------------------------
+def source(record) -> dict | None:
+    """Where a setting's value came from: ``kind`` is flag, env file,
+    environment, config file, default, derived, or prompt; ``name`` the
+    flag, variable, or key, and ``path`` the file, where there is one.
+    Null where nothing is recorded. Never a value."""
+    if record is None:
+        return None
+
+    return {
+        "kind": record.kind,
+        "name": record.name or None,
+        "path": None if record.path is None else str(record.path),
+    }
+
+
+# ----------------------------------------------------------------------------
+def server_test(test) -> dict:
+    """``server test``: the settings and where each came from, then what
+    each server says it supports and the account's shape, the servers
+    mailctl does not recognise, and drift since a saved baseline.
+
+    ``baseline`` is null where none is saved; ``checked`` is false where
+    one is and could not be compared, and ``error`` says why. The
+    password's ``state`` is a fixed word, never derived from it.
+    """
+    config, rules_probe, mail_probe = test.config, test.rules, test.mail
+    baseline = None
+
+    if test.baseline_error is not None:
+        baseline = {
+            "checked": False,
+            "error": error(
+                str(test.baseline_error),
+                test.baseline_error.code,
+                test.baseline_error.fields,
+            )["error"],
+        }
+
+    elif test.baseline is not None:
+        check = test.baseline
+        baseline = {
+            "checked": True,
+            "taken": check.stored.taken.strftime(TIME_FORMAT),
+            "serious": len(check.serious),
+            "informational": len(check.drift) - len(check.serious),
+        }
+
+    return _document(
+        test={
+            "provider": config.provider,
+            "sources": [source(item) for item in config.consulted],
+            "settings": [
+                {
+                    "name": name,
+                    "value": getattr(config, name),
+                    "source": source(config.sources.get(name)),
+                }
+                for name in test.settings
+            ],
+            "password": {
+                "state": test.password_state,
+                "source": source(config.password_origin()),
+            },
+            "connection": [
+                {
+                    "label": fact.label,
+                    "value": fact.text,
+                    "sources": {
+                        label: source(config.sources.get(setting))
+                        for label, setting in fact.settings
+                    },
+                }
+                for fact in test.endpoints
+            ],
+            "rules": {
+                "extensions": [
+                    {
+                        "name": state.name,
+                        "advertised": state.advertised,
+                        "required": state.required,
+                        "enabled": state.enabled,
+                        "disabled_by": source(state.disabled_by),
+                    }
+                    for state in test.extensions
+                ],
+                "disabled_extensions_source": source(
+                    config.sources.get("disabled_extensions")
+                ),
+                "active": rules_probe.active,
+                "others": list(rules_probe.others),
+            },
+            "mail": {
+                "delimiter": mail_probe.delimiter,
+                "folders": mail_probe.folder_count,
+                "unsubscribed": list(mail_probe.unsubscribed)
+                if test.folder_visibility
+                else None,
+                "facts": [
+                    {"label": fact.label, "value": fact.text}
+                    for fact in mail_probe.facts
+                ],
+            },
+            "unrecognised": [
+                CHANNELS.get(half, half) for half in test.unrecognised
+            ],
+            "baseline": baseline,
+            "notes": list(test.notes),
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def server_report(report, body: str | None) -> dict:
+    """``server probe --report``: the redacted issue body for the servers
+    mailctl does not recognise, and its title; null where it recognises
+    them all. Nothing is sent anywhere."""
+    return _document(
+        report=None
+        if report is None
+        else {
+            "title": report.title,
+            "unrecognised": list(report.unrecognised),
+            "body": body,
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def drift_check(check) -> dict:
+    """``server baseline check``: what changed since the baseline, each
+    difference ``serious`` or ``info``."""
+    return {
+        "version": DRIFT_VERSION,
+        "host": check.baseline.host,
+        "baseline": str(check.baseline.path),
+        "baseline_taken": check.stored.taken.strftime(TIME_FORMAT),
+        "taken": check.record.taken.strftime(TIME_FORMAT),
+        "account_recorded": check.account_recorded,
+        "requires_known": check.requires_known,
+        "serious": len(check.serious),
+        "informational": len(check.drift) - len(check.serious),
+        "drift": [_drift(item) for item in check.drift],
+    }
+
+
+# ----------------------------------------------------------------------------
 def message(content) -> dict:
     """``view``: one message's headers, text, and attachments.
 
@@ -591,6 +752,65 @@ def mark_plan(record) -> dict:
 
 
 # ----------------------------------------------------------------------------
+def baseline_save_plan(record, user: str) -> dict:
+    """``server baseline save``: the file that would be written, and,
+    where one is saved already, when ``user``'s part of it was taken,
+    what has changed since, and the file's diff. A save always writes:
+    with nothing else changed it moves the date."""
+    previous = record.previous
+
+    return plan(
+        "server baseline save",
+        changes=True,
+        host=record.host,
+        path=str(record.path),
+        taken=record.record.taken.strftime(TIME_FORMAT),
+        previous_taken=None
+        if previous is None
+        else previous.record_for(user).taken.strftime(TIME_FORMAT),
+        requires_known=record.requires_known,
+        drift=[_drift(item) for item in record.drift],
+        diff=None if previous is None else "\n".join(record.diff),
+    )
+
+
+# ----------------------------------------------------------------------------
+def migration_plan(record) -> dict:
+    """``config migrate``: what would move from the old directory to the
+    new one, with each entry's mode, and each config.toml path pointed
+    at the new directory. ``changes`` is false, and ``old`` null, where
+    there is no old directory."""
+    if record is None:
+        return plan(
+            "config migrate",
+            changes=False,
+            old=None,
+            new=None,
+            entries=[],
+            references=[],
+        )
+
+    return plan(
+        "config migrate",
+        changes=True,
+        old=str(record.old),
+        new=str(record.new),
+        entries=[
+            {
+                "path": str(entry.relative),
+                "mode": entry.mode,
+                "directory": entry.directory,
+            }
+            for entry in record.entries
+        ],
+        references=[
+            {"key": item.key, "old": item.written, "new": item.replacement}
+            for item in record.references
+        ],
+    )
+
+
+# ----------------------------------------------------------------------------
 def folder_rename_plan(record) -> dict:
     """``rename-folder``: every folder that moves, whether each is
     subscribed now, the messages the folder holds, and each rule's filing
@@ -748,6 +968,48 @@ def mail_result(record, mail) -> dict:
 
 
 # ----------------------------------------------------------------------------
+def mark_result(record, result) -> dict:
+    """What ``mail mark`` did once carried out: how many messages gained
+    a flag and how many lost one, in ``folder``."""
+    return _document(
+        result={
+            "command": "mail mark",
+            "folder": record.folder,
+            "added": result.added,
+            "removed": result.removed,
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def baseline_save_result(record, path: Path) -> dict:
+    """What ``server baseline save`` wrote: the host and the file."""
+    return _document(
+        result={
+            "command": "server baseline save",
+            "host": record.host,
+            "path": str(path),
+            "taken": record.record.taken.strftime(TIME_FORMAT),
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
+def migration_result(record) -> dict:
+    """What ``config migrate`` did: the two directories; each step was
+    sent as it landed. ``restart`` is always true: a process reads its
+    settings once, so only one started after the move reads what moved."""
+    return _document(
+        result={
+            "command": "config migrate",
+            "old": str(record.old),
+            "new": str(record.new),
+            "restart": True,
+        }
+    )
+
+
+# ----------------------------------------------------------------------------
 def backup_result(
     record, path: Path, filters: int | None, written: bool
 ) -> dict:
@@ -871,6 +1133,24 @@ def event(record) -> dict:
             "subscribed": record.subscribed,
         }
 
+    elif isinstance(record, migration.FileMoved):
+        body = {
+            "kind": "file_moved",
+            "source": str(record.source),
+            "destination": str(record.destination),
+        }
+
+    elif isinstance(record, migration.ReferenceRewritten):
+        body = {
+            "kind": "reference_rewritten",
+            "key": record.reference.key,
+            "new": record.reference.replacement,
+            "rewritten": record.rewritten,
+        }
+
+    elif isinstance(record, migration.OldDirRemoved):
+        body = {"kind": "old_dir_removed", "path": str(record.path)}
+
     else:
         raise TypeError(f"no JSON mapping for {type(record).__name__}")
 
@@ -893,6 +1173,18 @@ def alert(half: str, record: events.ServerAlert) -> dict:
 # ############################################################################
 # Shared records
 # ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def _drift(item) -> dict:
+    return {
+        "severity": item.severity,
+        "kind": item.kind,
+        "half": item.half,
+        "name": item.name,
+        "before": item.before,
+        "after": item.after,
+    }
 
 
 # ----------------------------------------------------------------------------

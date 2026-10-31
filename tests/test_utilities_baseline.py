@@ -456,6 +456,30 @@ def test_saving_again_diffs_and_keeps_the_other_accounts(
 
 
 # ----------------------------------------------------------------------------
+@pytest.mark.parametrize("saved_first", [False, True])
+def test_a_save_is_refused_where_the_file_changed_after_the_plan(
+    sessions, imap_config, where, saved_first
+):
+    """A plan carries the other accounts' parts as it read them, so a
+    save made since -- by another client, or for another account -- would
+    be lost. Red if execute writes over it, new file or not."""
+    if saved_first:
+        save(sessions, imap_config, where, now=THEN)
+
+    plan = baseline.plan_save_baseline(sessions, imap_config, where, now=NOW)
+    where.mkdir(exist_ok=True)
+    plan.path.write_text("saved by someone else\n")
+
+    with pytest.raises(MailctlError) as caught:
+        baseline.execute_save_baseline(plan)
+
+    assert caught.value.code == "baseline_changed"
+    assert caught.value.fields == {"operation": "server baseline save"}
+    assert plan.path.read_text() == "saved by someone else\n"
+    assert "'mailctl server baseline save' again" in error_text(caught.value)
+
+
+# ----------------------------------------------------------------------------
 def test_the_baseline_never_holds_the_password(sessions, where, fake_imap):
     """The credential is handed to the login, and nowhere near the file."""
     sentinel = "s3ntinel-BASELINE-never-stored-9c2e"

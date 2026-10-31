@@ -69,7 +69,7 @@ DRIFT_INFO_EXIT = 3
 DRIFT_SERIOUS_EXIT = 4
 
 # The version of the document 'check-baseline --json' prints.
-DRIFT_VERSION = 1
+DRIFT_VERSION = json_output.DRIFT_VERSION
 PREVIEW_LIMIT = 20
 
 # Where 'probe --report' tells the user to file what it printed. mailctl
@@ -2328,7 +2328,7 @@ def cmd_check_baseline(args) -> int:
 
     # The exit status still says whether there was drift under --json.
     if args.json:
-        emit_json(args, drift_document(check))
+        emit_json(args, json_output.drift_check(check))
 
         return code
 
@@ -2399,35 +2399,6 @@ def saved_on(baseline, user: str) -> str:
     record = baseline.record_for(user)
 
     return record.taken.strftime(utilities.reports.TIME_FORMAT)
-
-
-# ----------------------------------------------------------------------------
-def drift_document(check) -> dict:
-    """A drift check as the versioned document ``--json`` prints."""
-    taken = utilities.reports.TIME_FORMAT
-
-    return {
-        "version": DRIFT_VERSION,
-        "host": check.baseline.host,
-        "baseline": str(check.baseline.path),
-        "baseline_taken": check.stored.taken.strftime(taken),
-        "taken": check.record.taken.strftime(taken),
-        "account_recorded": check.account_recorded,
-        "requires_known": check.requires_known,
-        "serious": len(check.serious),
-        "informational": len(check.drift) - len(check.serious),
-        "drift": [
-            {
-                "severity": item.severity,
-                "kind": item.kind,
-                "half": item.half,
-                "name": item.name,
-                "before": item.before,
-                "after": item.after,
-            }
-            for item in check.drift
-        ],
-    }
 
 
 # ----------------------------------------------------------------------------
@@ -3491,7 +3462,7 @@ def describe_marks(add, remove) -> str:
 
 
 # Rows 'senders' shows unless --top says otherwise; --top 0 shows every one.
-DEFAULT_SENDERS_TOP = 20
+DEFAULT_SENDERS_TOP = utilities.senders.DEFAULT_TOP
 
 # How 'senders' names a row with no key, and the search flag, per grouping,
 # that builds a filter for a row -- the domain one prefixed with '@'.
@@ -5466,6 +5437,21 @@ ERROR_TEXT = {
     ),
     "no_baseline": lambda message, fields: (
         f"{message}; '{command_for(fields['operation'])}' records one"
+    ),
+    "baseline_changed": lambda message, fields: (
+        f"{message}; run '{command_for(fields['operation'])}' again to see "
+        f"what it would replace now"
+    ),
+    "migration_conflict": lambda message, fields: (
+        f"{message}: {', '.join(str(path) for path in fields['conflicts'])}"
+    ),
+    "migration_changed": lambda message, fields: (
+        f"{message}; run '{command_for(fields['operation'])}' again to see "
+        f"what it would move now"
+    ),
+    "migration_reference_unrewritable": lambda message, fields: (
+        f"{message}. Write {fields['key']} out without the variable, then "
+        f"run '{command_for(fields['operation'])}' again."
     ),
     "uidvalidity_changed": lambda message, fields: (
         f"{message} '{command_for(fields['operation'])}' lists the folder's "

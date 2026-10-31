@@ -52,7 +52,9 @@ class ConfigReference:
     """A config-file path that points inside the old directory.
 
     ``written`` is the value as the file spells it; ``replacement`` is the
-    same place under the new directory, which is what it becomes.
+    same place under the new directory, spelt the same way -- a ``~`` or a
+    variable in ``written`` is kept, never expanded -- and is what it
+    becomes.
     """
 
     key: str
@@ -140,7 +142,9 @@ def plan_config_migration(
 
     Returns None when there is no old directory. Read-only: it lists what
     would move, which destinations are already taken, and which config
-    paths point inside the old directory and would stop resolving.
+    paths point inside the old directory and would stop resolving. Refused,
+    coded ``migration_reference_unrewritable``, where such a path reaches
+    the old directory through a variable it cannot be rewritten without.
     """
     old = legacy_config_dir() if old is None else old
     new = config_dir() if new is None else new
@@ -176,6 +180,35 @@ def plan_config_migration(
 
 
 # ----------------------------------------------------------------------------
+def check_conflicts(plan: ConfigMigrationPlan) -> None:
+    """Refuse a plan that would overwrite anything at the destination."""
+    if plan.conflicts:
+        raise MailctlError(
+            f"refusing to migrate: {len(plan.conflicts)} path(s) already "
+            f"exist in {plan.new} and would be overwritten",
+            code="migration_conflict",
+            fields={"conflicts": plan.conflicts},
+        )
+
+
+# ----------------------------------------------------------------------------
+def check_current(plan: ConfigMigrationPlan) -> None:
+    """Refuse a plan the two directories no longer match.
+
+    A plan may wait -- an API client holds it until it decides -- and
+    anything written meanwhile, a baseline saved into the new directory
+    included, would otherwise be met halfway through the move.
+    """
+    if plan_config_migration(plan.old, plan.new) != plan:
+        raise MailctlError(
+            f"{plan.old} or {plan.new} changed after the migration was "
+            f"planned; nothing was moved",
+            code="migration_changed",
+            fields={"operation": "config migrate"},
+        )
+
+
+# ----------------------------------------------------------------------------
 def execute_config_migration(
     plan: ConfigMigrationPlan, on_event: EventSink | None = None
 ) -> None:
@@ -183,14 +216,12 @@ def execute_config_migration(
 
     Files are renamed, not copied, so each keeps its inode and its mode --
     a ``0600`` backup stays ``0600``. A directory created here takes the
-    mode of the one it stands in for. A destination that appeared since
-    the plan was made stops the move rather than being overwritten.
+    mode of the one it stands in for. A plan the directories no longer
+    match is refused before anything is made or moved, and a destination
+    that appears during the move stops it rather than being overwritten.
     """
-    if plan.conflicts:
-        raise MailctlError(
-            f"refusing to migrate: {len(plan.conflicts)} path(s) already "
-            f"exist in {plan.new} and would be overwritten"
-        )
+    check_conflicts(plan)
+    check_current(plan)
 
     emit = on_event or (lambda _event: None)
 
@@ -290,13 +321,54 @@ def _config_references(old: Path, new: Path) -> tuple[ConfigReference, ...]:
         if not isinstance(written, str) or not written:
             continue
 
-        expanded = expand_path(written)
+        if not expand_path(written).is_relative_to(old):
+            continue
 
-        if expanded.is_relative_to(old):
-            replacement = str(new / expanded.relative_to(old))
-            found.append(ConfigReference(key, written, replacement))
+        replacement = _respelled(written, old, new)
+
+        if replacement is None:
+            raise MailctlError(
+                f"config.toml's {key} names a place inside {old} through a "
+                f"variable that cannot be pointed at {new} without writing "
+                f"the variable's value into the file; nothing was moved",
+                code="migration_reference_unrewritable",
+                fields={"key": key, "operation": "config migrate"},
+            )
+
+        found.append(ConfigReference(key, written, replacement))
 
     return tuple(found)
+
+
+# ----------------------------------------------------------------------------
+def _respelled(written: str, old: Path, new: Path) -> str | None:
+    """``written`` with the part that spells ``old`` changed to spell ``new``.
+
+    The value is kept as written: a ``~`` or a variable stays one, and only
+    the old directory's own name, which must be written out literally, is
+    changed. None where no leading part of ``written`` names ``old`` that
+    way -- a variable holding the old directory, or reaching inside it --
+    since the only rewrite left would expand that variable into the file.
+    """
+    parts = written.split("/")
+
+    for count in range(1, len(parts) + 1):
+        prefix = "/".join(parts[:count])
+
+        if expand_path(prefix) != old:
+            continue
+
+        if parts[count - 1] != old.name:
+            return None
+
+        respelled = "/".join([*parts[: count - 1], new.name])
+
+        if expand_path(respelled) != new:
+            return None
+
+        return respelled + written[len(prefix) :]
+
+    return None
 
 
 # ----------------------------------------------------------------------------

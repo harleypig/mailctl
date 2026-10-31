@@ -2024,6 +2024,12 @@ def test_a_group_write_refuses_an_active_set_switched_since_the_plan(
             {"folder": "INBOX.Quiet", "subscribe": False},
         ),
         ("folder_counts", "folder.list", {"counts": True}),
+        ("mark", "mail.mark.plan", {"uids": [1], "read": True}),
+        (
+            "uidvalidity",
+            "mail.mark.plan",
+            {"uids": [1], "read": True, "uidvalidity": 1},
+        ),
     ],
 )
 def test_a_group_method_the_provider_does_not_declare_is_refused_unread(
@@ -2057,6 +2063,20 @@ def test_group_parameters_are_refused_as_parameters(start):
         ("folder.create.plan", {}),
         ("folder.rename.plan", {"old": "INBOX.Lists"}),
         ("folder.subscribe.plan", {"folder": "INBOX.spam", "yes": True}),
+        ("mail.mark.plan", {"read": True}),
+        ("mail.mark.plan", {"uids": ["1"], "read": True}),
+        ("mail.mark.plan", {"uids": [True], "read": True}),
+        ("mail.mark.plan", {"uids": [1], "read": "yes"}),
+        ("mail.mark.plan", {"uids": [1], "keywords": [1]}),
+        ("mail.senders", {"top": "all"}),
+        ("mail.senders", {"by": 1}),
+        ("server.test", {"verbose": True}),
+        ("server.probe", {"report": "yes"}),
+        ("server.probe", {"json": True}),
+        ("server.baseline.save.plan", {"yes": True}),
+        ("server.baseline.show", {"json": True}),
+        ("server.baseline.check", {"host": "elsewhere"}),
+        ("config.migrate.plan", {"dry_run": True}),
     ]
 
     for method, params in asks:
@@ -2074,6 +2094,8 @@ GROUP_EXECUTES = {
     "folder.unsubscribe": {"folder": "INBOX.Lists"},
     "folder.rename": {"old": "INBOX.Lists", "new": "INBOX.Feeds"},
     "filterset.restore": {"file": "restore.sieve"},
+    "mail.mark": {"uids": [1], "read": True},
+    "server.baseline.save": {},
 }
 
 
@@ -2345,11 +2367,21 @@ def test_a_server_alert_is_sent_always_and_once_per_session(start):
 # ############################################################################
 
 
+# The CLI's commands the API offers no method for, each with its reason.
+# Every other command has one: a command added to the CLI later fails the
+# test below until it gets a method or a line here.
+NOT_IN_THE_API = {
+    "help": "the CLI's help for its own command line; a client learns what "
+    "it can call from initialize's capabilities and this method set",
+}
+
+
 # ----------------------------------------------------------------------------
 def test_every_command_method_is_a_command_of_the_cli():
     """A method's name is its CLI command path, dotted, so the API and the
     help name an operation alike (ADR 0008); a write command is a plan and
-    an execute."""
+    an execute. Every command has a method unless ``NOT_IN_THE_API`` says
+    why not; red for a command with neither, or one with both."""
     commands = set(command_parsers())
     named = set(server.METHODS) - server.PROTOCOL_METHODS
     paths = {
@@ -2359,6 +2391,8 @@ def test_every_command_method_is_a_command_of_the_cli():
 
     assert named
     assert paths <= commands
+    assert commands - paths == set(NOT_IN_THE_API)
+    assert not paths & set(NOT_IN_THE_API)
 
     for name in named:
         if name.endswith(".plan"):
@@ -2430,3 +2464,689 @@ def test_every_refusal_of_a_parameter_value_carries_a_code(start):
 
     assert refusal(unsubscribed)["code"] == "subscribe_needs_create"
     assert refusal(unsorted)["code"] == "unknown_sort_key"
+
+
+# ############################################################################
+# The mail group's last two
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_mail_mark_plans_then_marks_once_on_the_mail_half_only(start):
+    """Red if the plan writes, if execute sends more than the one write
+    the plan shows, if the rules half is opened, which ``mail mark``
+    never does, or if the id runs twice."""
+    client = initialized(start)
+    planned = client.request(
+        "mail.mark.plan", {"uids": [1, 2], "read": True, "flagged": False}
+    )["result"]
+
+    assert planned["document"]["plan"] == {
+        "command": "mail mark",
+        "changes": True,
+        "folder": "INBOX",
+        "uidvalidity": planned["document"]["plan"]["uidvalidity"],
+        "set": ["\\Seen"],
+        "clear": ["\\Flagged"],
+        "messages": [
+            {"uid": 1, "flags": [], "set": ["\\Seen"], "clear": []},
+            {"uid": 2, "flags": [], "set": ["\\Seen"], "clear": []},
+        ],
+    }
+    assert "imap_writes" not in client.read_state()
+
+    done = client.request(
+        "mail.mark.execute", {"plan_id": planned["plan_id"]}
+    )["result"]["result"]
+    again = client.request(
+        "mail.mark.execute", {"plan_id": planned["plan_id"]}
+    )
+
+    assert done == {
+        "command": "mail mark",
+        "folder": "INBOX",
+        "added": 2,
+        "removed": 0,
+    }
+    # The double records what IMAPClient is handed: the flag as bytes.
+    assert client.read_state()["imap_writes"] == [
+        ["add_flags", [1, 2], [repr(b"\\Seen")]]
+    ]
+    assert refusal(again)["code"] == "plan_unknown"
+    assert "sieve_connects" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_mail_mark_refuses_a_folder_renumbered_since_the_plan(start):
+    """#204 at execute, through the API: red if the UIDs are marked after
+    the folder's UIDVALIDITY changed, whatever the plan read."""
+    client = initialized(start)
+    plan_id = client.request("mail.mark.plan", {"uids": [1], "read": True})[
+        "result"
+    ]["plan_id"]
+
+    state = client.read_state()
+    state["uidvalidity"] = {"INBOX": 7}
+    client.write_state(state)
+
+    # As in the filter.apply case: a folder is renumbered only while this
+    # connection holds another selected.
+    assert "result" in client.request("mail.search", {"folder": "INBOX.Lists"})
+
+    error = refusal(client.request("mail.mark.execute", {"plan_id": plan_id}))
+
+    assert error["code"] == "uidvalidity_changed"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_mail_mark_refuses_a_pin_the_folder_no_longer_has(start):
+    client = initialized(start)
+    error = refusal(
+        client.request(
+            "mail.mark.plan", {"uids": [1], "read": True, "uidvalidity": 9}
+        )
+    )
+
+    assert error["code"] == "uidvalidity_changed"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_mail_mark_that_changes_nothing_is_planned_and_not_carried_out(start):
+    client = initialized(start)
+    planned = client.request("mail.mark.plan", {"uids": [1], "read": False})[
+        "result"
+    ]
+
+    assert planned["document"]["plan"]["changes"] is False
+
+    error = refusal(
+        client.request("mail.mark.execute", {"plan_id": planned["plan_id"]})
+    )
+
+    assert error["code"] == "nothing_to_change"
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_mail_mark_refuses_what_the_cli_refuses(start):
+    """Red if a mark with nothing to set reaches the server, if a UID the
+    folder does not hold marks the rest, or if a keyword that is a system
+    flag or two words is taken."""
+    client = initialized(start)
+    asks = [
+        ({"uids": [1]}, "nothing to mark"),
+        ({"uids": [1, 99], "read": True}, "no message with uid 99"),
+        ({"uids": [1], "keywords": ["\\Deleted"]}, "is a system flag"),
+        ({"uids": [1], "keywords": ["two words"]}, "cannot be a keyword"),
+        (
+            {"uids": [1], "keywords": ["$X"], "no_keywords": ["$X"]},
+            "cannot both set and clear",
+        ),
+        ({"uids": [], "read": True}, "at least one message UID"),
+        ({"uids": [0], "read": True}, "start at 1"),
+    ]
+
+    for params, words in asks:
+        assert (
+            words
+            in refusal(client.request("mail.mark.plan", params))["message"]
+        ), params
+
+    assert refusal(client.request("mail.mark.plan", {"uids": [1]}))[
+        "code"
+    ] == ("no_marks")
+    assert "imap_writes" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_mail_senders_counts_the_mail_by_sender_on_the_mail_half_only(start):
+    """Red if a sender is miscounted or its unread lost, if a filter does
+    not narrow what is counted, if ``top`` keeps other than that many
+    rows, or if the rules half is opened."""
+    client = initialized(start)
+    counted = client.request("mail.senders", {"top": None})["result"]
+    busiest = client.request("mail.senders", {"top": 1})["result"]
+    domains = client.request("mail.senders", {"by": "domain"})["result"]
+    narrowed = client.request("mail.senders", {"filter": GITHUB_FILTER})[
+        "result"
+    ]
+
+    assert {
+        key: counted[key] for key in ("folder", "by", "messages", "unread")
+    } == {"folder": "INBOX", "by": "address", "messages": 2, "unread": 2}
+    assert counted["groups"] == len(counted["senders"]) == 2
+    assert {row["key"] for row in counted["senders"]} == {
+        "noreply@github.com",
+        "boss@example.com",
+    }
+    assert all(
+        row["unread"] == row["total"] == 1 for row in counted["senders"]
+    )
+    assert [row["key"] for row in domains["senders"]] == [
+        "example.com",
+        "github.com",
+    ]
+    assert len(busiest["senders"]) == 1
+    assert busiest["groups"] == 2
+    assert [row["key"] for row in narrowed["senders"]] == [
+        "noreply@github.com"
+    ]
+    assert "sieve_connects" not in client.read_state()
+
+
+# ----------------------------------------------------------------------------
+def test_mail_senders_refuses_what_the_cli_refuses(start):
+    """Red if a count over its ceiling reads any header, if a top of 0 is
+    taken (the CLI's 0 for every row is the API's null), or an unknown
+    grouping."""
+    client = initialized(start)
+
+    over = refusal(client.request("mail.senders", {"max_messages": 1}))
+    zero = refusal(client.request("mail.senders", {"top": 0}))
+    grouping = refusal(client.request("mail.senders", {"by": "colour"}))
+
+    assert "1" in over["message"]
+    assert zero["code"] == "at_least_one"
+    assert zero["fields"] == {"setting": "top", "value": 0}
+    assert "cannot group senders by 'colour'" in grouping["message"]
+
+
+# ############################################################################
+# The server group
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_server_test_reports_both_halves_and_where_each_setting_came_from(
+    start,
+):
+    """Red if a half is not opened, as ``server test`` opens both, if the
+    report says other than what each double holds, or if a setting's
+    source is lost."""
+    client = initialized(
+        start, scripts={"managesieve": ROUNDCUBE, "other": "keep;\n"}
+    )
+    report = client.request("server.test")["result"]["test"]
+
+    assert report["provider"] == "mxroute"
+    assert [item["name"] for item in report["settings"]] == [
+        "provider",
+        "host",
+        "user",
+        "source_folder",
+    ]
+    assert report["settings"][2] == {
+        "name": "user",
+        "value": USER,
+        "source": {
+            "kind": "environment",
+            "name": "MAILCTL_USER",
+            "path": None,
+        },
+    }
+    assert report["password"] == {
+        "state": "set",
+        "source": {
+            "kind": "environment",
+            "name": "MAILCTL_PASSWORD_FILE",
+            "path": None,
+        },
+    }
+    assert report["rules"]["active"] == "managesieve"
+    assert report["rules"]["others"] == ["other"]
+    assert {item["name"] for item in report["rules"]["extensions"]} >= {
+        "fileinto",
+        "imap4flags",
+    }
+    assert report["mail"]["delimiter"] == "."
+    assert report["mail"]["folders"] == 3
+    assert report["mail"]["unsubscribed"] == ["INBOX.spam"]
+    # Neither double names its software as a server module knows it.
+    assert report["unrecognised"] == ["filter", "mail"]
+    assert report["baseline"] is None
+    assert report["notes"]
+
+    state = client.read_state()
+
+    assert state["sieve_connects"] >= 1
+    assert state["imap_connects"] >= 1
+
+
+# ----------------------------------------------------------------------------
+def test_server_test_reports_a_baseline_it_cannot_compare_and_goes_on(
+    start,
+):
+    """The CLI's test neither fails nor stops over a baseline; red if the
+    API's refuses, or says nothing of why it could not compare."""
+    client = initialized(start)
+    path = baseline_file()
+    path.parent.mkdir(parents=True)
+    path.write_text("not json\n", encoding="utf-8")
+
+    report = client.request("server.test")["result"]["test"]
+
+    assert report["baseline"]["checked"] is False
+    assert "not JSON" in report["baseline"]["error"]["message"]
+
+
+# ----------------------------------------------------------------------------
+def test_server_probe_returns_the_probe_document_from_both_halves(start):
+    """The document ``server probe --json`` prints. Red if a half is
+    missing from it or left unopened."""
+    client = initialized(start)
+    probe = client.request("server.probe")["result"]
+
+    assert probe["version"] == reports.PROBE_VERSION
+    assert probe["provider"] == "mxroute"
+    assert probe["rules"]["active_rule_set"] == "managesieve"
+    assert probe["mail"]["delimiter"] == "."
+    assert probe["mail"]["capabilities"]
+
+    state = client.read_state()
+
+    assert state["sieve_connects"] >= 1
+    assert state["imap_connects"] >= 1
+
+
+# ----------------------------------------------------------------------------
+def test_server_probe_report_is_redacted_for_filing(start):
+    """Neither double names software a server module knows, so mailctl
+    recognises neither. Red if the report is missing, or if the address,
+    its parts, the host, a folder, or a filter set's name reaches it."""
+    client = initialized(start)
+    report = client.request("server.probe", {"report": True})["result"][
+        "report"
+    ]
+
+    assert report["unrecognised"] == ["ManageSieve", "IMAP"]
+    assert report["title"].startswith("Unrecognised server:")
+
+    for secret in (USER, "example.com", "mail.example.com", "Lists"):
+        assert secret not in report["body"], secret
+
+    assert "managesieve" not in report["body"].replace("ManageSieve", "")
+
+
+# ----------------------------------------------------------------------------
+def baseline_file() -> Path:
+    """Where the baseline for the test's host is written."""
+    home = Path(os.environ["XDG_CONFIG_HOME"])
+
+    return home / "mailctl" / "baselines" / "mail.example.com.json"
+
+
+# ----------------------------------------------------------------------------
+def test_server_baseline_save_plans_then_writes_the_file_once(start):
+    """Red if the plan writes the file, if execute writes other than what
+    was planned or readably by anyone else, if a half is left unopened,
+    or if the id runs twice. The second plan shows the first save."""
+    client = initialized(start)
+    path = baseline_file()
+    planned = client.request("server.baseline.save.plan")["result"]
+    plan = planned["document"]["plan"]
+
+    assert plan["command"] == "server baseline save"
+    assert plan["path"] == str(path)
+    assert plan["previous_taken"] is None
+    assert plan["diff"] is None
+    assert not path.exists()
+
+    done = client.request(
+        "server.baseline.save.execute", {"plan_id": planned["plan_id"]}
+    )["result"]["result"]
+    again = client.request(
+        "server.baseline.save.execute", {"plan_id": planned["plan_id"]}
+    )
+
+    assert done == {
+        "command": "server baseline save",
+        "host": "mail.example.com",
+        "path": str(path),
+        "taken": plan["taken"],
+    }
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert refusal(again)["code"] == "plan_unknown"
+
+    state = client.read_state()
+
+    assert state["sieve_connects"] >= 1
+    assert state["imap_connects"] >= 1
+
+    second = client.request("server.baseline.save.plan")["result"]["document"]
+
+    assert second["plan"]["previous_taken"] == plan["taken"]
+    assert second["plan"]["drift"] == []
+    assert isinstance(second["plan"]["diff"], str)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("saved_first", [False, True])
+def test_server_baseline_save_refuses_a_file_changed_since_the_plan(
+    start, saved_first
+):
+    """A plan can wait; a save made meanwhile, by another client or for
+    another account, must not be overwritten by one that never saw it.
+    Red if execute writes, whether the file was new or not."""
+    client = initialized(start)
+
+    if saved_first:
+        first = client.request("server.baseline.save.plan")["result"]
+        client.request(
+            "server.baseline.save.execute", {"plan_id": first["plan_id"]}
+        )
+
+    plan_id = client.request("server.baseline.save.plan")["result"]["plan_id"]
+    path = baseline_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("someone else's save\n", encoding="utf-8")
+
+    error = refusal(
+        client.request("server.baseline.save.execute", {"plan_id": plan_id})
+    )
+
+    assert error["code"] == "baseline_changed"
+    assert error["fields"] == {"operation": "server baseline save"}
+    assert path.read_text(encoding="utf-8") == "someone else's save\n"
+
+
+# ----------------------------------------------------------------------------
+def test_server_baseline_show_and_check_read_the_saved_baseline(start):
+    """Red if ``show`` returns other than the file as stored or opens a
+    connection, which it never does, or if ``check`` finds drift in an
+    unchanged account."""
+    client = initialized(start)
+    plan_id = client.request("server.baseline.save.plan")["result"]["plan_id"]
+    client.request("server.baseline.save.execute", {"plan_id": plan_id})
+
+    # A second process on a fresh state file, so its logins are its own.
+    other = initialized(start)
+    shown = other.request("server.baseline.show")["result"]
+
+    assert shown == json.loads(baseline_file().read_text(encoding="utf-8"))
+    assert USER in shown["accounts"]
+    assert other.read_state().get("logins", 0) == 0
+
+    checked = other.request("server.baseline.check")["result"]
+
+    assert checked["version"] == json_output.DRIFT_VERSION
+    assert checked["host"] == "mail.example.com"
+    assert checked["drift"] == []
+    assert checked["serious"] == checked["informational"] == 0
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "method", ["server.baseline.show", "server.baseline.check"]
+)
+def test_server_baseline_read_with_none_saved_is_refused_with_its_code(
+    start, method
+):
+    client = initialized(start)
+    error = refusal(client.request(method))
+
+    assert error["code"] == "no_baseline"
+    assert error["fields"] == {"operation": "server baseline save"}
+
+    if method == "server.baseline.show":
+        assert client.read_state().get("logins", 0) == 0
+
+
+# ----------------------------------------------------------------------------
+def test_the_server_group_never_sends_the_password(start):
+    """Each describes the servers and the account; red if the password,
+    given through the prompt, reaches any of their documents, events,
+    or ``--debug``'s output."""
+    client = start("--debug", password=SENTINEL, configured=False)
+    client.answer = {"result": {"password": SENTINEL}}
+    client.request("initialize", {"log": True})
+
+    for method, params in [
+        ("server.test", None),
+        ("server.probe", None),
+        ("server.probe", {"report": True}),
+        ("server.baseline.check", None),
+    ]:
+        client.request(method, params)
+
+    plan_id = client.request("server.baseline.save.plan")["result"]["plan_id"]
+    client.request("server.baseline.save.execute", {"plan_id": plan_id})
+
+    for method in ("server.baseline.show", "server.baseline.check"):
+        assert "result" in client.request(method), method
+
+    client.request("shutdown")
+    code, stderr = client.close()
+
+    assert code == 0
+    assert client.prompted == 1
+    assert stderr, "--debug wrote no traceback, so stderr proves nothing"
+    assert SENTINEL not in baseline_file().read_text(encoding="utf-8")
+    nowhere(client, stderr, SENTINEL)
+
+
+# ############################################################################
+# The config group
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def old_config_dir() -> tuple[Path, Path]:
+    """The old directory, holding a config file and a backup, and the new
+    one it moves to."""
+    home = Path(os.environ["XDG_CONFIG_HOME"])
+    old = home / "mxfilter"
+    (old / "backups").mkdir(parents=True)
+    (old / "config.toml").write_text(
+        f'backup_dir = "{old / "backups"}"\n'
+        f'password_cmd = "echo {SENTINEL}"\n',
+        encoding="utf-8",
+    )
+    (old / "backups" / "one.sieve").write_text("keep;\n", encoding="utf-8")
+    (old / "backups" / "one.sieve").chmod(0o600)
+
+    return old, home / "mailctl"
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_plans_then_moves_the_old_directory_once(start):
+    """Red if the plan moves anything, if execute loses a file's mode or
+    leaves the old directory, if a step is not sent as it lands, if a
+    connection is opened, which ``config migrate`` never needs, if the id
+    runs twice, or if the result does not say that what moved is read by
+    a process started after it. The old config.toml's password command
+    holds the sentinel, and no plan, event, or result may carry it."""
+    old, new = old_config_dir()
+    client = initialized(start, "--debug")
+    planned = client.request("config.migrate.plan")["result"]
+    plan = planned["document"]["plan"]
+
+    assert plan["changes"] is True
+    assert plan["old"] == str(old)
+    assert plan["new"] == str(new)
+    assert {entry["path"] for entry in plan["entries"]} == {
+        "backups",
+        "backups/one.sieve",
+        "config.toml",
+    }
+    assert plan["references"] == [
+        {
+            "key": "backup_dir",
+            "old": str(old / "backups"),
+            "new": str(new / "backups"),
+        }
+    ]
+    assert old.is_dir()
+
+    response = client.request(
+        "config.migrate.execute", {"plan_id": planned["plan_id"]}
+    )
+    again = client.request(
+        "config.migrate.execute", {"plan_id": planned["plan_id"]}
+    )
+    kinds = [event["kind"] for event in events(response)]
+
+    assert response["result"]["result"] == {
+        "command": "config migrate",
+        "old": str(old),
+        "new": str(new),
+        "restart": True,
+    }
+    assert kinds.count("file_moved") == 2
+    assert kinds[-2:] == ["reference_rewritten", "old_dir_removed"]
+    assert not old.exists()
+    assert (new / "backups" / "one.sieve").stat().st_mode & 0o777 == 0o600
+    assert str(new / "backups") in (new / "config.toml").read_text(
+        encoding="utf-8"
+    )
+    assert refusal(again)["code"] == "plan_unknown"
+    assert client.read_state().get("logins", 0) == 0
+
+    assert_sentinel_absent(client)
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_with_no_old_directory_is_not_carried_out(start):
+    client = initialized(start)
+    planned = client.request("config.migrate.plan")["result"]
+
+    assert planned["document"]["plan"]["changes"] is False
+    assert planned["document"]["plan"]["old"] is None
+
+    error = refusal(
+        client.request(
+            "config.migrate.execute", {"plan_id": planned["plan_id"]}
+        )
+    )
+
+    assert error["code"] == "nothing_to_change"
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_refuses_to_overwrite_what_is_at_the_destination(
+    start,
+):
+    """Red if a plan that would overwrite a file is offered at all: the
+    CLI refuses it before asking, and so does the API, naming each."""
+    old, new = old_config_dir()
+    (new / "backups").mkdir(parents=True)
+    (new / "backups" / "one.sieve").write_text("mine\n", encoding="utf-8")
+
+    client = initialized(start)
+    error = refusal(client.request("config.migrate.plan"))
+
+    assert error["code"] == "migration_conflict"
+    assert error["fields"] == {
+        "conflicts": [str(new / "backups" / "one.sieve")]
+    }
+    assert (old / "backups" / "one.sieve").exists()
+    assert (new / "backups" / "one.sieve").read_text(encoding="utf-8") == (
+        "mine\n"
+    )
+
+
+# ----------------------------------------------------------------------------
+def tree(root: Path) -> list[str]:
+    """Every path under ``root``, relative to it, sorted."""
+    return sorted(str(path.relative_to(root)) for path in root.rglob("*"))
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_refuses_a_plan_a_new_file_now_clashes_with(start):
+    """Red if execute starts moving before it finds that a destination
+    appeared after the plan: it would make the new directory's
+    subdirectories, move the files sorted before the clash, refuse
+    uncoded at it, and leave the old directory half-moved."""
+    home = Path(os.environ["XDG_CONFIG_HOME"])
+    old, new = home / "mxfilter", home / "mailctl"
+    (old / "backups").mkdir(parents=True)
+
+    for name in ("a.txt", "backups/one.sieve", "config.toml", "z.txt"):
+        (old / name).write_text(f"{name}\n", encoding="utf-8")
+
+    before = tree(old)
+    client = initialized(start)
+    planned = client.request("config.migrate.plan")["result"]
+
+    new.mkdir()
+    (new / "z.txt").write_text("mine\n", encoding="utf-8")
+
+    response = client.request(
+        "config.migrate.execute", {"plan_id": planned["plan_id"]}
+    )
+    error = refusal(response)
+
+    assert error["code"] == "migration_changed"
+    assert error["fields"] == {"operation": "config migrate"}
+    assert events(response) == []
+    assert tree(old) == before
+    assert tree(new) == ["z.txt"]
+    assert (new / "z.txt").read_text(encoding="utf-8") == "mine\n"
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_refuses_a_plan_a_baseline_saved_since_clashes_with(
+    start,
+):
+    """Red if a baseline saved in the same session, between the plan and
+    its execute, is met only by the move: it is refused uncoded, and the
+    baseline has made the new directory, so the old one's config.toml is
+    stranded with nothing left to report it. Refused coded, before
+    anything moves, it can be planned again and the clash shown."""
+    home = Path(os.environ["XDG_CONFIG_HOME"])
+    old = home / "mxfilter"
+    (old / "baselines").mkdir(parents=True)
+    (old / "baselines" / "mail.example.com.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    (old / "config.toml").write_text('host = "x"\n', encoding="utf-8")
+
+    before = tree(old)
+    client = initialized(start)
+    planned = client.request("config.migrate.plan")["result"]
+    save = client.request("server.baseline.save.plan")["result"]
+    client.request(
+        "server.baseline.save.execute", {"plan_id": save["plan_id"]}
+    )
+
+    response = client.request(
+        "config.migrate.execute", {"plan_id": planned["plan_id"]}
+    )
+    error = refusal(response)
+
+    assert error["code"] == "migration_changed"
+    assert events(response) == []
+    assert tree(old) == before
+    assert tree(home / "mailctl") == [
+        "baselines",
+        "baselines/mail.example.com.json",
+    ]
+
+
+# ----------------------------------------------------------------------------
+def test_config_migrate_never_expands_a_variable_into_a_config_path(
+    start, monkeypatch
+):
+    """Red if a config.toml path that reaches the old directory through a
+    variable is rewritten by expanding it: the variable's value -- here
+    the sentinel -- would be sent as the reference's new value and
+    written into the file. It is refused, naming only the key."""
+    old, _new = old_config_dir()
+    monkeypatch.setenv("MAILCTL_TEST_PW", f"{old}/{SENTINEL}")
+    toml = old / "config.toml"
+    toml.write_text('password_file = "$MAILCTL_TEST_PW"\n', encoding="utf-8")
+
+    client = initialized(start, "--debug")
+    error = refusal(client.request("config.migrate.plan"))
+
+    assert error["code"] == "migration_reference_unrewritable"
+    assert error["fields"] == {
+        "key": "password_file",
+        "operation": "config migrate",
+    }
+    assert toml.read_text(encoding="utf-8") == (
+        'password_file = "$MAILCTL_TEST_PW"\n'
+    )
+
+    assert_sentinel_absent(client)
