@@ -16,7 +16,10 @@ anywhere.
 
 Each ManageSieve connection is counted in the file's ``sieve_connects``,
 and each IMAP login in its ``imap_connects``, so a test can see that a
-method never touched the half its command does not open. CHECKSCRIPT
+method never touched the half its command does not open. Each IMAP
+connection made is counted in ``imap_opened`` and each one closed, by
+``logout`` or ``shutdown`` as the real client closes its socket, in
+``imap_closed``, so a test sees how many are still open. CHECKSCRIPT
 refuses every script where the file's ``checkscript`` is false, and the
 IMAP double advertises the file's ``imap_caps`` beside its own.
 
@@ -230,6 +233,15 @@ def imap_double() -> FakeIMAPClient:
 
     client.login = login
 
+    logout = client.logout
+
+    def logging_out():
+        closing()
+        logout()
+
+    client.logout = logging_out
+    client.shutdown = closing
+
     for name in IMAP_WRITES:
         setattr(client, name, recorded(name, getattr(client, name)))
 
@@ -263,6 +275,21 @@ def imap_double() -> FakeIMAPClient:
         client.search = alerting
 
     return client
+
+
+# ----------------------------------------------------------------------------
+def count(key: str) -> None:
+    """Add one to the state file's ``key``."""
+    state = load()
+    state[key] = state.get(key, 0) + 1
+    save(state)
+
+
+# ----------------------------------------------------------------------------
+def closing() -> None:
+    """Count a connection closed, as ``logout`` and ``shutdown`` close the
+    real client's socket."""
+    count("imap_closed")
 
 
 # ----------------------------------------------------------------------------
@@ -314,7 +341,14 @@ if __name__ == "__main__":
     decline(os.environ.get("MAILCTL_TEST_DECLINE", ""))
 
     double = imap_double()
-    imap_client.IMAPClient = lambda *_a, **_k: double  # type: ignore[assignment]
+
+    def opening(*_args, **_kwargs) -> FakeIMAPClient:
+        # The real constructor connects, so a connection counts from here.
+        count("imap_opened")
+
+        return double
+
+    imap_client.IMAPClient = opening  # type: ignore[assignment]
     sieve_client.SieveClient = FileSieveClient  # type: ignore[assignment,misc]
 
     sys.exit(api.main(sys.argv[1:]))

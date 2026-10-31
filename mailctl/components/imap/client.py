@@ -201,14 +201,22 @@ class ImapSession:
         self._log(f"connecting to {where} (ssl={use_ssl}) as {self.username}")
 
         try:
-            client = IMAPClient(self.host, port=self.port, ssl=use_ssl)
+            with contextlib.ExitStack() as unopened:
+                client = IMAPClient(self.host, port=self.port, ssl=use_ssl)
 
-            if not use_ssl:
-                client.starttls()
+                # The socket is open from here, and the password is asked
+                # for below: a refused login, or a prompt stopped while it
+                # waits, must not leave it open with nothing holding it.
+                unopened.callback(_shut_down, client)
 
-            self._watch_alerts(client, greeting=use_ssl)
+                if not use_ssl:
+                    client.starttls()
 
-            client.login(self.username, self.password().reveal())
+                self._watch_alerts(client, greeting=use_ssl)
+
+                client.login(self.username, self.password().reveal())
+
+                unopened.pop_all()
 
         except LoginError as exc:
             raise ImapAuthenticationError(self.username, str(exc)) from exc
@@ -1179,6 +1187,14 @@ class ImapSession:
 
         except IMAPClientError as exc:
             raise MailctlError(f"sort in {folder!r} failed -- {exc}") from exc
+
+
+# ----------------------------------------------------------------------------
+def _shut_down(client: IMAPClient) -> None:
+    """Close a connection that never logged in, without a LOGOUT: there is
+    no session to end, and the socket may already be gone."""
+    with contextlib.suppress(IMAPClientError, OSError):
+        client.shutdown()
 
 
 # ----------------------------------------------------------------------------

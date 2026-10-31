@@ -491,6 +491,44 @@ def test_the_password_is_asked_for_only_as_the_login_is_made(fake_imap):
 
 
 # ----------------------------------------------------------------------------
+class Interrupted(BaseException):
+    """Raised by a password callable, as a cancelled prompt raises: a
+    ``BaseException``, so no ``except Exception`` stops it."""
+
+
+# ----------------------------------------------------------------------------
+def refused_login(fake_imap):
+    fake_imap.failures["login"] = LoginError("no")
+
+    return plain_session(), ImapAuthenticationError
+
+
+# ----------------------------------------------------------------------------
+def cancelled_prompt(_fake_imap):
+    def password():
+        raise Interrupted
+
+    return plain_session(password=password), Interrupted
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("failure", [refused_login, cancelled_prompt])
+def test_a_connection_that_does_not_log_in_is_closed(fake_imap, failure):
+    """The client connects before the password is asked for, so a login
+    that fails, or a prompt stopped while it waits, leaves a socket that
+    nothing else holds. It is shut down, not logged out, and the failure
+    is raised as it was. Red if the session leaves it open."""
+    session, raised = failure(fake_imap)
+
+    with pytest.raises(raised):
+        session.open()
+
+    assert fake_imap.calls.count(("shutdown",)) == 1
+    assert ("logout",) not in fake_imap.calls
+    assert session.client is None
+
+
+# ----------------------------------------------------------------------------
 def test_calling_a_method_before_open_fails_clearly():
     session = plain_session()
 

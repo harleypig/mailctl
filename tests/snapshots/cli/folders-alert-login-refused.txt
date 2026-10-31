@@ -8,3 +8,4 @@ mailctl: mail server error -- Account suspended; call support
 
 --- sieve calls
 --- imap calls
+('shutdown',)
