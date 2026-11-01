@@ -318,7 +318,9 @@ layer may call.
     that fails once the socket is up — a refused login or STARTTLS, a
     greeting cut short — closes the socket without a LOGOUT and keeps its
     own code; `close` sends LOGOUT and then closes the socket, which
-    sievelib's LOGOUT leaves open ([#362][i362]).
+    sievelib's LOGOUT leaves open ([#362][i362]). sievelib lets a socket
+    error through as an `OSError`, so each command after login raises it
+    as its own coded error, the `OSError` its cause ([#402][i402]).
   - `managesieve/capabilities.py` — the CAPABILITY response as data.
   - `managesieve/responses.py` — `ServerWarning`, and the `WARNINGS` a
     status response carries; offline.
@@ -349,7 +351,10 @@ layer may call.
     without a LOGOUT ([#349][i349]); one whose folders or namespace then
     cannot be read logs out, and a LOGOUT that fails still shuts the
     socket ([#362][i362]). A socket error in those reads is raised
-    `folder_list_failed`, the `OSError` kept as its cause ([#376][i376]).
+    `folder_list_failed`, the `OSError` kept as its cause ([#376][i376]),
+    and in any later command as that command's own coded error, the
+    `OSError` again its cause, so the session reads it as a lost
+    connection ([#402][i402]).
   - `imap/alerts.py` — `ServerAlert`, the component's record of an
     `ALERT`, and whether a response line carries one and what it says;
     offline.
@@ -1549,7 +1554,7 @@ Full dimension status:
 | 5. Security | **Active (secrets, Dockerfile, image report-only)** — `gitleaks`, `detect-private-key`; `hadolint` on the Dockerfile; `trivy` on the built image, report only and not a required check, since the base image carries HIGH findings with no fix ([#238][i238]). SAST is **Off**: the attack surface is two outbound TLS client sessions and no untrusted input parsing beyond the user's own Sieve script |
 | 6. Tests | **Active** — the offline tier is green (`make test` / `pytest`), and the TUI's suite (`make testtui`) beside it; see [TESTS.md](TESTS.md) |
 | 7. UI/UX & accessibility | **Active (TUI behaviour); accessibility Missing** — the TUI's screen is driven headless with Textual's Pilot (`clients/tui/tests/`): the masked password field, server text shown as plain characters, an alert shown as it arrives, and a command hidden without its capability. Nothing checks accessibility (contrast, colour-only meaning, screen-reader output), and no decision to build that check has been taken. The CLI's terminal output is covered by the *show, then change* convention |
-| 8. End-to-end | **Active (manual, gated)** — `tests/live/` skips unless `MAILCTL_LIVE=1`, and writes only with `MAILCTL_LIVE_WRITE=1` as well; run by hand, never in CI. Its write guards were proved on the container tier ([#9][i9]), and its write smoke test ran against the real account on 2026-10-31 and passed, the guards restoring everything ([#283][i283]) |
+| 8. End-to-end | **Active (manual, gated)** — `tests/live/` skips unless `MAILCTL_LIVE=1`, and writes only with `MAILCTL_LIVE_WRITE=1` as well; run by hand, never in CI. Its write guards were proved on the container tier ([#9][i9]), and every live test that writes has passed against the real account, the guards restoring everything: the smoke test on 2026-10-31 ([#283][i283]), and on 2026-11-01 it again and the tests for `filter apply`, `folder create`, `filter remove`, and `filterset restore` ([#388][i388]) |
 | 9. Compatibility | **Active** — CPython 3.11 through 3.14, every one tested in CI, and sievelib at both ends of its bound (1.5.0 and the newest below 2); the TUI on 3.11 and 3.14 only, the oldest and newest; no external contract we publish ([#231][i231], [#232][i232]) |
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
@@ -1786,6 +1791,8 @@ will read it.
 [i373]: https://github.com/harleypig/mailctl/issues/373
 [i374]: https://github.com/harleypig/mailctl/issues/374
 [i376]: https://github.com/harleypig/mailctl/issues/376
+[i402]: https://github.com/harleypig/mailctl/issues/402
+[i388]: https://github.com/harleypig/mailctl/issues/388
 [i377]: https://github.com/harleypig/mailctl/issues/377
 [i378]: https://github.com/harleypig/mailctl/issues/378
 [i106]: https://github.com/harleypig/mailctl/issues/106
