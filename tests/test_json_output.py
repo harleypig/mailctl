@@ -351,6 +351,46 @@ def test_a_refused_command_line_never_quotes_a_word_argparse_could_not_use(
         assert json.loads(err.splitlines()[-1])["error"]["code"]
 
 
+# Each settings option's value in every place it is taken: before the
+# command, between the group and its action, and after it (#243, #265).
+SETTINGS_VALUE_COMMAND_LINES = [
+    (["--provider", SENTINEL, "filter", "list"], "unknown_provider"),
+    (["filter", "--provider", SENTINEL, "list"], "unknown_provider"),
+    (["filter", "list", "--provider", SENTINEL], "unknown_provider"),
+    (["filter", "list", f"--provider={SENTINEL}"], "unknown_provider"),
+    (["--env-file", SENTINEL, "filter", "list"], "env_file_unreadable"),
+    (["filter", "--env-file", SENTINEL, "list"], "env_file_unreadable"),
+    (["filter", "list", "--env-file", SENTINEL], "env_file_unreadable"),
+    (["filter", "list", f"--env-file={SENTINEL}"], "env_file_unreadable"),
+]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("json_flag", [[], ["--json"]], ids=["text", "json"])
+@pytest.mark.parametrize(("argv", "code"), SETTINGS_VALUE_COMMAND_LINES)
+def test_a_refused_provider_or_env_file_never_quotes_its_value(
+    argv, code, json_flag, capsys, monkeypatch, tmp_path
+):
+    """#373: --provider and --env-file are refused below argparse, as an
+    unknown provider and a file that cannot be read, so json_output.
+    rejection never words them. A value given to either may be a password
+    in the wrong place: the refusal names the option and what was wrong,
+    and quotes nothing. Red while either refusal quotes its value."""
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main([*argv, *json_flag]) == 1
+
+    out, err = capsys.readouterr()
+    option = "--provider" if code == "unknown_provider" else "--env-file"
+
+    assert SENTINEL not in out
+    assert SENTINEL not in err
+    assert option in err
+
+    if json_flag:
+        assert json.loads(err.splitlines()[-1])["error"]["code"] == code
+
+
 # ----------------------------------------------------------------------------
 def test_a_mutual_exclusion_names_options_only(capsys):
     """A guard, not a falsifier of the filter: argparse's message for two
