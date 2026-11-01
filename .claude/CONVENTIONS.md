@@ -1702,19 +1702,13 @@ will read it.
 `repo`-scope semver, tagged `vX.Y.Z`, annotated, cut at the merge commit on
 `master` with the `release-tag` skill.
 
-- **Currently `v0.y.z` — alpha.** Per `git.md`, `X = 0` means **breakage is
-  expected** and the `y.z` split is deliberately loose: bump `y` for a
-  meaningful addition, `z` for a smaller change, and do not agonize over
-  which. The `0 → 1` jump is a decision in its own right, and M5 readies
-  it; what `v1.0.0` promises is [RELEASING.md](../RELEASING.md)'s.
-- **The rename gates `0 → 1`, and it has landed.** `v1.0.0` is where the
-  version becomes a compatibility promise, and a name — the command, the
-  config directory, the environment variables — is part of what it covers;
-  renaming after v1 would cost a `v2.0.0` for nothing but a name already
-  known to be wrong. So the rename had to come first, and with #45 it has:
-  `mxfilter` → `mailctl`, `MXROUTE_*` → `MAILCTL_*`, and the config directory
-  with them. The gate is recorded here and in
-  [RELEASING.md](../RELEASING.md) so it is read at the moment it applies.
+- **`v1.y.z`, strict semver from `1.0.0` on.** The version is a
+  compatibility promise: a break ships only in a new major version, `y`
+  marks an addition, and `z` a fix. What the promise covers, and what stays
+  free to change, is [RELEASING.md][promise] *What v1 promises*; read it
+  there rather than here. `v1.0.0` was tagged on 2026-11-01, and the gates
+  it waited on are recorded in [RELEASING.md](../RELEASING.md) *Cutting a
+  tag*.
 - **No API-major alignment.** The sibling provider aligns its MAJOR to the
   MXroute REST API's major, because it is a client of a versioned API. That
   does **not** carry over: this tool speaks ManageSieve (RFC 5804) and IMAP,
@@ -1733,6 +1727,7 @@ will read it.
   `uv pip install -e .` is run again.
 
 [adr1]: ../adr/0001-standalone-cli-over-provider-resource.md
+[promise]: ../RELEASING.md#what-v1-promises
 [adr2]: ../adr/0002-non-destructive-script-merge.md
 [provider]: https://github.com/harleypig/terraform-provider-mxroute
 [i9]: https://github.com/harleypig/mailctl/issues/9
