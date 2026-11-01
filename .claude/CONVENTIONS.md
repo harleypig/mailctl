@@ -1401,9 +1401,12 @@ What an agent does set, on every issue it files:
 - **A milestone's introspection issue carries no Layer.** It is about how
   the work went, not about a layer of the code, and no Layer option
   describes it; it still carries a Size and its milestone.
-- **An epic carries no Size, Layer, or milestone.** Its sub-issues carry
-  them, and they can span milestones, so the epic's own fields would only
-  repeat theirs or contradict them.
+- **An epic carries no Size or Layer.** Its sub-issues carry them, so the
+  epic's own would only repeat theirs or contradict them. It carries a
+  milestone only when every sub-issue sits in one, as [#418][i418] does
+  in M8: the *Milestone* view draws sub-issues under their parent, so an
+  epic with no milestone pulls them into the *No milestone* group. Where
+  its sub-issues span milestones, it carries none.
 
 So an issue missing a field is a gap unless it is one of these. A new
 Layer option for the introspection issues was weighed and declined: it
@@ -1411,12 +1414,12 @@ would describe nothing else.
 
 Role and type stay labels, and the board does not repeat them.
 
-**Four views, each for one question.** *Milestone* is a table grouped by
-milestone, with Size and Layer: what each milestone still holds. *Status*
-is a board by Status: what is in flight. *Needs You* is the issues
-labelled `needs-answers`, `needs-shaping`, or `needs-action`: what waits
-on the operator. *Bugs* is the open bugs. There is no Roadmap layout
-([dotagents#2322][da2322]).
+**Four views, each for one question.** *Milestone* is a table of open
+items grouped by milestone, with Size and Layer: what each milestone still
+holds. *Status* is a board by Status: what is in flight. *Needs You* is
+the issues labelled `needs-answers`, `needs-shaping`, or `needs-action`:
+what waits on the operator. *Bugs* is the open bugs. There is no Roadmap
+layout ([dotagents#2322][da2322]).
 
 **`needs-action` is waiting on the operator to do something** — a run, a
 setting, an approval — where `needs-answers` waits on an answer and
@@ -1773,6 +1776,7 @@ will read it.
 [i262]: https://github.com/harleypig/mailctl/issues/262
 [i264]: https://github.com/harleypig/mailctl/issues/264
 [i287]: https://github.com/harleypig/mailctl/issues/287
+[i418]: https://github.com/harleypig/mailctl/issues/418
 [i265]: https://github.com/harleypig/mailctl/issues/265
 [i307]: https://github.com/harleypig/mailctl/issues/307
 [i308]: https://github.com/harleypig/mailctl/issues/308
