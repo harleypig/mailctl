@@ -212,9 +212,14 @@ here.
 
 **Stop if:**
 
-* The diff says `(no change)`. Either the filter already exists or the
-  criteria produced nothing; find out which before re-running without
-  `--dry-run`.
+* The diff says `(no change)`. `filter add` prints that only with
+  `--replace`, when the filter you named is already stored exactly as you
+  asked: there is nothing to upload, so do not re-run it without
+  `--dry-run`. Without `--replace` a taken name is refused (next bullet),
+  and no criteria at all is refused before anything connects. The same
+  filter under a new name is not `(no change)` either: the diff adds it,
+  and if the existing one stops, a `Before this filter is reached:` line
+  says the copy `never runs`.
 * You get `a filter named '<name>' already exists in the active filter set`.
   Pick a different `--name`, or pass `--replace` if you genuinely mean to
   overwrite it.
