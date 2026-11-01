@@ -4,6 +4,8 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 1.0.0
+
 BREAKING CHANGES:
 
 * **No option is taken by a prefix of its name** ([#352]). An
@@ -184,6 +186,23 @@ ENHANCEMENTS:
   its output. Now it says why on stderr and keeps serving: `initialize`
   is refused with the coded refusal, and every other method with
   `not_initialized`, until `shutdown`.
+* **The CLI's `--json` failure line carries the error's `fields`**
+  ([#374]). The line was `{"version", "error": {"message", "code"}}`,
+  and the values a refusal carries reached only an API client. Now it
+  holds `fields` too, built as the API's error `data` is, so
+  `MAILCTL_IMAP_PORT=many mailctl folder list --json` ends with
+  `"fields": {"setting": "imap_port"}`. A refusal with no fields prints
+  the line as before. This holds for a command line rejected with exit
+  status 2 as well.
+* **Three failures carry a code of their own** ([#376], [#377],
+  [#378]). A socket error while IMAP lists the folders after login is
+  `folder_list_failed`; it escaped with no code. A ManageSieve server
+  that does not offer STARTTLS, under the `starttls` TLS mode, is
+  `starttls_not_offered`, refused before anything is sent and with the
+  advice to try `--sieve-tls ssl`; it was `connection_failed`. And a
+  password prompt that ends because the API holds 64 messages not yet
+  served is `prompt_input_full`, with `fields.limit`; it was
+  `password_declined`.
 
 BUG FIXES:
 
@@ -304,8 +323,24 @@ BUG FIXES:
   discarded them grew the table for as long as the API ran. The API reads
   at most 64 messages ahead of the one it is serving, so a cancel sent
   behind 64 others is seen only once some are answered, and a password
-  prompt with 64 messages waiting and no answer among them is taken as
-  declined. The reader stops when the API does.
+  prompt with 64 messages waiting and no answer among them is refused
+  with `prompt_input_full` ([#378]). The reader stops when the API does.
+* **A refused `--provider` or `--env-file` value is no longer quoted**
+  ([#373]). An unknown provider was refused as `provider: 'VALUE' is not
+  a known provider`, and an env file that could not be read named its
+  path, so a password typed there by mistake reached stderr and the
+  `--json` line. Neither names the value now, on the command line or in
+  `mailctl-api`'s answer to `initialize`. The codes are unchanged.
+* **The terminal UI ignores the message screen's keys while it fills in
+  a filter** ([#381]). After `a` on a message, a second `a` cancelled
+  the request and sent another, and Escape went back to the search
+  screen just before the form opened over it. Both keys now do nothing,
+  and leave the footer, until the answer arrives.
+* **The Docker image's user can write nothing on the image's own
+  filesystem** ([#383]). Debian leaves `/run/lock` (and `/var/lock`)
+  writable by anyone, so it was a second place a backup could be written
+  and then lost with the container. It is now `0755`, as `/tmp` and
+  `/var/tmp` already were. `MAILCTL_BACKUP_ROOT` is still the guard.
 
 NOTES:
 
@@ -315,8 +350,8 @@ NOTES:
   documents, error codes, settings, backups, the safety behaviour, the
   API at protocol version 1, and how the Docker image is run), what may
   be added, and what is free to change. A break after v1 waits for 2.0.0
-  and is a clean break, with no aliases. Nothing changes until v1.0.0 is
-  tagged.
+  and is a clean break, with no aliases. The promise holds from this
+  release on.
 * **The root test suite no longer warns about pytest-asyncio** ([#351]).
   With the TUI's test tools installed into the same `.venv`, every
   `pytest` run warned that pytest-asyncio's loop scope was unset. The root
@@ -328,6 +363,17 @@ NOTES:
   as it was. Nothing that moves, flags, or discards mail has run on a real
   account yet; [docs/VERIFYING.md](docs/VERIFYING.md) says which steps are
   still a first run.
+* **The README's Docker commands add `--security-opt
+  no-new-privileges`** ([#384]), so nothing in the container can gain
+  privileges it did not start with. docs/VERIFYING.md's steps 4 and 5
+  now quote what mailctl prints today ([#379]).
+* **The live tests can read their account from an env file** ([#380]).
+  `make testlive MAILCTL_LIVE_ENV_FILE=PATH` reads it as `--env-file`
+  would, mode check included, and exports nothing; the account no longer
+  has to be in the environment first. No change to the tool.
+* **A test keeps docs/ERROR-CODES.md in step with the codes raised**
+  ([#375]). It fails if the package raises a code the catalogue does not
+  list, or the catalogue lists one nothing raises. No change to the tool.
 
 ## 0.12.0
 
@@ -1885,4 +1931,15 @@ NOTES:
 [#352]: https://github.com/harleypig/mailctl/issues/352
 [#362]: https://github.com/harleypig/mailctl/issues/362
 [#364]: https://github.com/harleypig/mailctl/issues/364
+[#373]: https://github.com/harleypig/mailctl/issues/373
+[#374]: https://github.com/harleypig/mailctl/issues/374
+[#375]: https://github.com/harleypig/mailctl/issues/375
+[#376]: https://github.com/harleypig/mailctl/issues/376
+[#377]: https://github.com/harleypig/mailctl/issues/377
+[#378]: https://github.com/harleypig/mailctl/issues/378
+[#379]: https://github.com/harleypig/mailctl/issues/379
+[#380]: https://github.com/harleypig/mailctl/issues/380
+[#381]: https://github.com/harleypig/mailctl/issues/381
+[#383]: https://github.com/harleypig/mailctl/issues/383
+[#384]: https://github.com/harleypig/mailctl/issues/384
 [codes]: docs/ERROR-CODES.md

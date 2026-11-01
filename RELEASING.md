@@ -152,9 +152,8 @@ Versioning is `repo`-scope semver — the full policy is in
 [.claude/CONVENTIONS.md](.claude/CONVENTIONS.md) › *Versioning & tagging*. In
 short:
 
-- **`v0.y.z` today — alpha.** Per the global `git.md`, `X = 0` means breakage
-  is expected and the `y.z` split is loose: `y` for a meaningful addition, `z`
-  for a smaller change. Do not agonize over the split at this stage.
+- **`v1.y.z` from 1.0.0 on.** `y` for an addition, `z` for a fix, and a
+  break only in a new major version, as *What v1 promises* says.
 - **No API-major alignment.** The sibling provider ties its MAJOR to the
   MXroute REST API's major; this tool speaks ManageSieve and IMAP, which have
   no vendor version to track. Do not import that policy.
