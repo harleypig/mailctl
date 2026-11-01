@@ -26,6 +26,7 @@ from mailctl.api.protocol import (
     PARSE_ERROR,
     Channel,
     ClientGone,
+    InputFull,
     RequestCancelled,
     RpcError,
     parse,
@@ -397,18 +398,18 @@ def test_a_wait_with_the_limit_held_is_declined_rather_than_hung(
 ):
     """While a password is asked, everything else the client sends is
     held; once the limit is held the input thread reads no further, so
-    the answer can never arrive. The wait ends as a declined answer and
-    the held messages keep their turn. Red if the wait goes on reading:
-    it hangs."""
+    the answer can never arrive. The wait ends, saying so, and the held
+    messages keep their turn. Red if the wait goes on reading: it
+    hangs."""
     monkeypatch.setattr(protocol, "INBOX_LIMIT", 3)
     link, _out = channel(*numbered(5))
-    declined: list[RpcError] = []
+    declined: list[InputFull] = []
 
     def ask() -> None:
         try:
             link.request("credentials.prompt", {})
 
-        except RpcError as error:
+        except InputFull as error:
             declined.append(error)
 
     asker = threading.Thread(target=ask, daemon=True)
@@ -418,6 +419,35 @@ def test_a_wait_with_the_limit_held_is_declined_rather_than_hung(
     assert declined, "the wait never ended"
     assert [ident(link.receive()) for _ in range(5)] == list(range(5))
     assert link.receive() is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_prompt_declined_at_the_limit_carries_its_own_code(monkeypatch):
+    """A password prompt the input limit ends is not the user declining:
+    its answer could no longer be read. The client is told so by a code
+    of its own, naming the limit, and the held messages keep their turn.
+    Red if it is coded password_declined, or carries no code (#378)."""
+    monkeypatch.setattr(protocol, "INBOX_LIMIT", 3)
+    server, _out = served(*numbered(5))
+    refused: list[MailctlError] = []
+
+    def ask() -> None:
+        try:
+            server._prompt("Password: ")
+
+        except MailctlError as error:
+            refused.append(error)
+
+    asker = threading.Thread(target=ask, daemon=True)
+    asker.start()
+    asker.join(5)
+
+    assert refused, "the wait never ended"
+    assert refused[0].code == "prompt_input_full"
+    assert refused[0].fields == {"limit": 3}
+    assert [ident(server.channel.receive()) for _ in range(5)] == list(
+        range(5)
+    )
 
 
 # ----------------------------------------------------------------------------

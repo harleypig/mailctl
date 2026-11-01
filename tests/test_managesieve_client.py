@@ -630,6 +630,13 @@ def sent_logout(sock: ScriptedSocket) -> bool:
             "connection_failed",
             id="no-sasl",
         ),
+        pytest.param(
+            GREETING,
+            "starttls",
+            SieveConnectionError,
+            "starttls_not_offered",
+            id="no-starttls",
+        ),
     ],
 )
 def test_a_connection_that_does_not_log_in_is_closed(
@@ -658,6 +665,32 @@ def test_a_connection_that_does_not_log_in_is_closed(
     assert sock.closes == 1
     assert not sent_logout(sock)
     assert session.client is None
+
+
+# ----------------------------------------------------------------------------
+def test_a_server_offering_no_starttls_says_so(monkeypatch, no_hang):
+    """Asked for STARTTLS, a server whose CAPABILITY lacks it is refused
+    with a code of its own, before anything else is sent: neither the
+    STARTTLS command nor a login. Red if it is coded connection_failed,
+    as an unreachable server is (#377)."""
+    sock = ScriptedSocket(GREETING)
+    monkeypatch.setattr(
+        client_module.socket, "create_connection", lambda *a, **k: sock
+    )
+    session = SieveSession(
+        "mail.example.com",
+        4190,
+        "user@example.com",
+        lambda: Secret(PASSWORD),
+        tls="starttls",
+    )
+
+    with pytest.raises(SieveConnectionError) as caught:
+        session.open()
+
+    assert caught.value.code == "starttls_not_offered"
+    assert "STARTTLS" in str(caught.value)
+    assert sock.sent == []
 
 
 # ----------------------------------------------------------------------------
