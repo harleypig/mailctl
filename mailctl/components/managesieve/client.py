@@ -645,7 +645,7 @@ class SieveSession:
         try:
             result = client.listscripts()
 
-        except SieveProtocolError as exc:
+        except (SieveProtocolError, OSError) as exc:
             raise MailctlError(
                 f"LISTSCRIPTS failed -- {exc}", code="filterset_list_failed"
             ) from exc
@@ -672,7 +672,7 @@ class SieveSession:
         try:
             content = client.getscript_bytes(name)
 
-        except SieveProtocolError as exc:
+        except (SieveProtocolError, OSError) as exc:
             raise MailctlError(
                 f"GETSCRIPT {name!r} failed -- {exc}",
                 code="filterset_read_failed",
@@ -721,6 +721,12 @@ class SieveSession:
         try:
             accepted = client.checkscript(content)
 
+        except OSError as exc:
+            # Not the server's verdict: the connection went before it came.
+            raise MailctlError(
+                f"CHECKSCRIPT failed -- {exc}", code="filterset_check_failed"
+            ) from exc
+
         except SieveProtocolError as exc:
             raise MailctlError(
                 f"the server rejected the filter set -- {exc}",
@@ -749,7 +755,7 @@ class SieveSession:
         try:
             stored = client.putscript(name, content)
 
-        except SieveProtocolError as exc:
+        except (SieveProtocolError, OSError) as exc:
             raise MailctlError(
                 f"PUTSCRIPT {name!r} failed -- {exc}",
                 code="filterset_upload_failed",
@@ -772,7 +778,7 @@ class SieveSession:
         try:
             activated = client.setactive(name)
 
-        except SieveProtocolError as exc:
+        except (SieveProtocolError, OSError) as exc:
             raise MailctlError(
                 f"SETACTIVE {name!r} failed -- {exc}",
                 code="filterset_activate_failed",
