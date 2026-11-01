@@ -614,7 +614,16 @@ root `pytest` (*The TUI*).
    move **real** mail against a **live MXroute account**. They mutate real
    state; run them manually (`make testlive`), **never** in a default gate.
    A test that writes also needs `MAILCTL_LIVE_WRITE=1` and the write
-   guards (*Live-test credentials & safety*).
+   guards (*Live-test credentials & safety*). The writing tests are
+   `test_live_write_smoke.py`, which saves one filter, and
+   `test_live_write_paths.py` ([#388][i388]), one test each for `filter
+   apply` (one appended message moved into a folder made under the
+   scratch folder), `folder create` (a folder made and subscribed under
+   it), `filter remove` (a filter added, then removed, leaving the
+   others as they were), and `filterset restore` (the active filter set
+   backed up, changed, and restored to the backup's bytes; skipped on an
+   account with none). Each runs its command once and lists in its
+   docstring what it sends.
 3. **Container tests** (`MAILCTL_CONTAINER=1`, `tests/container/`) — every
    **write** path against a **throwaway local Dovecot + Pigeonhole** in
    Docker, never a real account. See *The container tier* below.
@@ -743,7 +752,15 @@ tests/container/test_image.py` ([#387][i387]).
   `test_live_write_guards.py` runs the live tier's guards against it
   through the same `Mailbox` type, as context managers and as fixtures in
   a child pytest run that fails, is interrupted, or passes
-  ([#9](https://github.com/harleypig/mailctl/issues/9)).
+  ([#9](https://github.com/harleypig/mailctl/issues/9)). The live write
+  tests themselves run here too: `test_live_writes_on_dovecot.py` loads
+  every `tests/live/test_live_write_*.py` by path and runs its tests
+  unchanged ([#388][i388]), on an account seeded with a Roundcube-shaped
+  filter set and named by a `0600` env file through
+  `MAILCTL_LIVE_ENV_FILE`, as an operator's run names it. After each one
+  it checks with its own oracle that the filter set's bytes on disk, the
+  active set, and the folder list are as they were, and that the password
+  reached no output.
 - **The server.** Debian trixie's own `dovecot-*` packages — **Dovecot 2.4.1
   with Pigeonhole** — rather than the `dovecot/docker` image, whose packaging
   is CC BY-NC-SA 4.0. Debian was the first choice on [#49][i49] and it ships
@@ -945,7 +962,14 @@ Live tests touch a real mailbox, so the guards are not optional:
 - **Writing is a second opt-in.** A test that writes uses the fixtures
   below, which reach the account through `write_mailbox`; it skips unless
   `MAILCTL_LIVE_WRITE` is exactly `1` as well (pinned offline by
-  `test_live_write_gate.py`). `make testlive` alone reads.
+  `test_live_write_gate.py`). `make testlive` alone reads. Every test in
+  a `tests/live/test_live_write_*.py` file asks for one of the two
+  fixtures, and each fixture asks for `write_mailbox`
+  (`test_live_gate.py`, [#388][i388]).
+- **mailctl runs through `run_mailctl`** (`tests/live_write.py`), which
+  hands it the env file `MAILCTL_LIVE_ENV_FILE` names as `--env-file`. A
+  bare `cli.main` would not see that file, since it is never exported,
+  and would run against whatever the environment alone describes.
 - **Back up and restore every script — `guarded_scripts`.** It captures
   each script's exact bytes and which is active, saves them to a `0600`
   file, and afterwards puts back only what changed, deletes what the test
@@ -984,7 +1008,10 @@ make test              # the same, via the Makefile
 make testlive          # live (MAILCTL_LIVE=1; the account from mailctl's config)
 make testlive MAILCTL_LIVE_ENV_FILE=PATH  # the account set by an env file
 MAILCTL_LIVE_WRITE=1 make testlive TESTARGS=tests/live/test_live_write_smoke.py
-                       # the one live test that writes, behind the guards
+                       # a live test that writes, behind the guards
+MAILCTL_LIVE_WRITE=1 make testlive MAILCTL_LIVE_ENV_FILE=PATH \
+  TESTARGS=tests/live/test_live_write_paths.py::test_apply_moves_existing_mail
+                       # one write path, the account set by an env file
 make testcontainer     # write paths against a local Dovecot (needs Docker)
 make testcontainer TESTARGS='-k test_image'  # one file, by -k, not a path
 make testtui           # the TUI: its pyright, then its own pytest suite
@@ -1055,6 +1082,7 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i364]: https://github.com/harleypig/mailctl/issues/364
 [i325]: https://github.com/harleypig/mailctl/issues/325
 [i369]: https://github.com/harleypig/mailctl/issues/369
+[i388]: https://github.com/harleypig/mailctl/issues/388
 [i375]: https://github.com/harleypig/mailctl/issues/375
 [i380]: https://github.com/harleypig/mailctl/issues/380
 [i381]: https://github.com/harleypig/mailctl/issues/381

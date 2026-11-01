@@ -48,6 +48,7 @@ import os
 
 import pytest
 from live_write import (  # noqa: F401 -- fixtures, registered by import
+    LIVE_ENV_FILE,
     Mailbox,
     guarded_scripts,
     scratch_folder,
@@ -60,9 +61,8 @@ from mailctl.config import Config, load_config
 LIVE_FLAG = "MAILCTL_LIVE"
 LIVE_VALUE = "1"
 
-# Not MAILCTL_ENV_FILE: no mailctl command reads a variable of that name,
-# and one that looked like a setting would suggest otherwise.
-ENV_FILE_VAR = "MAILCTL_LIVE_ENV_FILE"
+# One home with ``run_mailctl``, which hands the same file to mailctl.
+ENV_FILE_VAR = LIVE_ENV_FILE
 
 # Config field -> the variable that sets it, for the refusal's wording.
 REQUIRED_SETTINGS = {"host": "MAILCTL_HOST", "user": "MAILCTL_USER"}

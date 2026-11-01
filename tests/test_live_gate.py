@@ -18,13 +18,16 @@ exported into the process. Those tests write real files under
 ``tmp_path``; the password in them is a sentinel no output may carry.
 
 The gate turns a ``MailctlError`` from the loader into a skip and lets
-anything else propagate as an error (#403); both are pinned at the end.
+anything else propagate as an error (#403); both are pinned below.
 
 Not covered: the ``MAILCTL_LIVE`` flag's exactness and the host/user
 check, which this file sets to their open state and leaves to the gate's
-own docstring; and the write gate, which is ``test_live_write_gate.py``.
+own docstring; and the write gate's own values, which are
+``test_live_write_gate.py``. That every live write test stands behind
+that gate is pinned below too (#388).
 """
 
+import ast
 import importlib.util
 import os
 from pathlib import Path
@@ -314,6 +317,104 @@ def test_the_env_file_is_never_exported(live_module, only_the_flag, tmp_path):
 
     assert dict(os.environ) == before
     assert SENTINEL not in os.environ.values()
+
+
+# ############################################################################
+# Every live write test stands behind the write gate (#388)
+# ############################################################################
+
+LIVE_DIR = Path(__file__).parent / "live"
+
+# The fixtures that reach the account through ``write_mailbox``, the one
+# place the second opt-in (``MAILCTL_LIVE_WRITE=1``) is checked.
+WRITE_GUARDS = {"guarded_scripts", "scratch_folder"}
+
+
+# ----------------------------------------------------------------------------
+def live_write_tests() -> dict[str, list[str]]:
+    """``module::test`` -> the fixtures it asks for, for every live write test.
+
+    Derived from the files named ``test_live_write_*.py`` under
+    ``tests/live``, read statically so nothing in them is imported or run.
+    """
+    found = {}
+
+    for path in sorted(LIVE_DIR.glob("test_live_write_*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name.startswith(
+                "test_"
+            ):
+                found[f"{path.name}::{node.name}"] = [
+                    arg.arg for arg in node.args.args
+                ]
+
+    return found
+
+
+# ----------------------------------------------------------------------------
+def test_the_walk_reaches_every_live_write_test():
+    """Red if the glob or the parse reads nothing, or reads the wrong set.
+
+    The smoke test and the four #388 paths are known positives, so a
+    pattern that matches no file, or a parse that finds no function,
+    fails here rather than letting the check below pass on an empty set.
+    """
+    names = set(live_write_tests())
+
+    assert {
+        "test_live_write_smoke.py::"
+        "test_a_guarded_write_leaves_the_account_as_it_was",
+        "test_live_write_paths.py::test_apply_moves_existing_mail",
+        "test_live_write_paths.py::test_folder_create_makes_and_subscribes_it",
+        "test_live_write_paths.py::"
+        "test_filter_remove_takes_out_only_its_filter",
+        "test_live_write_paths.py::"
+        "test_filterset_restore_puts_back_the_backup",
+    } <= names
+
+
+# ----------------------------------------------------------------------------
+def test_every_live_write_test_asks_for_a_write_guard():
+    """Red if a live write test can write without ``MAILCTL_LIVE_WRITE=1``.
+
+    The second opt-in lives in ``write_mailbox``, and a test reaches it
+    only through ``guarded_scripts`` or ``scratch_folder``. A test that
+    asks for neither has no gate past ``MAILCTL_LIVE=1``, so a read-only
+    ``make testlive`` would run it. Taking the fixtures out of one test's
+    signature turns this red.
+    """
+    unguarded = [
+        name
+        for name, fixtures in live_write_tests().items()
+        if not WRITE_GUARDS & set(fixtures)
+    ]
+
+    assert unguarded == []
+
+
+# ----------------------------------------------------------------------------
+def test_each_write_guard_reaches_the_write_gate():
+    """Red if either guard stops depending on ``write_mailbox``.
+
+    The check above trusts the two guards to carry the gate. This pins
+    that each fixture asks for ``write_mailbox``, the fixture that skips
+    without ``MAILCTL_LIVE_WRITE=1``.
+    """
+    tree = ast.parse(
+        (Path(__file__).parent / "live_write.py").read_text(encoding="utf-8")
+    )
+    fixtures = {
+        node.name: [arg.arg for arg in node.args.args]
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in WRITE_GUARDS
+    }
+
+    assert set(fixtures) == WRITE_GUARDS
+
+    for name, arguments in fixtures.items():
+        assert "write_mailbox" in arguments, name
 
 
 # ############################################################################
