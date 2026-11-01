@@ -43,14 +43,15 @@ ENV PATH=/opt/mailctl/venv/bin:$PATH \
     XDG_CONFIG_HOME=/config \
     MAILCTL_BACKUP_ROOT=/config/mailctl
 
-# /tmp and /var/tmp lose their world-writable bit, so a non-root user can
-# write almost nowhere but a mount: the backstop behind MAILCTL_BACKUP_ROOT.
-# /dev/shm is a run-time mount and stays writable, which is why the root is
-# the guard and this is not. mailctl itself writes no temporary files.
+# /tmp, /var/tmp, and /run/lock (also /var/lock) lose their world-writable
+# bit, so a non-root user can write nothing on the image's own filesystem,
+# only a mount: the backstop behind MAILCTL_BACKUP_ROOT. /dev/shm is a
+# run-time mount and stays writable, which is why the root is the guard and
+# this is not. mailctl itself writes no temporary files and takes no locks.
 RUN useradd --system --uid 10001 --user-group --no-create-home \
         --home-dir /nonexistent --shell /usr/sbin/nologin mailctl \
     && install -d -m 0755 -o root -g root /config /work \
-    && chmod 0755 /tmp /var/tmp
+    && chmod 0755 /tmp /var/tmp /run/lock
 
 COPY --from=build /opt/mailctl/venv /opt/mailctl/venv
 COPY docker/entrypoint.sh /usr/local/bin/mailctl-entrypoint
