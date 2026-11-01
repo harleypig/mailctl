@@ -4,6 +4,39 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+BUG FIXES:
+
+* **A connection lost in the middle of a command now fails with a code**
+  ([#402]). A socket reset during any IMAP or ManageSieve command after
+  login printed `unexpected ConnectionResetError` with no code, and the
+  API answered `-32603`. Each command now fails with its own code, as
+  `search_failed` for a search. A read is still sent once more on a
+  fresh connection and a write is never sent again. Three
+  codes are new, for where an existing one would name the wrong
+  condition: `folder_select_failed` (opening a folder),
+  `filterset_check_failed` (the server checking a filter set; nothing was
+  uploaded), and `server_identity_failed` (reading the mail server's
+  identity). See [docs/ERROR-CODES.md][codes].
+* **The API keeps serving when an error's fields cannot be sent**
+  ([#407]). An error whose `fields` held a value the API never writes, a
+  credential above all, stopped it answering that request and every one
+  after it. Such an error is now answered with its code and message and
+  `fields` empty, and serving goes on. No error mailctl raises today
+  reaches this.
+* **The terminal UI ignores the search screen's keys while a message
+  opens** ([#401]). After Enter on a message, Escape went back to the
+  filter list before the message opened, and Enter on the list or in a
+  search field sent a second request. Both now do nothing, and Escape
+  leaves the footer, until the message arrives or is refused.
+
+NOTES:
+
+* **docs/VERIFYING.md says when `filter add` prints `(no change)`**
+  ([#404]). Step 4 said it meant the filter already existed or the
+  criteria matched nothing; neither prints it. It is printed only with
+  `--replace`, onto a filter already stored exactly as asked. No change
+  to the tool.
+
 ## 1.0.0
 
 BREAKING CHANGES:
@@ -1942,4 +1975,8 @@ NOTES:
 [#381]: https://github.com/harleypig/mailctl/issues/381
 [#383]: https://github.com/harleypig/mailctl/issues/383
 [#384]: https://github.com/harleypig/mailctl/issues/384
+[#401]: https://github.com/harleypig/mailctl/issues/401
+[#402]: https://github.com/harleypig/mailctl/issues/402
+[#404]: https://github.com/harleypig/mailctl/issues/404
+[#407]: https://github.com/harleypig/mailctl/issues/407
 [codes]: docs/ERROR-CODES.md
