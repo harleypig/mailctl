@@ -52,6 +52,7 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 | `already_initialized` | `initialize` was called a second time |
 | `plan_unknown` | no plan with that id is waiting: it was used, discarded, or dropped as one of more than 32 waiting; `fields.plan_id` names it |
 | `password_declined` | the client declined `credentials.prompt`, its answer held no password, or its input ended |
+| `prompt_input_full` | the client sent 64 messages not yet served while `credentials.prompt` waited, so its answer could not be read; `fields.limit` names the limit |
 
 ## Settings and credentials
 
@@ -206,6 +207,7 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 |------|-------|
 | `connection_failed` | the server cannot be reached, or the protocol failed while connecting |
 | `tls_failed` | TLS failed |
+| `starttls_not_offered` | the ManageSieve server does not offer STARTTLS, which the TLS mode asked for; nothing was sent |
 | `auth_failed` | the server refused the login |
 | `noop_failed` | the mail connection's liveness check failed |
 | `folder_list_failed` | listing folders failed |
@@ -234,10 +236,10 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 | `internal_error` | a guard on mailctl's own use of itself; only a bug reaches it |
 
 On the API, `connection_failed` and the ManageSieve half's `tls_failed`
-carry the provider's advice in `fields.advice`: `check_settings`, with the
-settings to check in `fields.settings`, or `try_setting`, with the other
-value of `fields.setting` to try in `fields.value`. The command line turns
-the advice into the flags to check.
+and `starttls_not_offered` carry the provider's advice in `fields.advice`:
+`check_settings`, with the settings to check in `fields.settings`, or
+`try_setting`, with the other value of `fields.setting` to try in
+`fields.value`. The command line turns the advice into the flags to check.
 
 [promise]: ../RELEASING.md#what-v1-promises
 [out]: ../README.md#output-for-scripts

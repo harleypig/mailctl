@@ -145,11 +145,11 @@ wrote 3 filter(s) to /home/you/.config/mailctl/backups/managesieve-20260814T0956
 
 That file is the script **exactly as the server has it** — no banner lines,
 nothing reformatted, mode `0600`. It goes in `~/.config/mailctl/backups`
-beside your `config.toml`; `--output PATH` puts it somewhere else, and a PATH ending in
-`/` (or naming a directory that exists) means "in here" while anything else
-is the exact file to write. A backup never replaces a file: an exact file
-that already exists is refused, and a name mailctl chose that is taken gets
-`-2`, `-3`, and so on. Then read it:
+beside your `config.toml`; `--output PATH` puts it somewhere else, and a
+PATH ending in `/` (or naming a directory that exists) means "in here" while
+anything else is the exact file to write. A backup never replaces a file:
+an exact file that already exists is refused, and a name mailctl chose that
+is taken gets `-2`, `-3`, and so on. Then read it:
 
 ```bash
 cat "$(ls -t ~/.config/mailctl/backups/*.sieve | head -1)"
@@ -182,35 +182,42 @@ Pick a real sender you actually get mail from, and a folder that already
 exists (use the exact spelling from step 2).
 
 ```bash
-mailctl filter add --from newsletter@example.com --move-to Lists/News --dry-run
+mailctl filter add --from newsletter@example.com --move-to Lists/News \
+    --dry-run
 ```
 
 **You should see**, in this order: a folder-resolution line if the name you
 typed had to be respelled, a plain-English summary of the filter (`when:` /
 `then:`), a unified diff of the filter set, and the line `[dry-run] the
-filter set was NOT uploaded.` `add` never touches mail already delivered — that is
-step 6's `apply` — so there is no message list here.
+filter set was NOT uploaded.` `filter add` never touches mail already
+delivered — that is step 6's `filter apply` — so there is no message list
+here.
 
 **Scrutinize the diff, line by line. This is the important part.**
 
 * **Every filter you recognise must still be there.** A `-` line removing a
-  `# Filter: <name>` for a filter you did not name is a **stop**. The merge
+  `# rule:[<name>]` for a filter you did not name is a **stop**. The merge
   should only ever add.
-* **Reformatting is expected.** mailctl parses the script and re-renders it,
-  so indentation, quoting, and line breaks may all change. That is normal.
-* **A rule renamed to `Unnamed rule N` is expected**, for any existing rule
-  that had no `# Filter:` name comment. The filter itself is unchanged; only its
-  label is invented. Check the conditions and actions on those lines match
-  what was there before.
+* **Reformatting is expected, and the diff hides it.** mailctl parses the
+  filter set and re-renders it, so indentation, quoting, and line breaks may
+  all change on upload. The diff renders both sides the same way so only the
+  filter change shows, and a `Note:` line above it says when the upload will
+  re-indent the whole file. That is normal.
+* **An existing rule with no name is given one**: `Unnamed rule N`, written
+  as `# rule:[Unnamed rule N]`, for any rule that had no `# rule:[...]` (or
+  `# Filter:`) marker. The diff does not show this, since both sides carry
+  the invented name. The filter itself is unchanged; only its label is new.
 * **The `require` line may gain entries** such as `fileinto` or `imap4flags`.
   That is mailctl keeping the header correct for the union of all filters.
 
 **Stop if:**
 
-* The diff says `(no change)`. Either the filter already exists or the criteria
-  produced nothing; find out which before re-running without `--dry-run`.
-* You get `a rule named '<name>' already exists`. Pick a different `--name`,
-  or pass `--replace` if you genuinely mean to overwrite it.
+* The diff says `(no change)`. Either the filter already exists or the
+  criteria produced nothing; find out which before re-running without
+  `--dry-run`.
+* You get `a filter named '<name>' already exists in the active filter set`.
+  Pick a different `--name`, or pass `--replace` if you genuinely mean to
+  overwrite it.
 * A warning says the target folder does not exist. `add` will still write the
   filter, and mail the server files there later may be lost. Add
   `--create-folder`, or fix the folder name against step 2.
@@ -223,15 +230,15 @@ Same command as step 4, without `--dry-run`:
 mailctl filter add --from newsletter@example.com --move-to Lists/News
 ```
 
-This uploads the filter and touches **no existing mail**. Sieve applies only to
-messages that arrive from now on.
+This uploads the filter and touches **no existing mail**. Sieve applies only
+to messages that arrive from now on.
 
 **You should see** the same summary and diff as step 4, then three new lines:
 
 * `Backed up the current filter set to <path>` — note the path.
 * `Uploaded and activated filter set '<name>'`.
 * `Mail already delivered was not touched; to act on it, run 'mailctl
-  apply' with the same criteria and actions.`
+  filter apply' with the same criteria and actions.`
 
 **Verify, in three places:**
 
@@ -251,9 +258,9 @@ messages that arrive from now on.
    mailctl filterset show
    ```
 
-   The last line reads `--- N filter(s): <names> ---`. **Your new filter name must
-   appear there, and so must every name that was in the file you saved in
-   step 3.**
+   The last line reads `--- N filter(s): <names> ---`. **Your new filter
+   name must appear there, and so must every name that was in the file you
+   saved in step 3.**
 
 3. **Open Roundcube's filter UI.** Your old filters and the new one should
    both be listed. This is the check that matters most — it is where a lost
@@ -265,12 +272,14 @@ folder rather than INBOX.
 
 **Stop if:**
 
-* `the server rejected the generated script (CHECKSCRIPT ...)`. Nothing was
-  uploaded and nothing was changed — the check runs before the upload. If a
-  warning about unadvertised extensions preceded it, that is your cause.
-* `mailctl filterset show` is missing a filter that was in your step 3 file, or
-  Roundcube shows fewer filters than before. Do not run anything else. Go to
-  [If something looks wrong](#if-something-looks-wrong).
+* `the server rejected the filter set when checking it; nothing was
+  uploaded`. Nothing on the server changed — the check runs before the
+  upload, though the backup line before it still wrote a file. If a warning
+  that the server does not advertise an extension this filter needs preceded
+  it, that is your cause.
+* `mailctl filterset show` is missing a filter that was in your step 3 file,
+  or Roundcube shows fewer filters than before. Do not run anything else.
+  Go to [If something looks wrong](#if-something-looks-wrong).
 
 ## 6. Retroactive apply, deliberately narrow, into a scratch folder
 
@@ -336,8 +345,8 @@ just the headers.
 **To reverse it**, move them back from your mail client, or:
 
 ```bash
-mailctl filter apply --folder INBOX.Scratch --subject 'Your invoice for March' \
-    --move-to INBOX
+mailctl filter apply --folder INBOX.Scratch \
+    --subject 'Your invoice for March' --move-to INBOX
 ```
 
 `--folder` names the *source* and, unlike `--move-to`, is passed to the

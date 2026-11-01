@@ -268,6 +268,42 @@ async def test_the_form_is_filled_in_from_what_the_api_derived(scene):
 
 
 # ----------------------------------------------------------------------------
+async def test_keys_while_the_like_request_waits_reach_nothing(scene):
+    """A key pressed while ``like`` is on its way sends no second request
+    and leaves the message screen where it is, and the form still opens
+    once the answer comes (#381). Break: let the message screen's keys
+    run during the wait and a second ``a`` asks again, or Escape goes
+    back, and this goes red."""
+    scene.flow(hold="mail.search", hold_with="like")
+    app = scene.app()
+
+    async with app.run_test(size=SIZE) as pilot:
+        await open_message(pilot, app)
+        message = app.screen
+        await pilot.press("a")
+        await settle(pilot, lambda: scene.seen().get("held") == "mail.search")
+
+        await pilot.press("a", "escape")
+        await pilot.pause(0.3)
+
+        assert app.screen is message
+        assert footer_keys(app) == set()
+
+        scene.release()
+        await reach(pilot, app, AddScreen)
+        await pilot.pause(0.3)
+        assert isinstance(app.screen, AddScreen)
+
+    assert [p for p in scene.params("mail.search") if "like" in p] == [
+        {
+            "folder": "INBOX.Lists",
+            "like": {"uid": 41, "uidvalidity": 1700},
+            "build_filter": True,
+        }
+    ]
+
+
+# ----------------------------------------------------------------------------
 async def test_an_api_without_like_opens_an_empty_form_and_says_so(scene):
     """Nothing is derived here in the API's place. Break: fill the form
     from the viewed message's headers and this goes red."""

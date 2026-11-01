@@ -56,7 +56,8 @@ the API, and the terminal UI. Nothing is published, so build it yourself:
 
 ```bash
 make image                          # or: docker build -t mailctl:dev .
-docker run --rm --user "$(id -u):$(id -g)" mailctl:dev --version
+docker run --rm --security-opt no-new-privileges \
+  --user "$(id -u):$(id -g)" mailctl:dev --version
 ```
 
 A run that talks to the server needs two things from the host: your config
@@ -64,6 +65,7 @@ directory, and your password in a file. This is the one pattern to use:
 
 ```bash
 docker run --rm \
+  --security-opt no-new-privileges \
   --user "$(id -u):$(id -g)" \
   -v "$HOME/.config/mailctl:/config/mailctl" \
   -v "$HOME/.config/mailctl/password:/run/secrets/mailctl-password:ro" \
@@ -92,6 +94,9 @@ docker run --rm \
   ownership: the file belongs to your uid, the image's default user has a
   different one, and it cannot read the file at all. The image also refuses
   to run as root, which would let a backup land anywhere.
+- **`--security-opt no-new-privileges` stops anything in the container
+  gaining privileges**, such as through a setuid program like `su`; mailctl
+  never needs to, so it costs nothing on top of running as your own user.
 - **Use the password file, not a command or the prompt.** `--password-cmd`
   runs its command inside the container, where your password manager does
   not exist. The interactive prompt has no terminal under a plain
@@ -112,6 +117,7 @@ refusal above holds for each.
 
 ```bash
 docker run --rm -it \
+  --security-opt no-new-privileges \
   --user "$(id -u):$(id -g)" \
   -v "$HOME/.config/mailctl:/config/mailctl" \
   -v "$HOME/.config/mailctl/password:/run/secrets/mailctl-password:ro" \
@@ -1406,8 +1412,9 @@ server needs it:
 * To decline, answer with an error. The request that needed the password
   is then refused with `password_declined`. An answer that does not parse
   is answered `-32700` and counts as declining, and so does input ending.
-  So do 64 messages sent while the prompt waits with no answer among
-  them, since mailctl reads no further until some are served.
+  64 messages sent while the prompt waits with no answer among them end
+  the wait too, refused with `prompt_input_full`, since mailctl reads no
+  further until some are served.
 * When a server refuses a prompted password (`auth_failed`), mailctl
   forgets it and asks again on the next request.
 * Cancelling the request that needed the password ends the wait (see

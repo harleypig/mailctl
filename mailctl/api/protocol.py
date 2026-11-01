@@ -42,6 +42,7 @@ __all__ = [
     "REQUEST_CANCELLED",
     "Channel",
     "ClientGone",
+    "InputFull",
     "RequestCancelled",
     "RpcError",
     "parse",
@@ -109,6 +110,15 @@ class RpcError(Exception):
 
 class ClientGone(Exception):
     """The client's input ended while a request to it was unanswered."""
+
+
+class InputFull(Exception):
+    """A request to the client was left unanswerable: ``INBOX_LIMIT``
+    messages were held unserved, so the input was read no further."""
+
+    def __init__(self, method: str, limit: int):
+        super().__init__(method)
+        self.limit = limit
 
 
 class RequestCancelled(BaseException):
@@ -447,7 +457,9 @@ class Channel:
 
         Returns the answer's ``result``; raises ``RpcError`` with the
         client's error code where it answered with an error, and
-        :class:`ClientGone` where its input ended first. The server's ids
+        :class:`ClientGone` where its input ended first, and
+        :class:`InputFull` where ``INBOX_LIMIT`` messages are held, since
+        the answer could no longer be read. The server's ids
         are strings of their own, so they cannot be mistaken for the
         client's.
 
@@ -474,9 +486,9 @@ class Channel:
 
         while True:
             # With INBOX_LIMIT messages held the input thread reads no
-            # further, so the answer cannot arrive: taken as declined.
+            # further, so the answer cannot arrive.
             if len(self._held) >= INBOX_LIMIT:
-                raise RpcError(INVALID_REQUEST, "")
+                raise InputFull(method, INBOX_LIMIT)
 
             message = self._read()
 

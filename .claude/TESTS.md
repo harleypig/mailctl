@@ -789,7 +789,9 @@ mounted has no children and no focus, and a key pressed then is lost
   `mail.search`'s `like`, never from the message's headers, with criteria
   it has no field for carried as sent; an API refusing `like` or
   `build_filter` as unknown opens an empty form that says so, and any
-  other -32602 is shown in the API's own words. The plan is shown as the
+  other -32602 is shown in the API's own words. A key pressed while
+  `like` is held unanswered, by the stub's `hold`, sends nothing and
+  leaves the message screen ([#381][i381]). The plan is shown as the
   document has it, saving sends `filter.add.execute` the plan's id alone
   and shows each `event` and where the backup went, Escape sends
   `plan.discard`, a plan that changes nothing offers no save, and a
@@ -1019,3 +1021,4 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i325]: https://github.com/harleypig/mailctl/issues/325
 [i369]: https://github.com/harleypig/mailctl/issues/369
 [i380]: https://github.com/harleypig/mailctl/issues/380
+[i381]: https://github.com/harleypig/mailctl/issues/381

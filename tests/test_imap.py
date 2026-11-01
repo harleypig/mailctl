@@ -26,6 +26,7 @@ from mailctl.components.imap import (
     MessageSummary,
     PartialExecution,
     case_variants,
+    connection_lost,
     decode_header_value,
     normalize_folder,
     split_path,
@@ -547,7 +548,11 @@ def test_a_connection_that_does_not_log_in_is_closed(fake_imap, failure):
             id="lsub",
         ),
         pytest.param(
-            "namespace", OSError("reset"), OSError, None, id="namespace"
+            "namespace",
+            OSError("reset"),
+            MailctlError,
+            "folder_list_failed",
+            id="namespace",
         ),
     ],
 )
@@ -586,6 +591,39 @@ def test_a_logout_that_fails_still_closes_the_socket(fake_imap):
 
     assert caught.value.code == "folder_list_failed"
     assert fake_imap.calls.count(("shutdown",)) == 1
+    assert session.client is None
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "method", ["list_folders", "list_sub_folders", "namespace"]
+)
+@pytest.mark.parametrize("logout_fails", [False, True])
+def test_a_socket_error_reading_the_folders_is_coded_and_closes_it(
+    fake_imap, method, logout_fails
+):
+    """A reset socket during the reads after login arrives as an OSError,
+    not an IMAPClientError. It is raised coded, with the socket error as
+    its cause so the session still reads it as a lost connection, and the
+    connection is logged out -- or, that LOGOUT failing on the same dead
+    socket, shut down (#362). Red if the OSError escapes uncoded (#376)."""
+    fake_imap.caps.add("NAMESPACE")
+    error = OSError("connection reset by peer")
+    fake_imap.failures[method] = error
+
+    if logout_fails:
+        fake_imap.failures["logout"] = OSError("broken pipe")
+
+    session = plain_session()
+
+    with pytest.raises(MailctlError) as caught:
+        session.open()
+
+    assert caught.value.code == "folder_list_failed"
+    assert caught.value.__cause__ is error
+    assert connection_lost(caught.value)
+    assert fake_imap.calls.count(("logout",)) == (0 if logout_fails else 1)
+    assert fake_imap.calls.count(("shutdown",)) == (1 if logout_fails else 0)
     assert session.client is None
 
 

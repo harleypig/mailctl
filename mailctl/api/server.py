@@ -66,6 +66,7 @@ from .protocol import (
     REQUEST_CANCELLED,
     Channel,
     ClientGone,
+    InputFull,
     RequestCancelled,
     RpcError,
     is_response,
@@ -545,6 +546,14 @@ class Server:
             raise MailctlError(
                 "the client's input ended before it gave a password",
                 code="password_declined",
+            ) from exc
+
+        except InputFull as exc:
+            raise MailctlError(
+                f"the client sent {exc.limit} messages not yet served, "
+                f"so its answer to the password prompt could not be read",
+                code="prompt_input_full",
+                fields={"limit": exc.limit},
             ) from exc
 
         except RpcError as exc:

@@ -5579,6 +5579,9 @@ ERROR_TEXT = {
     ),
     "connection_failed": lambda message, fields: with_advice(message, fields),
     "tls_failed": lambda message, fields: with_advice(message, fields),
+    "starttls_not_offered": lambda message, fields: with_advice(
+        message, fields
+    ),
     "needs_mail": lambda _, fields: (
         f"{fields['reason']} and --no-mail was given, so "
         f"{fields['folder']!r} cannot be created"

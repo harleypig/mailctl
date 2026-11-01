@@ -365,7 +365,7 @@ class ImapSession:
         try:
             listing = client.list_folders()
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"LIST failed -- {exc}", code="folder_list_failed"
             ) from exc
@@ -373,7 +373,7 @@ class ImapSession:
         try:
             subscribed = client.list_sub_folders()
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"LSUB failed -- {exc}", code="folder_list_failed"
             ) from exc
@@ -391,7 +391,7 @@ class ImapSession:
         The prefix is where a new top-level folder belongs, which the
         delimiter alone does not say: a ``.``-delimited Dovecot may keep
         folders at the root or under ``INBOX.``. A server that does not
-        advertise ``NAMESPACE``, fails it, or reports no personal namespace
+        advertise ``NAMESPACE``, refuses it, or reports no personal namespace
         leaves the prefix unknown, and ``normalize_folder`` falls back to
         guessing from the delimiter.
         """
@@ -402,6 +402,13 @@ class ImapSession:
 
         try:
             personal = client.namespace()[0]
+
+        except OSError as exc:
+            # Unlike a refusal, a socket error leaves no connection to go
+            # on with; the cause is kept so it still reads as one lost.
+            raise MailctlError(
+                f"NAMESPACE failed -- {exc}", code="folder_list_failed"
+            ) from exc
 
         except IMAPClientError:
             return
