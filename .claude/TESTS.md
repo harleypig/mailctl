@@ -10,9 +10,12 @@ the live- and container-gated ones. `pytest -q` reports the current count;
 none is kept here, because a count nobody re-derives is only ever stale.
 The live tier (`tests/live/`) is skipped by default and run by hand. Its
 write guards were built and proved on the container tier
-([#9](https://github.com/harleypig/mailctl/issues/9)), and its write smoke
-test ran against the real account on 2026-10-31 and passed, the guards
-restoring everything ([#283][i283]). The container tier
+([#9](https://github.com/harleypig/mailctl/issues/9)). Every live test
+that writes has passed against the real MXroute account, the guards
+restoring everything: the smoke test, which saves a filter, first on
+2026-10-31 ([#283][i283]), and on 2026-11-01 it again and the tests for
+`filter apply`, `folder create`, `filter remove`, and `filterset
+restore` ([#388][i388]). The container tier
 (`tests/container/`) is written and green against a local server; it is
 where every write path is proved first. The TUI's tests are a separate
 suite with their own configuration, run by `make testtui` and never by the
@@ -52,7 +55,10 @@ root `pytest` (*The TUI*).
      that fails still shuts the socket ([#362][i362]). A socket error in
      any of the three is raised coded, `folder_list_failed`, with the
      `OSError` kept as its cause, and closes the connection the same way
-     ([#376][i376]). What MXroute and
+     ([#376][i376]). Every command after login, read or write, raises a
+     socket error as its own coded error, the `OSError` its cause, so the
+     session still reads it as a lost connection ([#402][i402]). What
+     MXroute and
      `Config` add — the port-to-TLS rule and the login and connection
      advice — is `test_mxroute_imap.py`; server-module selection by `ID`
      is `test_imap_servers.py`.
@@ -181,7 +187,13 @@ root `pytest` (*The TUI*).
      on both halves; calls on one connection wait their turn under the
      session's lock; two sessions share nothing; and every transport
      operation is classified, with each operation's kind pinned so a change
-     of kind is a deliberate diff. The idle preflight ([#258][i258]): each
+     of kind is a deliberate diff. A socket error, which neither library
+     turns into its own error, is held to the same policy ([#402][i402]):
+     on mail, a read sent once more on a fresh connection and a second
+     reset raised as the command's coded error, and a write raised coded,
+     never sent again, its connection let go; on ManageSieve, the listing,
+     read, and check sent once more and the store and activate never, each
+     raised coded. The idle preflight ([#258][i258]): each
      half has one probe and it is a read on that half; a write on a half
      idle past `IDLE_PROBE_AFTER` sends the probe first (`NOOP` on mail,
      the script listing on rules), and one soon after an exchange, a half
@@ -420,7 +432,10 @@ root `pytest` (*The TUI*).
      no parameter refusal naming the value, no method taking a password,
      another command's plan refused and left waiting, and a result that
      cannot be sent answered as an internal error with serving going
-     on. The input thread and the cancel ([#280][i280]): `take` picking
+     on. An error whose `fields` cannot be sent, a `Secret` among them,
+     is answered with its code and message and `fields` empty, and
+     serving goes on, the next request answered in its turn ([#407][i407]).
+     The input thread and the cancel ([#280][i280]): `take` picking
      out each cancel with what is held ahead of it and leaving the rest in
      order, a bad line keeping its turn; a cancel already held, or
      arriving while a server-to-client request waits, ending the wait,
@@ -623,7 +638,9 @@ root `pytest` (*The TUI*).
    others as they were), and `filterset restore` (the active filter set
    backed up, changed, and restored to the backup's bytes; skipped on an
    account with none). Each runs its command once and lists in its
-   docstring what it sends.
+   docstring what it sends. All five passed against the real account on
+   2026-11-01, run one at a time, and left no `mailctl-test-` folder and
+   the same filter set active ([#388][i388]).
 3. **Container tests** (`MAILCTL_CONTAINER=1`, `tests/container/`) — every
    **write** path against a **throwaway local Dovecot + Pigeonhole** in
    Docker, never a real account. See *The container tier* below.
@@ -948,7 +965,10 @@ Live tests touch a real mailbox, so the guards are not optional:
   group or other can read it; the password is wrapped in `Secret`; and
   nothing is exported, so no `set -a` is needed. A named file that
   cannot be read skips the run rather than falling back to the
-  environment. The password is preferred via `MAILCTL_PASSWORD_FILE` or
+  environment. Only a refusal from the loader is a skip, its code in the
+  reason; any other failure working out the gate errors the test in
+  setup, never a quiet skip (`test_live_gate.py`, [#403][i403]). The
+  password is preferred via `MAILCTL_PASSWORD_FILE` or
   `MAILCTL_PASSWORD_CMD` over `MAILCTL_PASSWORD`; the gate accepts any
   of the three, testing only that one is set, never opening or running
   it (`test_live_gate.py`, [#369][i369]). `MAILCTL_LIVE=1` is required,
@@ -1090,6 +1110,9 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i373]: https://github.com/harleypig/mailctl/issues/373
 [i374]: https://github.com/harleypig/mailctl/issues/374
 [i376]: https://github.com/harleypig/mailctl/issues/376
+[i402]: https://github.com/harleypig/mailctl/issues/402
+[i403]: https://github.com/harleypig/mailctl/issues/403
+[i407]: https://github.com/harleypig/mailctl/issues/407
 [i377]: https://github.com/harleypig/mailctl/issues/377
 [i378]: https://github.com/harleypig/mailctl/issues/378
 [i387]: https://github.com/harleypig/mailctl/issues/387
