@@ -4,6 +4,8 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+## 1.0.1
+
 BUG FIXES:
 
 * **A connection lost in the middle of a command now fails with a code**
