@@ -2,8 +2,12 @@
 
 These tests talk to a **real MXroute account**. Every path out of this
 file that is not an explicit, fully-configured opt-in is a skip -- an
-unset variable, a mistyped one, a missing credential, and any error
-working out whether the gate is open all end the same way.
+unset variable, a mistyped one, a missing credential, and a refusal from
+mailctl's own settings loader (a ``MailctlError``) all end the same way.
+Any other exception while working out the gate is not caught: it errors
+the test in setup, which stops it as surely as a skip and is louder,
+since it is a defect in the gate or the loader rather than a run that
+was not configured.
 
 The gate is deliberately narrow:
 
@@ -95,6 +99,11 @@ def gate_reason() -> str | None:
     Written as "why not" rather than "may we" on purpose: a new condition
     is added by returning a reason, so forgetting to update the caller
     cannot turn into an accidental live run.
+
+    Only ``MailctlError`` becomes a reason. Anything else raised while
+    reading the settings propagates, so the test errors rather than runs
+    or skips quietly; its message is not one the loader vetted, so it is
+    not rendered as a skip reason either.
     """
     if os.environ.get(LIVE_FLAG) != LIVE_VALUE:
         return (

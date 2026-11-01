@@ -17,6 +17,9 @@ checked where it sets ``MAILCTL_PASSWORD``, and nothing it holds is
 exported into the process. Those tests write real files under
 ``tmp_path``; the password in them is a sentinel no output may carry.
 
+The gate turns a ``MailctlError`` from the loader into a skip and lets
+anything else propagate as an error (#403); both are pinned at the end.
+
 Not covered: the ``MAILCTL_LIVE`` flag's exactness and the host/user
 check, which this file sets to their open state and leaves to the gate's
 own docstring; and the write gate, which is ``test_live_write_gate.py``.
@@ -27,6 +30,8 @@ import os
 from pathlib import Path
 
 import pytest
+
+from mailctl import MailctlError
 
 PASSWORD_SETTINGS = (
     "MAILCTL_PASSWORD_FILE",
@@ -309,3 +314,51 @@ def test_the_env_file_is_never_exported(live_module, only_the_flag, tmp_path):
 
     assert dict(os.environ) == before
     assert SENTINEL not in os.environ.values()
+
+
+# ############################################################################
+# What the gate catches (#403)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def test_an_error_other_than_mailctl_error_is_not_a_skip(
+    live_module, only_the_flag, monkeypatch
+):
+    """Red if the gate turns any exception into a reason (or into None).
+
+    ``gate_reason`` catches ``MailctlError`` alone, as its docstring says:
+    the loader vets that message, and any other failure is a defect worth
+    an error in setup rather than a quiet skip. Widening the ``except`` to
+    ``Exception`` makes this return a reason instead of raising.
+    """
+
+    def broken_loader():
+        raise RuntimeError("403-not-a-mailctl-error")
+
+    monkeypatch.setattr(live_module, "live_settings", broken_loader)
+
+    with pytest.raises(RuntimeError, match="403-not-a-mailctl-error"):
+        live_module.gate_reason()
+
+
+# ----------------------------------------------------------------------------
+def test_a_mailctl_error_from_the_loader_is_a_skip(
+    live_module, only_the_flag, monkeypatch
+):
+    """Red if a refusal from the loader escapes as an error or opens it.
+
+    The control for the test above: the same patched seam, raising the
+    one type the gate does catch, must come back as a reason carrying the
+    error's code.
+    """
+
+    def refusing_loader():
+        raise MailctlError("refused for #403", code="setting_invalid")
+
+    monkeypatch.setattr(live_module, "live_settings", refusing_loader)
+
+    reason = live_module.gate_reason()
+
+    assert reason is not None
+    assert "setting_invalid" in reason
