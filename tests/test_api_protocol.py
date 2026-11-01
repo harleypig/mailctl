@@ -680,6 +680,47 @@ def test_a_result_that_cannot_be_sent_is_an_internal_error_and_serving_goes_on(
     assert SENTINEL.encode() not in out.getvalue()
 
 
+# ----------------------------------------------------------------------------
+def test_an_error_whose_fields_cannot_be_sent_keeps_its_code_and_goes_on(
+    monkeypatch,
+):
+    """Red before #407: the error's ``data`` was sent from inside the
+    method's own handling, so a field no document maps -- a credential
+    above all -- raised out of ``run`` and nothing more was answered."""
+
+    def refuse(*_):
+        raise MailctlError(
+            "refused", code="setting_invalid", fields={"v": Secret(SENTINEL)}
+        )
+
+    monkeypatch.setitem(server_module.METHODS, "plan.discard", refuse)
+    server, out = served(
+        b'{"jsonrpc": "2.0", "id": 1, "method": "plan.discard"}\n',
+        b'{"jsonrpc": "2.0", "id": 2, "method": "plan.discard"}\n',
+        b'{"jsonrpc": "2.0", "id": 3, "method": "shutdown"}\n',
+    )
+
+    server.run()
+
+    answers = [json.loads(line) for line in out.getvalue().splitlines()]
+
+    assert [answer["id"] for answer in answers] == [1, 2, 3]
+
+    for answer in answers[:2]:
+        error = answer["error"]
+
+        assert error["code"] == server_module.REFUSED
+        assert error["message"] == "refused"
+        assert error["data"]["error"] == {
+            "message": "refused",
+            "code": "setting_invalid",
+            "fields": {},
+        }
+
+    assert answers[2]["result"] is None
+    assert SENTINEL.encode() not in out.getvalue()
+
+
 # ############################################################################
 # Cancelling, in-process
 # ############################################################################
