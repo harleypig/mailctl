@@ -95,6 +95,10 @@ def _quote(value: bytes) -> bytes:
     return b'"' + value.replace(b"\\", b"\\\\").replace(b'"', b'\\"') + b'"'
 
 
+class _StartTLSNotOffered(SieveProtocolError):
+    """STARTTLS was asked for and the server's CAPABILITY lacks it."""
+
+
 class SieveConnectionError(MailctlError):
     """The server could not be reached, or TLS or the protocol failed."""
 
@@ -279,8 +283,14 @@ class SieveClient(Client):
         if not self._private("get_capabilities")():
             raise SieveProtocolError("Failed to read capabilities from server")
 
-        if not ssl and starttls and not self._private("starttls")():
-            return False
+        if not ssl and starttls:
+            # sievelib refuses this with the same error as any protocol
+            # failure, so it is checked here, where it can be told apart.
+            if not self.has_tls_support():
+                raise _StartTLSNotOffered("the server does not offer STARTTLS")
+
+            if not self._private("starttls")():
+                return False
 
         return bool(
             self._private("authenticate")(login, password, authz_id, authmech)
@@ -546,6 +556,13 @@ class SieveSession:
                     starttls=(self.tls == "starttls"),
                     ssl=(self.tls == "ssl"),
                 )
+
+            except _StartTLSNotOffered as exc:
+                raise SieveConnectionError(
+                    f"{where} does not offer STARTTLS, so no TLS could be "
+                    f"started on it; nothing was sent.",
+                    code="starttls_not_offered",
+                ) from exc
 
             except SieveProtocolError as exc:
                 raise SieveConnectionError(

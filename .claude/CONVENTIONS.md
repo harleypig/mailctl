@@ -292,9 +292,10 @@ layer may call.
   - `mxroute/managesieve.py` — the transport's ManageSieve side:
     `sieve_session()` maps `Config` onto a `SieveSession`, and a failed
     connection or login gains MXroute's advice. A failed connection keeps
-    its code, `connection_failed` or `tls_failed`, and the advice is also
-    in its `fields`, `advice` `try_setting` naming the other TLS mode
-    ([#352][i352]).
+    its code, `connection_failed`, `tls_failed`, or `starttls_not_offered`
+    for a server offering no STARTTLS, and the advice is also in its
+    `fields`, `advice` `try_setting` naming the other TLS mode
+    ([#352][i352], [#377][i377]).
   - `mxroute/imap.py` — the same for IMAP: `imap_session()` maps `Config`
     onto an `ImapSession` (port 143 is STARTTLS, any other implicit TLS),
     with the full-address login advice and the hints that name mailctl's
@@ -1776,6 +1777,7 @@ will read it.
 [i352]: https://github.com/harleypig/mailctl/issues/352
 [i362]: https://github.com/harleypig/mailctl/issues/362
 [i364]: https://github.com/harleypig/mailctl/issues/364
+[i377]: https://github.com/harleypig/mailctl/issues/377
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147

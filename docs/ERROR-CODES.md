@@ -206,6 +206,7 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 |------|-------|
 | `connection_failed` | the server cannot be reached, or the protocol failed while connecting |
 | `tls_failed` | TLS failed |
+| `starttls_not_offered` | the ManageSieve server does not offer STARTTLS, which the TLS mode asked for; nothing was sent |
 | `auth_failed` | the server refused the login |
 | `noop_failed` | the mail connection's liveness check failed |
 | `folder_list_failed` | listing folders failed |
@@ -234,10 +235,10 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 | `internal_error` | a guard on mailctl's own use of itself; only a bug reaches it |
 
 On the API, `connection_failed` and the ManageSieve half's `tls_failed`
-carry the provider's advice in `fields.advice`: `check_settings`, with the
-settings to check in `fields.settings`, or `try_setting`, with the other
-value of `fields.setting` to try in `fields.value`. The command line turns
-the advice into the flags to check.
+and `starttls_not_offered` carry the provider's advice in `fields.advice`:
+`check_settings`, with the settings to check in `fields.settings`, or
+`try_setting`, with the other value of `fields.setting` to try in
+`fields.value`. The command line turns the advice into the flags to check.
 
 [promise]: ../RELEASING.md#what-v1-promises
 [out]: ../README.md#output-for-scripts
