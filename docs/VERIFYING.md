@@ -1,23 +1,39 @@
 # Verifying mailctl against a real mailbox
 
-**Reads, dry runs, and one filter save have been run against a live MXRoute
-account; nothing mailctl does to mail has.** The probes, listings, and
+**Reads, dry runs, and five ways of changing something have been run
+against a live MXRoute account, on test mail and test filters only;
+flagging and discarding mail have not.** The probes, listings, and
 `--dry-run` plans have run against one real account, and a read-only check
-(`make livecheck`) repeats them without changing anything. Saving a filter
-(step 5) has run there once, on 2026-10-31: `mailctl filter add` backed up
-the active filter set, merged a new filter into it, and uploaded it. The
-test then put the filter set back as it was by its own means, not with
-mailctl. That filter matched nothing and only kept mail, so it never filed a
-message.
+(`make livecheck`) repeats them without changing anything. The changes ran
+through the live write tests, which touch only folders, messages, and
+filters they made themselves, and which put the account back as it was by
+their own means, not with mailctl:
 
-Everything else that changes something has been tested only offline and
-against a throwaway local mail server, never against a real mailbox: moving,
-flagging, or discarding mail with `filter apply`, creating and subscribing a
-folder, removing a filter, and `filterset restore`. So step 6 and the
-recovery steps at the end are a **first-run procedure**, not a regression
-checklist: you are finding out whether they work, not confirming that they
-still do. Step 5 has worked once, on one account, and is worth checking as
-carefully as if it had not.
+* **Saving a filter** (step 5), on 2026-10-31 and again on 2026-11-01:
+  `mailctl filter add` backed up the active filter set, merged a new filter
+  into it, and uploaded it. That filter matched nothing and only kept mail,
+  so it never filed a message.
+* **Moving mail** with `filter apply` (step 6), on 2026-11-01: one message
+  the test put in its own scratch folder, moved into a new folder under it.
+* **Creating a folder** with `folder create`, on 2026-11-01: the folder was
+  made and subscribed to.
+* **Removing a filter** with `filter remove`, on 2026-11-01: it took out the
+  filter `filter add` had just put in and left every other filter in place,
+  in the same order.
+* **Putting a backup back** with `filterset restore`, on 2026-11-01: the
+  filter set on the server was byte for byte the backup `filterset backup`
+  had saved.
+
+Each passed. Afterwards the account held none of the test's folders, and the
+same filter set was still the active one.
+
+Flagging or discarding mail with `filter apply` has been tested only offline
+and against a throwaway local mail server, never against a real mailbox. And
+everything above ran once, on one account, on mail nobody needed. So step 6
+and the recovery steps at the end are still close to a **first-run
+procedure**, not a regression checklist: they have worked on test mail, and
+you are finding out whether they work on yours. Step 5 has worked twice, on
+one account, and is worth checking as carefully as if it had not.
 
 Work through the steps **in order**. They are arranged from *touches nothing*
 to *cannot be undone*, so you can stop at any point and have changed nothing

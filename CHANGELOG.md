@@ -36,6 +36,19 @@ NOTES:
   criteria matched nothing; neither prints it. It is printed only with
   `--replace`, onto a filter already stored exactly as asked. No change
   to the tool.
+* **The live gate's docstring says which errors it turns into a skip**
+  ([#403]). It catches mailctl's own errors and nothing else; any other
+  error fails the test in setup. Two offline tests pin this. No change to
+  the tool.
+* **Four more write paths have run on a real MXroute account** ([#388]).
+  New live write tests cover `filter apply` moving mail, `folder create`,
+  `filter remove`, and `filterset restore`. On 2026-11-01 each passed
+  against the maintainer's account, as did the `filter add` smoke test,
+  and their guards left the account as it was. The smoke test now reads
+  its account from `MAILCTL_LIVE_ENV_FILE` too, which it used to ignore.
+  Flagging and discarding mail have still not run on a real account;
+  [docs/VERIFYING.md](docs/VERIFYING.md) says which steps are still close
+  to a first run. No change to the tool.
 
 ## 1.0.0
 
@@ -1977,6 +1990,8 @@ NOTES:
 [#384]: https://github.com/harleypig/mailctl/issues/384
 [#401]: https://github.com/harleypig/mailctl/issues/401
 [#402]: https://github.com/harleypig/mailctl/issues/402
+[#403]: https://github.com/harleypig/mailctl/issues/403
 [#404]: https://github.com/harleypig/mailctl/issues/404
 [#407]: https://github.com/harleypig/mailctl/issues/407
+[#388]: https://github.com/harleypig/mailctl/issues/388
 [codes]: docs/ERROR-CODES.md
