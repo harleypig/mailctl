@@ -639,3 +639,38 @@ oversized lines over stdio would be the other reason to add one here.
 
 [bytes-i346]: https://github.com/harleypig/mailctl/issues/346
 [bytes-adr8]: adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
+
+## A test keeping docs/VERIFYING.md's quotes in step with the CLI
+
+`ICEBOX:` verifying test, VERIFYING.md, verification guide, doc drift,
+docs drift, stale docs, stale guide, snapshot quotes, quoted output,
+expected output, docs out of date, documentation test, doc test,
+snapshots, tests/snapshots/cli, CLI wording — **trigger: the guide goes
+stale again.**
+
+`docs/VERIFYING.md` quotes what mailctl prints at each step, and nothing
+compares those quotes with what the CLI prints today. Steps 4 and 5 had
+gone stale that way: step 5 quoted `run 'mailctl apply'` after the command
+became `filter apply`, and step 4 described a `# Filter: <name>` marker
+where mailctl writes `# rule:[NAME]` ([harleypig/mailctl#379][vq-i379],
+fixed by [harleypig/mailctl#391][vq-pr391]). The operator's ruling,
+2026-11-01, was to icebox the test rather than build it. Parked
+2026-11-01.
+
+**What was deferred:** a test that takes each quote in the guide and
+checks it against the recorded output in `tests/snapshots/cli/`, so a
+wording change that updates a snapshot fails until the guide is updated
+too.
+
+**Why not now.** The guide was corrected by hand once, and a single drift
+does not yet show a pattern worth a test. Such a test also has to pair each
+quote with the snapshot it stands for, and much of what the guide quotes
+is what a real server says (the extensions `server test` lists, for one),
+where a snapshot records a test double.
+
+**Why the trigger.** A second drift is the pattern the first one was not:
+if the guide goes stale again, the hand check is not holding and the test
+earns its cost.
+
+[vq-i379]: https://github.com/harleypig/mailctl/issues/379
+[vq-pr391]: https://github.com/harleypig/mailctl/pull/391
