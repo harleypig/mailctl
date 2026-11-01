@@ -371,9 +371,21 @@ class Server:
 
             data = json_output.error(str(exc), exc.code, exc.fields)
 
-            return self._answer(
-                notification, ident, RpcError(REFUSED, str(exc), data)
-            )
+            try:
+                return self._answer(
+                    notification, ident, RpcError(REFUSED, str(exc), data)
+                )
+
+            except (TypeError, ValueError):
+                # A field no document maps -- a credential above all -- is
+                # refused before anything is written. The client branches
+                # on the code, so it keeps the code and loses the fields.
+                self._diagnose(ident, name)
+                data = json_output.error(str(exc), exc.code, {})
+
+                return self._answer(
+                    notification, ident, RpcError(REFUSED, str(exc), data)
+                )
 
         except Exception as exc:
             self._diagnose(ident, name)
