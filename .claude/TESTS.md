@@ -888,12 +888,21 @@ Its first run against the real account is [#298][i298].
 
 Live tests touch a real mailbox, so the guards are not optional:
 
-- **Credentials come from the environment** — the `MAILCTL_*` variables
-  (`config.py`), with the password via `MAILCTL_PASSWORD_FILE` or
-  `MAILCTL_PASSWORD_CMD` in preference to `MAILCTL_PASSWORD`; the gate
-  accepts any of the three, testing only that one is set
-  (`test_live_gate.py`, [#369][i369]). `MAILCTL_LIVE=1` is required, so a
-  plain `pytest` can never touch the account.
+- **Settings are read as mailctl reads them** — the gate and
+  `live_config` both resolve the account through `load_config`, so the
+  `MAILCTL_*` variables, `config.toml`, and an env file named by
+  `MAILCTL_LIVE_ENV_FILE` all count, as `--env-file` would for any
+  command ([#380][i380]). That file is read by mailctl's own loader: one
+  setting `MAILCTL_PASSWORD` is refused, coded `env_file_mode`, where
+  group or other can read it; the password is wrapped in `Secret`; and
+  nothing is exported, so no `set -a` is needed. A named file that
+  cannot be read skips the run rather than falling back to the
+  environment. The password is preferred via `MAILCTL_PASSWORD_FILE` or
+  `MAILCTL_PASSWORD_CMD` over `MAILCTL_PASSWORD`; the gate accepts any
+  of the three, testing only that one is set, never opening or running
+  it (`test_live_gate.py`, [#369][i369]). `MAILCTL_LIVE=1` is required,
+  and it and `MAILCTL_LIVE_WRITE` are read from the environment only, so
+  a plain `pytest` can never touch the account.
 - **The password stays out of every artifact.** A live test's output, a
   captured log, and a failure traceback are all places a credential could
   surface — `Secret` is what prevents it, so a live test must never unwrap a
@@ -938,7 +947,8 @@ it lands in `Lists/GitHub`" is.
 ```sh
 pytest                 # unit (offline, credential-free)
 make test              # the same, via the Makefile
-make testlive          # live (MAILCTL_LIVE=1; needs MAILCTL_* in the env)
+make testlive          # live (MAILCTL_LIVE=1; the account from mailctl's config)
+make testlive MAILCTL_LIVE_ENV_FILE=PATH  # the account set by an env file
 MAILCTL_LIVE_WRITE=1 make testlive TESTARGS=tests/live/test_live_write_smoke.py
                        # the one live test that writes, behind the guards
 make testcontainer     # write paths against a local Dovecot (needs Docker)
@@ -1010,4 +1020,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i364]: https://github.com/harleypig/mailctl/issues/364
 [i325]: https://github.com/harleypig/mailctl/issues/325
 [i369]: https://github.com/harleypig/mailctl/issues/369
+[i380]: https://github.com/harleypig/mailctl/issues/380
 [i381]: https://github.com/harleypig/mailctl/issues/381
