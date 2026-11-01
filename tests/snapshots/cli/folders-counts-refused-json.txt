@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-{"version": 2, "error": {"message": "the mxroute provider cannot count the messages in every folder in one request: the mail server does not advertise LIST-STATUS, and without it every folder would be a request of its own", "code": "server_capability_missing"}}
+{"version": 2, "error": {"message": "the mxroute provider cannot count the messages in every folder in one request: the mail server does not advertise LIST-STATUS, and without it every folder would be a request of its own", "code": "server_capability_missing", "fields": {"capability": "LIST-STATUS"}}}
 
 --- sieve calls
 --- imap calls

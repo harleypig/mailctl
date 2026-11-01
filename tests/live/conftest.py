@@ -12,6 +12,14 @@ The gate is deliberately narrow:
   ``1``; nothing else should be doing so by accident.
 * The account settings must all be present. A half-configured run would
   otherwise fail against *some* server, which is worse than not running.
+  They are resolved by mailctl's own ``load_config``, so whatever a
+  mailctl command would read counts: the environment, ``config.toml``,
+  and an env file named by ``MAILCTL_LIVE_ENV_FILE`` (#380). That file is
+  read exactly as ``--env-file`` is -- its mode checked where it sets
+  ``MAILCTL_PASSWORD``, the password wrapped in ``Secret``, nothing
+  exported -- and one that cannot be read is a skip, never a fall-through
+  to the environment. ``MAILCTL_LIVE`` and ``MAILCTL_LIVE_WRITE`` are
+  opt-ins for the run and are read from the environment only.
 
 TESTS.md holds the rest of the safety contract for anything added here.
 The two clauses a writing test must satisfy, neither of which the
@@ -31,6 +39,7 @@ writing test that forgets these fixtures has no ``write_mailbox`` and so
 no gate, which is why a writing test must use them.
 """
 
+import argparse
 import os
 
 import pytest
@@ -41,10 +50,18 @@ from live_write import (  # noqa: F401 -- fixtures, registered by import
     write_gate_reason,
 )
 
+from mailctl import MailctlError
+from mailctl.config import Config, load_config
+
 LIVE_FLAG = "MAILCTL_LIVE"
 LIVE_VALUE = "1"
 
-REQUIRED_SETTINGS = ("MAILCTL_HOST", "MAILCTL_USER")
+# Not MAILCTL_ENV_FILE: no mailctl command reads a variable of that name,
+# and one that looked like a setting would suggest otherwise.
+ENV_FILE_VAR = "MAILCTL_LIVE_ENV_FILE"
+
+# Config field -> the variable that sets it, for the refusal's wording.
+REQUIRED_SETTINGS = {"host": "MAILCTL_HOST", "user": "MAILCTL_USER"}
 # In the order mailctl's config ladder reads them; the first two keep the
 # value out of the environment, so the message names them as preferred.
 PASSWORD_SETTINGS = (
@@ -57,6 +74,18 @@ PASSWORD_SETTINGS = (
 # ############################################################################
 # The gate
 # ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def live_settings() -> Config:
+    """The account settings, resolved the way the CLI resolves them.
+
+    ``MAILCTL_LIVE_ENV_FILE`` stands where ``--env-file`` would; empty is
+    unset. Raises ``MailctlError`` where mailctl would refuse the run.
+    """
+    env_file = os.environ.get(ENV_FILE_VAR) or None
+
+    return load_config(argparse.Namespace(env_file=env_file))
 
 
 # ----------------------------------------------------------------------------
@@ -73,12 +102,28 @@ def gate_reason() -> str | None:
             f"'make testlive') to hit a real MXroute account"
         )
 
-    missing = [name for name in REQUIRED_SETTINGS if not os.environ.get(name)]
+    # A MailctlError's message names paths, modes, and line numbers and
+    # never a value -- the loader's own bar -- so it is safe as a reason.
+    try:
+        config = live_settings()
+
+    except MailctlError as exc:
+        return f"live tier cannot read its settings ({exc.code}): {exc}"
+
+    missing = [
+        var
+        for name, var in REQUIRED_SETTINGS.items()
+        if not getattr(config, name)
+    ]
 
     if missing:
-        return f"live tier needs {', '.join(missing)} in the environment"
+        return (
+            f"live tier needs {', '.join(missing)} in the environment, "
+            f"config.toml, or the file {ENV_FILE_VAR} names"
+        )
 
-    if not any(os.environ.get(name) for name in PASSWORD_SETTINGS):
+    # Presence only: nothing is opened or run until a test connects.
+    if not config.password_sources():
         return (
             f"live tier needs a credential: set one of "
             f"{', '.join(PASSWORD_SETTINGS[:-1])} or {PASSWORD_SETTINGS[-1]} "
@@ -123,13 +168,9 @@ def isolated_environment():
 
 # ----------------------------------------------------------------------------
 @pytest.fixture(scope="session")
-def live_config():
-    """The account settings, resolved the same way the CLI resolves them."""
-    import argparse
-
-    from mailctl.config import load_config
-
-    return load_config(argparse.Namespace())
+def live_config() -> Config:
+    """The account settings the gate opened on (``live_settings``)."""
+    return live_settings()
 
 
 # ----------------------------------------------------------------------------

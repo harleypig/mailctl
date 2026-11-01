@@ -1021,7 +1021,7 @@ exit status. `server probe --json` prints its own versioned document (see
 | a write, `--dry-run` | `{"version", "plan": {"command", "changes", ...}}` — `command` is the command's path, such as `"filter add"`; what else a plan holds depends on the command |
 | `server baseline check` | `{"version", "host", "baseline", "baseline_taken", "taken", "account_recorded", "requires_known", "serious", "informational", "drift": [{"severity", "kind", "half", "name", "before", "after"}]}` |
 | `server baseline show` | the saved file as stored (see *Watch the servers for change*) |
-| any, failing | `{"version", "error": {"message", "code"}}`, one line, the last on stderr; `code` names the refusal, and is absent only for an interrupted run or an unexpected failure |
+| any, failing | `{"version", "error": {"message", "code", "fields"}}`, one line, the last on stderr; `code` names the refusal, and is absent only for an interrupted run or an unexpected failure; `fields` holds the values the refusal carries, such as the `setting` a `setting_invalid` names, and is absent where it carries none |
 
 * `version` is `2`. A key may be added without changing it; one renamed,
   removed, or given a new meaning changes it.
@@ -1078,8 +1078,8 @@ exit status. `server probe --json` prints its own versioned document (see
 **An error's `code`** is a short name for the condition, so a script can
 tell one refusal from another without reading the message. Every refusal
 carries one, the command line's own included; an interrupted run and an
-unexpected failure do not. [docs/ERROR-CODES.md][codes] lists every code
-and what it means.
+unexpected failure do not. [docs/ERROR-CODES.md][codes] lists every code,
+what it means, and the `fields` that come with it.
 
 **Exit status**, on every command:
 

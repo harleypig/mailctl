@@ -354,7 +354,10 @@ def test_initialize_names_an_old_config_dir_with_no_new_one(start, tmp_path):
 def test_initialize_refuses_a_bad_setting_and_a_second_initialize(start):
     bad = start("--provider", "nosuch")
 
-    assert "nosuch" in refusal(bad.request("initialize"))["message"]
+    refused = refusal(bad.request("initialize"))
+
+    assert refused["code"] == "unknown_provider"
+    assert "nosuch" not in refused["message"]
 
     good = initialized(start)
 
