@@ -490,6 +490,17 @@ root `pytest` (*The TUI*).
      variable on trust (a variable that is `None` at run time escapes it),
      and does not see one built through an alias of its class. Each guard
      carries a planted case it is seen to catch.
+   - **The error-code catalogue** (`test_error_codes_catalogue.py`,
+     [#375][i375]) — `docs/ERROR-CODES.md` lists every code the package
+     raises, and no other, and none twice. The codes are derived from
+     every module, the interfaces included, since `cli.ERROR_TEXT` lacks
+     the API's own: a `code=` literal, a module-level constant
+     (`cli.ARGUMENTS`), or a `code` parameter's default. A code passed on
+     through `**` or a variable, or handed back positionally, is not read;
+     a row whose code the walk cannot find fails, so such a code shows as
+     a failure, never a pass. A planted raised code with no row, a planted
+     row nothing raises, a repeated row, and a row the parse cannot read
+     each turn it red.
    - The **layer-purity guard** (`test_layer_purity.py`) — the four layers
      of [ADR 0007][adr7] over the components of [ADR 0006][adr6], held line
      by line:
@@ -1010,4 +1021,5 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i364]: https://github.com/harleypig/mailctl/issues/364
 [i325]: https://github.com/harleypig/mailctl/issues/325
 [i369]: https://github.com/harleypig/mailctl/issues/369
+[i375]: https://github.com/harleypig/mailctl/issues/375
 [i381]: https://github.com/harleypig/mailctl/issues/381
