@@ -10,15 +10,17 @@ do not know as an ordinary failure.
 ## Where a code appears
 
 * **The command line, under `--json`.** A failure ends with one JSON line,
-  the last on stderr: `{"version", "error": {"message", "code"}}`. Exit
-  status 1 is a failure or refusal. Exit status 2 is a command line
+  the last on stderr: `{"version", "error": {"message", "code",
+  "fields"}}`. `fields` holds the values the refusal carries, as the API's
+  does, and is left out where it carries none. Exit status 1 is a failure
+  or refusal. Exit status 2 is a command line
   rejected before anything ran: the usage and the error come first, as
   text, and the coded line follows them. See [Output for scripts][out] in
   the README.
 * **The API.** A refusal is answered with JSON-RPC error `1`, and its
-  `data` is the same document with `fields` added: the values a client
-  needs, such as a setting's name. See [Errors][api-errors] in the
-  README. The command line's line carries no `fields`.
+  `data` is the same document, `fields` always present: the values a
+  client needs, such as a setting's name. See [Errors][api-errors] in the
+  README.
 
 Two failures carry no code: an interrupted run (exit status 130, and
 `interrupted` under `--json`), and an unexpected failure, which is named
@@ -235,11 +237,12 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 | `filterset_activate_failed` | activating a filter set failed |
 | `internal_error` | a guard on mailctl's own use of itself; only a bug reaches it |
 
-On the API, `connection_failed` and the ManageSieve half's `tls_failed`
-and `starttls_not_offered` carry the provider's advice in `fields.advice`:
+`connection_failed` and the ManageSieve half's `tls_failed` and
+`starttls_not_offered` carry the provider's advice in `fields.advice`:
 `check_settings`, with the settings to check in `fields.settings`, or
 `try_setting`, with the other value of `fields.setting` to try in
-`fields.value`. The command line turns the advice into the flags to check.
+`fields.value`. The command line also turns the advice into the flags to
+check, in its message.
 
 [promise]: ../RELEASING.md#what-v1-promises
 [out]: ../README.md#output-for-scripts

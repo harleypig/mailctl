@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-{"version": 2, "error": {"message": "no message with uid 98, 99 in 'INBOX'; nothing was marked", "code": "no_such_message"}}
+{"version": 2, "error": {"message": "no message with uid 98, 99 in 'INBOX'; nothing was marked", "code": "no_such_message", "fields": {"folder": "INBOX", "uids": [98, 99]}}}
 
 --- sieve calls
 --- imap calls

@@ -3,7 +3,7 @@ exit: 1
 --- stdout
 
 --- stderr
-{"version": 2, "error": {"message": "no baseline has been saved for mail.example.com (looked for <TMP>/config/mailctl/baselines/mail.example.com.json); 'mailctl server baseline save' records one", "code": "no_baseline"}}
+{"version": 2, "error": {"message": "no baseline has been saved for mail.example.com (looked for <TMP>/config/mailctl/baselines/mail.example.com.json); 'mailctl server baseline save' records one", "code": "no_baseline", "fields": {"operation": "server baseline save"}}}
 
 --- sieve calls
 --- imap calls

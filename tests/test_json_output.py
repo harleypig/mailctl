@@ -289,6 +289,7 @@ def test_a_bad_setting_flag_is_a_setting_refusal_naming_it(capsys):
         "message": "argument --sieve-tls: invalid choice (choose from "
         "starttls, ssl, none)",
         "code": "setting_invalid",
+        "fields": {"setting": "sieve_tls"},
     }
 
 
@@ -389,6 +390,47 @@ def test_a_refused_provider_or_env_file_never_quotes_its_value(
 
     if json_flag:
         assert json.loads(err.splitlines()[-1])["error"]["code"] == code
+
+
+# ----------------------------------------------------------------------------
+def test_a_failure_line_carries_the_errors_fields(capsys, monkeypatch):
+    """#374: a script reading the --json line learns what the API's client
+    does -- here which setting was bad -- from the same mapping. Red while
+    the CLI's line drops the error's fields."""
+    monkeypatch.setenv("MAILCTL_IMAP_PORT", "many")
+
+    assert cli.main(["folder", "list", "--json"]) == 1
+
+    failure = json.loads(capsys.readouterr().err.splitlines()[-1])
+
+    assert failure["error"]["code"] == "setting_invalid"
+    assert failure["error"]["fields"] == {"setting": "imap_port"}
+
+
+# ----------------------------------------------------------------------------
+def test_a_secret_in_a_failures_fields_is_refused_and_the_line_kept(
+    capsys, monkeypatch
+):
+    """A field dumps refuses costs the fields, never the line or its code,
+    and never shows the value. Red if a credential in the fields is
+    serialised, or if refusing it loses the line."""
+
+    def fail(sessions, config):
+        raise MailctlError(
+            "refused", code="unsupported", fields={"value": Secret(SENTINEL)}
+        )
+
+    monkeypatch.setattr(cli.utilities.reports, "probe_servers", fail)
+
+    assert cli.main(["server", "probe", "--json"]) == 1
+
+    out, err = capsys.readouterr()
+
+    assert SENTINEL not in out + err
+    assert json.loads(err.splitlines()[-1])["error"] == {
+        "message": "refused",
+        "code": "unsupported",
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -711,7 +753,8 @@ def test_search_offers_uids_only():
 
 # ----------------------------------------------------------------------------
 def test_an_error_carries_its_fields_as_plain_json_and_only_when_given():
-    """The CLI never passes fields, so its failure line is as it was."""
+    """No fields given, no key: the CLI gives none where the error has
+    none, so such a line is as it was before #374."""
     assert json_output.error("gone") == {
         "version": json_output.JSON_VERSION,
         "error": {"message": "gone"},

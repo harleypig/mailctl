@@ -17,6 +17,7 @@ import re
 import shlex
 import sys
 import traceback
+from collections.abc import Mapping
 from typing import NoReturn
 
 from . import MailctlError, __version__, engine, json_output, utilities
@@ -5068,9 +5069,7 @@ def main(argv: list[str] | None = None) -> int:
     except CommandLineRejected as exc:
         if json_requested(given):
             sys.stderr.write(
-                json_output.dumps(
-                    json_output.error(exc.message, exc.refusal), indent=None
-                )
+                failure_line(exc.message, exc.refusal, exc.fields)
             )
 
         raise
@@ -5107,7 +5106,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.debug:
             traceback.print_exc()
 
-        report_failure(args, error_text(exc), exc.code)
+        report_failure(args, error_text(exc), exc.code, exc.fields)
 
         return 1
 
@@ -5287,13 +5286,16 @@ def refuse_gone_option(parser: "Parser", argv) -> None:
 
 
 # ----------------------------------------------------------------------------
-def report_failure(args, message: str, code: str | None = None) -> None:
+def report_failure(
+    args,
+    message: str,
+    code: str | None = None,
+    fields: Mapping[str, object] | None = None,
+) -> None:
     """Say on stderr why the run failed: as one line of JSON under --json,
     the last line stderr holds."""
     if getattr(args, "json", False):
-        document = json_output.error(message, code)
-
-        sys.stderr.write(json_output.dumps(document, indent=None))
+        sys.stderr.write(failure_line(message, code, fields))
 
         return
 
@@ -5302,6 +5304,27 @@ def report_failure(args, message: str, code: str | None = None) -> None:
     message = message.replace("\n", "\n  ")
 
     print(f"mailctl: {message}", file=sys.stderr)
+
+
+# ----------------------------------------------------------------------------
+def failure_line(
+    message: str,
+    code: str | None,
+    fields: Mapping[str, object] | None,
+) -> str:
+    """The --json failure line: the error document the API answers with,
+    ``fields`` included where the error has any (#374).
+
+    A field ``dumps`` refuses -- a credential above all -- drops the
+    fields rather than the line, so a script still reads the code.
+    """
+    try:
+        return json_output.dumps(
+            json_output.error(message, code, fields or None), indent=None
+        )
+
+    except TypeError:
+        return json_output.dumps(json_output.error(message, code), indent=None)
 
 
 # ############################################################################
@@ -5328,9 +5351,8 @@ class Refusal(MailctlError):
 # ----------------------------------------------------------------------------
 class CommandLineRejected(SystemExit):
     """argparse's exit for a rejected command line, with the --json
-    failure line's ``message`` and ``refusal`` code, which argparse knows
-    nothing of. ``fields`` are the API's; the CLI's line, like every other
-    failure it prints, carries none."""
+    failure line's ``message``, ``refusal`` code, and ``fields``, which
+    argparse knows nothing of."""
 
     # ------------------------------------------------------------------------
     def __init__(
