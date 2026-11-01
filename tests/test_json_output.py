@@ -237,8 +237,9 @@ def test_a_rejected_command_line_under_json_ends_in_a_coded_line(
     argv, code, capsys, monkeypatch
 ):
     """#352: a command line refused before any command runs carries a
-    code under --json, wherever --json stands. The exit status and what
-    argparse prints are as they were: the line is only added after them."""
+    code under --json, wherever --json stands. The exit status, the usage
+    block, and the error line are as they are without --json: the line is
+    only added after them."""
     with pytest.raises(SystemExit) as rejected:
         cli.main(argv)
 
