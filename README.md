@@ -1406,8 +1406,9 @@ server needs it:
 * To decline, answer with an error. The request that needed the password
   is then refused with `password_declined`. An answer that does not parse
   is answered `-32700` and counts as declining, and so does input ending.
-  So do 64 messages sent while the prompt waits with no answer among
-  them, since mailctl reads no further until some are served.
+  64 messages sent while the prompt waits with no answer among them end
+  the wait too, refused with `prompt_input_full`, since mailctl reads no
+  further until some are served.
 * When a server refuses a prompted password (`auth_failed`), mailctl
   forgets it and asks again on the next request.
 * Cancelling the request that needed the password ends the wait (see

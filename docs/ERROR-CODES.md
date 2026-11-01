@@ -52,6 +52,7 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 | `already_initialized` | `initialize` was called a second time |
 | `plan_unknown` | no plan with that id is waiting: it was used, discarded, or dropped as one of more than 32 waiting; `fields.plan_id` names it |
 | `password_declined` | the client declined `credentials.prompt`, its answer held no password, or its input ended |
+| `prompt_input_full` | the client sent 64 messages not yet served while `credentials.prompt` waited, so its answer could not be read; `fields.limit` names the limit |
 
 ## Settings and credentials
 

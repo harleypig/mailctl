@@ -826,8 +826,8 @@ the one in hand or one waiting its turn ahead of it; any other id is
 ignored, so a late cancel never stops a later request reusing the id.
 A cancel sent behind 64 messages not yet served is not seen until some
 are served, and a `credentials.prompt` waiting while that many are held
-is taken as declined, since its answer could no longer be read
-([#346][i346]).
+is refused, coded `prompt_input_full`, since its answer could no longer be
+read ([#346][i346], [#378][i378]).
 
 **How a provider is chosen, declared, and held to its interface:**
 
@@ -1778,6 +1778,7 @@ will read it.
 [i362]: https://github.com/harleypig/mailctl/issues/362
 [i364]: https://github.com/harleypig/mailctl/issues/364
 [i377]: https://github.com/harleypig/mailctl/issues/377
+[i378]: https://github.com/harleypig/mailctl/issues/378
 [i106]: https://github.com/harleypig/mailctl/issues/106
 [i145]: https://github.com/harleypig/mailctl/issues/145
 [i147]: https://github.com/harleypig/mailctl/issues/147
