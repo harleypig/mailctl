@@ -67,12 +67,14 @@ import pytest
 from imapclient import IMAPClient
 from sievelib.managesieve import Client as _SievelibBase
 
+from mailctl import cli
 from mailctl.components.managesieve.client import SieveClient as ByteClient
 from mailctl.config import Config, Secret
 
 _Client = TypeVar("_Client", bound=_SievelibBase)
 
 __all__ = [
+    "LIVE_ENV_FILE",
     "SCRATCH_MARKER",
     "WRITE_FLAG",
     "FolderNotRemoved",
@@ -86,6 +88,7 @@ __all__ = [
     "claim_scratch_folder",
     "guard_scripts",
     "guarded_scripts",
+    "run_mailctl",
     "scratch_folder",
     "write_gate_reason",
 ]
@@ -116,6 +119,11 @@ SCRATCH_MARKER = "mailctl-test-"
 WRITE_FLAG = "MAILCTL_LIVE_WRITE"
 WRITE_VALUE = "1"
 
+# Names the env file a live run takes its account from (#380). Not
+# MAILCTL_ENV_FILE: no mailctl command reads a variable of that name, and
+# one that looked like a setting would suggest otherwise.
+LIVE_ENV_FILE = "MAILCTL_LIVE_ENV_FILE"
+
 # The one IMAP port that means STARTTLS, as mailctl's own MXroute provider
 # reads it (providers/mxroute/imap.py); every other port is implicit TLS.
 STARTTLS_PORT = 143
@@ -141,6 +149,28 @@ def write_gate_reason(environ) -> str | None:
         )
 
     return None
+
+
+# ############################################################################
+# mailctl itself
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def run_mailctl(*argv: str) -> int:
+    """Run ``mailctl ARGV`` in-process against the account the gate read.
+
+    The live gate resolves the account from the environment, config.toml,
+    and the env file ``MAILCTL_LIVE_ENV_FILE`` names, which it reads and
+    never exports. So a bare ``cli.main`` would not see that file, and
+    would run against whatever the environment alone describes; this hands
+    it on as ``--env-file``, read exactly as the gate read it. Returns the
+    exit code; output goes where ``cli.main`` sends it.
+    """
+    env_file = os.environ.get(LIVE_ENV_FILE)
+    prefix = ["--env-file", env_file] if env_file else []
+
+    return cli.main([*prefix, *argv])
 
 
 # ############################################################################

@@ -16,10 +16,8 @@ changed script; and the folder's DELETE.
 import uuid
 
 import pytest
-from live_write import _imap, _sieve
+from live_write import _imap, _sieve, run_mailctl
 from sievelib.managesieve import Client
-
-from mailctl import cli
 
 pytestmark = pytest.mark.live
 
@@ -51,18 +49,16 @@ def test_a_guarded_write_leaves_the_account_as_it_was(
     assert len(found) == 1
     assert uid is None or found == [uid]
 
-    code = cli.main(
-        [
-            "filter",
-            "add",
-            "--subject",
-            marker,
-            "--name",
-            marker,
-            "--keep",
-            "--backup-dir",
-            str(tmp_path / "mailctl-backups"),
-        ]
+    code = run_mailctl(
+        "filter",
+        "add",
+        "--subject",
+        marker,
+        "--name",
+        marker,
+        "--keep",
+        "--backup-dir",
+        str(tmp_path / "mailctl-backups"),
     )
 
     assert code == 0
