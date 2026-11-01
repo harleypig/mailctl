@@ -49,7 +49,10 @@ root `pytest` (*The TUI*).
      refused or its password prompt stopped, is shut down and not logged out
      ([#349][i349]); one whose `LIST`, `LSUB`, or namespace read fails
      after login is logged out, the failure raised as it was, and a LOGOUT
-     that fails still shuts the socket ([#362][i362]). What MXroute and
+     that fails still shuts the socket ([#362][i362]). A socket error in
+     any of the three is raised coded, `folder_list_failed`, with the
+     `OSError` kept as its cause, and closes the connection the same way
+     ([#376][i376]). What MXroute and
      `Config` add — the port-to-TLS rule and the login and connection
      advice — is `test_mxroute_imap.py`; server-module selection by `ID`
      is `test_imap_servers.py`.
@@ -230,6 +233,12 @@ root `pytest` (*The TUI*).
      echoing the word given ([#364][i364]).
    - **`--json`** (`test_json_output.py`) — a `Secret` refused rather than
      serialised, failures as one JSON line, and which commands offer it.
+     The failure line carries the error's `fields` where it has any, and a
+     field that cannot be serialised costs the fields, never the line, its
+     code, or the value ([#374][i374]). A value refused for `--provider`
+     or `--env-file`, given in each place either is taken and as
+     `--opt=VALUE`, is quoted on neither stream, with or without
+     `--json` ([#373][i373]).
      The mappings the API shares ([#258][i258]): an error carrying its
      fields as plain JSON, and only when given, with a `Secret` among them
      still refused; an unexpected failure named by its type, never its
@@ -424,7 +433,10 @@ root `pytest` (*The TUI*).
      input read no further than `INBOX_LIMIT`, `take` included; `close`
      stopping a thread waiting for room, and not waiting on a read it has
      no descriptor to wake; a password prompt waiting with the limit held
-     declined rather than hung; a declined bad line, and a cancel ending a
+     ended rather than hung, and refused coded `prompt_input_full` with
+     the limit in its fields, never as the user declining, the held
+     messages keeping their turn ([#378][i378]); a declined bad line, and
+     a cancel ending a
      wait, held or not, each making room; an input descriptor of 1024 or
      more still read, since the wait polls rather than selects; and no
      input thread left once `run` returns, even where closing the session
@@ -445,9 +457,13 @@ root `pytest` (*The TUI*).
      offering no SASL each close the socket once, send no LOGOUT, and
      raise their own code; a connection that cannot be made closes
      nothing; and `close` sends LOGOUT and then closes the socket, whether
-     or not the LOGOUT is answered ([#362][i362]). Its
-     server-module selection and capability parsing are
-     `test_managesieve_servers.py`.
+     or not the LOGOUT is answered ([#362][i362]). Asked for STARTTLS, a
+     server whose CAPABILITY lacks it is refused, coded
+     `starttls_not_offered`, with nothing sent, and its socket closed
+     without a LOGOUT; MXroute's advice to try the other TLS mode, and the
+     CLI's words naming `--sieve-tls ssl`, are `test_mxroute_managesieve.py`
+     ([#377][i377]). Its server-module selection and capability parsing
+     are `test_managesieve_servers.py`.
    - **Packaging** (`test_packaging.py`, [#229][i229]) — a wheel built from
      a copy of the source with the declared build backend, unpacked, and
      run with nothing from the checkout on the path, so a subpackage left
@@ -620,6 +636,13 @@ on it, so no test sees another's scripts, folders, or mail. It needs a
 running Docker daemon and skips cleanly without one, or without
 `MAILCTL_CONTAINER=1` exactly — its own gate, never `MAILCTL_LIVE`, so a
 container run cannot be mistaken for an MXroute one ([#49][i49]).
+
+**A file in `TESTARGS` does not narrow the run.** The target runs `pytest
+-v tests/container $(TESTARGS)`, so a file is added beside the tier and
+the whole tier runs; pytest collects the file once. One file runs alone
+under `-k`, `make testcontainer TESTARGS='-k test_image'`, or with pytest
+called directly, `MAILCTL_CONTAINER=1 .venv/bin/pytest -v
+tests/container/test_image.py` ([#387][i387]).
 
 - **What it proves.** `filter add` merging beside a Roundcube-written rule
   (ADR 0002), `filter remove`, `filter move`, `filter disable` then `filter
@@ -963,6 +986,7 @@ make testlive MAILCTL_LIVE_ENV_FILE=PATH  # the account set by an env file
 MAILCTL_LIVE_WRITE=1 make testlive TESTARGS=tests/live/test_live_write_smoke.py
                        # the one live test that writes, behind the guards
 make testcontainer     # write paths against a local Dovecot (needs Docker)
+make testcontainer TESTARGS='-k test_image'  # one file, by -k, not a path
 make testtui           # the TUI: its pyright, then its own pytest suite
 make livecheck         # read-only live check (normal mailctl config)
 scripts/live-readonly.sh --list        # the read-only check's test names
@@ -1034,3 +1058,9 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i375]: https://github.com/harleypig/mailctl/issues/375
 [i380]: https://github.com/harleypig/mailctl/issues/380
 [i381]: https://github.com/harleypig/mailctl/issues/381
+[i373]: https://github.com/harleypig/mailctl/issues/373
+[i374]: https://github.com/harleypig/mailctl/issues/374
+[i376]: https://github.com/harleypig/mailctl/issues/376
+[i377]: https://github.com/harleypig/mailctl/issues/377
+[i378]: https://github.com/harleypig/mailctl/issues/378
+[i387]: https://github.com/harleypig/mailctl/issues/387

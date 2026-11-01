@@ -77,6 +77,10 @@ testlive: pytest-venv
 # Pigeonhole in Docker (tests/container/). Never a real account, so it is
 # safe to run any time Docker is up. TESTARGS passes flags through, e.g.
 #   make testcontainer TESTARGS='-k restore'
+# A file in TESTARGS is added beside tests/container, so the whole tier
+# still runs. To run one file, narrow with -k or call pytest directly:
+#   make testcontainer TESTARGS='-k test_image'
+#   MAILCTL_CONTAINER=1 .venv/bin/pytest -v tests/container/test_image.py
 testcontainer: pytest-venv
 	MAILCTL_CONTAINER=1 $(PYTEST) -v tests/container $(TESTARGS)
 
