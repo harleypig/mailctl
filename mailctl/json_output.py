@@ -303,8 +303,8 @@ def error(
 
     ``code`` names the condition, where the failure has one, so a script
     can tell one refusal from another without reading the message.
-    ``fields`` are the values a coded error carries (``MailctlError``),
-    given by the API; the CLI renders its advice from them instead.
+    ``fields`` are the values a coded error carries (``MailctlError``):
+    the API passes them always, the CLI's line where there are any.
     """
     body: dict = {"message": message}
 

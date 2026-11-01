@@ -680,6 +680,9 @@ def read_env_file(path: Path) -> EnvFile:
 
     A line that is none of those is an error naming the file and the line
     number and **never** the line, because the line may be a password.
+    A file that cannot be read, or is not UTF-8, is not named at all: its
+    path was typed as an option's value, and a password given in the wrong
+    place would land there (#373).
 
     A file that sets ``MAILCTL_PASSWORD`` is held to the password-file
     bar: any group or other permission bit and it is refused. The mode is
@@ -692,13 +695,14 @@ def read_env_file(path: Path) -> EnvFile:
 
     except OSError as exc:
         raise MailctlError(
-            f"env file {path}: cannot read -- {exc.strerror or exc}",
+            f"the env file cannot be read -- "
+            f"{exc.strerror or type(exc).__name__}",
             code="env_file_unreadable",
         ) from exc
 
     except UnicodeDecodeError as exc:
         raise MailctlError(
-            f"env file {path}: not valid UTF-8 -- {exc.reason}",
+            f"the env file is not valid UTF-8 -- {exc.reason}",
             code="env_file_not_utf8",
         ) from exc
 

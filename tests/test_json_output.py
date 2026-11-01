@@ -237,8 +237,9 @@ def test_a_rejected_command_line_under_json_ends_in_a_coded_line(
     argv, code, capsys, monkeypatch
 ):
     """#352: a command line refused before any command runs carries a
-    code under --json, wherever --json stands. The exit status and what
-    argparse prints are as they were: the line is only added after them."""
+    code under --json, wherever --json stands. The exit status, the usage
+    block, and the error line are as they are without --json: the line is
+    only added after them."""
     with pytest.raises(SystemExit) as rejected:
         cli.main(argv)
 
@@ -288,6 +289,7 @@ def test_a_bad_setting_flag_is_a_setting_refusal_naming_it(capsys):
         "message": "argument --sieve-tls: invalid choice (choose from "
         "starttls, ssl, none)",
         "code": "setting_invalid",
+        "fields": {"setting": "sieve_tls"},
     }
 
 
@@ -348,6 +350,87 @@ def test_a_refused_command_line_never_quotes_a_word_argparse_could_not_use(
 
     if json_flag:
         assert json.loads(err.splitlines()[-1])["error"]["code"]
+
+
+# Each settings option's value in every place it is taken: before the
+# command, between the group and its action, and after it (#243, #265).
+SETTINGS_VALUE_COMMAND_LINES = [
+    (["--provider", SENTINEL, "filter", "list"], "unknown_provider"),
+    (["filter", "--provider", SENTINEL, "list"], "unknown_provider"),
+    (["filter", "list", "--provider", SENTINEL], "unknown_provider"),
+    (["filter", "list", f"--provider={SENTINEL}"], "unknown_provider"),
+    (["--env-file", SENTINEL, "filter", "list"], "env_file_unreadable"),
+    (["filter", "--env-file", SENTINEL, "list"], "env_file_unreadable"),
+    (["filter", "list", "--env-file", SENTINEL], "env_file_unreadable"),
+    (["filter", "list", f"--env-file={SENTINEL}"], "env_file_unreadable"),
+]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("json_flag", [[], ["--json"]], ids=["text", "json"])
+@pytest.mark.parametrize(("argv", "code"), SETTINGS_VALUE_COMMAND_LINES)
+def test_a_refused_provider_or_env_file_never_quotes_its_value(
+    argv, code, json_flag, capsys, monkeypatch, tmp_path
+):
+    """#373: --provider and --env-file are refused below argparse, as an
+    unknown provider and a file that cannot be read, so json_output.
+    rejection never words them. A value given to either may be a password
+    in the wrong place: the refusal names the option and what was wrong,
+    and quotes nothing. Red while either refusal quotes its value."""
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main([*argv, *json_flag]) == 1
+
+    out, err = capsys.readouterr()
+    option = "--provider" if code == "unknown_provider" else "--env-file"
+
+    assert SENTINEL not in out
+    assert SENTINEL not in err
+    assert option in err
+
+    if json_flag:
+        assert json.loads(err.splitlines()[-1])["error"]["code"] == code
+
+
+# ----------------------------------------------------------------------------
+def test_a_failure_line_carries_the_errors_fields(capsys, monkeypatch):
+    """#374: a script reading the --json line learns what the API's client
+    does -- here which setting was bad -- from the same mapping. Red while
+    the CLI's line drops the error's fields."""
+    monkeypatch.setenv("MAILCTL_IMAP_PORT", "many")
+
+    assert cli.main(["folder", "list", "--json"]) == 1
+
+    failure = json.loads(capsys.readouterr().err.splitlines()[-1])
+
+    assert failure["error"]["code"] == "setting_invalid"
+    assert failure["error"]["fields"] == {"setting": "imap_port"}
+
+
+# ----------------------------------------------------------------------------
+def test_a_secret_in_a_failures_fields_is_refused_and_the_line_kept(
+    capsys, monkeypatch
+):
+    """A field dumps refuses costs the fields, never the line or its code,
+    and never shows the value. Red if a credential in the fields is
+    serialised, or if refusing it loses the line."""
+
+    def fail(sessions, config):
+        raise MailctlError(
+            "refused", code="unsupported", fields={"value": Secret(SENTINEL)}
+        )
+
+    monkeypatch.setattr(cli.utilities.reports, "probe_servers", fail)
+
+    assert cli.main(["server", "probe", "--json"]) == 1
+
+    out, err = capsys.readouterr()
+
+    assert SENTINEL not in out + err
+    assert json.loads(err.splitlines()[-1])["error"] == {
+        "message": "refused",
+        "code": "unsupported",
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -670,7 +753,8 @@ def test_search_offers_uids_only():
 
 # ----------------------------------------------------------------------------
 def test_an_error_carries_its_fields_as_plain_json_and_only_when_given():
-    """The CLI never passes fields, so its failure line is as it was."""
+    """No fields given, no key: the CLI gives none where the error has
+    none, so such a line is as it was before #374."""
     assert json_output.error("gone") == {
         "version": json_output.JSON_VERSION,
         "error": {"message": "gone"},

@@ -25,7 +25,9 @@ def provider_named(name: str, origin: Source | None = None) -> Provider:
     """Return the provider registered as ``name``; refuse an unknown one.
 
     The refusal names every known provider, and where the name came from
-    when that is known, so a typo is fixed without reading the source.
+    when that is known, so a typo is fixed without reading the source. It
+    never quotes the name: one typed as a flag's value may be a password
+    given in the wrong place (#373).
     """
     provider = PROVIDERS.get(name)
 
@@ -33,8 +35,8 @@ def provider_named(name: str, origin: Source | None = None) -> Provider:
         where = f" (from {origin.describe()})" if origin is not None else ""
 
         raise MailctlError(
-            f"provider: {name!r} is not a known provider{where}. Known: "
-            f"{', '.join(sorted(PROVIDERS))}",
+            f"provider: the name given is not a known provider{where}. "
+            f"Known: {', '.join(sorted(PROVIDERS))}",
             code="unknown_provider",
         )
 

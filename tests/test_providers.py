@@ -1038,7 +1038,8 @@ def test_an_unknown_provider_is_refused_naming_the_known_ones(monkeypatch):
 
     message = str(caught.value)
 
-    assert "'gmial' is not a known provider" in message
+    assert "the name given is not a known provider" in message
+    assert "gmial" not in message
     assert "(from environment)" in message
     assert "Known: mxroute" in message
     assert opened == []
@@ -1050,7 +1051,8 @@ def test_the_cli_takes_the_provider_flag_and_refuses_an_unknown_one(capsys):
 
     error = capsys.readouterr().err
 
-    assert "'nope' is not a known provider (from flag --provider)" in error
+    assert "not a known provider (from flag --provider)" in error
+    assert "nope" not in error
 
 
 # ############################################################################

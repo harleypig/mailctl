@@ -1330,24 +1330,26 @@ def test_a_bad_env_line_is_named_by_number_and_never_quoted(
 
 
 # ----------------------------------------------------------------------------
-def test_a_missing_env_file_names_the_path(tmp_path):
+def test_a_missing_env_file_is_refused_without_its_path(tmp_path):
+    """#373: the path was typed as --env-file's value, and may be a
+    password given in the wrong place, so it is not quoted back."""
     missing = tmp_path / "nowhere.env"
 
-    with pytest.raises(MailctlError, match="cannot read") as caught:
+    with pytest.raises(MailctlError, match="cannot be read") as caught:
         read_env_file(missing)
 
-    assert str(missing) in str(caught.value)
+    assert "nowhere" not in str(caught.value)
 
 
 # ----------------------------------------------------------------------------
-def test_an_env_file_that_is_not_utf8_is_named(tmp_path):
+def test_an_env_file_that_is_not_utf8_is_refused_without_its_path(tmp_path):
     path = tmp_path / ".env"
     path.write_bytes(b"MAILCTL_HOST=\xff\xfe\n")
 
     with pytest.raises(MailctlError, match="not valid UTF-8") as caught:
         read_env_file(path)
 
-    assert str(path) in str(caught.value)
+    assert str(path) not in str(caught.value)
 
 
 # ----------------------------------------------------------------------------
@@ -1531,7 +1533,7 @@ def test_a_missing_env_file_named_by_the_flag_is_an_error(
 ):
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(MailctlError, match=r"env file \.env: cannot read"):
+    with pytest.raises(MailctlError, match=r"the env file cannot be read"):
         configure(build_parser().parse_args(["server", "test", "--env-file"]))
 
 
