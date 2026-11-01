@@ -139,7 +139,7 @@ BACKUP = ("filterset", "backup", "--dry-run")
 
 # ----------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "rung", ["flag", "flag-prefix", "env-file", "environment", "config-file"]
+    "rung", ["flag", "env-file", "environment", "config-file"]
 )
 def test_a_backup_dir_in_dev_shm_is_refused_from_every_source(
     image, mount, rung
@@ -151,9 +151,6 @@ def test_a_backup_dir_in_dev_shm_is_refused_from_every_source(
 
     if rung == "flag":
         argv += ["--backup-dir", OUTSIDE]
-
-    elif rung == "flag-prefix":
-        argv += [f"--backup={OUTSIDE}"]
 
     elif rung == "env-file":
         (mount / "env").write_text(f"MAILCTL_BACKUP_DIR={OUTSIDE}\n")
@@ -170,6 +167,29 @@ def test_a_backup_dir_in_dev_shm_is_refused_from_every_source(
     assert result.returncode == 1, result.stderr
     assert f"backups would be written to {OUTSIDE}" in result.stderr
     assert REFUSED in result.stderr
+
+
+# ----------------------------------------------------------------------------
+def test_a_prefix_of_backup_dir_is_refused_as_a_command_line(image, mount):
+    """Red if ``--backup=`` is taken as ``--backup-dir`` again: no option
+    is taken by a prefix (#352), so a prefix is not a source of the backup
+    directory and is refused, exit 2 and coded, before the root is read.
+    ``filter remove`` rather than ``filterset backup``, because it offers
+    ``--json``: under a command without it, ``--json`` would be refused
+    too and the exit would be 2 whatever became of the prefix. The path
+    is not quoted back (#364), being after the ``=``."""
+    argv = ["filter", "remove", "x", "--dry-run", "--json"]
+    argv.append(f"--backup={OUTSIDE}")
+
+    result = run_image(image, mount, *argv)
+
+    assert result.returncode == 2, result.stderr
+    assert "unrecognized arguments: --backup" in result.stderr
+    assert OUTSIDE not in result.stderr
+    assert result.stdout == ""
+
+    coded = json.loads(result.stderr.splitlines()[-1])
+    assert coded["error"]["code"] == "invalid_arguments", coded
 
 
 # ----------------------------------------------------------------------------
