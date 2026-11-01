@@ -628,6 +628,166 @@ def test_a_socket_error_reading_the_folders_is_coded_and_closes_it(
 
 
 # ----------------------------------------------------------------------------
+def from_criteria() -> Criteria:
+    """Criteria with one test, since an empty set is refused unsent."""
+    criteria = Criteria()
+    criteria.add("from", "a@example.com")
+
+    return criteria
+
+
+# Each command after login, the IMAPClient call armed to fail, and the code
+# the session raises. Every one of the session's calls to IMAPClient is
+# here but the capability list it caches at login, the folder reads above,
+# and ``uid_expunge`` / ``expunge``, which ``move`` and ``delete`` send
+# inside the same ``try`` as the call armed for them.
+SOCKET_ERROR_COMMANDS = [
+    (
+        "subscribe",
+        lambda s: s.subscribe("INBOX.Lists"),
+        "subscribe_folder",
+        "subscription_failed",
+    ),
+    (
+        "unsubscribe",
+        lambda s: s.unsubscribe("INBOX.Lists"),
+        "unsubscribe_folder",
+        "subscription_failed",
+    ),
+    (
+        "create_folder",
+        lambda s: s.create_folder("INBOX.New"),
+        "create_folder",
+        "folder_create_failed",
+    ),
+    (
+        "rename_folder",
+        lambda s: s.rename_folder("INBOX.Lists", "INBOX.L"),
+        "rename_folder",
+        "folder_rename_failed",
+    ),
+    (
+        "message_count",
+        lambda s: s.message_count("INBOX"),
+        "folder_status",
+        "message_count_failed",
+    ),
+    (
+        "list_status",
+        lambda s: s.list_status(),
+        "list_status",
+        "folder_counts_failed",
+    ),
+    ("identity", lambda s: s.identity(), "id_", "server_identity_failed"),
+    (
+        "namespaces",
+        lambda s: s.namespaces(),
+        "namespace",
+        "folder_list_failed",
+    ),
+    ("noop", lambda s: s.noop(), "noop", "noop_failed"),
+    (
+        "select",
+        lambda s: s.uidvalidity("INBOX"),
+        "select_folder",
+        "folder_select_failed",
+    ),
+    (
+        "search_uids",
+        lambda s: s.search_uids(from_criteria(), "INBOX"),
+        "search",
+        "search_failed",
+    ),
+    (
+        "raw_search",
+        lambda s: s.raw_search("INBOX", "ALL"),
+        "search",
+        "raw_query_failed",
+    ),
+    (
+        "sort_uids",
+        lambda s: s.sort_uids("INBOX", ["DATE"]),
+        "sort",
+        "search_failed",
+    ),
+    (
+        "fetch_headers",
+        lambda s: s.fetch_headers([1], "INBOX"),
+        "fetch",
+        "fetch_failed",
+    ),
+    (
+        "fetch_summaries",
+        lambda s: s.fetch_summaries([1], "INBOX"),
+        "fetch",
+        "fetch_failed",
+    ),
+    (
+        "fetch_message_headers",
+        lambda s: s.fetch_message_headers("INBOX", 1),
+        "fetch",
+        "fetch_failed",
+    ),
+    (
+        "add_folder_flags",
+        lambda s: s.add_folder_flags("INBOX", [1], ["\\Seen"]),
+        "add_flags",
+        "flags_failed",
+    ),
+    (
+        "remove_folder_flags",
+        lambda s: s.remove_folder_flags("INBOX", [1], ["\\Seen"]),
+        "remove_flags",
+        "flags_failed",
+    ),
+    (
+        "move",
+        lambda s: (s.uidvalidity("INBOX"), s.move([1], "INBOX.Lists")),
+        "move",
+        "move_failed",
+    ),
+    (
+        "copy_messages",
+        lambda s: s.copy_messages("INBOX", [1], "INBOX.Lists"),
+        "copy",
+        "copy_failed",
+    ),
+    (
+        "delete",
+        lambda s: (s.uidvalidity("INBOX"), s.delete([1])),
+        "add_flags",
+        "delete_failed",
+    ),
+]
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("call", "method", "code"),
+    [entry[1:] for entry in SOCKET_ERROR_COMMANDS],
+    ids=[entry[0] for entry in SOCKET_ERROR_COMMANDS],
+)
+def test_a_socket_error_during_any_command_is_coded(
+    imap_session, fake_imap, call, method, code
+):
+    """A reset socket mid-command arrives as an ``OSError``, which
+    imaplib does not turn into its abort. It is raised as the command's
+    own coded error, the socket error its cause, so the session still
+    reads it as a lost connection and retries a read on a fresh one
+    (#402). Red if any command lets the ``OSError`` through uncoded."""
+    fake_imap.caps |= {"ID", "NAMESPACE", "LIST-STATUS", "SORT"}
+    error = ConnectionResetError("connection reset by peer")
+    fake_imap.failures[method] = error
+
+    with pytest.raises(MailctlError) as caught:
+        call(imap_session)
+
+    assert caught.value.code == code
+    assert caught.value.__cause__ is error
+    assert connection_lost(caught.value)
+
+
+# ----------------------------------------------------------------------------
 def test_calling_a_method_before_open_fails_clearly():
     session = plain_session()
 

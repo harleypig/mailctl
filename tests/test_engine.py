@@ -321,6 +321,130 @@ def test_a_managesieve_read_reconnects_and_a_write_does_not(
 
 
 # ----------------------------------------------------------------------------
+def test_a_socket_error_on_a_mail_read_is_retried_then_raised_coded(
+    fake_imap, imap_config, monkeypatch
+):
+    """A reset socket arrives as an ``OSError``, not imaplib's abort. The
+    read is still sent once more on a fresh connection, and a second reset
+    reaches the caller as the command's own coded error, not a bare
+    ``OSError`` (#402)."""
+    searches = attempts(fake_imap, monkeypatch, "search")
+    fake_imap.failures["search"] = ConnectionResetError("reset by peer")
+
+    with (
+        engine.connect(imap_config, rules=False) as live,
+        pytest.raises(MailctlError) as caught,
+    ):
+        live.transport.search("INBOX", criteria())
+
+    assert caught.value.code == "search_failed"
+    assert imap_lost(caught.value)
+    assert len(searches) == 2
+    assert fake_imap.names().count("login") == 2
+
+
+# ----------------------------------------------------------------------------
+def test_a_socket_error_on_a_mail_write_is_raised_coded_and_not_resent(
+    fake_imap, imap_config, monkeypatch
+):
+    """The write may have landed, so it is never sent again; what reaches
+    the caller is the command's coded error, and the dead connection is
+    let go (#402)."""
+    healthy_on_login(fake_imap, monkeypatch)
+    moves = attempts(fake_imap, monkeypatch, "move")
+    fake_imap.messages = {1: b"From: a@example.com\r\n\r\n"}
+    plan = MailActionPlan(
+        "INBOX",
+        "INBOX.Lists",
+        [],
+        False,
+        [MessageSummary(1, "", "a@example.com", "", "INBOX")],
+    )
+
+    with engine.connect(imap_config, rules=False) as live:
+        utilities.folders.list_folders(live)
+        fake_imap.failures["move"] = BrokenPipeError("broken pipe")
+
+        with pytest.raises(MailctlError) as caught:
+            live.transport.apply_mail(plan)
+
+        assert caught.value.code == "move_failed"
+        assert live.opened == ()
+
+    assert len(moves) == 1
+    assert fake_imap.names().count("login") == 1
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("operation", "args", "method", "code", "sent"),
+    [
+        ("list_rule_sets", (), "listscripts", "filterset_list_failed", 2),
+        (
+            "read_rule_set",
+            ("s",),
+            "getscript_bytes",
+            "filterset_read_failed",
+            2,
+        ),
+        (
+            "check_rule_set",
+            ("keep;",),
+            "checkscript",
+            "filterset_check_failed",
+            2,
+        ),
+        (
+            "store_rule_set",
+            ("s", "keep;"),
+            "putscript",
+            "filterset_upload_failed",
+            1,
+        ),
+        (
+            "activate_rule_set",
+            ("s",),
+            "setactive",
+            "filterset_activate_failed",
+            1,
+        ),
+    ],
+)
+def test_a_socket_error_on_a_managesieve_command_is_coded(
+    imap_config,
+    fake_sieve_client,
+    monkeypatch,
+    operation,
+    args,
+    method,
+    code,
+    sent,
+):
+    """sievelib catches only a timeout or a TLS error on its socket, so a
+    reset reaches the session as an ``OSError``: a read is sent once more
+    on a fresh connection, a write never, and either is raised as the
+    command's own coded error (#402)."""
+
+    def reset(*_args):
+        fake_sieve_client.calls.append(method)
+
+        raise ConnectionResetError("reset by peer")
+
+    monkeypatch.setattr(fake_sieve_client, method, reset, raising=False)
+
+    with (
+        engine.connect(imap_config, mail=False) as live,
+        pytest.raises(MailctlError) as caught,
+    ):
+        getattr(live.transport, operation)(*args)
+
+    assert caught.value.code == code
+    assert sieve_lost(caught.value)
+    assert fake_sieve_client.calls.count(method) == sent
+    assert fake_sieve_client.calls.count("connect") == sent
+
+
+# ----------------------------------------------------------------------------
 def test_a_lost_connection_is_told_from_a_refusal():
     """Both components' reading of their library's errors, cause included."""
     wrapped = MailctlError("search failed")
