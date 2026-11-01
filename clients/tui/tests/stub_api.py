@@ -22,7 +22,10 @@ API says. ``STUB_SCENE`` names a JSON file holding:
 - ``events`` and ``result``: the ``event`` documents
   ``filter.add.execute`` sends, in order, and its result;
 - ``refuse``: a method name to answer with a refusal, as mailctl words
-  one, from ``refusal_message``.
+  one, from ``refusal_message``;
+- ``hold``: a method name whose first request carrying the parameter
+  ``hold_with`` names (any, where that is absent) is held unanswered,
+  noted under ``seen`` as ``held``, until the test sets ``release`` true.
 
 What happened is written back to the file under ``seen``: the methods
 called, each request's parameters by method, and whether a password was
@@ -34,6 +37,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 SCENE = Path(os.environ["STUB_SCENE"])
@@ -50,6 +54,19 @@ def record(**seen) -> None:
     scene = json.loads(SCENE.read_text(encoding="utf-8"))
     scene.setdefault("seen", {}).update(seen)
     SCENE.write_text(json.dumps(scene), encoding="utf-8")
+
+
+# ----------------------------------------------------------------------------
+def hold(method: str) -> None:
+    """Answer nothing until the test releases the request; bounded, so a
+    test that never releases fails rather than hangs the stub."""
+    record(held=method)
+
+    for _ in range(600):
+        if json.loads(SCENE.read_text(encoding="utf-8")).get("release"):
+            return
+
+        time.sleep(0.05)
 
 
 # ----------------------------------------------------------------------------
@@ -125,6 +142,14 @@ def main() -> int:
         called.append(method)
         given.setdefault(method, []).append(params)
         record(methods=called, params=given)
+
+        if (
+            method == scene.get("hold")
+            and scene.get("hold_with", method) in (params.keys() | {method})
+            and not scene.get("released")
+        ):
+            hold(method)
+            scene["released"] = True
 
         if method == scene.get("alerts_on", "filter.list"):
             for alert in scene.get("alerts", []):

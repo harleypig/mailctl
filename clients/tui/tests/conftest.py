@@ -280,6 +280,13 @@ class Scene:
         return self.seen().get("params", {}).get(method, [])
 
     # ------------------------------------------------------------------------
+    def release(self) -> None:
+        """Let the stub answer the request its ``hold`` is holding."""
+        scene = json.loads(self.path.read_text(encoding="utf-8"))
+        scene["release"] = True
+        self.path.write_text(json.dumps(scene), encoding="utf-8")
+
+    # ------------------------------------------------------------------------
     def seen(self) -> dict:
         return json.loads(self.path.read_text(encoding="utf-8")).get(
             "seen", {}
