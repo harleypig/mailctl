@@ -348,7 +348,8 @@ layer may call.
     refused, or its password prompt stopped — shuts the connection down
     without a LOGOUT ([#349][i349]); one whose folders or namespace then
     cannot be read logs out, and a LOGOUT that fails still shuts the
-    socket ([#362][i362]).
+    socket ([#362][i362]). A socket error in those reads is raised
+    `folder_list_failed`, the `OSError` kept as its cause ([#376][i376]).
   - `imap/alerts.py` — `ServerAlert`, the component's record of an
     `ALERT`, and whether a response line carries one and what it says;
     offline.
@@ -731,7 +732,11 @@ probes by `utilities.server_test`, never from the CLI's text. On a write
 command `--json` prints the `--dry-run` plan and is refused without
 `--dry-run`, since a document on stdout leaves no room for a prompt; stdout
 holds the document alone, and a failure is one JSON line, the last on
-stderr, carrying the refusal's code where it is one. A command line
+stderr, carrying the refusal's code where it is one, and its `fields`
+where it has any: the error document the API answers with, built by
+`json_output.error` (`cli.failure_line`). A field that cannot be
+serialised drops the fields, never the line or its code ([#374][i374]).
+A command line
 refused before any command runs is the same: under `--json`, wherever it
 stands, exit 2's usage block and error line end with a coded JSON line
 ([#352][i352]).
@@ -1298,7 +1303,13 @@ and it is enforced by construction rather than by care:
   alone; a word straight after an option, or after `--`, with no `=` may
   be that option's value, so it is counted, never named; and a message of
   no shape it knows reads *the command line was refused*
-  (`json_output.REFUSED`), never argparse's text ([#364][i364]).
+  (`json_output.REFUSED`), never argparse's text ([#364][i364]). Two
+  values are refused below argparse, so the core words them itself, on
+  either interface: an unknown provider, `unknown_provider`, and an env
+  file that cannot be read or is not UTF-8, `env_file_unreadable` and
+  `env_file_not_utf8`, name neither the value nor the path
+  ([#373][i373]). The env file's mode and line refusals still name its
+  path: the file exists, and the `chmod` needs it.
 - **A password command reads nothing of mailctl's stdin.** It runs with
   stdin from `/dev/null` on either interface: under the API stdin is the
   client's pipe, and under the CLI it may be a `--filter -` document
@@ -1777,6 +1788,9 @@ will read it.
 [i352]: https://github.com/harleypig/mailctl/issues/352
 [i362]: https://github.com/harleypig/mailctl/issues/362
 [i364]: https://github.com/harleypig/mailctl/issues/364
+[i373]: https://github.com/harleypig/mailctl/issues/373
+[i374]: https://github.com/harleypig/mailctl/issues/374
+[i376]: https://github.com/harleypig/mailctl/issues/376
 [i377]: https://github.com/harleypig/mailctl/issues/377
 [i378]: https://github.com/harleypig/mailctl/issues/378
 [i106]: https://github.com/harleypig/mailctl/issues/106
