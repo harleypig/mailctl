@@ -218,6 +218,41 @@ def test_the_run_cannot_lift_the_root(image, mount):
 
 
 # ----------------------------------------------------------------------------
+def test_the_images_own_user_can_write_nothing_on_its_filesystem(image):
+    """Red if a directory on the image's own filesystem is left writable to
+    its user, as Debian's 1777 /tmp, /var/tmp, and /run/lock are (#383).
+
+    Run as the image's ``USER``, not the host user, since that is who the
+    Dockerfile's comment is about. ``-xdev`` keeps to the image's
+    filesystem: ``/dev/shm`` is a run-time mount, and writable by design.
+    find exits non-zero on a directory it cannot read, so only what it
+    printed is judged.
+    """
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--entrypoint",
+            "find",
+            image,
+            "/",
+            "-xdev",
+            "-writable",
+            "-print",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+
+    assert result.stdout == "", result.stdout
+
+
+# ----------------------------------------------------------------------------
 def test_the_root_holds_without_the_entrypoint(image, mount):
     """Red if only the entrypoint sets the root, not the image's ENV."""
     result = subprocess.run(
