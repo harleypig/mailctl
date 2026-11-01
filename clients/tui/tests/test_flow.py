@@ -193,6 +193,70 @@ async def test_a_message_is_read_pinned_to_the_listing(scene):
 
 
 # ----------------------------------------------------------------------------
+async def test_keys_while_a_message_opens_reach_nothing(scene):
+    """A key pressed while ``mail.view`` is on its way leaves the search
+    screen where it is and asks for nothing more, and the message still
+    opens once the answer comes (#401). Break: let the search screen's
+    keys run during the wait and Escape goes back, or Enter or a search
+    sends another request, and this goes red."""
+    scene.flow(hold="mail.view")
+    app = scene.app()
+
+    async with app.run_test(size=SIZE) as pilot:
+        await search(pilot, app)
+        searching = app.screen
+        await pilot.press("enter")
+        await settle(pilot, lambda: scene.seen().get("held") == "mail.view")
+
+        await pilot.press("enter", "escape")
+        await pilot.pause(0.3)
+
+        assert app.screen is searching
+        assert footer_keys(app) == set()
+
+        searching.query_one("#folder", Input).focus()
+        await pilot.press("enter")
+        await pilot.pause(0.3)
+
+        scene.release()
+        await reach(pilot, app, MessageScreen)
+        await pilot.pause(0.3)
+        assert isinstance(app.screen, MessageScreen)
+
+        await pilot.press("escape")
+        await reach(pilot, app, SearchScreen)
+        assert footer_keys(app) == {"escape"}
+
+    assert scene.params("mail.view") == [
+        {"uid": 41, "folder": "INBOX.Lists", "uidvalidity": 1700}
+    ]
+    assert len(scene.params("mail.search")) == 1
+
+
+# ----------------------------------------------------------------------------
+async def test_a_refused_message_says_so_and_gives_the_keys_back(scene):
+    """A refused ``mail.view`` is worded on the search screen, whose keys
+    work again (#401). Break: clear the wait only when the message opens
+    and Escape stays dead, and this goes red."""
+    scene.flow(refuse="mail.view", refusal_message="no such message")
+    app = scene.app()
+
+    async with app.run_test(size=SIZE) as pilot:
+        await search(pilot, app)
+        searching = app.screen
+        await pilot.press("enter")
+        await settle(
+            pilot, lambda: "no such message" in shown(app, "#search-status")
+        )
+
+        assert app.screen is searching
+        assert footer_keys(app) == {"escape"}
+
+        await pilot.press("escape")
+        await settle(pilot, lambda: app.screen is not searching)
+
+
+# ----------------------------------------------------------------------------
 async def test_a_message_body_keeps_its_lines_and_loses_its_controls(scene):
     """Markup in the text is characters; an escape sequence is shown as
     its escape; lines and tabs stay. Break: hand the body over as a str
