@@ -815,26 +815,26 @@ mounted has no children and no focus, and a key pressed then is lost
   an API that will not start reported.
 - **The first scope, against the stub** (`test_flow.py`, [#259][i259]) —
   search, read, and add a filter like a message, through plan, decide,
-  execute. A search sends what was typed, leaves an empty folder to the
-  API, and names the folder as the API spelt it; a message is read in
-  the listing's folder under its UIDVALIDITY, its text keeping its lines
-  with markup shown as characters and control characters escaped; an
-  alert reaches the panel over another screen. The form is filled in by
-  `mail.search`'s `like`, never from the message's headers, with criteria
-  it has no field for carried as sent; an API refusing `like` or
-  `build_filter` as unknown opens an empty form that says so, and any
-  other -32602 is shown in the API's own words. A key pressed while
-  `like` is held unanswered, by the stub's `hold`, sends nothing and
-  leaves the message screen ([#381][i381]). The plan is shown as the
-  document has it, saving sends `filter.add.execute` the plan's id alone
+  execute. A search sends what was typed, leaves an empty folder to the API,
+  and names the folder as the API spelt it; a message is read in the listing's
+  folder under its UIDVALIDITY, its text keeping its lines with markup shown
+  as characters and control characters escaped, and a key pressed while
+  `mail.view` is held unanswered sends nothing and leaves the search screen, a
+  refused one giving its keys back ([#401][i401]); an alert reaches the panel
+  over another screen. The form is filled in by `mail.search`'s `like`, never
+  from the message's headers, with criteria it has no field for carried as
+  sent; an API refusing `like` or `build_filter` as unknown opens an empty
+  form that says so, and any other -32602 is shown in the API's own words. A
+  key pressed while `like` is held unanswered, by the stub's `hold`, sends
+  nothing and leaves the message screen ([#381][i381]). The plan is shown as
+  the document has it, saving sends `filter.add.execute` the plan's id alone
   and shows each `event` and where the backup went, Escape sends
-  `plan.discard`, a plan that changes nothing offers no save, and a
-  refused plan or a failed save says so. The form offers only what the
-  provider declares, one capability withheld at a time removing exactly
-  its options; the filter list's keys are not offered over another
-  screen; `subscribe` is sent only beside `create_folder`, and what the
-  user left alone is not sent; and the form opens focused on the first
-  field there is something to give.
+  `plan.discard`, a plan that changes nothing offers no save, and a refused
+  plan or a failed save says so. The form offers only what the provider
+  declares, one capability withheld at a time removing exactly its options;
+  the filter list's keys are not offered over another screen; `subscribe` is
+  sent only beside `create_folder`, and what the user left alone is not sent;
+  and the form opens focused on the first field there is something to give.
 - **Against the real API** (`test_real_api.py`) — the TUI started on
   mailctl's own `tests/api_child.py`, the real API with its two protocol
   clients replaced by doubles, so this is the stub's contract checked
@@ -1058,6 +1058,7 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i375]: https://github.com/harleypig/mailctl/issues/375
 [i380]: https://github.com/harleypig/mailctl/issues/380
 [i381]: https://github.com/harleypig/mailctl/issues/381
+[i401]: https://github.com/harleypig/mailctl/issues/401
 [i373]: https://github.com/harleypig/mailctl/issues/373
 [i374]: https://github.com/harleypig/mailctl/issues/374
 [i376]: https://github.com/harleypig/mailctl/issues/376
