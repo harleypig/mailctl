@@ -335,6 +335,7 @@ class MessageScreen(Gated):
     def __init__(self, document: dict):
         super().__init__()
         self.message: dict = document.get("message", {})
+        self.asking = False
 
     # ------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -395,7 +396,15 @@ class MessageScreen(Gated):
         return note + block(body)
 
     # ------------------------------------------------------------------------
+    def wanted(self, action: str) -> bool:
+        # While ``like`` is on its way, a key would ask again or leave the
+        # screen the form is about to be pushed over (#381).
+        return not self.asking
+
+    # ------------------------------------------------------------------------
     def action_add_like(self) -> None:
+        self.asking = True
+        self.refresh_bindings()
         self.add_like()
 
     # ------------------------------------------------------------------------
@@ -403,7 +412,14 @@ class MessageScreen(Gated):
     async def add_like(self) -> None:
         status = self.query_one("#message-status", Static)
         status.update(Text("Reading what makes mail like this one ..."))
-        document, note = await like_filter(self.mailctl, self.message)
+
+        try:
+            document, note = await like_filter(self.mailctl, self.message)
+
+        finally:
+            self.asking = False
+            self.refresh_bindings()
+
         status.update(self.heading())
         self.app.push_screen(AddScreen(document=document, note=note))
 
