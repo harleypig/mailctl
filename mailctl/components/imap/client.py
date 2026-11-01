@@ -497,6 +497,12 @@ class ImapSession:
         try:
             response = client.id_()
 
+        except OSError as exc:
+            # A refusal is advisory; a socket error leaves no connection.
+            raise MailctlError(
+                f"ID failed -- {exc}", code="server_identity_failed"
+            ) from exc
+
         except IMAPClientError:
             return {}
 
@@ -537,6 +543,12 @@ class ImapSession:
 
         try:
             response = client.namespace()
+
+        except OSError as exc:
+            # A refusal is advisory; a socket error leaves no connection.
+            raise MailctlError(
+                f"NAMESPACE failed -- {exc}", code="folder_list_failed"
+            ) from exc
 
         except IMAPClientError:
             return ((), (), ())
@@ -581,7 +593,7 @@ class ImapSession:
         try:
             typ, data = imap._simple_command("LIST", *arguments)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"LIST-STATUS failed -- {exc}", code="folder_counts_failed"
             ) from exc
@@ -644,7 +656,7 @@ class ImapSession:
         try:
             client.subscribe_folder(folder)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not subscribe to folder {folder!r} -- {exc}",
                 code="subscription_failed",
@@ -669,7 +681,7 @@ class ImapSession:
         try:
             client.unsubscribe_folder(folder)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not unsubscribe from folder {folder!r} -- {exc}",
                 code="subscription_failed",
@@ -686,7 +698,7 @@ class ImapSession:
         try:
             client.create_folder(folder)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not create folder {folder!r} -- {exc}",
                 code="folder_create_failed",
@@ -707,7 +719,7 @@ class ImapSession:
         try:
             client.rename_folder(old, new)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not rename folder {old!r} to {new!r} -- {exc}",
                 code="folder_rename_failed",
@@ -726,7 +738,7 @@ class ImapSession:
         try:
             status = client.folder_status(folder, ["MESSAGES"])
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not read the message count of {folder!r} -- {exc}",
                 code="message_count_failed",
@@ -747,7 +759,7 @@ class ImapSession:
         try:
             client.noop()
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"NOOP failed -- {exc}", code="noop_failed"
             ) from exc
@@ -786,7 +798,7 @@ class ImapSession:
                 )
             )
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"search in {folder!r} failed -- {exc}", code="search_failed"
             ) from exc
@@ -816,7 +828,7 @@ class ImapSession:
                     client.fetch(chunk, ["BODY.PEEK[HEADER]", "INTERNALDATE"])
                 )
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"fetch failed -- {exc}", code="fetch_failed"
             ) from exc
@@ -842,7 +854,7 @@ class ImapSession:
         try:
             fetched = client.fetch(uids, SUMMARY_ITEMS)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"fetch failed -- {exc}", code="fetch_failed"
             ) from exc
@@ -939,6 +951,13 @@ class ImapSession:
         try:
             response = client.select_folder(folder, readonly=readonly)
 
+        except OSError as exc:
+            # Not a folder that cannot be opened: the connection went.
+            raise MailctlError(
+                f"SELECT {folder!r} failed -- {exc}",
+                code="folder_select_failed",
+            ) from exc
+
         except IMAPClientError as exc:
             raise MailctlError(
                 (
@@ -990,7 +1009,7 @@ class ImapSession:
         try:
             client.add_flags(uids, flags)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not set flags -- {exc}", code="flags_failed"
             ) from exc
@@ -1034,7 +1053,7 @@ class ImapSession:
             for chunk in chunked(uids):
                 store(chunk, encoded)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not {verb} flags in {folder!r} -- {exc}",
                 code="flags_failed",
@@ -1075,7 +1094,7 @@ class ImapSession:
             else:
                 client.expunge()
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not move messages to {destination!r} -- {exc}",
                 code="move_failed",
@@ -1110,7 +1129,7 @@ class ImapSession:
                 client.copy(chunk, destination)
                 copied += len(chunk)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             done = (
                 f" {copied} of {len(uids)} were copied before it failed, "
                 f"and copying again would copy them a second time."
@@ -1144,7 +1163,7 @@ class ImapSession:
             else:
                 client.expunge()
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"could not delete messages -- {exc}", code="delete_failed"
             ) from exc
@@ -1177,7 +1196,7 @@ class ImapSession:
         try:
             fetched = client.fetch([uid], items)
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"fetch failed -- {exc}", code="fetch_failed"
             ) from exc
@@ -1204,7 +1223,7 @@ class ImapSession:
         try:
             return list(client.search(expression))
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"IMAP search {expression!r} failed -- {exc}. Use IMAP "
                 f"syntax, e.g. 'FROM boss@example.com' or 'UNSEEN'.",
@@ -1250,7 +1269,7 @@ class ImapSession:
                 )
             )
 
-        except IMAPClientError as exc:
+        except (IMAPClientError, OSError) as exc:
             raise MailctlError(
                 f"sort in {folder!r} failed -- {exc}", code="search_failed"
             ) from exc

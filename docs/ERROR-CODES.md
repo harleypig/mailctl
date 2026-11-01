@@ -212,12 +212,14 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 | `starttls_not_offered` | the ManageSieve server does not offer STARTTLS, which the TLS mode asked for; nothing was sent |
 | `auth_failed` | the server refused the login |
 | `noop_failed` | the mail connection's liveness check failed |
+| `server_identity_failed` | the connection was lost reading the mail server's identity |
 | `folder_list_failed` | listing folders failed |
 | `folder_counts_failed` | counting the folders' messages failed |
 | `folder_counts_unreadable` | the counts the server sent could not be read |
 | `folder_create_failed` | a folder could not be created |
 | `folder_rename_failed` | a folder could not be renamed |
 | `folder_unopenable` | a folder could not be opened |
+| `folder_select_failed` | the connection was lost opening a folder |
 | `subscription_failed` | subscribing or unsubscribing failed |
 | `subscribe_unconfirmed` | the server accepted a subscribe but does not list the folder as subscribed |
 | `message_count_failed` | a folder's message count could not be read |
@@ -233,6 +235,7 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 | `filterset_read_failed` | reading a filter set failed |
 | `filterset_not_utf8` | the filter set is not UTF-8 |
 | `filterset_rejected` | the server's check refused the filter set; nothing was uploaded |
+| `filterset_check_failed` | the connection was lost while the server checked the filter set; nothing was uploaded |
 | `filterset_upload_failed` | storing a filter set failed |
 | `filterset_activate_failed` | activating a filter set failed |
 | `internal_error` | a guard on mailctl's own use of itself; only a bug reaches it |

@@ -162,6 +162,7 @@ class SearchScreen(Gated):
     def __init__(self) -> None:
         super().__init__()
         self.listing: dict = {}
+        self.opening = False
 
     # ------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -196,7 +197,15 @@ class SearchScreen(Gated):
     # ------------------------------------------------------------------------
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()
-        self.search()
+
+        if not self.opening:
+            self.search()
+
+    # ------------------------------------------------------------------------
+    def wanted(self, action: str) -> bool:
+        # While ``mail.view`` is on its way, a key would leave the screen
+        # the message is about to be pushed over (#401).
+        return not self.opening
 
     # ------------------------------------------------------------------------
     def params(self) -> dict:
@@ -280,7 +289,9 @@ class SearchScreen(Gated):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         event.stop()
 
-        if event.row_key.value is not None:
+        if event.row_key.value is not None and not self.opening:
+            self.opening = True
+            self.refresh_bindings()
             self.view(int(event.row_key.value))
 
     # ------------------------------------------------------------------------
@@ -301,6 +312,10 @@ class SearchScreen(Gated):
             self.show_status(render.failure(exc))
 
             return
+
+        finally:
+            self.opening = False
+            self.refresh_bindings()
 
         self.app.push_screen(MessageScreen(document))
 
