@@ -61,6 +61,17 @@ NOTES:
   a page of its own, unchanged but for its links: configuration, usage,
   safety, output for scripts, the API, the terminal UI, Docker, MXRoute
   specifics, and known limits. No change to the tool.
+* **The README reads for someone deciding whether to use mailctl**
+  ([#456]). It says MXroute works today and other providers can be
+  added, keeps *Why this exists* to what mailctl is for, checks the
+  install with `mailctl --version`, says where to find `host`, and starts
+  the quick start with `mailctl config test`. The filter examples sit
+  under their own heading, after the pointer to docs/VERIFYING.md.
+* **docs/CONFIGURATION.md leads with `config.toml`** ([#445]), as the
+  README does, with the env file after it, and names commands as `filter
+  add` and `filter apply`. It, docs/USAGE.md, and config.toml.example
+  point at `config test` to check where settings came from, and
+  docs/API.md lists `config.test`.
 
 ## 1.0.1
 
@@ -2056,6 +2067,8 @@ NOTES:
 [#439]: https://github.com/harleypig/mailctl/issues/439
 [#440]: https://github.com/harleypig/mailctl/issues/440
 [#455]: https://github.com/harleypig/mailctl/issues/455
+[#445]: https://github.com/harleypig/mailctl/issues/445
+[#456]: https://github.com/harleypig/mailctl/issues/456
 [#457]: https://github.com/harleypig/mailctl/issues/457
 [#458]: https://github.com/harleypig/mailctl/issues/458
 [#388]: https://github.com/harleypig/mailctl/issues/388

@@ -81,6 +81,7 @@ anything connects, as the command line refuses the option it hides.
 | `mail.view` | `uid`, `folder?`, `uidvalidity?` | the `mail view --json` document |
 | `mail.senders` | `folder?`, `filter?`, `by?`, `top?`, `minimum?`, `max_messages?` | the `mail senders --json` document |
 | `server.test` | | `{"version", "test": {…}}` (below) |
+| `config.test` | | `{"version", "test": {…}}`, `server.test`'s cut short (below) |
 | `server.probe` | `report?` | the `server probe --json` document, or with `report` `{"version", "report"}` |
 | `server.baseline.show` | | the saved baseline, as `server baseline show --json` prints it |
 | `server.baseline.check` | | the `server baseline check --json` document |
@@ -190,6 +191,12 @@ line, so theirs are the API's own:
   `baseline` is `null` where none is saved, `{"checked": true, "taken",
   "serious", "informational"}` where one is, and `{"checked": false,
   "error"}` where one is and cannot be compared.
+* **`config.test`** is `config test`'s check, from the same probes as
+  `server.test`. Its `test` holds `server.test`'s `provider`, `sources`,
+  `settings`, `password`, `connection`, and `mail`, and `rules` is
+  `{"connected": true}`. Where either server cannot be reached or refuses
+  the login, the answer is an error, coded as `server.test`'s is, never a
+  document with `connected: false`.
 * **`server.probe` with `report: true`** returns the redacted issue body
   `server probe --report` prints, as `{"title", "unrecognised", "body"}`,
   or `null` where mailctl recognises every server. Nothing is sent.
