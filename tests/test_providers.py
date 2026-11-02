@@ -1843,6 +1843,18 @@ def help_text(capsys, *argv: str) -> str:
 
 
 # ----------------------------------------------------------------------------
+def connection_page(capsys) -> str:
+    """What ``mailctl help connection`` prints: the connection options,
+    which a command's own page names in a line and leaves to it (#458)."""
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["help", "connection"])
+
+    assert stopped.value.code == 0
+
+    return capsys.readouterr().out
+
+
+# ----------------------------------------------------------------------------
 def offered_flags(parser: argparse.ArgumentParser) -> dict[str, set[str]]:
     """Every command's flags, split into shown and hidden."""
     found = {"shown": set(), "hidden": set()}
@@ -2200,7 +2212,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     says nothing about MXroute."""
     monkeypatch.setenv("MAILCTL_PROVIDER", "bare")
 
-    text = help_text(capsys, "filterset", "list")
+    text = connection_page(capsys)
 
     for flag in ("--sieve-port", "--sieve-tls", "--imap-host", "--host "):
         assert flag not in text
@@ -2711,7 +2723,10 @@ def test_another_hosts_help_says_nothing_about_mxroute(
 
     MXroute's help is unchanged: the snapshot and help tests hold that."""
     monkeypatch.setenv("MAILCTL_PROVIDER", "fake")
-    pages = {"(top)": help_text(capsys)}
+    pages = {
+        "(top)": help_text(capsys),
+        "help connection": connection_page(capsys),
+    }
 
     for name in commands_for("fake"):
         pages[name] = help_text(capsys, *name.split())
@@ -2744,7 +2759,10 @@ def test_no_help_page_leaves_a_placeholder_unfilled(
     optimize-rules' --activate was.
     """
     monkeypatch.setenv("MAILCTL_PROVIDER", provider)
-    pages = {"(top)": help_text(capsys)}
+    pages = {
+        "(top)": help_text(capsys),
+        "help connection": connection_page(capsys),
+    }
 
     for name in commands_for(provider):
         pages[name] = help_text(capsys, *name.split())
@@ -2771,9 +2789,9 @@ def test_the_placeholder_check_sees_an_unfilled_template():
 
 # ----------------------------------------------------------------------------
 def test_the_host_words_check_sees_mxroutes_help(capsys):
-    """The check above, pointed at a host it should catch."""
-    assert HOST_WORDS.search(help_text(capsys, "filterset", "restore"))
-    assert HOST_WORDS.search(help_text(capsys, "filter", "disable"))
+    """The check above, pointed at a host it should catch: the connection
+    page, where the provider's own settings are described in its words."""
+    assert HOST_WORDS.search(connection_page(capsys))
 
 
 # ----------------------------------------------------------------------------

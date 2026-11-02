@@ -513,7 +513,15 @@ class Config:
             self._password_origin = origin
 
         elif self.prompter is not None:
-            answer = self.prompter(f"Password for {self.user or 'account'}: ")
+            # Input that ends before an answer is no password, not a crash.
+            try:
+                answer = self.prompter(
+                    f"Password for {self.user or 'account'}: "
+                )
+
+            except EOFError:
+                raise _no_password() from None
+
             self._password = (
                 answer if isinstance(answer, Secret) else Secret(answer)
             )

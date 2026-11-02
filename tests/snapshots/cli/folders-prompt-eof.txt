@@ -1,0 +1,10 @@
+$ mailctl folder list
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: no password available -- pass --password-file, --password-cmd, or --password, set MAILCTL_PASSWORD_FILE, MAILCTL_PASSWORD_CMD, or MAILCTL_PASSWORD, or put password_file / password_cmd in the config file
+
+--- sieve calls
+--- imap calls
+('shutdown',)

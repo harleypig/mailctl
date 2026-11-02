@@ -1410,6 +1410,27 @@ SCENARIOS = {
     # A server without LIST-STATUS: refused, naming it, rather than a
     # STATUS per folder.
     "folders-counts-refused": (["folder", "list", "--counts"], {}),
+    # #457: a first run with nothing set names host, the setting the
+    # README asks for, not imap_host, which only overrides it for mail.
+    "folders-no-host": (
+        ["folder", "list"],
+        {"unset": ("MAILCTL_HOST", "MAILCTL_USER")},
+    ),
+    # And 'config test' says so too, before any password prompt: nothing
+    # is asked, so a prompt that ended at once is never reached.
+    "config-test-no-host": (
+        ["config", "test"],
+        {
+            "unset": ("MAILCTL_HOST", "MAILCTL_USER", "MAILCTL_PASSWORD"),
+            "prompt_eof": True,
+        },
+    ),
+    # A password prompt whose input ends is no password, coded, never an
+    # unexpected EOFError.
+    "folders-prompt-eof": (
+        ["folder", "list"],
+        {"unset": ("MAILCTL_PASSWORD",), "prompt_eof": True},
+    ),
     "test": (["server", "test"], {}),
     # #440: the settings, the mail half, and one line on the filter half;
     # each half failing in turn, the mail half first since it is probed
@@ -1731,6 +1752,10 @@ SCENARIOS = {
     "help-top": (["--help"], {}),
     "help-filter": (["help", "filter"], {}),
     "help-server-baseline": (["server", "baseline", "--help"], {}),
+    # #458: a command's own options, the connection options in a line, and
+    # the page that lists them.
+    "help-folder-list": (["folder", "list", "--help"], {}),
+    "help-connection": (["help", "connection"], {}),
     "group-without-action": (["filter"], {}),
     "add-noimap": (
         [
@@ -2899,6 +2924,16 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     monkeypatch.setenv(
         "MAILCTL_PASSWORD", options.get("password", "not-a-real-password")
     )
+    for name in options.get("unset", ()):
+        monkeypatch.delenv(name)
+
+    if options.get("prompt_eof"):
+
+        def ended(prompt):
+            raise EOFError
+
+        monkeypatch.setattr("getpass.getpass", ended)
+
     monkeypatch.setattr(sys, "stdin", io.StringIO(options.get("stdin", "")))
 
     if options.get("presave"):

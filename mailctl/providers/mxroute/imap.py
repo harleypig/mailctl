@@ -44,7 +44,9 @@ def new_imap_session(
 
     Failing on the settings here is friendlier than failing on the socket.
     """
-    config.require("imap_host", "user")
+    # imap_host falls back to host, so with neither set the one to give is
+    # host, which is what a first-time user is told to set (#457).
+    config.require("imap_host" if config.imap_host else "host", "user")
 
     return ImapSession(
         host=config.imap_host,

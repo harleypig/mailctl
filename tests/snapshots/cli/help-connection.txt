@@ -1,0 +1,51 @@
+$ mailctl help connection
+exit: SystemExit(0)
+--- stdout
+usage: mailctl GROUP ACTION [connection options]
+
+The options every command that connects takes, after its ACTION. Given as a
+flag, a setting beats the env file, the environment, and config.toml.
+
+connection:
+  --provider PROVIDER   the mail host, by provider name; default mxroute
+  --host HOST           MXroute server hostname, for mail and filters alike
+  --user USER           full email address (the username)
+  --password-file PATH  file whose contents are the password; must be mode
+                        0600 (or 0400) and on a Linux filesystem
+  --password-cmd PASSWORD_CMD
+                        command whose stdout is the password (e.g. 'pass show
+                        mail')
+  -p, --password PASSWORD
+                        the password itself; least safe -- visible in the
+                        process list and saved to shell history
+  --env-file [PATH]     read MAILCTL_* settings from a dotenv-style file
+                        (default .env in the current directory); they beat the
+                        environment and the config file, and lose to a flag. A
+                        file setting MAILCTL_PASSWORD must be mode 0600 (or
+                        0400)
+  --imap-host IMAP_HOST
+                        the IMAP server's hostname, where it differs from
+                        host; default host
+  --imap-port IMAP_PORT
+                        the IMAP port: 143 is STARTTLS, any other implicit
+                        TLS; default 993
+  --sieve-port SIEVE_PORT
+                        the ManageSieve port; default 4190
+  --sieve-tls {starttls,ssl,none}
+                        how the ManageSieve connection is secured: STARTTLS,
+                        implicit TLS (ssl), or none; default starttls
+  --backup-dir BACKUP_DIR
+                        where filter set backups are written, both the
+                        automatic pre-upload one and 'mailctl filterset
+                        backup'; default $XDG_CONFIG_HOME/mailctl/backups
+  --disable-extension NAME
+                        never emit this Sieve extension, even if the server
+                        advertises it; repeatable, and replaces
+                        MAILCTL_DISABLED_EXTENSIONS / disabled_extensions for
+                        this run; 'none' disables nothing. 'mailctl server
+                        test' lists the names
+
+--- stderr
+
+--- sieve calls
+--- imap calls

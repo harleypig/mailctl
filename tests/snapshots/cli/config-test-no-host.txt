@@ -1,0 +1,17 @@
+$ mailctl config test
+exit: 1
+--- stdout
+Sources:   environment
+Provider:  mxroute  (default)
+Host:        (default)
+User:        (default)
+Password:  unset, asked for on connecting  (interactive prompt)
+IMAP:      :993  (default)
+Sieve:     :4190 (tls=starttls)  (default)
+Folder:    INBOX  (default)  -- the folder read when no --folder is given
+
+--- stderr
+mailctl: missing required setting(s): host, user. Set --host, --user, the matching MAILCTL_* variable, or add it to <TMP>/config/mailctl/config.toml
+
+--- sieve calls
+--- imap calls

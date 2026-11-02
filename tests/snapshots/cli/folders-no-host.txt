@@ -1,0 +1,9 @@
+$ mailctl folder list
+exit: 1
+--- stdout
+
+--- stderr
+mailctl: missing required setting(s): host, user. Set --host, --user, the matching MAILCTL_* variable, or add it to <TMP>/config/mailctl/config.toml
+
+--- sieve calls
+--- imap calls
