@@ -235,6 +235,13 @@ root `pytest` (*The TUI*).
      since argparse colours its output from 3.14 when asked, pipe or not.
      It also pins `COLUMNS` to 80, since argparse wraps help to an exported
      `COLUMNS` and the snapshots are recorded at 80 ([#241][i241]).
+     So `server test`'s own wrapping is run at 50 columns instead: its
+     notes under one `Note:` heading, the long `FILTER=SIEVE` fact, the
+     line on a server mailctl does not recognise, and the line on the
+     active script are each filled to the width and continued under their
+     own text ([#439][i439], [#455][i455]). `config test` has a snapshot
+     for success and one for each half refused, `config-test-mail-refused`
+     and `config-test-filter-refused` ([#440][i440]).
    - **The command tree** (`test_cli_help.py`, over `tests/cli_support.py`,
      which reads the groups and commands off the parser) — `mailctl help` with
      a group, or a group and an action, is the same text and exit as `--help`
@@ -242,7 +249,8 @@ root `pytest` (*The TUI*).
      every old flat name is refused, exit 2, naming the command it is now,
      wherever it is the command word and never as an argument ([#219][i219]).
      An unknown command or action is refused listing the choices, never
-     echoing the word given ([#364][i364]).
+     echoing the word given ([#364][i364]). `mailctl help config` lists
+     `config test` ([#440][i440]).
    - **`--json`** (`test_json_output.py`) — a `Secret` refused rather than
      serialised, failures as one JSON line, and which commands offer it.
      The failure line carries the error's `fields` where it has any, and a
@@ -364,11 +372,15 @@ root `pytest` (*The TUI*).
      repointed; `mail.mark` and `mail.senders` on the mail half only;
      `server.test` and `server.probe`, a baseline that cannot be compared
      reported and the test going on, and the report redacted;
+     `config.test` returning `server.test`'s settings and mail parts
+     unchanged and the filter half only as connected, and refused, coded
+     as `server.test` is, where a half cannot be reached ([#440][i440]);
      `server.baseline.save` writing once and refusing a file changed since
      the plan, `show` and `check` reading it, `no_baseline` coded; and
      `config.migrate` moving the old directory once, refusing a clash, a
      plan a file or a baseline since clashes with, and a variable expanded
-     into a `config.toml` path. The server group never sends the password.
+     into a `config.toml` path. Neither the server group nor `config.test`
+     sends the password.
      Across them: an execute of a plan that changes nothing refused,
      `nothing_to_change`, while `filter.add.execute` still carries it out;
      a plan running only under its own command's execute; a bad execute
@@ -580,10 +592,11 @@ root `pytest` (*The TUI*).
      read off the parser, outside the `server` commands, the
      `--disable-extension` help, and the connection settings the provider
      declares; and none in what any snapshot's command prints, outside the
-     server reports, the filter set's own text (a diff, `filterset show`),
-     `--verbose`'s protocol log, a server's alert or warning, a JSON
-     document's keys, and a refusal about an extension or a forbidden
-     action. Option names and metavars are taken out first. Each walk is
+     server reports and `config test`, which prints `server test`'s own
+     settings and mail sections ([#440][i440]), the filter set's own text
+     (a diff, `filterset show`), `--verbose`'s protocol log, a server's
+     alert or warning, a JSON document's keys, and a refusal about an
+     extension or a forbidden action. Option names and metavars are taken out first. Each walk is
      seen to reach what it allows, each exception to be needed, and a
      planted word, and each line printed before #219, to turn it red.
      A filter's step `kind` is our word inside a JSON document, so it is
@@ -1113,6 +1126,9 @@ pass: `make testlive TESTARGS='-k sieve'`.
 [i402]: https://github.com/harleypig/mailctl/issues/402
 [i403]: https://github.com/harleypig/mailctl/issues/403
 [i407]: https://github.com/harleypig/mailctl/issues/407
+[i439]: https://github.com/harleypig/mailctl/issues/439
+[i440]: https://github.com/harleypig/mailctl/issues/440
+[i455]: https://github.com/harleypig/mailctl/issues/455
 [i377]: https://github.com/harleypig/mailctl/issues/377
 [i378]: https://github.com/harleypig/mailctl/issues/378
 [i387]: https://github.com/harleypig/mailctl/issues/387

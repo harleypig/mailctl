@@ -229,15 +229,17 @@ layer may call.
     same-filter rules merged), then uploaded.
   - `senders.py` — a folder's mail counted by sender, read-only.
   - `migration.py` — what the rename from `mxfilter` left behind.
-  - `reports.py` — the probes behind `mailctl server test`, the provider's
-    own words for its reports and its connection facts, and each
-    extension's state.
+  - `reports.py` — the probes behind `mailctl server test` and `config
+    test`, the provider's own words for its reports and its connection
+    facts, and each extension's state.
   - `server_report.py` — which servers no module recognised, and the
     redacted issue body `server probe --report` prints for them ([#39][i39]).
   - `server_test.py` — everything `server test` reports, gathered as one
     record from the same probes (`examine_servers`), read-only, for a
     front-end that wants the whole of it at once; the API's `server.test`
-    returns it.
+    returns it, and `config.test` a cut of it. The CLI does not use it:
+    `server test` and `config test` call `reports.py`'s probes as each
+    section prints, so a failure stops at its own section ([#439][i439]).
   - `events.py` — the steps of a change, as a front-end is told of them,
     and `ServerAlert` re-exported for a front-end to recognise one.
   - `uids.py` — a UID kept between runs, pinned to the folder's
@@ -626,7 +628,7 @@ mailctl folder    list · create · rename · subscribe · unsubscribe
 mailctl filter    list · add · apply · remove · move · rename · enable · disable · optimize
 mailctl filterset list · show · backup · restore
 mailctl server    test · probe · baseline save|show|check
-mailctl config    migrate
+mailctl config    test · migrate
 mailctl help [group [action]]
 ```
 
@@ -725,15 +727,23 @@ command takes is in its one folder. A mismatch refuses the command, coded
 `uidvalidity_changed`, before any UID is used; a bare UID is still taken
 unchecked.
 
+**`config test` checks that a configuration works, and changes nothing**
+([#440][i440]): `server test`'s settings block and mail section, printed
+by the same code, then one line saying whether the filter server
+connected. It exits as `server test` does.
+
 **`mail senders` counts a folder's mail by address, domain, or List-Id and
 never writes** ([#160][i160]): one search, then headers a page per FETCH,
 refused above `--max-messages` (default 5000) before any header is read.
 
 **`--json` is offered where the output is data a script consumes**
-([#151][i151]). A report for a person, such as `server test`, offers none, and
-its layout is not a contract; the contract is its exit code. The API's
-`server.test` returns a document of its own instead, built from the same
-probes by `utilities.server_test`, never from the CLI's text. On a write
+([#151][i151]). A report for a person, such as `server test` or `config
+test`, offers none, and its layout is not a contract; the contract is its
+exit code. The API's `server.test` returns a document of its own instead,
+built from the same probes by `utilities.server_test`, never from the CLI's
+text. `config.test` returns that document's settings and mail parts, and
+`rules` saying only that the filter server connected; one that cannot
+connect is an error, coded as `server.test`'s is. On a write
 command `--json` prints the `--dry-run` plan and is refused without
 `--dry-run`, since a document on stdout leaves no room for a prompt; stdout
 holds the document alone, and a failure is one JSON line, the last on
@@ -893,7 +903,8 @@ read ([#346][i346], [#378][i378]).
      which keep their names) — and a refusal of a provider-only function,
      such as an extension it lacks or an action it forbids;
   3. `server test`, `server probe`, and the baselines, whose job is to
-     describe the servers.
+     describe the servers, and `config test`, which prints `server test`'s
+     own settings and mail sections ([#440][i440]).
 
   Everywhere else — every other help page, prompt, progress and event
   line, error, the diff's heading, a rule's actions, and the frame
@@ -1779,6 +1790,8 @@ will read it.
 [i264]: https://github.com/harleypig/mailctl/issues/264
 [i287]: https://github.com/harleypig/mailctl/issues/287
 [i418]: https://github.com/harleypig/mailctl/issues/418
+[i439]: https://github.com/harleypig/mailctl/issues/439
+[i440]: https://github.com/harleypig/mailctl/issues/440
 [i265]: https://github.com/harleypig/mailctl/issues/265
 [i307]: https://github.com/harleypig/mailctl/issues/307
 [i308]: https://github.com/harleypig/mailctl/issues/308
