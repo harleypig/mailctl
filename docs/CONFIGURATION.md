@@ -1,9 +1,8 @@
 # Configure
 
-Copy `.env.example` to `.env` and fill it in, then either export it
-(`set -a; . ./.env; set +a`) or point mailctl at it with `--env-file`. Or
-copy `config.toml.example` to `$XDG_CONFIG_HOME/mailctl/config.toml` — flat
-top-level keys, every one explained in the file:
+Copy `config.toml.example` to `$XDG_CONFIG_HOME/mailctl/config.toml`
+(`~/.config/mailctl/config.toml` when `XDG_CONFIG_HOME` is unset) and fill
+it in. It holds flat top-level keys, and the file explains every one:
 
 ```toml
 host = "mail.example-server.mxrouteXX.com"
@@ -12,13 +11,27 @@ password_cmd = "pass show email/you@yourdomain.com"
 default_folder = "Lists"
 ```
 
-`default_folder` is where `add` and `apply` file mail when no `--move-to`
-is given; it has no flag or variable.
+`default_folder` is where `filter add` and `filter apply` file mail when no
+`--move-to` is given; it has no flag or variable.
+
+Then check it:
+
+```bash
+mailctl config test
+```
+
+It shows your settings, connects to the mail server and the filter server,
+and changes nothing. `mailctl server test` runs the same checks and adds
+what each server supports.
+
+The same settings can also come from an env file: copy `.env.example` to
+`.env`, fill it in, and either export it (`set -a; . ./.env; set +a`) or
+point mailctl at it with `--env-file` (*The env file*, below).
 
 Resolution order is **CLI flag > env file > environment > config file >
-default**. `mailctl server test` says where each setting came from — a flag,
-the env file, the environment, the config file, or the default — and which of
-those sources it read.
+default**. `mailctl config test` says where each setting came from — a
+flag, the env file, the environment, the config file, or the default — and
+which of those sources it read.
 
 ## The env file
 
@@ -45,8 +58,9 @@ not a file. `config migrate` reads no settings and takes neither option.
 
 ## Folder and provider
 
-`--folder`, on the commands that read mail (`apply`, `search`, `senders`,
-`view`, `mark`, and `add --like`), resolves the same way:
+`--folder`, on the commands that read mail (`filter apply`, `mail search`,
+`mail senders`, `mail view`, `mail mark`, and `filter add --like`),
+resolves the same way:
 `MAILCTL_SOURCE_FOLDER`, then `source_folder` in the config file, then
 `INBOX`.
 
@@ -54,7 +68,7 @@ not a file. `config migrate` reads no settings and takes neither option.
 way: `MAILCTL_PROVIDER`, then `provider` in the config file, then `mxroute`.
 `mxroute` is the only provider today, so there is nothing to set yet. An
 unknown name is refused before anything connects, and the error lists the
-known ones. `mailctl server test` shows which provider a run uses and where
+known ones. `mailctl config test` shows which provider a run uses and where
 that came from.
 
 ## The password
@@ -135,7 +149,7 @@ A disabled extension counts as not advertised:
 | `mailbox` | Writes plain `fileinto`, never `fileinto :create`, and creates a new folder over IMAP instead. With `--no-mail` a folder that needs creating is refused, as it is on a server without `mailbox`. |
 | `fileinto` | Refuses a rule that files mail into a folder. `--discard`, `--keep`, and flag-only rules still work. |
 | `imap4flags` | Refuses a rule that sets a flag (`--mark-read`, `--flag`). |
-| `body` | Refuses a rule with a `--body` test. `search --body` and `apply --body` are unaffected: they never write Sieve. |
+| `body` | Refuses a rule with a `--body` test. `mail search --body` and `filter apply --body` are unaffected: they never write Sieve. |
 | any other name in the table below | Nothing today — mailctl writes none of them — but it holds if a later version does. |
 
 A refusal names the setting and where it came from. A name mailctl does not
@@ -156,7 +170,7 @@ whatever else the server advertises — and what each one adds to Sieve:
 | `fileinto` | RFC 5228 | `fileinto`: deliver into a named folder instead of INBOX | every rule that files mail |
 | `imap4flags` | RFC 5232 | `setflag` / `addflag` / `removeflag`, the `hasflag` test, and `:flags` | flag actions (`addflag`) |
 | `mailbox` | RFC 5490 | `fileinto :create`, and the `mailboxexists` test | `:create` |
-| `body` | RFC 5173 | the `body` test: match the message's text rather than its headers | `--body` on `add` |
+| `body` | RFC 5173 | the `body` test: match the message's text rather than its headers | `--body` on `filter add` |
 | `copy` | RFC 3894 | `:copy` on `fileinto` / `redirect`: file a copy and keep the message in INBOX too | no |
 | `envelope` | RFC 5228 | the `envelope` test: match the SMTP envelope rather than the headers | no |
 | `regex` | draft-ietf-sieve-regex, never an RFC | a `:regex` match type | no |

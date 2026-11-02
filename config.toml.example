@@ -9,7 +9,7 @@
 # The format is flat: plain `key = value` lines at the top level, no
 # [tables]. Strings are quoted, ports are bare numbers. A key mailctl does
 # not know is ignored, so a misspelt one is silently ignored too --
-# `mailctl server test` shows where each setting came from, which is the way
+# `mailctl config test` shows where each setting came from, which is the way
 # to check it was picked up.
 #
 # This file is the lowest-priority source. Resolution order, highest first:

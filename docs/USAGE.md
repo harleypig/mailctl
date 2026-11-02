@@ -9,7 +9,7 @@ mailctl folder    list · create · rename · subscribe · unsubscribe
 mailctl filter    list · add · apply · remove · move · rename · enable · disable · optimize
 mailctl filterset list · show · backup · restore
 mailctl server    test · probe · baseline save|show|check
-mailctl config    migrate
+mailctl config    test · migrate
 mailctl help [group [action]]
 ```
 
@@ -38,7 +38,13 @@ network could have written it.
 ## Check the servers
 
 ```bash
-# Check both services and what they support. Changes nothing.
+# The short check: your settings and where each came from, the mail
+# server's answer, and one line saying whether the filter server
+# connected. Changes nothing.
+mailctl config test
+
+# The full report: the same, plus what both services support, the filter
+# sets, and drift since a saved baseline. Changes nothing.
 mailctl server test
 
 # The same, taking settings from ./.env rather than the environment.
