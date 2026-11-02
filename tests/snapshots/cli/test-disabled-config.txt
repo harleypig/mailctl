@@ -37,9 +37,11 @@ ManageSieve: connected
 
   active script: managesieve
   other scripts: (none)
-  (mailctl always edits the ACTIVE script under its own name; it never guesses one.)
+  (mailctl always edits the ACTIVE script under its own name; it never guesses
+   one.)
 
-Servers:   mailctl does not recognise the ManageSieve or the IMAP server -- 'mailctl server probe --report' prints a redacted issue body
+Servers:   mailctl does not recognise the ManageSieve or the IMAP server --
+           'mailctl server probe --report' prints a redacted issue body
 
 Note:
   - MXroute disables the Sieve 'redirect' action as a matter of policy
@@ -47,7 +49,7 @@ Note:
     the only MXroute restriction mailctl asserts; everything else above came
     from the server.
 
-  - this covers the Sieve stage only. Mail may first pass a DirectAdmin panel
+  - This covers the Sieve stage only. Mail may first pass a DirectAdmin panel
     filter (an Exim filter, run before Sieve) that mailctl cannot see or change;
     a message it drops never reaches any Sieve rule. Whether your account has
     one is unconfirmed -- see 'A filtering stage mailctl cannot see' in

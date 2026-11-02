@@ -3348,3 +3348,35 @@ def test_server_test_wraps_its_notes_to_the_terminal_width(
     assert all(len(line) <= 50 for line in wrapped)
     assert len(notes) > 6, "the notes were not wrapped at all"
     assert lines[sieve + 1].startswith(" " * 16)
+
+
+# ----------------------------------------------------------------------------
+def test_server_test_wraps_its_servers_and_active_script_lines(
+    fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """#455: the Servers line and the line on the active script fill to
+    the terminal's width as the notes do, each continued under its own
+    text. Red if either is printed as one line again."""
+    monkeypatch.setenv("COLUMNS", "50")
+
+    record = run_scenario(
+        ["server", "test"],
+        {},
+        fake_imap,
+        roundcube_script,
+        monkeypatch,
+        tmp_path,
+    )
+    stdout = record.split("--- stdout\n", 1)[1].split("--- stderr", 1)[0]
+    lines = stdout.splitlines()
+    servers = next(i for i, line in enumerate(lines) if line.startswith("Ser"))
+    active = next(i for i, line in enumerate(lines) if "ACTIVE" in line)
+
+    assert lines[servers + 1].startswith(" " * 11)
+    assert not lines[servers + 1].startswith(" " * 12)
+    assert lines[active].startswith("  (mailctl")
+    assert lines[active + 1].startswith("   ")
+    assert all(len(line) <= 50 for line in lines[servers : servers + 3]), (
+        lines[servers : servers + 3]
+    )
+    assert all(len(line) <= 50 for line in lines[active : active + 2])

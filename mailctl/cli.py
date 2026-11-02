@@ -2043,8 +2043,12 @@ def cmd_test(args) -> int:
         print(f"\n  active script: {rules.active or '(none)'}")
         print(f"  other scripts: {', '.join(rules.others) or '(none)'}")
         print(
-            "  (mailctl always edits the ACTIVE script under its own "
-            "name; it never guesses one.)"
+            wrapped(
+                "(mailctl always edits the ACTIVE script under its own "
+                "name; it never guesses one.)",
+                "  ",
+                "   ",
+            )
         )
         unrecognised = utilities.server_report.unrecognised_servers(sessions)
 
@@ -2054,10 +2058,15 @@ def cmd_test(args) -> int:
         services = " or the ".join(
             service_word(words, half) for half in unrecognised
         )
+        print()
         print(
-            f"\nServers:   mailctl does not recognise the {services} "
-            f"server -- 'mailctl server probe --report' prints a redacted "
-            f"issue body"
+            wrapped(
+                f"mailctl does not recognise the {services} server -- "
+                f"'mailctl server probe --report' prints a redacted issue "
+                f"body",
+                "Servers:   ",
+                " " * 11,
+            )
         )
 
     if words.notes:
