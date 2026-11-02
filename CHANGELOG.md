@@ -4,6 +4,15 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+NOTES:
+
+* **The README is short, and the rest of it is under `docs/`.** The README
+  keeps what mailctl is, how to install it, a first example, and pointers;
+  [docs/README.md][docs-index] is the index. Each former README section is
+  a page of its own, unchanged but for its links: configuration, usage,
+  safety, output for scripts, the API, the terminal UI, Docker, MXRoute
+  specifics, and known limits. No change to the tool.
+
 ## 1.0.1
 
 BUG FIXES:
@@ -1997,3 +2006,4 @@ NOTES:
 [#407]: https://github.com/harleypig/mailctl/issues/407
 [#388]: https://github.com/harleypig/mailctl/issues/388
 [codes]: docs/ERROR-CODES.md
+[docs-index]: docs/README.md

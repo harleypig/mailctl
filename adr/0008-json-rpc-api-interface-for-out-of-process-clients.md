@@ -562,7 +562,7 @@ The input thread of *Cancelling a request* is bounded the same way. It
 holds at most 64 messages read and not yet served
 (`api.protocol.INBOX_LIMIT`) and reads no further until one is served,
 so a client that floods the stream cannot grow its memory without bound.
-Two consequences follow, and both are in the README:
+Two consequences follow, and both are in [docs/API.md][api-doc]:
 
 - **A cancel sent behind 64 unserved messages is not seen** until some
   of them have been served, since it has not been read.
@@ -623,3 +623,4 @@ Fetched 2026-10-28.
 [lsp]: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/
 [hs]: https://docs.python.org/3/library/http.server.html
 [rfc9051]: https://www.rfc-editor.org/rfc/rfc9051
+[api-doc]: ../docs/API.md

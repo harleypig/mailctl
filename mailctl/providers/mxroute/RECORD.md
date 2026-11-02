@@ -145,8 +145,8 @@ declaration is wrong for MXroute, and it should be set to `False`.
 ### The filtering stage before Sieve
 
 This is documented by DirectAdmin, the software, and not by MXroute. It was
-researched on [#30][i30], and the README's *A filtering stage mailctl cannot
-see* is the user-facing account of it.
+researched on [#30][i30], and [docs/MXROUTE.md › *A filtering stage mailctl
+cannot see*][stage] is the user-facing account of it.
 
 - DirectAdmin's **Email Filters** panel writes an **Exim** filter. It runs
   after Exim has accepted the message and before delivery, which is where
@@ -625,7 +625,7 @@ serve mailctl. Each line says what it might do, not what will be built:
   change it. It needs a domain-owner credential, which mailctl does not hold
   and should not ([#30][i30], closed). This is recorded so that nobody
   attempts it again. The mitigation is to say that the stage exists, which
-  `mailctl test` and the README do.
+  `mailctl test` and [docs/MXROUTE.md][stage] do.
 
 ## Refresh log
 
@@ -685,3 +685,4 @@ with `mailctl show`.
 [api-openapi]: https://api.mxroute.com/openapi.yaml
 [cl-401]: https://docs.mxroute.com/docs/changelog/mxroute-4.0.1.html
 [cl-41]: https://docs.mxroute.com/docs/changelog/mxroute-4.1.html
+[stage]: ../../../docs/MXROUTE.md#a-filtering-stage-mailctl-cannot-see

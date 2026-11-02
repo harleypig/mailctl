@@ -50,9 +50,9 @@ Two things to hold on to the whole way down:
 
 ## Before you start
 
-Set `host`, `user`, and a password source, per [Configure][config] in the
-README. Have your webmail open in a browser tab; several steps ask you to
-confirm something there.
+Set `host`, `user`, and a password source, per [Configure][config]. Have
+your webmail open in a browser tab; several steps ask you to confirm
+something there.
 
 **Coming from `mxfilter`?** Run `mailctl config migrate --dry-run`, then
 `mailctl config migrate`, and rename any `MXROUTE_*` variable to
@@ -126,13 +126,13 @@ mailctl folder list
 **You should see** `Hierarchy delimiter: '<char>'`, a folder count, and every
 folder name, one per line, exactly as the server spells them.
 
-**This is the step that settles the guesses.** The README lists two things as
-*likely but unconfirmed*, and this output is what makes them facts for your
-account. Check both:
+**This is the step that settles the guesses.** [MXRoute specifics][observed]
+lists two things as observed on one server but not promised, and this output
+is what makes them facts for your account. Check both:
 
 * **Is the delimiter `.`?** If the listing looks like `INBOX.Lists.News`, yes.
-  If it looks like `Lists/News`, your server is not Maildir++ and the README's
-  folder examples need reading with that substitution.
+  If it looks like `Lists/News`, your server is not Maildir++ and the folder
+  examples in [USAGE.md][usage] need reading with that substitution.
 * **Is there an `INBOX.spam`, and is it lowercase?** It may be `INBOX.Spam`,
   `INBOX.Junk`, or absent entirely — MXRoute removed the option that created
   it, so a newer account may never have had one. **Whatever appears here is
@@ -327,7 +327,7 @@ Run it with `--dry-run` first and **scrutinize the message list**:
   message(s) to '<folder>'`.
 * If the match count is far larger than you expected, fix the criteria. If
   you used `--compare is` or `--compare matches`, read [the whole-header
-  section][compare] in the README — those two compare against the entire
+  section][compare] in USAGE.md — those two compare against the entire
   header value, which is almost never just the address.
 
 Then run it for real by dropping that flag:
@@ -421,5 +421,7 @@ If the backup and the current script differ in ways you did not expect, that
 is worth reporting with both files in hand — they are the whole evidence of
 what happened.
 
-[compare]: ../README.md#--compare-tests-the-whole-header-value
-[config]: ../README.md#configure
+[compare]: USAGE.md#--compare-tests-the-whole-header-value
+[config]: CONFIGURATION.md
+[observed]: MXROUTE.md#observed-on-one-server-not-promised
+[usage]: USAGE.md
