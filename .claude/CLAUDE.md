@@ -44,7 +44,9 @@ the test layout are pulled in via the imports at the bottom.
 
 Repo conventions in [CONVENTIONS.md](CONVENTIONS.md); test layout in
 [TESTS.md](TESTS.md); decisions already made in [../adr/](../adr/README.md);
-dev basics in [../README.md](../README.md). Generic agent behavior — git/gh
+dev basics in the README's *Contributing* section
+([../README.md](../README.md#contributing)); the user guides in
+[../docs/](../docs/README.md). Generic agent behavior — git/gh
 workflow, code style, the Python toolchain, the QA dimensions — comes from the
 maintainer's global `~/.claude/` config, which this repo defers to except
 where these files override it.
