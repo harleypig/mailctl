@@ -5,40 +5,39 @@
 [![Version][badge-version]][tags]
 [![Python][badge-python]][pyproject]
 
-Read, sort, and filter the mail on your account from the command line: build
-a filter from criteria flags, merge it into the account's **active** filter
-set without disturbing the filters already there, and apply the same criteria
-to the mail that has already been delivered. It also finds, counts, reads,
-and marks that mail, and manages the folders it is filed into. MXRoute is
-the provider it speaks to today (see [MXRoute specifics][mxroute]); what it
-shows you is the same whichever provider it is.
+Read, sort, and filter the mail on your account: build a filter from
+criteria, merge it into the account's **active** filter set without
+disturbing the filters already there, and apply the same criteria to the
+mail that has already been delivered. It also finds, counts, reads, and
+marks that mail, and manages the folders it is filed into. Every operation
+is offered three ways: the `mailctl` command line, a JSON-RPC [API][api] for
+programs in any language, and a [terminal UI][tui] built on that API.
+MXroute is the provider it speaks to today (see [MXroute
+specifics][mxroute]); what it shows you is the same whichever provider it
+is.
 
 ## Why this exists
 
-A server-side filter only ever sees **new** mail. Write a filter in webmail and
-every message already in the mailbox stays exactly where it was. mailctl
-does both halves, as two commands that take the same criteria: `add` saves
-the filter, and `apply` acts on the mail already there.
+A server-side filter only ever sees **new** mail. Write a filter in webmail
+and every message already in the mailbox stays exactly where it was. mailctl
+does both halves, as two commands that take the same criteria: `filter add`
+saves the filter, and `filter apply` acts on the mail already there.
 
-It exists for a second reason too: the filter and search screens in
-Roundcube, the webmail MXRoute ships, are too restricted, and mailctl is
-replacing them rather than working within them. mailctl's
-criteria go further — any header, text in the body, whole-value and
+It exists for a second reason too: webmail's filter and search screens are
+too restricted, and mailctl is meant to replace them, not work within them.
+Its criteria go further — any header, text in the body, whole-value and
 wildcard comparisons, and, for mail already delivered, dates and read or
 flagged state — and it can list, count, sort, and read the mail, so the
-message a filter should catch can be found without leaving the terminal. The
-filters it writes are in the form webmail uses, so they show up there, and
-the filters you made in webmail are kept ([ADR 0002][adr2]).
+message a filter should catch can be found without opening webmail at all.
+Filters you made in webmail are kept when mailctl changes the filter set
+([ADR 0002][adr2]).
 
 Its scope is managing the filters and settings on one mailbox, by hand or
 from a script: filters and their order, folders and their subscriptions,
 message flags. It is not a mail client. It does not compose or send, and it
-names an attachment but never saves or opens it. Forwarding is MXRoute's
-panel's job, since MXRoute disables Sieve `redirect` (see [MXRoute
+names an attachment but never saves or opens it. Forwarding is MXroute's
+panel's job, since MXroute disables Sieve `redirect` (see [MXroute
 specifics][mxroute]).
-
-Besides the command line there is a JSON-RPC [API][api] for programs in any
-language, and a [terminal UI][tui] built on it.
 
 ## Installation
 
