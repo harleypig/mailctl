@@ -34,8 +34,7 @@ Its criteria go further — any header, text in the body, whole-value and
 wildcard comparisons, and, for mail already delivered, dates and read or
 flagged state — and it can list, count, sort, and read the mail, so the
 message a filter should catch can be found without opening webmail at all.
-Filters you made in webmail are kept when mailctl changes the filter set
-([ADR 0002][adr2]).
+Filters you made in webmail are kept when mailctl changes the filter set.
 
 Its scope is managing the filters and settings on one mailbox, by hand or
 from a script: filters and their order, folders and their subscriptions,
@@ -149,7 +148,6 @@ MIT.
 mailctl is built on [sievelib][sievelib] for ManageSieve and Sieve, and
 [IMAPClient][imapclient] for IMAP; the terminal UI on [Textual][textual].
 
-[adr2]: adr/0002-non-destructive-script-merge.md
 [api]: docs/API.md
 [badge-ci]: https://github.com/harleypig/mailctl/actions/workflows/test.yml/badge.svg
 [badge-license]: https://img.shields.io/badge/license-MIT-blue.svg
