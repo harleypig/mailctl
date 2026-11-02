@@ -75,10 +75,14 @@ writes nothing anywhere.
 
 **You should see**, in this order:
 
-* Five config lines: `Host`, `User`, `Password`, and the two endpoints.
-  `Password:` reads `set`, `set (via file)`, `set (via command)`,
-  `set (via flag)`, or `unset` — it names the source, never the value.
-  `unset` is fine — it means you will be prompted.
+* The settings, `Sources:` through `Folder:`: where settings were read from,
+  the provider, `Host`, `User`, `Password`, the two endpoints, and the folder
+  mail commands read. Each says where its value came from. `Password:` reads
+  `set` or `unset` and names the source, never the value. `unset` is fine —
+  it means you will be prompted.
+* `IMAP: connected`, then the delimiter, the folder count, any folders that
+  exist but are not subscribed, `MOVE`, `UIDPLUS`, and `FILTER=SIEVE`.
+* `Baseline:`, one line, only if you have saved a baseline for this host.
 * `ManageSieve: connected`, then `Sieve extensions`, one table in
   alphabetical order: every extension the server lists plus every one
   mailctl knows, each `available` or `unavailable` — read from the server,
@@ -91,9 +95,10 @@ writes nothing anywhere.
   and you did not mean it to, the source in brackets is where to look.
 * `active script:` followed by a name, or `(none)`. Write the name down; that
   is the script mailctl will edit.
-* `IMAP: connected`, then the delimiter, the folder count, `MOVE`, `UIDPLUS`,
-  and `FILTER=SIEVE`.
-* A closing note about `redirect`.
+* `Servers:`, only if mailctl does not recognise a server's software.
+* One `Note:` heading, with each note under it as a `-` item: the first is
+  about `redirect`, the second about a panel filter that may run before
+  Sieve.
 
 **Expect `FILTER=SIEVE: no`.** That is the Dovecot plugin that would let the
 server apply a Sieve script to old mail itself. It is experimental and off by
@@ -107,11 +112,13 @@ it is worth knowing before step 6.
 
 **Stop if:**
 
-* You never reach `ManageSieve: connected`. ManageSieve is tried first, so a
-  failure there means IMAP was never tested at all. The error names the port
-  and TLS mode it used and says plainly that MXRoute documents neither. Try
-  `mailctl server test --sieve-tls ssl`, then `--sieve-port` with something
-  else, then ask MXRoute support.
+* You never reach `IMAP: connected`. IMAP is tried first, so a failure there
+  means ManageSieve was never tried at all. Check `Host`, `User`, and the
+  IMAP endpoint in the settings above it.
+* You reach `IMAP: connected` but never `ManageSieve: connected`. The error
+  names the port and TLS mode it used and says plainly that MXRoute
+  documents neither. Try `mailctl server test --sieve-tls ssl`, then
+  `--sieve-port` with something else, then ask MXRoute support.
 * Authentication fails on either service. The username must be the **full
   email address**, not the part before the `@`.
 * `fileinto` says `unavailable`. Do not continue; a filter that files
