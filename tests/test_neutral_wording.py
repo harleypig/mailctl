@@ -199,7 +199,7 @@ def test_the_help_check_sees_the_places_it_allows():
     assert any(
         "option disable_extension" in hit for hit in found["filter add"]
     )
-    assert "option host: MXRoute" in found["filter add"]
+    assert "option host: MXroute" in found["filter add"]
 
 
 # ----------------------------------------------------------------------------

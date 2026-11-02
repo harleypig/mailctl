@@ -1837,7 +1837,7 @@ def test_the_cli_names_the_flag_for_the_other_tls_mode(tls, other):
     assert f" Try --sieve-tls {other} as the alternative. Also " in (
         error_text(error)
     )
-    assert error_text(error).startswith("refused. MXRoute does not publish")
+    assert error_text(error).startswith("refused. MXroute does not publish")
 
 
 # ############################################################################

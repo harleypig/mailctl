@@ -118,7 +118,7 @@ def fetch_active(
     never guessed: whatever the webmail's managesieve plugin calls its
     script is a server-side config value (``managesieve_script_name``) that
     nothing about the account exposes, so a guess would create a *second*
-    script and quietly leave the real one in charge. MXRoute has also said
+    script and quietly leave the real one in charge. MXroute has also said
     it intends to move off DirectAdmin, Crossbox, and Roundcube, and is
     mid-migration from Dovecot 2.3 to 2.4 -- what is discovered at runtime
     survives that, and a hardcoded name would not.

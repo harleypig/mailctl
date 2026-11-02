@@ -253,7 +253,7 @@ class LegacySetting:
 
 @dataclass
 class Config:
-    """Resolved connection settings for one MXRoute account."""
+    """Resolved connection settings for one MXroute account."""
 
     provider: str = DEFAULT_PROVIDER
     host: str = ""

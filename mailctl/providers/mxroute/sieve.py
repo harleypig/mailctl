@@ -83,7 +83,7 @@ __all__ = [
 # plan labels it.
 DIFF_LABEL = "sieve"
 
-# Confirmed disabled by MXRoute, from MXroute's own blog (2024-03-22):
+# Confirmed disabled by MXroute, from MXroute's own blog (2024-03-22):
 # they "decided to disable the ability for users to create redirect sieve
 # filters" because their real forwarders are designed to handle SRS
 # properly. This one is a documented policy, not a capability, so it will
@@ -98,7 +98,7 @@ DIFF_LABEL = "sieve"
 # hitting this error. Naming both costs a clause.
 MXROUTE_FORBIDDEN_ACTIONS = {
     "redirect": (
-        "MXRoute disables the Sieve 'redirect' action server-side (their "
+        "MXroute disables the Sieve 'redirect' action server-side (their "
         "2024-03-22 announcement). Their own forwarders are built to handle "
         "SRS correctly, which a Sieve redirect does not -- so set up a "
         "forwarder in the control panel, or with the 'mxroute_forwarder' "
@@ -111,7 +111,7 @@ MXROUTE_FORBIDDEN_ACTIONS = {
 #
 # `# Filter: NAME` is sievelib's, and the only one its parser recognises.
 # `# rule:[NAME]` is Roundcube's managesieve plugin's -- and Roundcube is the
-# webmail MXRoute actually ships, so it is the form already sitting in the
+# webmail MXroute actually ships, so it is the form already sitting in the
 # account's active script.
 #
 # Read: both, because a name that reaches the parser under only one of them
@@ -135,7 +135,7 @@ ROUNDCUBE_NAME_MARKER = re.compile(r"#\s*rule:\[(?P<name>.+)\]")
 def reject_actions(requested: Iterable[str]) -> None:
     """Refuse actions this tool will not generate, and say why.
 
-    ``redirect`` is refused because MXRoute has publicly disabled it -- a
+    ``redirect`` is refused because MXroute has publicly disabled it -- a
     policy, so the alternative is named. The rest are simply not
     implemented here, and mailctl has no evidence either way about whether
     this server supports them.
@@ -151,7 +151,7 @@ def reject_actions(requested: Iterable[str]) -> None:
             raise MailctlError(
                 f"mailctl does not generate the Sieve '{label}' action. "
                 f"This is a conservative choice of ours, not a documented "
-                f"MXRoute restriction -- the MXRoute control panel is where "
+                f"MXroute restriction -- the MXroute control panel is where "
                 f"this feature lives if you need it.",
                 code="unimplemented_action",
                 fields={"operation": "server test"},

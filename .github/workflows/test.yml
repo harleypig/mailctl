@@ -51,7 +51,7 @@ jobs:
   # The offline unit tier, on every Python the package claims to support
   # (requires-python, through the newest release). The live tier
   # (tests/live/) is gated behind MAILCTL_LIVE and is deliberately NOT run
-  # here -- it needs credentials for a real MXRoute account, and CI is the
+  # here -- it needs credentials for a real MXroute account, and CI is the
   # last place those belong.
   tests:
     name: Test (${{ matrix.python }})

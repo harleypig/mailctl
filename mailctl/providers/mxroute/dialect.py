@@ -66,9 +66,9 @@ class MxrouteDialect(Dialect):
         rule_set="Sieve script",
         rule_sets="Sieve scripts",
         notes=(
-            "MXRoute disables the Sieve 'redirect' action as a matter of "
+            "MXroute disables the Sieve 'redirect' action as a matter of "
             "policy (2024-03-22) -- use a panel forwarder, which handles "
-            "SRS properly. That is the only MXRoute restriction mailctl "
+            "SRS properly. That is the only MXroute restriction mailctl "
             "asserts; everything else above came from the server.",
             "this covers the Sieve stage only. Mail may first pass a "
             "DirectAdmin panel filter (an Exim filter, run before Sieve) "
