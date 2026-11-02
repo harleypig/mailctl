@@ -1,4 +1,4 @@
-"""Manage MXRoute email filters over ManageSieve and IMAP.
+"""Manage MXroute email filters over ManageSieve and IMAP.
 
 ``mailctl`` builds a Sieve rule from command-line criteria, merges it
 non-destructively into the account's active script, and optionally applies

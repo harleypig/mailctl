@@ -76,7 +76,7 @@ def imap_session(
     except ImapAuthenticationError as exc:
         raise MailctlError(
             f"IMAP authentication failed for {config.user!r} (password "
-            f"{config.password_state()}). MXRoute expects the FULL "
+            f"{config.password_state()}). MXroute expects the FULL "
             f"email address as the username, e.g. you@yourdomain.com. "
             f"[{exc.reason}]",
             code="auth_failed",

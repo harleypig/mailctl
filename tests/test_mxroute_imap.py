@@ -70,7 +70,7 @@ def test_a_login_failure_names_the_full_address_convention(
 
     assert str(caught.value) == (
         "IMAP authentication failed for 'user@example.com' (password set). "
-        "MXRoute expects the FULL email address as the username, e.g. "
+        "MXroute expects the FULL email address as the username, e.g. "
         "you@yourdomain.com. [no]"
     )
     assert "not-a-real-password" not in str(caught.value)

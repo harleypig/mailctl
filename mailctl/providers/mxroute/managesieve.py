@@ -56,7 +56,7 @@ def sieve_session(
     except SieveAuthenticationError as exc:
         raise MailctlError(
             f"ManageSieve authentication failed for {config.user!r} "
-            f"(password {config.password_state()}). MXRoute expects the "
+            f"(password {config.password_state()}). MXroute expects the "
             f"FULL email address as the username, e.g. "
             f"you@yourdomain.com.",
             code="auth_failed",
@@ -125,7 +125,7 @@ def _connection_hint(config: Config) -> str:
 def _advice(config: Config) -> _Hint:
     """The hint for a failed connection, tuned to its port and TLS mode.
 
-    MXRoute documents neither a ManageSieve port nor whether it speaks
+    MXroute documents neither a ManageSieve port nor whether it speaks
     STARTTLS or implicit TLS. 4190 is the IANA-registered port (RFC 5804)
     and the Dovecot default, which makes it the right default and not a
     verified fact -- so a failure has to say that plainly instead of
@@ -144,7 +144,7 @@ def _advice(config: Config) -> _Hint:
     ):
         used = (
             f"{config.sieve_port} + {config.sieve_tls} is the RFC 5804 / "
-            f"Dovecot default, not a documented MXRoute setting."
+            f"Dovecot default, not a documented MXroute setting."
         )
 
     else:
@@ -159,11 +159,11 @@ def _advice(config: Config) -> _Hint:
         )
 
     return _Hint(
-        before=f"MXRoute does not publish its ManageSieve port or TLS "
+        before=f"MXroute does not publish its ManageSieve port or TLS "
         f"mode; {used}",
         mode="ssl" if config.sieve_tls == "starttls" else "starttls",
         after="Also confirm the hostname (the panel's Email Clients page "
         "shows it; it is per-account, the same as your primary MX record), "
         f"that outbound {config.sieve_port} is not blocked, and if all "
-        f"else fails ask MXRoute support which port and TLS mode to use.",
+        f"else fails ask MXroute support which port and TLS mode to use.",
     )

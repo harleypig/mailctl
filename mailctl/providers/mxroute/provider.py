@@ -46,7 +46,7 @@ MXROUTE = Provider(
         # Roundcube draws its folder tree from LSUB (RECORD.md).
         folder_visibility=True,
         settings={
-            "host": "MXRoute server hostname",
+            "host": "MXroute server hostname",
             "imap_host": "",
             "imap_port": "",
             "sieve_port": "",

@@ -2237,6 +2237,7 @@ def test_group_parameters_are_refused_as_parameters(start):
         ("mail.senders", {"top": "all"}),
         ("mail.senders", {"by": 1}),
         ("server.test", {"verbose": True}),
+        ("config.test", {"verbose": True}),
         ("server.probe", {"report": "yes"}),
         ("server.probe", {"json": True}),
         ("server.baseline.save.plan", {"yes": True}),
@@ -2881,6 +2882,46 @@ def test_server_test_reports_both_halves_and_where_each_setting_came_from(
 
 
 # ----------------------------------------------------------------------------
+def test_config_test_reports_the_settings_the_mail_half_and_a_connection(
+    start,
+):
+    """#440: ``server.test``'s settings and mail parts, unchanged, and the
+    rule half as connected and nothing more. Red if a part differs from
+    ``server.test``'s, if the rule half's detail, the notes, or the
+    baseline leak in, or if the rule half is not opened."""
+    client = initialized(start, scripts={"managesieve": ROUNDCUBE})
+    report = client.request("config.test")["result"]["test"]
+    state = client.read_state()
+    full = client.request("server.test")["result"]["test"]
+    shared = ["provider", "sources", "settings", "password", "connection"]
+
+    assert sorted(report) == sorted([*shared, "mail", "rules"])
+    assert {key: report[key] for key in shared} == {
+        key: full[key] for key in shared
+    }
+    assert report["mail"] == full["mail"]
+    assert report["rules"] == {"connected": True}
+    assert state["sieve_connects"] >= 1
+    assert state["imap_connects"] >= 1
+
+
+# ----------------------------------------------------------------------------
+def test_config_test_is_refused_as_server_test_is_when_a_half_fails(start):
+    """A rule half that cannot be reached is an error, coded as
+    ``server.test``'s is, never a document saying it connected."""
+    client = initialized(start)
+    state = client.read_state()
+    state["unreachable"] = True
+    client.write_state(state)
+
+    config = refusal(client.request("config.test"))
+    server = refusal(client.request("server.test"))
+
+    assert config["code"] == server["code"] == "connection_failed"
+    assert config["fields"] == server["fields"]
+
+
+# ----------------------------------------------------------------------------
 def test_server_test_reports_a_baseline_it_cannot_compare_and_goes_on(
     start,
 ):
@@ -3070,6 +3111,7 @@ def test_the_server_group_never_sends_the_password(start):
 
     for method, params in [
         ("server.test", None),
+        ("config.test", None),
         ("server.probe", None),
         ("server.probe", {"report": True}),
         ("server.baseline.check", None),

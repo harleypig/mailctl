@@ -1420,6 +1420,19 @@ def server_test(server: Server, params: Params, _ident: object) -> dict:
 
 
 # ----------------------------------------------------------------------------
+def config_test(server: Server, params: Params, _ident: object) -> dict:
+    """``config test``: the settings and where each came from, the mail
+    half's report, and that the rule half connected -- ``server.test``'s
+    probes, and its record cut to what tells a setup works."""
+    session, config = server._open()
+    params.done()
+
+    return json_output.config_test(
+        utilities.server_test.examine_servers(session, config)
+    )
+
+
+# ----------------------------------------------------------------------------
 def server_probe(server: Server, params: Params, _ident: object) -> dict:
     """``server probe``: what each server says about itself, as the
     versioned document ``server probe --json`` prints. With ``report``
@@ -1745,6 +1758,7 @@ METHODS: dict[str, Callable[[Server, Params, object], Any]] = {
     "server.baseline.save.execute": server_baseline_save_execute,
     "server.baseline.show": server_baseline_show,
     "server.baseline.check": server_baseline_check,
+    "config.test": config_test,
     "config.migrate.plan": config_migrate_plan,
     "config.migrate.execute": config_migrate_execute,
     CANCEL_METHOD: cancel_request,

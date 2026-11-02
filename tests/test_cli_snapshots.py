@@ -101,6 +101,7 @@ class FakeSieveClient:
         self.scripts.update(others or {})
         self.active = active
         self.reject = reject
+        self.login = True
         self.calls: list[tuple] = []
 
         # By command, the WARNINGS text its OK carries, as SieveClient
@@ -112,7 +113,7 @@ class FakeSieveClient:
     def connect(self, user, password, starttls=False, ssl=False):
         self.calls.append(("connect",))
 
-        return True
+        return self.login
 
     # ------------------------------------------------------------------------
     def logout(self):
@@ -210,9 +211,10 @@ def message(
 # (MAILCTL_PASSWORD's value), folders (further folders, as (name, subscribed)
 # pairs), imap_failures (an IMAPClient method, and the error text it
 # raises), imap_welcome (the greeting), imap_responses (an IMAPClient
-# method, and the response lines the server sends while it runs), and
+# method, and the response lines the server sends while it runs),
 # sieve_warnings (checkscript or putscript, and the WARNINGS text its OK
-# carries).
+# carries), and sieve_login (False for a ManageSieve login the server
+# refuses).
 
 # Host from the env file over the exported MAILCTL_HOST, port from a flag
 # over the env file, TLS from the config file, and the password named
@@ -1409,6 +1411,18 @@ SCENARIOS = {
     # STATUS per folder.
     "folders-counts-refused": (["folder", "list", "--counts"], {}),
     "test": (["server", "test"], {}),
+    # #440: the settings, the mail half, and one line on the filter half;
+    # each half failing in turn, the mail half first since it is probed
+    # first.
+    "config-test": (["config", "test"], {}),
+    "config-test-mail-refused": (
+        ["config", "test"],
+        {"imap_failures": {"login": "[AUTHENTICATIONFAILED] failed"}},
+    ),
+    "config-test-filter-refused": (
+        ["config", "test"],
+        {"sieve_login": False},
+    ),
     # A server that advertises neither ID nor NAMESPACE, and sends only
     # the SIEVE line: the report says so rather than leaving gaps.
     "probe-bare": (["server", "probe"], {}),
@@ -2825,6 +2839,8 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
         options.get("sieve_warnings"),
     )
 
+    sieve.login = options.get("sieve_login", True)
+
     imap.messages = {
         1: message("noreply@github.com", "PR opened"),
         2: message("noreply@github.com", "Issue closed"),
@@ -3348,3 +3364,35 @@ def test_server_test_wraps_its_notes_to_the_terminal_width(
     assert all(len(line) <= 50 for line in wrapped)
     assert len(notes) > 6, "the notes were not wrapped at all"
     assert lines[sieve + 1].startswith(" " * 16)
+
+
+# ----------------------------------------------------------------------------
+def test_server_test_wraps_its_servers_and_active_script_lines(
+    fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """#455: the Servers line and the line on the active script fill to
+    the terminal's width as the notes do, each continued under its own
+    text. Red if either is printed as one line again."""
+    monkeypatch.setenv("COLUMNS", "50")
+
+    record = run_scenario(
+        ["server", "test"],
+        {},
+        fake_imap,
+        roundcube_script,
+        monkeypatch,
+        tmp_path,
+    )
+    stdout = record.split("--- stdout\n", 1)[1].split("--- stderr", 1)[0]
+    lines = stdout.splitlines()
+    servers = next(i for i, line in enumerate(lines) if line.startswith("Ser"))
+    active = next(i for i, line in enumerate(lines) if "ACTIVE" in line)
+
+    assert lines[servers + 1].startswith(" " * 11)
+    assert not lines[servers + 1].startswith(" " * 12)
+    assert lines[active].startswith("  (mailctl")
+    assert lines[active + 1].startswith("   ")
+    assert all(len(line) <= 50 for line in lines[servers : servers + 3]), (
+        lines[servers : servers + 3]
+    )
+    assert all(len(line) <= 50 for line in lines[active : active + 2])

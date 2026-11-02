@@ -1624,6 +1624,7 @@ def test_the_test_report_is_laid_out_from_the_providers_data(
     assert "\nNote:\n  - the fake host keeps its rules as JSON.\n" in out
     assert "extensions" not in out
     assert "sieve" not in out.lower()
+    assert "MXroute" not in out
     assert "MXRoute" not in out
     assert "Exim" not in out
 
@@ -2204,6 +2205,7 @@ def test_connection_flags_are_the_providers_own(bare, capsys, monkeypatch):
     for flag in ("--sieve-port", "--sieve-tls", "--imap-host", "--host "):
         assert flag not in text
 
+    assert "MXroute" not in text
     assert "MXRoute" not in text
     assert "--user" in text
 

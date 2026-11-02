@@ -70,7 +70,7 @@ whether one exists:
   *simulation is its default mode*; `-e` is what makes it execute. It needs
   no mail-store access and no admin rights, and `-Tlevel=matching` prints the
   tests performed **and the values they matched**, which is precisely the
-  question this entry asks. It is also the engine MXRoute itself runs, so its
+  question this entry asks. It is also the engine MXroute itself runs, so its
   answer is the server's answer rather than an approximation. Cost: it
   requires Dovecot installed (it `execv`s a hardcoded `/usr/bin/doveconf`),
   and it writes a compiled `.svbin` beside the script — run it against a copy
@@ -94,7 +94,7 @@ implicit keep.
 
 **An open thought, 2026-09-28 — not a decision, and not yet researched.**
 The operator: *"The Dovecot Pigeonhole tool suggests that we may need to
-support multiple evaluators, depending on the provider. MXRoute uses dovecot,
+support multiple evaluators, depending on the provider. MXroute uses dovecot,
 so we'd probably want to support that for mxroute. But will that work for
 gmail? \*shrug\* Need to research it."* The evaluator may need to be **per
 provider** rather than one engine. `sieve-test` is the engine MXroute itself

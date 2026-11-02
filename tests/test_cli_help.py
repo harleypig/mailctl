@@ -69,6 +69,16 @@ def test_the_groups_are_listed_in_the_decided_order(capsys):
 
 
 # ----------------------------------------------------------------------------
+def test_help_config_lists_config_test(capsys):
+    """#440: red if ``config test`` is missing from its group's help."""
+    code, out, _err = run(capsys, "help", "config")
+
+    assert code == 0
+    assert "{test,migrate}" in out
+    assert "check the settings work, change nothing" in out
+
+
+# ----------------------------------------------------------------------------
 @pytest.mark.parametrize("path", group_paths())
 def test_help_group_is_group_help(capsys, path):
     helped = run(capsys, "help", *path.split())
