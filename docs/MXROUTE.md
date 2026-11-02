@@ -1,6 +1,6 @@
-# MXRoute specifics
+# MXroute specifics
 
-MXRoute documents very little of its Sieve surface, so what mailctl knows
+MXroute documents very little of its Sieve surface, so what mailctl knows
 about it is kept in three tiers — documented, observed on one server, and
 unknown — in the provider's record,
 [mailctl/providers/mxroute/RECORD.md][record], which has the sources and
@@ -10,7 +10,7 @@ active script, and the folder delimiter from the server on every run.
 
 ## Documented
 
-* The `redirect` action is **disabled server-side** — MXRoute announced this
+* The `redirect` action is **disabled server-side** — MXroute announced this
   on 2024-03-22, saying their own forwarders "are designed to properly handle
   SRS" where a Sieve redirect does not. `--redirect` fails with a pointer to
   the panel's Forwarders (or the `mxroute_forwarder` Terraform resource).
@@ -19,17 +19,17 @@ active script, and the folder delimiter from the server on every run.
   on the panel's Email Clients page. There is deliberately no default.
 * IMAP is **993** (implicit TLS) or **143** (STARTTLS). mailctl picks the
   mode from the port: anything other than 143 is treated as implicit TLS.
-* MXRoute's REST API exposes nothing for filters or Sieve, which is why this
+* MXroute's REST API exposes nothing for filters or Sieve, which is why this
   tool speaks ManageSieve rather than an API.
 
 ## Observed on one server, not promised
 
 A probe of one account's server saw these. They describe that server on
-that day, not MXRoute.
+that day, not MXroute.
 
 * **ManageSieve on port 4190 with STARTTLS worked.** That is the IANA/RFC
   5804 registered port and the Dovecot default, which is why it is
-  mailctl's default; MXRoute documents neither. `--sieve-port` and
+  mailctl's default; MXroute documents neither. `--sieve-port` and
   `--sieve-tls` exist because of that, and a connection failure says so
   rather than implying you mistyped.
 * **The folder delimiter was `.`** (Maildir++, so `INBOX.Lists.News`), and an
@@ -41,7 +41,7 @@ that day, not MXRoute.
   The one exception is `--no-mail`, which has no folder list to consult and
   falls back to `.` (or `--delimiter`), and warns that it did.
 * **`vacation` was advertised and `enotify` was not.** mailctl refuses both
-  `vacation` and `notify` as **our own choice**, not as an MXRoute
+  `vacation` and `notify` as **our own choice**, not as an MXroute
   limitation: the panel does autoresponders, and mailctl does not write
   either action. Its error says so and points at the control panel.
   `mailctl server test` prints what your server actually advertises.
@@ -55,7 +55,7 @@ created beside it.
 ## Unknown
 
 * **Whether any of the observations above hold for another server**, or for
-  the same one after MXRoute's migrations.
+  the same one after MXroute's migrations.
 * **ManageSieve script-size, script-count, and rate limits.** There is no
   documented ceiling to design against.
 * **Whether your account has a filter before Sieve** (below).
@@ -66,7 +66,7 @@ The record lists the rest.
 
 The active script's name is read from `LISTSCRIPTS` and written back to, and
 is never guessed — the webmail's script name is server-side config, and
-MXRoute is mid-migration on both its panel and Dovecot. `--filterset` overrides
+MXroute is mid-migration on both its panel and Dovecot. `--filterset` overrides
 it. With nothing active, a script called `mxfilter` — what the tool created
 under its old name — is still recognised as its own and reused rather
 than a second one made beside it; the name `mailctl` is used only when there
@@ -89,11 +89,11 @@ the mail server accepts a message and before it is delivered to the mailbox,
 which is where Sieve runs. A message that filter matches is dropped (or sent
 to a spam folder) there, and Sieve never sees it. DirectAdmin's filter rules
 block by domain, address, word, or size; they do not file mail into folders.
-MXRoute has provisioned such a filter with `where=delete`, which discards
+MXroute has provisioned such a filter with `where=delete`, which discards
 high-scoring mail before Sieve.
 
-**What is not known** is whether your account has one. MXRoute documents
-neither this filter nor Sieve, and is phasing DirectAdmin out — MXRoute has
+**What is not known** is whether your account has one. MXroute documents
+neither this filter nor Sieve, and is phasing DirectAdmin out — MXroute has
 said that new customers already have no interaction with DirectAdmin — so
 whether accounts set up since then still carry the filter is unconfirmed.
 

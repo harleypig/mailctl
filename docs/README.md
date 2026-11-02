@@ -6,7 +6,7 @@ gives a first example. Everything else is here.
 **Before the first run against a real mailbox, work through
 [VERIFYING.md][verify].** It is an ordered ladder from commands that touch
 nothing to ones that move mail, and it is where the unconfirmed assumptions
-in [MXRoute specifics][mxroute] get settled for your account.
+in [MXroute specifics][mxroute] get settled for your account.
 
 ## Using mailctl
 
@@ -35,7 +35,7 @@ in [MXRoute specifics][mxroute] get settled for your account.
 ## The provider and the scope
 
 * [MXROUTE.md][mxroute] — what is documented, observed, and unknown about
-  MXRoute, which script mailctl edits, and a filtering stage it cannot see.
+  MXroute, which script mailctl edits, and a filtering stage it cannot see.
 * [MAIL-READER-REQUIREMENTS.md][reader] — what a mail reader must, should,
   and may do, and where mailctl stands on each.
 

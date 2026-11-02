@@ -44,7 +44,7 @@ exit status. `server probe --json` prints its own versioned document (see
   `create` (mailctl creates it), `created-on-delivery` (the filter creates
   it as mail arrives), `create-and-on-delivery` (both), or
   `uncreatable`. `diff.label` names the language the diff's text is in
-  (`sieve` on MXRoute).
+  (`sieve` on MXroute).
 * A `filter optimize` plan lists `removals` (`{"filter", "covered_by"}`),
   `reorders` (`{"filter", "before"}`), `merges` (`{"into", "absorbed",
   "header", "match_type", "keys"}`), and `uncertain` (`{"kind", "filters",
@@ -68,7 +68,7 @@ exit status. `server probe --json` prints its own versioned document (see
 * `search --build-filter --json` prints a filter document instead (see
   [*Filter documents*][filterdoc]).
 * A `filter list` filter's `actions` are the host's own names for what it
-  does (`fileinto`, `setflag` on MXRoute); its `steps` say the same in
+  does (`fileinto`, `setflag` on MXroute); its `steps` say the same in
   words that are the same for every provider, one step per action, in
   order. `kind` is `file`, `discard`, `flag`, `unflag`, `keep`, `stop`, or
   `other`, an action with no such word, whose `argument` is then its name
