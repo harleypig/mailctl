@@ -1621,7 +1621,7 @@ def test_the_test_report_is_laid_out_from_the_providers_data(
     assert "\nFake rules: connected\n" in out
     assert "\nFake mail: connected\n" in out
     assert "\n  Labels:    yes\n             every folder is a label\n" in out
-    assert "\nNote: the fake host keeps its rules as JSON.\n" in out
+    assert "\nNote:\n  - the fake host keeps its rules as JSON.\n" in out
     assert "extensions" not in out
     assert "sieve" not in out.lower()
     assert "MXRoute" not in out

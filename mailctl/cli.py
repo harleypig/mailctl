@@ -15,7 +15,9 @@ import argparse
 import contextlib
 import re
 import shlex
+import shutil
 import sys
+import textwrap
 import traceback
 from collections.abc import Mapping
 from typing import NoReturn
@@ -1976,6 +1978,39 @@ def cmd_test(args) -> int:
 
     words = utilities.reports.wording(config)
 
+    # The sections print in the order a reader checking their account
+    # wants them -- mail first, the Sieve detail last -- and each half is
+    # probed as its section prints, so a failure stops at its own section.
+    with connect(config, args, rules=False, mail=True) as sessions:
+        mail = utilities.reports.probe_mail(sessions)
+
+        shown = sessions.capabilities.folder_visibility
+
+        print(f"\n{words.mail_service}: connected")
+        print(f"  delimiter: {mail.delimiter!r}")
+
+        if shown:
+            print(
+                f"  folders:   {mail.folder_count} "
+                f"({mail.folder_count - len(mail.unsubscribed)} subscribed)"
+            )
+
+        else:
+            print(f"  folders:   {mail.folder_count}")
+
+        if shown and mail.unsubscribed:
+            print(
+                f"  not subscribed (exist, but webmail will not show them): "
+                f"{', '.join(mail.unsubscribed)}"
+            )
+
+        print_facts(mail.facts)
+        unrecognised_mail = utilities.server_report.unrecognised_servers(
+            sessions
+        )
+
+    print_baseline_summary(config, args)
+
     with connect(config, args) as sessions:
         rules = utilities.reports.probe_rules(sessions)
         extensions = utilities.reports.report_extensions(
@@ -2013,31 +2048,7 @@ def cmd_test(args) -> int:
         )
         unrecognised = utilities.server_report.unrecognised_servers(sessions)
 
-    with connect(config, args, rules=False, mail=True) as sessions:
-        mail = utilities.reports.probe_mail(sessions)
-
-        shown = sessions.capabilities.folder_visibility
-
-        print(f"\n{words.mail_service}: connected")
-        print(f"  delimiter: {mail.delimiter!r}")
-
-        if shown:
-            print(
-                f"  folders:   {mail.folder_count} "
-                f"({mail.folder_count - len(mail.unsubscribed)} subscribed)"
-            )
-
-        else:
-            print(f"  folders:   {mail.folder_count}")
-
-        if shown and mail.unsubscribed:
-            print(
-                f"  not subscribed (exist, but webmail will not show them): "
-                f"{', '.join(mail.unsubscribed)}"
-            )
-
-        print_facts(mail.facts)
-        unrecognised += utilities.server_report.unrecognised_servers(sessions)
+    unrecognised += unrecognised_mail
 
     if unrecognised:
         services = " or the ".join(
@@ -2049,10 +2060,14 @@ def cmd_test(args) -> int:
             f"issue body"
         )
 
-    print_baseline_summary(config, args)
+    if words.notes:
+        print("\nNote:")
 
-    for note in words.notes:
-        print(f"\nNote: {note}")
+        for index, note in enumerate(words.notes):
+            if index:
+                print()
+
+            print(wrapped(note, "  - ", "    "))
 
     return 0
 
@@ -2553,10 +2568,27 @@ def print_facts(facts) -> None:
         first, *rest = fact.text.split("\n")
         indent = " " * (3 + max(len(label), 10))
 
-        print(f"  {label:<10} {first}")
+        print(wrapped(first, f"  {label:<10} ", indent))
 
         for line in rest:
-            print(f"{indent}{line}")
+            print(wrapped(line, indent, indent))
+
+
+# ----------------------------------------------------------------------------
+def wrapped(text: str, first: str, rest: str) -> str:
+    """``text`` filled to the terminal's width, 80 columns where there is none.
+
+    A word is never split, so a long path or a quoted command stays whole
+    and copyable even where it overruns the line.
+    """
+    return textwrap.fill(
+        text,
+        width=shutil.get_terminal_size((80, 24)).columns,
+        initial_indent=first,
+        subsequent_indent=rest,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
 
 
 # ----------------------------------------------------------------------------

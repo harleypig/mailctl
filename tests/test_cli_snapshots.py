@@ -3315,3 +3315,36 @@ def test_text_after_a_usage_keeps_its_layout():
 
     assert argparse_neutral(page) == page
     assert argparse_neutral(page.replace("  -h", " -h")) != page
+
+
+# ----------------------------------------------------------------------------
+def test_server_test_wraps_its_notes_to_the_terminal_width(
+    fake_imap, roundcube_script, monkeypatch, tmp_path
+):
+    """#439: the notes and a long fact are filled to the terminal's width,
+    read from COLUMNS, under one Note heading. Turns red if the width is
+    fixed at 80 again, since every snapshot is recorded at 80."""
+    monkeypatch.setenv("COLUMNS", "50")
+
+    record = run_scenario(
+        ["server", "test"],
+        {},
+        fake_imap,
+        roundcube_script,
+        monkeypatch,
+        tmp_path,
+    )
+    stdout = record.split("--- stdout\n", 1)[1].split("--- stderr", 1)[0]
+    lines = stdout.splitlines()
+    notes = lines[lines.index("Note:") + 1 :]
+    sieve = next(i for i, line in enumerate(lines) if "FILTER=SIEVE" in line)
+    wrapped = notes + lines[sieve : sieve + 4]
+
+    assert stdout.count("Note:") == 1
+    assert [line for line in notes if line.startswith("  - ")] == [
+        line for line in notes if line.strip().startswith("- ")
+    ]
+    assert len([line for line in notes if line.startswith("  - ")]) == 2
+    assert all(len(line) <= 50 for line in wrapped)
+    assert len(notes) > 6, "the notes were not wrapped at all"
+    assert lines[sieve + 1].startswith(" " * 16)
