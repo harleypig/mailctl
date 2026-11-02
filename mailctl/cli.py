@@ -89,7 +89,8 @@ ACTIVATE_HELP = (
 FOLDER_DEFAULT_HELP = "default: source_folder from the config, else INBOX"
 
 # --json's help: a reading command prints its result, a write command its
-# --dry-run plan. The shapes are listed in README.md > Output for scripts.
+# --dry-run plan. The shapes are listed in docs/SCRIPTING.md > Output for
+# scripts.
 JSON_HELP = "print the result as a JSON document, and nothing else on stdout"
 JSON_PLAN_HELP = (
     "with --dry-run, print the plan as a JSON document, and nothing else on "
