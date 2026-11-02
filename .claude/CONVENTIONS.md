@@ -1493,8 +1493,9 @@ needed, send several mutations as one aliased request
   environment of its own; it needs `mailctl-api` on `PATH`, not mailctl
   in that environment.
 - **A build-it-yourself Docker image** is the top-level `Dockerfile`, built
-  with `make image` and published nowhere; the README's *In Docker* section
-  says how to run it. It sets `MAILCTL_BACKUP_ROOT` (*Rule conventions*).
+  with `make image` and published nowhere; [docs/DOCKER.md][docker]'s *In
+  Docker* says how to run it. It sets `MAILCTL_BACKUP_ROOT` (*Rule
+  conventions*).
   It carries the CLI, the API, and the TUI in one venv, so the TUI finds
   `mailctl-api` on `PATH`: `api` runs the API, `tui` the TUI, and
   anything else is the CLI's arguments ([#347][i347]). Its guards — the
@@ -1562,7 +1563,7 @@ Full dimension status:
 | 10. Performance & load | **N/A** — interactive, single-mailbox, human-scale. Revisit only if a retroactive pass over a very large folder proves slow |
 | 11. Reliability & observability | **N/A** — a one-shot CLI, not a service. Its reliability property is the backup-before-upload convention |
 | 12. Build | **Active** — pure Python, no compile step. `tests/test_packaging.py` builds a wheel with the declared backend and runs it with nothing from the checkout on the path ([#229][i229]); the Docker image (`make image`), which installs the TUI beside mailctl ([#347][i347]), is built by `tests/container/test_image.py`, and in CI by the *Image scan* workflow on a PR or push touching its inputs (`Dockerfile`, `.dockerignore`, `docker/**`, `pyproject.toml`, `clients/tui/pyproject.toml`, `clients/tui/src/**`, and the workflow file itself), weekly on a schedule until 60 quiet days turn it off ([ICEBOX.md][icebox-scan]), and on manual dispatch; `test_image.py` itself is not in CI |
-| 13. Documentation | **Active** — this file, `README.md`, and `adr/`; markdownlint gates the prose |
+| 13. Documentation | **Active** — this file, `README.md`, `docs/`, and `adr/`; markdownlint gates the prose |
 | 14. Code review | **Informal** — solo repo; `master` is PR-only, 0 required reviewers |
 | 15. CI | **Active** — `.github/workflows/test.yml`, on every PR and on pushes to `master`. `Lint` runs `ruff check`, `ruff format --check`, and `pyright` once, on 3.12. `pytest` runs on 3.11 through 3.14 as `Test (3.x)`, each a second time on `sievelib==1.5.0`. `TUI (3.x)` runs on 3.11 and 3.14, with mailctl installed beside the TUI so its real-API test runs: the TUI's `pyright`, then its `pytest`, both from `clients/tui/` ([ADR 0009][adr9]). One job named `Test` waits on both matrices and passes only if every version of each did, since that is the check the ruleset requires, so a red TUI blocks a merge ([#231][i231], [#232][i232]). The live and container tiers are deliberately excluded — the one needs real credentials, the other a Docker daemon and a Debian mirror. `.github/workflows/image-scan.yml` (*Image scan*, job `Trivy (report only)`) runs when the image's inputs change, weekly on a schedule (Monday 06:17 UTC) so a CVE published against the unchanged base image is still reported, and on manual dispatch. GitHub turns that schedule off after 60 days with no activity in the repository, and nothing here warns when it does ([ICEBOX.md][icebox-scan]). The scan never fails on a finding and is not a required check ([#238][i238], [#264][i264]) |
 
@@ -1735,6 +1736,7 @@ will read it.
   `uv pip install -e .` is run again.
 
 [adr1]: ../adr/0001-standalone-cli-over-provider-resource.md
+[docker]: ../docs/DOCKER.md
 [promise]: ../RELEASING.md#what-v1-promises
 [adr2]: ../adr/0002-non-destructive-script-merge.md
 [provider]: https://github.com/harleypig/terraform-provider-mxroute

@@ -1,7 +1,7 @@
 # A build-it-yourself image of mailctl -- the CLI, the API, and the TUI:
 # `make image`, or
 #   docker build -t mailctl .
-# Nothing is published; the README's *Docker* section says how to run it.
+# Nothing is published; docs/DOCKER.md *In Docker* says how to run it.
 #
 # 3.12 because it is the version CI tests. The digest pins the exact base;
 # bump tag and digest together, deliberately.

@@ -53,8 +53,8 @@ with no deprecation period.
    failure or refusal. `2` the command line was rejected. `3` and `4`
    `server baseline check` drift, informational and serious. `130`
    interrupted.
-3. **`--json` documents.** Every document listed under *Output for
-   scripts* in the [README](README.md), at `"version": 2`. stdout holds
+3. **`--json` documents.** Every document listed in
+   [docs/SCRIPTING.md][scripting], at `"version": 2`. stdout holds
    the document alone. A failure or refusal, exit status 1, is one JSON
    line, the last one on stderr. A command line rejected with exit status
    2 ends the same way: its usage and reason come first, as text, and one
@@ -92,9 +92,9 @@ with no deprecation period.
    execute pairing, with single-use plan ids, and at least the newest
    32 plans kept waiting. `credentials.prompt`. `$/cancelRequest` and
    `-32800`. The notifications `event`, `server.alert` and `log`, and
-   every event `kind`. The JSON-RPC error codes in the README's table,
-   and a refusal's `data.code`, held to the same rule as the command
-   line's error codes.
+   every event `kind`. The JSON-RPC error codes in the table in
+   [docs/API.md › *Errors*][api-errors], and a refusal's `data.code`,
+   held to the same rule as the command line's error codes.
 3. **Results are the `--json` documents**, at the same version.
 
 **The Docker image:**
@@ -195,3 +195,5 @@ moved one.
 
 [#282]: https://github.com/harleypig/mailctl/issues/282
 [codes]: docs/ERROR-CODES.md
+[api-errors]: docs/API.md#errors
+[scripting]: docs/SCRIPTING.md

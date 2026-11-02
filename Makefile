@@ -91,7 +91,7 @@ testcontainer: pytest-venv
 livecheck:
 	scripts/live-readonly.sh $(TESTARGS)
 
-# The runnable image (Dockerfile; README.md *In Docker*). Built locally and
+# The runnable image (Dockerfile; docs/DOCKER.md *In Docker*). Built locally and
 # never pushed. IMAGE names the tag, e.g. `make image IMAGE=mailctl:local`.
 IMAGE ?= mailctl:dev
 

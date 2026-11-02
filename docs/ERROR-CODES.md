@@ -15,12 +15,11 @@ do not know as an ordinary failure.
   does, and is left out where it carries none. Exit status 1 is a failure
   or refusal. Exit status 2 is a command line
   rejected before anything ran: the usage and the error come first, as
-  text, and the coded line follows them. See [Output for scripts][out] in
-  the README.
+  text, and the coded line follows them. See [Output for scripts][out].
 * **The API.** A refusal is answered with JSON-RPC error `1`, and its
   `data` is the same document, `fields` always present: the values a
-  client needs, such as a setting's name. See [Errors][api-errors] in the
-  README.
+  client needs, such as a setting's name. See [Errors][api-errors] in
+  API.md.
 
 Two failures carry no code: an interrupted run (exit status 130, and
 `interrupted` under `--json`), and an unexpected failure, which is named
@@ -248,5 +247,5 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 check, in its message.
 
 [promise]: ../RELEASING.md#what-v1-promises
-[out]: ../README.md#output-for-scripts
-[api-errors]: ../README.md#errors
+[out]: SCRIPTING.md
+[api-errors]: API.md#errors

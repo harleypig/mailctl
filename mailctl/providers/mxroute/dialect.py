@@ -75,7 +75,7 @@ class MxrouteDialect(Dialect):
             "that mailctl cannot see or change; a message it drops never "
             "reaches any Sieve rule. Whether your account has one is "
             "unconfirmed -- see 'A filtering stage mailctl cannot see' in "
-            "the README.",
+            "docs/MXROUTE.md.",
         ),
     )
 

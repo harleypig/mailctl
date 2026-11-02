@@ -6,7 +6,8 @@ one contract and cannot drift. A document is built from the neutral
 records the utilities return, never from the text a front-end renders, so
 values are whole, flags are raw, and nothing is clipped or rewritten for a
 terminal. Every document is an object carrying ``version`` beside what its
-command reports; README.md > *Output for scripts* lists the shapes.
+command reports; docs/SCRIPTING.md > *Output for scripts* lists the
+shapes.
 
 The mappings are a contract a script depends on (CONVENTIONS.md > The
 core returns data). Adding a document or a key is compatible; renaming or
