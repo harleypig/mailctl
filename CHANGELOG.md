@@ -4,6 +4,34 @@ Entries accumulate here under the usual headings — `BREAKING CHANGES:`,
 `FEATURES:`, `ENHANCEMENTS:`, `BUG FIXES:`, `NOTES:` — and move under a
 `## X.Y.Z` heading when a tag is cut.
 
+FEATURES:
+
+* **`mailctl config test` checks that a configuration works** ([#440]).
+  It runs the same checks as `server test` and prints only the settings
+  and where each came from, the mail server's section, and one line
+  saying whether the filter server connected or failed. It prints no
+  notes, and exits as `server test` does, so a script can rely on it. The
+  API offers it as `config.test`: `server.test`'s settings and mail
+  parts, and `rules` with `connected` true. A filter server that cannot
+  connect is an error there, coded as `server.test`'s is.
+
+ENHANCEMENTS:
+
+* **`server test` prints the mail server first and the filter server
+  last** ([#439]). The settings come first, then the mail server's
+  section, the baseline line, and the filter server's section. The
+  closing notes sit under one `Note:` heading, one item each, and they
+  and the long line on `FILTER=SIEVE` wrap to the terminal's width. The
+  layout is for a person; the exit status is unchanged.
+* **`server test` wraps its two last long lines, and words its notes
+  more cleanly** ([#455]). The `Servers:` line and the line on the
+  active filter set wrap to the terminal's width as the notes do. Each
+  note now starts with a capital. mailctl now spells the provider
+  "MXroute" everywhere it prints the name -- the notes, the refusals of
+  `redirect` and `vacation`, the login and connection advice, and the
+  `--host` help -- and in its comments, `.env.example`, and ICEBOX.md,
+  as docs/ already does.
+
 NOTES:
 
 * **The README is short, and the rest of it is under `docs/`.** The README
@@ -2004,6 +2032,9 @@ NOTES:
 [#403]: https://github.com/harleypig/mailctl/issues/403
 [#404]: https://github.com/harleypig/mailctl/issues/404
 [#407]: https://github.com/harleypig/mailctl/issues/407
+[#439]: https://github.com/harleypig/mailctl/issues/439
+[#440]: https://github.com/harleypig/mailctl/issues/440
+[#455]: https://github.com/harleypig/mailctl/issues/455
 [#388]: https://github.com/harleypig/mailctl/issues/388
 [codes]: docs/ERROR-CODES.md
 [docs-index]: docs/README.md
