@@ -1,7 +1,7 @@
 # Verifying mailctl against a real mailbox
 
 **Reads, dry runs, and five ways of changing something have been run
-against a live MXRoute account, on test mail and test filters only;
+against a live MXroute account, on test mail and test filters only;
 flagging and discarding mail have not.** The probes, listings, and
 `--dry-run` plans have run against one real account, and a read-only check
 (`make livecheck`) repeats them without changing anything. The changes ran
@@ -116,9 +116,9 @@ it is worth knowing before step 6.
   means ManageSieve was never tried at all. Check `Host`, `User`, and the
   IMAP endpoint in the settings above it.
 * You reach `IMAP: connected` but never `ManageSieve: connected`. The error
-  names the port and TLS mode it used and says plainly that MXRoute
+  names the port and TLS mode it used and says plainly that MXroute
   documents neither. Try `mailctl server test --sieve-tls ssl`, then
-  `--sieve-port` with something else, then ask MXRoute support.
+  `--sieve-port` with something else, then ask MXroute support.
 * Authentication fails on either service. The username must be the **full
   email address**, not the part before the `@`.
 * `fileinto` says `unavailable`. Do not continue; a filter that files
@@ -133,7 +133,7 @@ mailctl folder list
 **You should see** `Hierarchy delimiter: '<char>'`, a folder count, and every
 folder name, one per line, exactly as the server spells them.
 
-**This is the step that settles the guesses.** [MXRoute specifics][observed]
+**This is the step that settles the guesses.** [MXroute specifics][observed]
 lists two things as observed on one server but not promised, and this output
 is what makes them facts for your account. Check both:
 
@@ -141,7 +141,7 @@ is what makes them facts for your account. Check both:
   If it looks like `Lists/News`, your server is not Maildir++ and the folder
   examples in [USAGE.md][usage] need reading with that substitution.
 * **Is there an `INBOX.spam`, and is it lowercase?** It may be `INBOX.Spam`,
-  `INBOX.Junk`, or absent entirely — MXRoute removed the option that created
+  `INBOX.Junk`, or absent entirely — MXroute removed the option that created
   it, so a newer account may never have had one. **Whatever appears here is
   the truth for your account.** Copy the spelling exactly if you ever file
   into it.

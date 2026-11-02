@@ -139,7 +139,7 @@ is the ten largest messages in the folder, not the ten newest put in size
 order. Criteria still narrow the list, and do not change its order.
 
 **Where the server can sort, it does.** A server advertising IMAP `SORT`
-(MXRoute's does) is asked for the order in one command, and only the
+(MXroute's does) is asked for the order in one command, and only the
 messages shown are fetched. On a server without it, mailctl fetches every
 matching message's headers and size — one command per 250 messages, never
 one per message — and sorts them itself, with the same result. On a large
@@ -395,7 +395,7 @@ mailctl filter move from-newsletter-example-com --after keep-boss
 mailctl filter optimize --dry-run
 mailctl filter optimize --skip merge
 
-# Switch a filter off without deleting it, and back on. On MXRoute it is
+# Switch a filter off without deleting it, and back on. On MXroute it is
 # written the way Roundcube writes one, so webmail shows it disabled too.
 mailctl filter disable from-newsletter-example-com --dry-run
 mailctl filter disable from-newsletter-example-com
@@ -439,7 +439,7 @@ Where backups go, and what `restore` does and refuses, are in
 
 ## Watch the servers for change
 
-MXRoute is migrating its servers, and a server that changes underneath a
+MXroute is migrating its servers, and a server that changes underneath a
 filter does not announce it: a filter just stops behaving as it did.
 
 ```bash

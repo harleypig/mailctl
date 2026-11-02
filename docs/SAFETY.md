@@ -81,7 +81,7 @@
 * Backups land in `$XDG_CONFIG_HOME/mailctl/backups` (usually
   `~/.config/mailctl/backups`) — beside your `config.toml`, one file per
   backup, named after the filter set and the UTC time to the millisecond
-  (on MXRoute, `<name>-<UTC timestamp>.sieve`). A backup never replaces a
+  (on MXroute, `<name>-<UTC timestamp>.sieve`). A backup never replaces a
   file: where the name mailctl chose is taken, it writes
   `<name>-<UTC timestamp>-2.sieve`, then `-3`, and so on, and
   `filterset backup --output FILE` naming a file that exists is refused,
@@ -117,7 +117,7 @@
 * Filters are merged into the parsed existing filter set, never appended
   blindly, so other filters survive. If the existing filter set cannot be
   parsed, mailctl stops rather than overwrite it.
-* The server checks every filter set before it is stored (on MXRoute,
+* The server checks every filter set before it is stored (on MXroute,
   ManageSieve's `CHECKSCRIPT` before `PUTSCRIPT`).
 * `apply` **always previews and always confirms** before it
   touches anything — `--dry-run` shortens that path, it is not what creates

@@ -17,13 +17,13 @@
 # file > the built-in default. So an exported MAILCTL_HOST overrides
 # `host` here without complaint.
 
-# The MXRoute server your account lives on. It is per-account -- the same
+# The MXroute server your account lives on. It is per-account -- the same
 # as your primary MX record -- and is shown on the panel's Email Clients
 # page. It is a machine name, not your domain, and there is no sensible
 # default, so this must be set.
 host = "mail.example-server.mxrouteXX.com"
 
-# MXRoute usernames are the FULL email address. A bare local part will fail
+# MXroute usernames are the FULL email address. A bare local part will fail
 # authentication on both ManageSieve and IMAP.
 user = "you@yourdomain.com"
 
@@ -60,10 +60,10 @@ password_cmd = "pass show email/you@yourdomain.com"
 # list to every user on the machine, and your shell has already written it
 # to history. It has no config-file equivalent.
 
-# --- Endpoints (defaults are correct for MXRoute) -------------------------
+# --- Endpoints (defaults are correct for MXroute) -------------------------
 
 # You only need this if IMAP really lives on a different host from `host`.
-# On MXRoute it does not -- both are the same server -- and when this is
+# On MXroute it does not -- both are the same server -- and when this is
 # unset mailctl uses `host` for IMAP.
 #imap_host = ""
 
@@ -71,11 +71,11 @@ password_cmd = "pass show email/you@yourdomain.com"
 # STARTTLS. Default 993.
 #imap_port = 993
 
-# ManageSieve. MXRoute documents NEITHER the port nor the TLS mode. 4190 is
+# ManageSieve. MXroute documents NEITHER the port nor the TLS mode. 4190 is
 # the IANA-registered port (RFC 5804) and the Dovecot default, and STARTTLS
-# is Dovecot's usual mode there -- a good default, not a verified MXRoute
+# is Dovecot's usual mode there -- a good default, not a verified MXroute
 # fact. If connecting fails, try sieve_tls = "ssl" (implicit TLS), then
-# ask MXRoute support. sieve_tls is one of "starttls", "ssl", or "none".
+# ask MXroute support. sieve_tls is one of "starttls", "ssl", or "none".
 #sieve_port = 4190
 #sieve_tls = "starttls"
 
