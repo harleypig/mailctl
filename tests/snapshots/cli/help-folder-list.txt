@@ -1,0 +1,25 @@
+$ mailctl folder list --help
+exit: SystemExit(0)
+--- stdout
+usage: mailctl folder list [-h] [--verbose] [--debug] [--counts] [--json]
+
+List the folders on the account, and with --counts how many messages each
+holds. Nothing is changed.
+
+options:
+  -h, --help     show this help message and exit
+  --verbose, -v  step-by-step progress
+  --debug        show a full traceback on failure (never prints credentials)
+  --counts       show each folder's total and unread messages, and its size
+                 where the server reports it, from one request
+  --json         print the result as a JSON document, and nothing else on
+                 stdout
+
+connection:
+  the options naming the server, the account, and its password are taken
+  here too; 'mailctl help connection' lists them
+
+--- stderr
+
+--- sieve calls
+--- imap calls

@@ -191,6 +191,22 @@ def test_a_prompter_may_answer_with_a_secret():
 
 
 # ----------------------------------------------------------------------------
+def test_a_prompt_whose_input_ends_is_no_password():
+    """getpass raises EOFError when its input ends; that is a coded
+    refusal, never an unexpected error."""
+
+    def ended(_prompt):
+        raise EOFError
+
+    config = Config(prompter=ended)
+
+    with pytest.raises(MailctlError) as caught:
+        config.password()
+
+    assert caught.value.code == "no_password"
+
+
+# ----------------------------------------------------------------------------
 def test_an_empty_secret_from_the_prompter_is_refused():
     config = Config(prompter=lambda _prompt: Secret(""))
 

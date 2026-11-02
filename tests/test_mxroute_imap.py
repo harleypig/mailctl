@@ -48,10 +48,34 @@ def test_a_missing_setting_is_named_before_anything_connects(fake_imap):
     config = Config(user="user@example.com")
     config._password = Secret("x")
 
-    with pytest.raises(MailctlError, match="imap_host"):
+    with pytest.raises(MailctlError) as caught:
         new_imap_session(config)
 
+    assert caught.value.code == "missing_settings"
     assert fake_imap.connected_to is None
+
+
+# ----------------------------------------------------------------------------
+def test_with_neither_host_set_the_refusal_names_host(fake_imap):
+    """imap_host falls back to host, and host is what a new user is told to
+    set, so it is the one named (#457); imap_host is only an override."""
+    config = Config()
+
+    with pytest.raises(MailctlError) as caught:
+        new_imap_session(config)
+
+    assert caught.value.fields["settings"] == ("host", "user")
+    assert "--host, --user" in error_text(caught.value)
+    assert "imap" not in error_text(caught.value)
+
+
+# ----------------------------------------------------------------------------
+def test_imap_host_alone_is_enough_for_the_mail_half(fake_imap):
+    """An override given without host still names the server."""
+    config = Config(imap_host="imap.example.com", user="user@example.com")
+    config._password = Secret("x")
+
+    assert new_imap_session(config).host == "imap.example.com"
 
 
 # ----------------------------------------------------------------------------

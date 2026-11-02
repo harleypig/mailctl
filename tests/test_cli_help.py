@@ -240,3 +240,104 @@ def test_an_old_option_name_after_a_double_dash_is_not_an_option(capsys):
 
     assert code == 2
     assert "is now" not in err
+
+
+# ############################################################################
+# The connection options, on a page of their own (#458)
+# ############################################################################
+
+
+# ----------------------------------------------------------------------------
+def connection_flags() -> set[str]:
+    """Every option the connection page lists, read off the parser."""
+    page = cli.build_parser().connection_page
+
+    assert page is not None
+
+    return {
+        option for action in page._actions for option in action.option_strings
+    }
+
+
+# ----------------------------------------------------------------------------
+def connecting_commands() -> dict:
+    """The commands that read the settings, whose pages collapse the
+    connection options; derived, so a command added later is covered."""
+    return {
+        path: parser
+        for path, parser in command_parsers().items()
+        if isinstance(parser, cli.Parser) and parser.collapsed is not None
+    }
+
+
+# ----------------------------------------------------------------------------
+def test_the_connecting_commands_and_their_options_are_found():
+    """Vacuous if either walk read nothing; too wide if it took a command
+    that reads no settings."""
+    commands = connecting_commands()
+
+    assert {"folder list", "filter add", "config test"} <= set(commands)
+    assert "config migrate" not in commands
+    assert "help" not in commands
+    assert {"--host", "--imap-host", "--sieve-tls", "--password-file"} <= (
+        connection_flags()
+    )
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("path", list(connecting_commands()))
+def test_a_command_page_names_the_connection_options_in_a_line(capsys, path):
+    code, out, _err = run(capsys, *path.split(), "--help")
+
+    assert code == 0
+    assert cli.CONNECTION_POINTER in " ".join(out.split())
+
+    for flag in ("--imap-host", "--sieve-tls", "--password-file"):
+        assert flag not in out
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize("path", list(connecting_commands()))
+def test_a_command_still_takes_every_connection_option(path):
+    """Left off the page, never off the command line."""
+    taken = set(command_parsers()[path]._option_string_actions)
+
+    assert connection_flags() <= taken
+
+
+# ----------------------------------------------------------------------------
+def test_a_connection_option_still_parses_after_the_command():
+    args = cli.build_parser().parse_args(
+        [
+            "folder",
+            "list",
+            "--imap-host",
+            "imap.example.com",
+            "--sieve-tls",
+            "ssl",
+        ]
+    )
+
+    assert (args.imap_host, args.sieve_tls) == ("imap.example.com", "ssl")
+
+
+# ----------------------------------------------------------------------------
+def test_help_connection_lists_every_connection_option(capsys):
+    code, out, _err = run(capsys, "help", "connection")
+
+    assert code == 0
+    assert out.startswith("usage: mailctl GROUP ACTION [connection options]")
+
+    for flag in connection_flags():
+        assert flag in out
+
+
+# ----------------------------------------------------------------------------
+def test_a_command_page_puts_the_connection_options_back():
+    """The options are shared by every command, so a page that left them
+    out and kept them out would empty the connection page as well."""
+    parser = cli.build_parser()
+    command_parsers(parser)["folder list"].format_help()
+
+    assert parser.connection_page is not None
+    assert "the IMAP server's hostname" in parser.connection_page.format_help()

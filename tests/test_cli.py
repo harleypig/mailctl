@@ -44,10 +44,30 @@ def test_a_single_line_error_is_printed_unchanged(monkeypatch, capsys):
 def test_an_answered_prompt_is_reported_as_set():
     """#61: the password is read before 'test' reports it, so the prompt
     path shows the outcome ("set") rather than the pre-prompt "unset"."""
-    config = Config(user="u@example.com", environ={})
+    config = Config(host="mail.example.com", user="u@example.com", environ={})
     config.prompter = lambda _prompt: "answered"
 
     assert cli.resolve_password(config) == ("set", None)
+
+
+# ----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "named", [{"user": "u@example.com"}, {"host": "mail.example.com"}, {}]
+)
+def test_no_password_is_asked_for_an_account_not_yet_named(named):
+    """#457: the connection refuses the missing host or user first, so
+    asking here would ask for a password the run cannot use."""
+    config = Config(environ={}, **named)
+
+    def prompter(_prompt):
+        raise AssertionError("asked for a password")
+
+    config.prompter = prompter
+
+    assert cli.resolve_password(config) == (
+        "unset, asked for on connecting",
+        None,
+    )
 
 
 # ----------------------------------------------------------------------------

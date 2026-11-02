@@ -31,6 +31,27 @@ ENHANCEMENTS:
   `redirect` and `vacation`, the login and connection advice, and the
   `--host` help -- and in its comments, `.env.example`, and ICEBOX.md,
   as docs/ already does.
+* **Each command's help leads with its own options** ([#458]). The
+  connection options -- the server, the account, and its password -- are
+  one line on each command's page, pointing at `mailctl help connection`,
+  which lists them all; every one is still taken where it was. The
+  `--imap-host`, `--imap-port`, `--sieve-port`, and `--sieve-tls` options
+  are described there for the first time. `config` and `folder list` say
+  what they do, `mail search` leads with what it finds, `mail senders`
+  drops a line about how it reads, and `--since` and `filter add
+  --filter` name `filter add` and `mail search` in full. The `Folder:`
+  line of `config test` and `server test` no longer names commands by
+  their old names.
+
+BUG FIXES:
+
+* **A first run with nothing set asks for `host`, not `imap_host`**
+  ([#457]). With neither set, the refusal names `host`, the setting the
+  README asks for; `imap_host` only overrides it for mail. The code is
+  still `missing_settings`. `config test` and `server test` now name the
+  missing settings before asking for a password, rather than after, and
+  a password prompt whose input ends is refused as `no_password` rather
+  than failing with an unexpected `EOFError`.
 
 NOTES:
 
@@ -2048,6 +2069,8 @@ NOTES:
 [#455]: https://github.com/harleypig/mailctl/issues/455
 [#445]: https://github.com/harleypig/mailctl/issues/445
 [#456]: https://github.com/harleypig/mailctl/issues/456
+[#457]: https://github.com/harleypig/mailctl/issues/457
+[#458]: https://github.com/harleypig/mailctl/issues/458
 [#388]: https://github.com/harleypig/mailctl/issues/388
 [codes]: docs/ERROR-CODES.md
 [docs-index]: docs/README.md

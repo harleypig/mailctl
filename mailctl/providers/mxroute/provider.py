@@ -9,6 +9,7 @@ IMAP ``SEARCH``, re-checked by the utilities against the real Sieve
 semantics. It moves to the Sieve interpreter of ADR 0004 once that exists.
 """
 
+from ...config import DEFAULT_IMAP_PORT, DEFAULT_SIEVE_PORT, DEFAULT_SIEVE_TLS
 from ..base import (
     DISCARD,
     FILEINTO,
@@ -18,6 +19,7 @@ from ..base import (
     ProviderCapabilities,
 )
 from .dialect import MxrouteDialect
+from .imap import STARTTLS_PORT
 from .transport import MxrouteTransport
 
 __all__ = ["MXROUTE"]
@@ -46,11 +48,16 @@ MXROUTE = Provider(
         # Roundcube draws its folder tree from LSUB (RECORD.md).
         folder_visibility=True,
         settings={
-            "host": "MXroute server hostname",
-            "imap_host": "",
-            "imap_port": "",
-            "sieve_port": "",
-            "sieve_tls": "",
+            "host": "MXroute server hostname, for mail and filters alike",
+            "imap_host": "the IMAP server's hostname, where it differs "
+            "from host; default host",
+            "imap_port": f"the IMAP port: {STARTTLS_PORT} is STARTTLS, any "
+            f"other implicit TLS; default {DEFAULT_IMAP_PORT}",
+            "sieve_port": "the ManageSieve port; default "
+            f"{DEFAULT_SIEVE_PORT}",
+            "sieve_tls": "how the ManageSieve connection is secured: "
+            "STARTTLS, implicit TLS (ssl), or none; default "
+            f"{DEFAULT_SIEVE_TLS}",
         },
     ),
     dialect=MxrouteDialect,

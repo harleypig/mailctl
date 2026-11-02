@@ -14,7 +14,7 @@ positional arguments:
     filter              save filters, and apply them to mail already delivered
     filterset           list, show, back up, and restore sets of filters
     server              check the servers, and what they report
-    config              the configuration mailctl reads
+    config              check the settings, and move them from the old name
     help                show help for mailctl, a group, or a command
 
 options:

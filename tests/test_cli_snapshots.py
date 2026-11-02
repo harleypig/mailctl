@@ -1410,6 +1410,27 @@ SCENARIOS = {
     # A server without LIST-STATUS: refused, naming it, rather than a
     # STATUS per folder.
     "folders-counts-refused": (["folder", "list", "--counts"], {}),
+    # #457: a first run with nothing set names host, the setting the
+    # README asks for, not imap_host, which only overrides it for mail.
+    "folders-no-host": (
+        ["folder", "list"],
+        {"unset": ("MAILCTL_HOST", "MAILCTL_USER")},
+    ),
+    # And 'config test' says so too, before any password prompt: nothing
+    # is asked, so a prompt that ended at once is never reached.
+    "config-test-no-host": (
+        ["config", "test"],
+        {
+            "unset": ("MAILCTL_HOST", "MAILCTL_USER", "MAILCTL_PASSWORD"),
+            "prompt_eof": True,
+        },
+    ),
+    # A password prompt whose input ends is no password, coded, never an
+    # unexpected EOFError.
+    "folders-prompt-eof": (
+        ["folder", "list"],
+        {"unset": ("MAILCTL_PASSWORD",), "prompt_eof": True},
+    ),
     "test": (["server", "test"], {}),
     # #440: the settings, the mail half, and one line on the filter half;
     # each half failing in turn, the mail half first since it is probed
@@ -1731,6 +1752,10 @@ SCENARIOS = {
     "help-top": (["--help"], {}),
     "help-filter": (["help", "filter"], {}),
     "help-server-baseline": (["server", "baseline", "--help"], {}),
+    # #458: a command's own options, the connection options in a line, and
+    # the page that lists them.
+    "help-folder-list": (["folder", "list", "--help"], {}),
+    "help-connection": (["help", "connection"], {}),
     "group-without-action": (["filter"], {}),
     "add-noimap": (
         [
@@ -2899,6 +2924,16 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
     monkeypatch.setenv(
         "MAILCTL_PASSWORD", options.get("password", "not-a-real-password")
     )
+    for name in options.get("unset", ()):
+        monkeypatch.delenv(name)
+
+    if options.get("prompt_eof"):
+
+        def ended(prompt):
+            raise EOFError
+
+        monkeypatch.setattr("getpass.getpass", ended)
+
     monkeypatch.setattr(sys, "stdin", io.StringIO(options.get("stdin", "")))
 
     if options.get("presave"):
@@ -2952,12 +2987,14 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
 def argparse_neutral(record: str) -> str:
     """A record with what argparse words differently by version made one.
 
-    Two pieces of argparse's own text vary with the Python running it, and
-    neither is mailctl's: where a usage line wraps (3.13 lets a group
-    break across lines, and puts a subcommand's ``...`` beside its choices)
-    and whether an invalid choice's list is quoted (it is before 3.12.8).
-    So a usage block is compared as its words, and the choices unquoted;
-    which options a usage names, and in what order, still has to match.
+    Three pieces of argparse's own text vary with the Python running it,
+    and none is mailctl's: where a usage line wraps (3.13 lets a group
+    break across lines, and puts a subcommand's ``...`` beside its choices),
+    whether an invalid choice's list is quoted (it is before 3.12.8), and
+    whether a short option repeats its metavar (it does before 3.13). So a
+    usage block is compared as its words, the choices unquoted, and the
+    metavar once; which options a usage names, and in what order, still
+    has to match.
     """
     record = re.sub(
         r"^usage: .*(?:\n[ \t]+\S.*)*",
@@ -2966,10 +3003,20 @@ def argparse_neutral(record: str) -> str:
         flags=re.MULTILINE,
     )
 
-    return re.sub(
+    record = re.sub(
         r"\(choose from ([^)]*)\)",
         lambda match: f"(choose from {match.group(1).replace(chr(39), '')})",
         record,
+    )
+
+    # 3.13 names an option's metavar once, after its last spelling: '-p,
+    # --password PASSWORD' where earlier versions print '-p PASSWORD,
+    # --password PASSWORD'.
+    return re.sub(
+        r"^(\s+-\w) (\S+), (--[\w-]+) \2$",
+        r"\1, \3 \2",
+        record,
+        flags=re.MULTILINE,
     )
 
 
@@ -3303,6 +3350,17 @@ def test_quoted_and_unquoted_choices_are_the_same_record():
     bare = "invalid choice: 'x' (choose from size, sent)"
 
     assert argparse_neutral(quoted) == argparse_neutral(bare)
+
+
+# ----------------------------------------------------------------------------
+def test_a_metavar_named_once_or_twice_is_the_same_record():
+    before = "  -p PASSWORD, --password PASSWORD\n"
+    since = "  -p, --password PASSWORD\n"
+
+    assert argparse_neutral(before) == argparse_neutral(since)
+    assert argparse_neutral(before) != argparse_neutral(
+        "  -q PASSWORD, --password PASSWORD\n"
+    )
 
 
 # ----------------------------------------------------------------------------

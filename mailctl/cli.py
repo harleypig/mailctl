@@ -94,6 +94,15 @@ FOLDER_DEFAULT_HELP = "default: source_folder from the config, else INBOX"
 # --dry-run plan. The shapes are listed in docs/SCRIPTING.md > Output for
 # scripts.
 JSON_HELP = "print the result as a JSON document, and nothing else on stdout"
+
+# The connection options are the same on every command that reads the
+# settings, so a command's own page names them in a line and leaves the
+# list to one page, 'mailctl help connection' (#458).
+CONNECTION = "connection"
+CONNECTION_POINTER = (
+    "the options naming the server, the account, and its password are "
+    "taken here too; 'mailctl help connection' lists them"
+)
 JSON_PLAN_HELP = (
     "with --dry-run, print the plan as a JSON document, and nothing else on "
     "stdout; refused without --dry-run"
@@ -2084,7 +2093,7 @@ def print_settings(config) -> None:
     print(
         f"Folder:    {config.source_folder}  "
         f"({origin_of(config, 'source_folder')})  "
-        f"-- read by apply, search, view, mark, senders, and --like"
+        f"-- the folder read when no --folder is given"
     )
 
     if failure is not None:
@@ -2675,6 +2684,15 @@ def resolve_password(config) -> tuple[str, MailctlError | None]:
     rather than as "set" above its own refusal (#61).
     """
     state = config.password_state()
+
+    # Asking for a password the run cannot use yet is backwards: with the
+    # account unnamed, the prompt is left to the connection, which refuses
+    # the missing setting before it asks (#457).
+    reads_host = "host" in engine.capabilities_for(config).settings
+    unnamed = not config.user or (reads_host and not config.host)
+
+    if state == "unset" and config.prompter is not None and unnamed:
+        return "unset, asked for on connecting", None
 
     try:
         config.password()
@@ -3695,7 +3713,7 @@ def connection_parser(
 
         return {"help": offer.settings[name]} if offer.settings[name] else {}
 
-    group = parser.add_argument_group("connection")
+    group = parser.add_argument_group(CONNECTION)
     group.add_argument(
         "--provider",
         default=argparse.SUPPRESS,
@@ -3813,7 +3831,7 @@ def criteria_parser(dated_before: bool = True) -> "Parser":
         metavar="DATE",
         help="only mail received on or after DATE (YYYY-MM-DD). Like "
         "every date and state filter, ANDed with the other criteria, and "
-        "for mail already delivered only: refused by add",
+        "for mail already delivered only: refused by 'filter add'",
     )
 
     if dated_before:
@@ -3868,7 +3886,7 @@ def criteria_source_parser(
         "--filter",
         dest="filter_file",
         metavar="FILE",
-        help="read the criteria from a filter document, as 'search "
+        help="read the criteria from a filter document, as 'mail search "
         "--build-filter --json' prints it; '-' reads standard input. Not "
         "with criteria flags or --like",
     )
@@ -4120,10 +4138,19 @@ def build_parser(
 
         offered_at[above].append((name, offered))
         sub = levels[above].add_parser(name, **kwargs)
-        sub.set_defaults(
-            command=path,
-            reads_settings=connection in kwargs.get("parents", ()),
-        )
+        reads_settings = connection in kwargs.get("parents", ())
+        sub.set_defaults(command=path, reads_settings=reads_settings)
+
+        # The actions, not the group: before 3.13 an exclusive group copied
+        # from a parent lands outside its titled group.
+        if reads_settings:
+            sub.collapsed = connection._actions
+            titled = next(
+                group
+                for group in sub._action_groups
+                if group.title == CONNECTION
+            )
+            titled.description = CONNECTION_POINTER
 
         return sub
 
@@ -4133,12 +4160,12 @@ def build_parser(
         "mail search",
         parents=[common, connection, criteria],
         help="list the newest messages in a folder",
-        description="List the messages in a folder that match the criteria, "
-        "newest first, with the UID each is known by -- the UID 'mail view', "
-        "'mail mark', and --like take. With --like the criteria are built "
+        description="Find the messages in a folder that match the criteria, "
+        "and list them newest first. With --like the criteria are built "
         "from a message, and --build-filter prints the filter they make "
-        "instead of a listing. Nothing is marked read, and nothing is "
-        "changed.",
+        "instead of a listing. Each message is listed with its UID, which "
+        "'mail view', 'mail mark', and --like take. Nothing is marked read, "
+        "and nothing is changed.",
     )
     search.add_argument(
         "--folder", help=f"folder to list; {FOLDER_DEFAULT_HELP}"
@@ -4304,8 +4331,7 @@ def build_parser(
         description="Count the mail in a folder by sender -- the address, "
         "its domain, or the mailing list -- busiest first, with how many "
         "are unread: the mail worth a filter. Takes the same criteria "
-        "flags as 'mail search', such as --since or --unread. One search "
-        "finds the mail and its headers are read a page at a time; nothing is "
+        "flags as 'mail search', such as --since or --unread. Nothing is "
         "marked read, and nothing is changed.",
     )
     senders.add_argument(
@@ -4354,10 +4380,17 @@ def build_parser(
         else "list, create, and rename folders",
     )
 
+    counted = (
+        ", and with --counts how many messages each holds"
+        if offer.folder_counts
+        else ""
+    )
     folders = command(
         "folder list",
         parents=[common, connection],
         help="list the folders",
+        description=f"List the folders on the account{counted}. Nothing is "
+        "changed.",
     )
     folders.add_argument(
         "--counts",
@@ -4869,7 +4902,7 @@ def build_parser(
     )
     check_baseline.set_defaults(handler=cmd_check_baseline)
 
-    branch("config", "the configuration mailctl reads")
+    branch("config", "check the settings, and move them from the old name")
 
     config_test = command(
         "config test",
@@ -4915,13 +4948,16 @@ def build_parser(
         description="Print what 'mailctl --help' prints, or with a GROUP "
         "and an ACTION what 'mailctl GROUP ACTION --help' prints -- 'mailctl "
         "help filter add' -- for the provider --provider names or the "
-        "configuration selects. The server is not contacted.",
+        "configuration selects. 'mailctl help connection' lists the "
+        "options naming the server, the account, and its password, which "
+        "every command that connects takes. The server is not contacted.",
     )
     helping.add_argument(
         "topic",
         nargs="*",
         metavar="GROUP [ACTION]",
-        help="the group, or the group and the command, to explain",
+        help="the group, or the group and the command, to explain; or "
+        "'connection'",
     )
     helping.add_argument(
         "--provider",
@@ -4964,6 +5000,17 @@ def build_parser(
 
         shown = listed or [name for name, _ in children]
         levels[path].metavar = "{" + ",".join(shown) + "}"
+
+    # The parent parser itself, not a copy of it: before 3.13 a copy files
+    # the password options under "options", outside their group.
+    connection.prog = "mailctl"
+    connection.usage = "mailctl GROUP ACTION [connection options]"
+    connection.description = (
+        "The options every command that connects takes, after its ACTION. "
+        "Given as a flag, a setting beats the env file, the environment, "
+        "and config.toml."
+    )
+    parser.connection_page = connection
 
     return parser
 
@@ -5258,6 +5305,10 @@ def parse_command_line(
     # built for this run's provider, so the two cannot drift; argparse exits
     # from it, 0 with the help or 2 naming the valid commands.
     if args.command == "help":
+        if args.topic == [CONNECTION] and parser.connection_page:
+            parser.connection_page.print_help()
+            parser.exit()
+
         refuse_gone_command(parser, args.topic)
         parser.parse_args([*args.topic, "--help"])
 
@@ -5478,11 +5529,52 @@ class Parser(argparse.ArgumentParser):
     An option is never taken by a prefix of its name: a script's ``--jso``
     working today would stop the day an option sharing the prefix is
     added, and the command line is a contract (RELEASING, v1).
+
+    ``collapsed`` is the options a ``--help`` page leaves out, their group
+    showing only its description; they still parse, and a refusal's usage
+    still names them. ``connection_page`` is the root's page listing
+    the connection options in full.
     """
+
+    collapsed: "list[argparse.Action] | None" = None
+    connection_page: "Parser | None" = None
 
     # ------------------------------------------------------------------------
     def __init__(self, *args, allow_abbrev: bool = False, **kwargs):
         super().__init__(*args, allow_abbrev=allow_abbrev, **kwargs)
+
+    # ------------------------------------------------------------------------
+    def format_help(self) -> str:
+        if self.collapsed is None:
+            return super().format_help()
+
+        # The actions are shared with every command made from the same
+        # parent parser, so each one's help is put back once the page is
+        # drawn. SUPPRESS, rather than a formatter of our own, is argparse's
+        # supported way to leave an option out of the help and its usage.
+        actions = self.collapsed
+        kept = [action.help for action in actions]
+        groups = self._mutually_exclusive_groups
+
+        for action in actions:
+            action.help = argparse.SUPPRESS
+
+        # Before 3.13 a usage line draws an exclusive group's members
+        # whether or not they are suppressed, so the group is set aside.
+        self._mutually_exclusive_groups = [
+            group
+            for group in groups
+            if not set(group._group_actions) <= set(actions)
+        ]
+
+        try:
+            return super().format_help()
+
+        finally:
+            self._mutually_exclusive_groups = groups
+
+            for action, text in zip(actions, kept, strict=True):
+                action.help = text
 
     # ------------------------------------------------------------------------
     def error(self, message: str) -> NoReturn:
