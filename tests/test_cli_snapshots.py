@@ -2987,12 +2987,14 @@ def run_scenario(argv, options, imap, script, monkeypatch, tmp_path) -> str:
 def argparse_neutral(record: str) -> str:
     """A record with what argparse words differently by version made one.
 
-    Two pieces of argparse's own text vary with the Python running it, and
-    neither is mailctl's: where a usage line wraps (3.13 lets a group
-    break across lines, and puts a subcommand's ``...`` beside its choices)
-    and whether an invalid choice's list is quoted (it is before 3.12.8).
-    So a usage block is compared as its words, and the choices unquoted;
-    which options a usage names, and in what order, still has to match.
+    Three pieces of argparse's own text vary with the Python running it,
+    and none is mailctl's: where a usage line wraps (3.13 lets a group
+    break across lines, and puts a subcommand's ``...`` beside its choices),
+    whether an invalid choice's list is quoted (it is before 3.12.8), and
+    whether a short option repeats its metavar (it does before 3.13). So a
+    usage block is compared as its words, the choices unquoted, and the
+    metavar once; which options a usage names, and in what order, still
+    has to match.
     """
     record = re.sub(
         r"^usage: .*(?:\n[ \t]+\S.*)*",
@@ -3001,10 +3003,20 @@ def argparse_neutral(record: str) -> str:
         flags=re.MULTILINE,
     )
 
-    return re.sub(
+    record = re.sub(
         r"\(choose from ([^)]*)\)",
         lambda match: f"(choose from {match.group(1).replace(chr(39), '')})",
         record,
+    )
+
+    # 3.13 names an option's metavar once, after its last spelling: '-p,
+    # --password PASSWORD' where earlier versions print '-p PASSWORD,
+    # --password PASSWORD'.
+    return re.sub(
+        r"^(\s+-\w) (\S+), (--[\w-]+) \2$",
+        r"\1, \3 \2",
+        record,
+        flags=re.MULTILINE,
     )
 
 
@@ -3338,6 +3350,17 @@ def test_quoted_and_unquoted_choices_are_the_same_record():
     bare = "invalid choice: 'x' (choose from size, sent)"
 
     assert argparse_neutral(quoted) == argparse_neutral(bare)
+
+
+# ----------------------------------------------------------------------------
+def test_a_metavar_named_once_or_twice_is_the_same_record():
+    before = "  -p PASSWORD, --password PASSWORD\n"
+    since = "  -p, --password PASSWORD\n"
+
+    assert argparse_neutral(before) == argparse_neutral(since)
+    assert argparse_neutral(before) != argparse_neutral(
+        "  -q PASSWORD, --password PASSWORD\n"
+    )
 
 
 # ----------------------------------------------------------------------------

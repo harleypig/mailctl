@@ -4141,13 +4141,16 @@ def build_parser(
         reads_settings = connection in kwargs.get("parents", ())
         sub.set_defaults(command=path, reads_settings=reads_settings)
 
+        # The actions, not the group: before 3.13 an exclusive group copied
+        # from a parent lands outside its titled group.
         if reads_settings:
-            sub.collapsed = next(
+            sub.collapsed = connection._actions
+            titled = next(
                 group
                 for group in sub._action_groups
                 if group.title == CONNECTION
             )
-            sub.collapsed.description = CONNECTION_POINTER
+            titled.description = CONNECTION_POINTER
 
         return sub
 
@@ -4998,15 +5001,16 @@ def build_parser(
         shown = listed or [name for name, _ in children]
         levels[path].metavar = "{" + ",".join(shown) + "}"
 
-    parser.connection_page = Parser(
-        prog="mailctl",
-        usage="mailctl GROUP ACTION [connection options]",
-        description="The options every command that connects takes, after "
-        "its ACTION. Given as a flag, a setting beats the env file, the "
-        "environment, and config.toml.",
-        parents=[connection],
-        add_help=False,
+    # The parent parser itself, not a copy of it: before 3.13 a copy files
+    # the password options under "options", outside their group.
+    connection.prog = "mailctl"
+    connection.usage = "mailctl GROUP ACTION [connection options]"
+    connection.description = (
+        "The options every command that connects takes, after its ACTION. "
+        "Given as a flag, a setting beats the env file, the environment, "
+        "and config.toml."
     )
+    parser.connection_page = connection
 
     return parser
 
@@ -5526,13 +5530,13 @@ class Parser(argparse.ArgumentParser):
     working today would stop the day an option sharing the prefix is
     added, and the command line is a contract (RELEASING, v1).
 
-    ``collapsed`` is a group whose options a ``--help`` page leaves out,
-    showing only the group's description; they still parse, and a refusal's
-    usage still names them. ``connection_page`` is the root's page listing
+    ``collapsed`` is the options a ``--help`` page leaves out, their group
+    showing only its description; they still parse, and a refusal's usage
+    still names them. ``connection_page`` is the root's page listing
     the connection options in full.
     """
 
-    collapsed: "argparse._ArgumentGroup | None" = None
+    collapsed: "list[argparse.Action] | None" = None
     connection_page: "Parser | None" = None
 
     # ------------------------------------------------------------------------
@@ -5548,16 +5552,27 @@ class Parser(argparse.ArgumentParser):
         # parent parser, so each one's help is put back once the page is
         # drawn. SUPPRESS, rather than a formatter of our own, is argparse's
         # supported way to leave an option out of the help and its usage.
-        actions = self.collapsed._group_actions
+        actions = self.collapsed
         kept = [action.help for action in actions]
+        groups = self._mutually_exclusive_groups
 
         for action in actions:
             action.help = argparse.SUPPRESS
+
+        # Before 3.13 a usage line draws an exclusive group's members
+        # whether or not they are suppressed, so the group is set aside.
+        self._mutually_exclusive_groups = [
+            group
+            for group in groups
+            if not set(group._group_actions) <= set(actions)
+        ]
 
         try:
             return super().format_help()
 
         finally:
+            self._mutually_exclusive_groups = groups
+
             for action, text in zip(actions, kept, strict=True):
                 action.help = text
 
