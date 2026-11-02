@@ -12,14 +12,12 @@ mailctl manages the filters and the mail on one mailbox:
   the same criteria to the mail already delivered.
 - **Mail and folders.** Find, count, read, and mark messages, and manage the
   folders they are filed into.
-- **Built for IMAP.** It works with mail providers that offer IMAP, and
-  ManageSieve for saved filters. MXroute is the one provider it supports
-  today (see [MXroute specifics][mxroute]); others would be added as new
-  providers, and what you see stays the same.
-- **Every operation, three ways.** The `mailctl` command line, a JSON-RPC
-  [API][api], and a [terminal UI][tui]. The API is there so other front
-  ends, such as a GUI or a web UI, can be built on it, as the terminal UI
-  is.
+- **MXroute today, other providers later.** It works with an MXroute
+  mailbox now. Support for other mail providers can be added, and the
+  commands you use stay the same.
+- **The command line, and more.** Everything is a `mailctl` command, so it
+  can be scripted. There is also a terminal UI, and an API other programs,
+  such as a desktop or web app, can be built on.
 
 ## Why this exists
 
@@ -30,43 +28,22 @@ saves the filter, and `filter apply` acts on the mail already there.
 
 It exists for a second reason too: webmail's filter and search screens are
 too restricted, and mailctl is meant to replace them, not work within them.
-Its criteria go further — any header, text in the body, whole-value and
-wildcard comparisons, and, for mail already delivered, dates and read or
-flagged state — and it can list, count, sort, and read the mail, so the
-message a filter should catch can be found without opening webmail at all.
 Filters you made in webmail are kept when mailctl changes the filter set.
-
-Its scope is managing the filters and settings on one mailbox, by hand or
-from a script: filters and their order, folders and their subscriptions,
-message flags. It is not a mail client. It does not compose or send, and it
-names an attachment but never saves or opens it. Forwarding is MXroute's
-panel's job, since MXroute disables Sieve `redirect` (see [MXroute
-specifics][mxroute]).
 
 ## Installation
 
-For now, the only way to get mailctl is to clone this repository and
-install from the checkout, so it takes a little more effort than a
-published package would. You need Python 3.11 or newer, and a mail account
-on MXroute.
+You need Python 3.11 or newer, and a mail account on MXroute. mailctl is
+installed from a copy of this repository:
 
 ```bash
 git clone https://github.com/harleypig/mailctl.git
 cd mailctl
-pipx install .
+pipx install .        # or, with uv: uv tool install .
+mailctl --version     # prints the version if the install worked
 ```
 
-With [uv][uv] instead of [pipx][pipx]: `uv tool install .`
-
-Either puts `mailctl` on your `PATH`. The terminal UI is installed the same
-way, from its own directory, beside mailctl:
-
-```bash
-pipx install ./clients/tui      # or: uv tool install ./clients/tui
-```
-
-Or build a container image that carries all of it with `make image`; how
-to run it is in [docs/DOCKER.md][docker].
+The terminal UI and a Docker image are optional; see
+[docs/TUI.md][tui] and [docs/DOCKER.md][docker].
 
 ## Configuration
 
@@ -80,24 +57,44 @@ user = "you@yourdomain.com"                  # the full address
 password_cmd = "pass show email/you@yourdomain.com"
 ```
 
-The password is never written in this file. Give a command that prints it,
-as above, or `password_file` naming a file only you can read; with neither,
-mailctl asks for it. Every other setting is in
+Your server's name is the same as your domain's primary MX record, and
+MXroute's panel shows it on the Email Clients page.
+
+Leave the password settings out and mailctl asks for the password each
+time. To skip the question, give a command that prints it, as above, or
+`password_file` naming a file only you can read. The password itself is
+never written in this file. Every other setting is in
 [docs/CONFIGURATION.md][configuration].
 
 ## Quick start
 
+First check that mailctl can reach your account. This shows each setting
+and where it came from, then connects; it changes nothing:
+
+```bash
+mailctl config test
+```
+
 These only read your mail and filters; nothing changes:
 
 ```bash
-mailctl folder list               # your folders
-mailctl mail search --limit 10    # the ten newest messages in INBOX
-mailctl mail senders --top 10     # who sends you the most mail
-mailctl filter list               # the filters you already have
+mailctl folder list                      # your folders
+mailctl mail search --limit 10           # the ten newest messages in INBOX
+mailctl mail senders --since 2026-10-01  # who sent you the most since then
+mailctl filter list                      # the filters you already have
 ```
 
-Then a filter. Look first, save it, and apply it to the mail already
-there:
+`mail senders` counts at most 5000 messages, so `--since` keeps it to
+recent mail; pick your own date.
+
+### When you want to change something
+
+Before your first change to a mailbox you care about,
+[docs/VERIFYING.md][verify] takes you from commands that touch nothing to
+ones that move mail.
+
+A filter is three steps: look first, save it, then apply it to the mail
+already there:
 
 ```bash
 # Show what would change, without changing it. --create-folder makes
@@ -114,9 +111,7 @@ mailctl filter add --from newsletter@example.com --move-to Lists/News \
 mailctl filter apply --from newsletter@example.com --move-to Lists/News
 ```
 
-Before changing a mailbox you care about, [docs/VERIFYING.md][verify] walks
-from commands that touch nothing to ones that move mail. Every command, by
-task, is in [docs/USAGE.md][usage].
+Every command, by task, is in [docs/USAGE.md][usage].
 
 ## Documentation
 
@@ -148,7 +143,6 @@ MIT.
 mailctl is built on [sievelib][sievelib] for ManageSieve and Sieve, and
 [IMAPClient][imapclient] for IMAP; the terminal UI on [Textual][textual].
 
-[api]: docs/API.md
 [badge-ci]: https://github.com/harleypig/mailctl/actions/workflows/test.yml/badge.svg
 [badge-license]: https://img.shields.io/badge/license-MIT-blue.svg
 [badge-python]: https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fharleypig%2Fmailctl%2Fmaster%2Fpyproject.toml
@@ -158,8 +152,6 @@ mailctl is built on [sievelib][sievelib] for ManageSieve and Sieve, and
 [docker]: docs/DOCKER.md
 [docs]: docs/README.md
 [imapclient]: https://github.com/mjs/imapclient
-[mxroute]: docs/MXROUTE.md
-[pipx]: https://pipx.pypa.io/
 [pyproject]: pyproject.toml
 [releasing]: RELEASING.md
 [sievelib]: https://github.com/tonioo/sievelib
@@ -167,5 +159,4 @@ mailctl is built on [sievelib][sievelib] for ManageSieve and Sieve, and
 [textual]: https://github.com/Textualize/textual
 [tui]: docs/TUI.md
 [usage]: docs/USAGE.md
-[uv]: https://docs.astral.sh/uv/
 [verify]: docs/VERIFYING.md
