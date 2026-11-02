@@ -5,16 +5,21 @@
 [![Version][badge-version]][tags]
 [![Python][badge-python]][pyproject]
 
-Read, sort, and filter the mail on your account: build a filter from
-criteria, merge it into the account's **active** filter set without
-disturbing the filters already there, and apply the same criteria to the
-mail that has already been delivered. It also finds, counts, reads, and
-marks that mail, and manages the folders it is filed into. Every operation
-is offered three ways: the `mailctl` command line, a JSON-RPC [API][api] for
-programs in any language, and a [terminal UI][tui] built on that API.
-MXroute is the provider it speaks to today (see [MXroute
-specifics][mxroute]); what it shows you is the same whichever provider it
-is.
+mailctl manages the filters and the mail on one mailbox:
+
+- **Filters that reach old mail too.** Merge a filter into the account's
+  active filter set without disturbing the filters already there, and apply
+  the same criteria to the mail already delivered.
+- **Mail and folders.** Find, count, read, and mark messages, and manage the
+  folders they are filed into.
+- **Built for IMAP.** It works with mail providers that offer IMAP, and
+  ManageSieve for saved filters. MXroute is the one provider it supports
+  today (see [MXroute specifics][mxroute]); others would be added as new
+  providers, and what you see stays the same.
+- **Every operation, three ways.** The `mailctl` command line, a JSON-RPC
+  [API][api], and a [terminal UI][tui]. The API is there so other front
+  ends, such as a GUI or a web UI, can be built on it, as the terminal UI
+  is.
 
 ## Why this exists
 
