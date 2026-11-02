@@ -41,62 +41,83 @@ specifics][mxroute]).
 
 ## Installation
 
-You need Python 3.11 or newer and a mail account on a host mailctl speaks
-to (MXRoute today). Nothing is published, so install from a checkout:
+For now, the only way to get mailctl is to clone this repository and
+install from the checkout, so it takes a little more effort than a
+published package would. You need Python 3.11 or newer, and a mail account
+on MXroute.
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -e .
-.venv/bin/mailctl --version
+git clone https://github.com/harleypig/mailctl.git
+cd mailctl
+pipx install .
 ```
 
-To run it from a container image instead, see [docs/DOCKER.md][docker]; for
-the terminal UI, see [docs/TUI.md][tui].
+With [uv][uv] instead of [pipx][pipx]: `uv tool install .`
 
-## Quick start
-
-**Before the first run against a real mailbox, work through
-[docs/VERIFYING.md][verify].** It is an ordered ladder from commands that
-touch nothing to ones that move mail, and it is where the unconfirmed
-assumptions in [MXRoute specifics][mxroute] get settled for your account.
+Either puts `mailctl` on your `PATH`. The terminal UI is installed the same
+way, from its own directory, beside mailctl:
 
 ```bash
-# Check both services and what they support. Changes nothing.
-mailctl server test
-
-# See exactly what would change, without changing it.
-mailctl filter add --from newsletter@example.com --move-to Lists/News --dry-run
-
-# Save the filter: merge it, back up, upload, activate. It filters new mail
-# only; the mail already delivered is left alone.
-mailctl filter add --from newsletter@example.com --move-to Lists/News
-
-# Then act on the mail already there, with the same criteria and actions.
-# It previews the messages and asks before it moves any.
-mailctl filter apply --from newsletter@example.com --move-to Lists/News
+pipx install ./clients/tui      # or: uv tool install ./clients/tui
 ```
 
-Every command, by task, is in [docs/USAGE.md][usage].
+Or build a container image that carries all of it with `make image`; how
+to run it is in [docs/DOCKER.md][docker].
 
 ## Configuration
 
-Copy `config.toml.example` to `$XDG_CONFIG_HOME/mailctl/config.toml` and fill
-it in, or copy `.env.example` to `.env` and pass `--env-file`:
+Create `~/.config/mailctl/config.toml` (or `$XDG_CONFIG_HOME/mailctl/` if
+you set it) with your server, your full email address, and where mailctl
+gets the password:
 
 ```toml
-host = "mail.example-server.mxrouteXX.com"
-user = "you@yourdomain.com"
+host = "mail.example-server.mxrouteXX.com"   # your MXroute server
+user = "you@yourdomain.com"                  # the full address
 password_cmd = "pass show email/you@yourdomain.com"
-default_folder = "Lists"
 ```
 
-Every setting, the password's sources, and how they rank are in
+The password is never written in this file. Give a command that prints it,
+as above, or `password_file` naming a file only you can read; with neither,
+mailctl asks for it. Every other setting is in
 [docs/CONFIGURATION.md][configuration].
+
+## Quick start
+
+These only read your mail and filters; nothing changes:
+
+```bash
+mailctl folder list               # your folders
+mailctl mail search --limit 10    # the ten newest messages in INBOX
+mailctl mail senders --top 10     # who sends you the most mail
+mailctl filter list               # the filters you already have
+```
+
+Then a filter. Look first, save it, and apply it to the mail already
+there:
+
+```bash
+# Show what would change, without changing it. --create-folder makes
+# Lists/News if you do not have it yet.
+mailctl filter add --from newsletter@example.com --move-to Lists/News \
+    --create-folder --dry-run
+
+# Save the filter. It acts on new mail only.
+mailctl filter add --from newsletter@example.com --move-to Lists/News \
+    --create-folder
+
+# Move the matching mail already delivered. It shows the messages and asks
+# before moving any.
+mailctl filter apply --from newsletter@example.com --move-to Lists/News
+```
+
+Before changing a mailbox you care about, [docs/VERIFYING.md][verify] walks
+from commands that touch nothing to ones that move mail. Every command, by
+task, is in [docs/USAGE.md][usage].
 
 ## Documentation
 
 [docs/README.md][docs] is the index: configuration, usage, safety, output
-for scripts, the API, the terminal UI, Docker, MXRoute specifics, known
+for scripts, the API, the terminal UI, Docker, MXroute specifics, known
 limits, and the error codes.
 
 ## Contributing
@@ -135,6 +156,7 @@ mailctl is built on [sievelib][sievelib] for ManageSieve and Sieve, and
 [docs]: docs/README.md
 [imapclient]: https://github.com/mjs/imapclient
 [mxroute]: docs/MXROUTE.md
+[pipx]: https://pipx.pypa.io/
 [pyproject]: pyproject.toml
 [releasing]: RELEASING.md
 [sievelib]: https://github.com/tonioo/sievelib
@@ -142,4 +164,5 @@ mailctl is built on [sievelib][sievelib] for ManageSieve and Sieve, and
 [textual]: https://github.com/Textualize/textual
 [tui]: docs/TUI.md
 [usage]: docs/USAGE.md
+[uv]: https://docs.astral.sh/uv/
 [verify]: docs/VERIFYING.md
