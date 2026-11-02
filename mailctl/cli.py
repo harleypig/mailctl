@@ -1947,67 +1947,15 @@ def report_folder_rename(result) -> int:
 def cmd_test(args) -> int:
     """Connect to both services and report what they support."""
     config = configure(args)
-    state, failure = resolve_password(config)
 
-    print(f"Sources:   {', '.join(s.describe() for s in config.consulted)}")
-    print(f"Provider:  {config.provider}  ({origin_of(config, 'provider')})")
-
-    # The host setting is the provider's own, so a provider that does not
-    # read it gets no row for it.
-    if "host" in engine.capabilities_for(config).settings:
-        print(f"Host:      {config.host}  ({origin_of(config, 'host')})")
-
-    print(f"User:      {config.user}  ({origin_of(config, 'user')})")
-    print(
-        f"Password:  {state}{password_origin_suffix(config)}"
-        f"{'  -- see the error below' if failure else ''}"
-    )
-
-    for fact in utilities.reports.connection_facts(config):
-        origin = origin_of(config, **dict(fact.settings))
-        print(f"{fact.label + ':':<10} {fact.text}  ({origin})")
-
-    print(
-        f"Folder:    {config.source_folder}  "
-        f"({origin_of(config, 'source_folder')})  "
-        f"-- read by apply, search, view, mark, senders, and --like"
-    )
-
-    if failure is not None:
-        raise failure
+    print_settings(config)
 
     words = utilities.reports.wording(config)
 
     # The sections print in the order a reader checking their account
     # wants them -- mail first, the Sieve detail last -- and each half is
     # probed as its section prints, so a failure stops at its own section.
-    with connect(config, args, rules=False, mail=True) as sessions:
-        mail = utilities.reports.probe_mail(sessions)
-
-        shown = sessions.capabilities.folder_visibility
-
-        print(f"\n{words.mail_service}: connected")
-        print(f"  delimiter: {mail.delimiter!r}")
-
-        if shown:
-            print(
-                f"  folders:   {mail.folder_count} "
-                f"({mail.folder_count - len(mail.unsubscribed)} subscribed)"
-            )
-
-        else:
-            print(f"  folders:   {mail.folder_count}")
-
-        if shown and mail.unsubscribed:
-            print(
-                f"  not subscribed (exist, but webmail will not show them): "
-                f"{', '.join(mail.unsubscribed)}"
-            )
-
-        print_facts(mail.facts)
-        unrecognised_mail = utilities.server_report.unrecognised_servers(
-            sessions
-        )
+    unrecognised_mail = print_mail_section(config, args, words)
 
     print_baseline_summary(config, args)
 
@@ -2079,6 +2027,100 @@ def cmd_test(args) -> int:
             print(wrapped(note, "  - ", "    "))
 
     return 0
+
+
+# ----------------------------------------------------------------------------
+def cmd_config_test(args) -> int:
+    """``server test``'s settings and mail sections, and one line on
+    whether the rule half connected: enough to tell a setup works."""
+    config = configure(args)
+
+    print_settings(config)
+
+    words = utilities.reports.wording(config)
+
+    print_mail_section(config, args, words)
+
+    # Without this line a rule half that cannot connect would read as a
+    # pass, since nothing above touches it.
+    try:
+        with connect(config, args) as sessions:
+            utilities.reports.probe_rules(sessions)
+
+    except MailctlError:
+        print(f"\n{words.rules_service}: failed -- see the error below")
+
+        raise
+
+    print(f"\n{words.rules_service}: connected")
+
+    return 0
+
+
+# ----------------------------------------------------------------------------
+def print_settings(config) -> None:
+    """The settings block both tests open with, each with where it came
+    from; then the password's failure, if reading it failed."""
+    state, failure = resolve_password(config)
+
+    print(f"Sources:   {', '.join(s.describe() for s in config.consulted)}")
+    print(f"Provider:  {config.provider}  ({origin_of(config, 'provider')})")
+
+    # The host setting is the provider's own, so a provider that does not
+    # read it gets no row for it.
+    if "host" in engine.capabilities_for(config).settings:
+        print(f"Host:      {config.host}  ({origin_of(config, 'host')})")
+
+    print(f"User:      {config.user}  ({origin_of(config, 'user')})")
+    print(
+        f"Password:  {state}{password_origin_suffix(config)}"
+        f"{'  -- see the error below' if failure else ''}"
+    )
+
+    for fact in utilities.reports.connection_facts(config):
+        origin = origin_of(config, **dict(fact.settings))
+        print(f"{fact.label + ':':<10} {fact.text}  ({origin})")
+
+    print(
+        f"Folder:    {config.source_folder}  "
+        f"({origin_of(config, 'source_folder')})  "
+        f"-- read by apply, search, view, mark, senders, and --like"
+    )
+
+    if failure is not None:
+        raise failure
+
+
+# ----------------------------------------------------------------------------
+def print_mail_section(config, args, words) -> list[str]:
+    """Probe the mail half and print what it reports; return which of its
+    servers mailctl does not recognise."""
+    with connect(config, args, rules=False, mail=True) as sessions:
+        mail = utilities.reports.probe_mail(sessions)
+
+        shown = sessions.capabilities.folder_visibility
+
+        print(f"\n{words.mail_service}: connected")
+        print(f"  delimiter: {mail.delimiter!r}")
+
+        if shown:
+            print(
+                f"  folders:   {mail.folder_count} "
+                f"({mail.folder_count - len(mail.unsubscribed)} subscribed)"
+            )
+
+        else:
+            print(f"  folders:   {mail.folder_count}")
+
+        if shown and mail.unsubscribed:
+            print(
+                f"  not subscribed (exist, but webmail will not show them): "
+                f"{', '.join(mail.unsubscribed)}"
+            )
+
+        print_facts(mail.facts)
+
+        return utilities.server_report.unrecognised_servers(sessions)
 
 
 # ----------------------------------------------------------------------------
@@ -4828,6 +4870,18 @@ def build_parser(
     check_baseline.set_defaults(handler=cmd_check_baseline)
 
     branch("config", "the configuration mailctl reads")
+
+    config_test = command(
+        "config test",
+        parents=[common, connection],
+        help="check the settings work, change nothing",
+        description="Show the settings and where each came from, connect "
+        "to the mail server and show what it reports, and say whether the "
+        "filter server connected. The same checks as 'mailctl server "
+        "test', without its detail on filters and the servers. Nothing is "
+        "changed.",
+    )
+    config_test.set_defaults(handler=cmd_config_test)
 
     migrate = command(
         "config migrate",

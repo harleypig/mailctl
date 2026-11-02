@@ -5,7 +5,8 @@ protocols it speaks it over, the webmail that writes the same rules --
 reach the user in three places only:
 
 * the server reports, ``server test``, ``server probe``, and the
-  baselines, whose job is to describe the servers;
+  baselines, whose job is to describe the servers, and ``config test``,
+  which prints ``server test``'s own settings and mail sections (#440);
 * the help of an option only one provider has: ``mail search --raw``,
   ``--disable-extension``, and the connection settings the provider
   declares (``--host``, ``--imap-*``, ``--sieve-*``);
@@ -40,6 +41,10 @@ PROVIDER_WORDS = re.compile(
 
 # The commands whose job is to describe the servers.
 REPORTS = "server"
+
+# A command outside that group whose output is a cut of a server report:
+# 'config test' prints 'server test''s settings and mail sections (#440).
+REPORT_COMMANDS = {("config", "test")}
 
 # Options only one provider has, whose help is about that provider:
 # (command, dest), with None for every command the option is on. The
@@ -355,7 +360,17 @@ def command_word(argv: list[str]) -> str | None:
     always ``argv[1]``: ``mailctl --provider mxroute server test`` names
     ``server``, and its report is exempt from the generic-wording rule.
     """
+    words = command_words(argv)
+
+    return words[0] if words else None
+
+
+# ----------------------------------------------------------------------------
+def command_words(argv: list[str]) -> list[str]:
+    """Every word that is not an option or a global option's value, in
+    order: the group and its action first."""
     frame = iter(argv[1:])
+    words = []
 
     for word in frame:
         if word.startswith("-"):
@@ -364,9 +379,9 @@ def command_word(argv: list[str]) -> str | None:
 
             continue
 
-        return word
+        words.append(word)
 
-    return None
+    return words
 
 
 # ----------------------------------------------------------------------------
@@ -380,9 +395,15 @@ def generic_output(name: str) -> bool:
 def generic_output_text(snapshot: str) -> bool:
     """``generic_output``, for a snapshot given as text rather than by name."""
     argv, _ = shown_text(snapshot)
-    command = command_word(argv)
+    words = command_words(argv)
+    command = words[0] if words else None
 
-    return command != REPORTS and command != "help" and "--help" not in argv
+    return (
+        command != REPORTS
+        and tuple(words[:2]) not in REPORT_COMMANDS
+        and command != "help"
+        and "--help" not in argv
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -413,6 +434,9 @@ def test_the_snapshot_walk_reads_every_snapshot():
     assert len(SNAPSHOT_NAMES) > 300
     assert {"add-dry-sievecreate", "rules", "show", "restore-yes"} <= set(held)
     assert "test" not in held
+    assert "config-test" not in held
+    # Only 'config test' is exempt in its group.
+    assert generic_output_text("$ mailctl config migrate\nexit: 0\n")
 
 
 # ----------------------------------------------------------------------------
@@ -446,9 +470,11 @@ def test_the_output_check_sees_mxroutes_content_and_reports():
     server report, and a diff once its markers are gone. So it is the
     exclusion that passes them."""
     report = (SNAPSHOTS / "test.txt").read_text(encoding="utf-8")
+    config = (SNAPSHOTS / "config-test.txt").read_text(encoding="utf-8")
     diff = (SNAPSHOTS / "add-dry-sievecreate.txt").read_text(encoding="utf-8")
 
     assert provider_words_in_output(report)
+    assert provider_words_in_output(config)
     assert provider_words_in_output(diff.replace("--- diff ---", "-- d --"))
 
 

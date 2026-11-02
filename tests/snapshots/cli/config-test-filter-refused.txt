@@ -1,0 +1,33 @@
+$ mailctl config test
+exit: 1
+--- stdout
+Sources:   environment
+Provider:  mxroute  (default)
+Host:      mail.example.com  (environment)
+User:      user@example.com  (environment)
+Password:  set  (MAILCTL_PASSWORD, environment)
+IMAP:      mail.example.com:993  (host: same as host, port: default)
+Sieve:     mail.example.com:4190 (tls=starttls)  (default)
+Folder:    INBOX  (default)  -- read by apply, search, view, mark, senders, and --like
+
+IMAP: connected
+  delimiter: '.'
+  folders:   3 (2 subscribed)
+  not subscribed (exist, but webmail will not show them): INBOX.spam
+  MOVE:      yes
+  UIDPLUS:   yes
+  FILTER=SIEVE: no -- no server-side retroactive filtering (Dovecot
+                imap_filter_sieve is not enabled).
+                mailctl's client-side search-and-move pass is the only option
+                here.
+
+ManageSieve: failed -- see the error below
+
+--- stderr
+mailctl: ManageSieve authentication failed for 'user@example.com' (password set). MXroute expects the FULL email address as the username, e.g. you@yourdomain.com.
+
+--- sieve calls
+('connect',)
+--- imap calls
+('login', 'user@example.com')
+('logout',)

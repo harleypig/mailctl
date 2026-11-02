@@ -1,0 +1,18 @@
+$ mailctl config test
+exit: 1
+--- stdout
+Sources:   environment
+Provider:  mxroute  (default)
+Host:      mail.example.com  (environment)
+User:      user@example.com  (environment)
+Password:  set  (MAILCTL_PASSWORD, environment)
+IMAP:      mail.example.com:993  (host: same as host, port: default)
+Sieve:     mail.example.com:4190 (tls=starttls)  (default)
+Folder:    INBOX  (default)  -- read by apply, search, view, mark, senders, and --like
+
+--- stderr
+mailctl: mail server error -- [AUTHENTICATIONFAILED] failed
+
+--- sieve calls
+--- imap calls
+('shutdown',)

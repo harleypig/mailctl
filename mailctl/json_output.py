@@ -39,6 +39,7 @@ __all__ = [
     "baseline_save_result",
     "capabilities",
     "change",
+    "config_test",
     "drift_check",
     "dumps",
     "error",
@@ -511,6 +512,66 @@ def source(record) -> dict | None:
 
 
 # ----------------------------------------------------------------------------
+def config_test(test) -> dict:
+    """``config test``: the settings and where each came from, what the
+    mail server says of the account, and that the rule half connected.
+
+    Built from ``server test``'s record, so the shared parts are the same
+    document; ``rules`` says only ``connected``, true, since a rule half
+    that cannot connect is answered as an error, as ``server.test`` is.
+    """
+    return _document(
+        test={**_setup_and_mail(test), "rules": {"connected": True}}
+    )
+
+
+# ----------------------------------------------------------------------------
+def _setup_and_mail(test) -> dict:
+    """What ``server test`` and ``config test`` both report: the settings,
+    the password's state, the connection, and the mail half."""
+    config, mail_probe = test.config, test.mail
+
+    return {
+        "provider": config.provider,
+        "sources": [source(item) for item in config.consulted],
+        "settings": [
+            {
+                "name": name,
+                "value": getattr(config, name),
+                "source": source(config.sources.get(name)),
+            }
+            for name in test.settings
+        ],
+        "password": {
+            "state": test.password_state,
+            "source": source(config.password_origin()),
+        },
+        "connection": [
+            {
+                "label": fact.label,
+                "value": fact.text,
+                "sources": {
+                    label: source(config.sources.get(setting))
+                    for label, setting in fact.settings
+                },
+            }
+            for fact in test.endpoints
+        ],
+        "mail": {
+            "delimiter": mail_probe.delimiter,
+            "folders": mail_probe.folder_count,
+            "unsubscribed": list(mail_probe.unsubscribed)
+            if test.folder_visibility
+            else None,
+            "facts": [
+                {"label": fact.label, "value": fact.text}
+                for fact in mail_probe.facts
+            ],
+        },
+    }
+
+
+# ----------------------------------------------------------------------------
 def server_test(test) -> dict:
     """``server test``: the settings and where each came from, then what
     each server says it supports and the account's shape, the servers
@@ -520,7 +581,7 @@ def server_test(test) -> dict:
     one is and could not be compared, and ``error`` says why. The
     password's ``state`` is a fixed word, never derived from it.
     """
-    config, rules_probe, mail_probe = test.config, test.rules, test.mail
+    config, rules_probe = test.config, test.rules
     baseline = None
 
     if test.baseline_error is not None:
@@ -544,31 +605,7 @@ def server_test(test) -> dict:
 
     return _document(
         test={
-            "provider": config.provider,
-            "sources": [source(item) for item in config.consulted],
-            "settings": [
-                {
-                    "name": name,
-                    "value": getattr(config, name),
-                    "source": source(config.sources.get(name)),
-                }
-                for name in test.settings
-            ],
-            "password": {
-                "state": test.password_state,
-                "source": source(config.password_origin()),
-            },
-            "connection": [
-                {
-                    "label": fact.label,
-                    "value": fact.text,
-                    "sources": {
-                        label: source(config.sources.get(setting))
-                        for label, setting in fact.settings
-                    },
-                }
-                for fact in test.endpoints
-            ],
+            **_setup_and_mail(test),
             "rules": {
                 "extensions": [
                     {
@@ -585,17 +622,6 @@ def server_test(test) -> dict:
                 ),
                 "active": rules_probe.active,
                 "others": list(rules_probe.others),
-            },
-            "mail": {
-                "delimiter": mail_probe.delimiter,
-                "folders": mail_probe.folder_count,
-                "unsubscribed": list(mail_probe.unsubscribed)
-                if test.folder_visibility
-                else None,
-                "facts": [
-                    {"label": fact.label, "value": fact.text}
-                    for fact in mail_probe.facts
-                ],
             },
             "unrecognised": [
                 CHANNELS.get(half, half) for half in test.unrecognised
