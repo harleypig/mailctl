@@ -3,16 +3,7 @@ exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mailctl filter optimize [-h] [--verbose] [--debug]
-                               [--provider PROVIDER] [--host HOST]
-                               [--user USER]
-                               [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
-                               [--env-file [PATH]] [--imap-host IMAP_HOST]
-                               [--imap-port IMAP_PORT]
-                               [--sieve-port SIEVE_PORT]
-                               [--sieve-tls {starttls,ssl,none}]
-                               [--backup-dir BACKUP_DIR]
-                               [--disable-extension NAME] [--dry-run] [--yes]
+usage: mailctl filter optimize [-h] [--verbose] [--debug] [--dry-run] [--yes]
                                [--json] [--filterset NAME] [--activate]
                                [--skip KIND]
 mailctl filter optimize: error: argument --skip: invalid choice (choose from redundant, reorder, merge)

@@ -204,6 +204,20 @@ def test_a_prompt_whose_input_ends_is_no_password():
         config.password()
 
     assert caught.value.code == "no_password"
+    assert caught.value.fields.get("prompt_ended") is True
+    assert "end of input" in str(caught.value)
+
+
+# ----------------------------------------------------------------------------
+def test_a_missing_source_does_not_say_the_prompt_ended():
+    """#466: only a prompt whose input ran out says so; no source and no
+    prompter is the plain refusal."""
+    with pytest.raises(MailctlError) as caught:
+        Config().password()
+
+    assert caught.value.code == "no_password"
+    assert "prompt_ended" not in caught.value.fields
+    assert "end of input" not in str(caught.value)
 
 
 # ----------------------------------------------------------------------------

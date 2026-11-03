@@ -119,6 +119,11 @@ NO_PASSWORD_SETTINGS = (
 )
 NO_PASSWORD_MESSAGE = f"no password available -- {NO_PASSWORD_SETTINGS}"
 
+# The same refusal when the prompt was asked and its input ended (Ctrl-D,
+# or stdin from /dev/null), so it does not read as no source being set.
+PROMPT_ENDED = "the password prompt got no input (end of input)"
+PROMPT_ENDED_MESSAGE = f"{PROMPT_ENDED} -- {NO_PASSWORD_SETTINGS}"
+
 # What password_state() reports for each kind of source. A literal from a
 # flag and one from the environment are the same kind of value and are
 # resolved identically; they are labelled apart only so `mailctl server
@@ -520,7 +525,7 @@ class Config:
                 )
 
             except EOFError:
-                raise _no_password() from None
+                raise _no_password(prompt_ended=True) from None
 
             self._password = (
                 answer if isinstance(answer, Secret) else Secret(answer)
@@ -1273,8 +1278,16 @@ def _flag_name(dest: str) -> str:
 
 
 # ----------------------------------------------------------------------------
-def _no_password() -> MailctlError:
-    """The refusal when no password source is in place."""
+def _no_password(*, prompt_ended: bool = False) -> MailctlError:
+    """The refusal when no password source is in place, or when the prompt
+    asked and its input ended (``prompt_ended`` set in the fields)."""
+    if prompt_ended:
+        return MailctlError(
+            PROMPT_ENDED_MESSAGE,
+            code="no_password",
+            fields={"settings": NO_PASSWORD_SETTINGS, "prompt_ended": True},
+        )
+
     return MailctlError(
         NO_PASSWORD_MESSAGE,
         code="no_password",

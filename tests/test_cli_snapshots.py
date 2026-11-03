@@ -1431,6 +1431,11 @@ SCENARIOS = {
         ["folder", "list"],
         {"unset": ("MAILCTL_PASSWORD",), "prompt_eof": True},
     ),
+    # #466: and says the prompt ended, on --json's line as well.
+    "folders-prompt-eof-json": (
+        ["folder", "list", "--json"],
+        {"unset": ("MAILCTL_PASSWORD",), "prompt_eof": True},
+    ),
     "test": (["server", "test"], {}),
     # #440: the settings, the mail half, and one line on the filter half;
     # each half failing in turn, the mail half first since it is probed
