@@ -63,6 +63,14 @@ it shows what a double cannot (what the server *keeps*, and what a stored
 rule *does*), but not MXroute, so it says nothing about MXroute's own
 configuration.
 
+## Coverage
+
+**Coverage is not measured by default and gates nothing.** No coverage
+tool is configured in `pyproject.toml`, the `Makefile`, or CI, and no
+threshold applies, per the global `testing.md`: what must be covered is
+named per behaviour in the tier rules. Read it when wanted, with
+`pytest-cov` installed by hand: `pytest --cov=mailctl --cov-report=term`.
+
 ## Manual verification
 
 Every shipped feature also carries a plain-language note — where to go, what
