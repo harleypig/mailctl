@@ -76,7 +76,7 @@ A bad `--imap-port`, `--sieve-port`, or `--sieve-tls` is
 | `password_command_empty` | the password command is empty |
 | `password_command_failed` | the password command could not run, or exited non-zero |
 | `password_command_no_output` | the password command printed nothing |
-| `no_password` | no source gives a password and nothing can ask for one, or the password is empty |
+| `no_password` | no source gives a password and nothing can ask for one, the password is empty, or the password prompt's input ended (Ctrl-D, or stdin from `/dev/null`), when `fields.prompt_ended` is `true` |
 | `credentials_not_ascii` | the user or password holds a character IMAP's login cannot send; nothing was sent |
 | `backup_outside_root` | a backup would go outside `MAILCTL_BACKUP_ROOT` |
 
