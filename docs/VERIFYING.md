@@ -64,14 +64,15 @@ Any one source will do for a first run: `MAILCTL_PASSWORD_CMD`, a
 mount reports `0777` and is refused), `MAILCTL_PASSWORD`, or nothing at all,
 which prompts.
 
-## 1. `mailctl server test` — touches nothing
+## 1. `mailctl config test`, then `mailctl server test` — touches nothing
 
 ```bash
-mailctl server test
+mailctl config test
 ```
 
-This connects to both services, reads what they advertise, and exits. It
-writes nothing anywhere.
+This answers one question: does your configuration work? It connects to
+both services, logs in, and exits. It writes nothing anywhere, and exits
+non-zero if either service cannot be reached.
 
 **You should see**, in this order:
 
@@ -82,6 +83,18 @@ writes nothing anywhere.
   it means you will be prompted.
 * `IMAP: connected`, then the delimiter, the folder count, any folders that
   exist but are not subscribed, `MOVE`, `UIDPLUS`, and `FILTER=SIEVE`.
+* `ManageSieve: connected`, one line. Where the filter server cannot be
+  reached it reads `ManageSieve: failed -- see the error below`, and the
+  error is the last thing on the screen.
+
+When both say `connected`, run the full report:
+
+```bash
+mailctl server test
+```
+
+It prints the same settings and IMAP section, and then:
+
 * `Baseline:`, one line, only if you have saved a baseline for this host.
 * `ManageSieve: connected`, then `Sieve extensions`, one table in
   alphabetical order: every extension the server lists plus every one
@@ -117,7 +130,7 @@ it is worth knowing before step 6.
   IMAP endpoint in the settings above it.
 * You reach `IMAP: connected` but never `ManageSieve: connected`. The error
   names the port and TLS mode it used and says plainly that MXroute
-  documents neither. Try `mailctl server test --sieve-tls ssl`, then
+  documents neither. Try `mailctl config test --sieve-tls ssl`, then
   `--sieve-port` with something else, then ask MXroute support.
 * Authentication fails on either service. The username must be the **full
   email address**, not the part before the `@`.
@@ -246,11 +259,11 @@ here.
 * You get `a filter named '<name>' already exists in the active filter set`.
   Pick a different `--name`, or pass `--replace` if you genuinely mean to
   overwrite it.
-* A warning says the target folder does not exist. `add` will still write the
-  filter, and mail the server files there later may be lost. Add
+* A warning says the target folder does not exist. `filter add` will still
+  write the filter, and mail the server files there later may be lost. Add
   `--create-folder`, or fix the folder name against step 2.
 
-## 5. First real `add` — Sieve only, no mail moved
+## 5. First real `filter add` — Sieve only, no mail moved
 
 Same command as step 4, without `--dry-run`:
 

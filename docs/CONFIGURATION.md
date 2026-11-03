@@ -33,6 +33,13 @@ default**. `mailctl config test` says where each setting came from — a
 flag, the env file, the environment, the config file, or the default — and
 which of those sources it read.
 
+The flags are the connection options: `--provider`, `--host`, `--user`,
+the three password flags, `--env-file`, `--imap-host`, `--imap-port`,
+`--sieve-port`, `--sieve-tls`, `--backup-dir`, and `--disable-extension`.
+Every command that connects takes them after its action. A command's own
+help folds them into one line under `connection:`, and `mailctl help
+connection` lists them, each with what it does and its default.
+
 ## The env file
 
 `--env-file PATH` reads the `MAILCTL_*` lines of a dotenv-style file; given

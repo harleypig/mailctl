@@ -59,7 +59,7 @@ NOTES:
   keeps what mailctl is, how to install it, a first example, and pointers;
   [docs/README.md][docs-index] is the index. Each former README section is
   a page of its own, unchanged but for its links: configuration, usage,
-  safety, output for scripts, the API, the terminal UI, Docker, MXRoute
+  safety, output for scripts, the API, the terminal UI, Docker, MXroute
   specifics, and known limits. No change to the tool.
 * **The README reads for someone deciding whether to use mailctl**
   ([#456]). It says MXroute works today and other providers can be
@@ -72,6 +72,16 @@ NOTES:
   add` and `filter apply`. It, docs/USAGE.md, and config.toml.example
   point at `config test` to check where settings came from, and
   docs/API.md lists `config.test`.
+* **The repository carries the MIT license text** ([#432]). `LICENSE` at
+  the root holds it, and the README links to it.
+* **docs/VERIFYING.md starts with `mailctl config test`** ([#463]), then
+  `server test` as the full report. It and docs/SAFETY.md name commands
+  by their groups (`filter add`, `mail search`), as `mailctl help` lists
+  them. The MXroute record names `server test` where it said `test`
+  ([#433]).
+* **docs/CONFIGURATION.md lists the connection options** ([#465]) and
+  points at `mailctl help connection`, the page each command's help
+  folds them into.
 
 ## 1.0.1
 
@@ -2071,6 +2081,10 @@ NOTES:
 [#456]: https://github.com/harleypig/mailctl/issues/456
 [#457]: https://github.com/harleypig/mailctl/issues/457
 [#458]: https://github.com/harleypig/mailctl/issues/458
+[#432]: https://github.com/harleypig/mailctl/issues/432
+[#433]: https://github.com/harleypig/mailctl/issues/433
+[#463]: https://github.com/harleypig/mailctl/issues/463
+[#465]: https://github.com/harleypig/mailctl/issues/465
 [#388]: https://github.com/harleypig/mailctl/issues/388
 [codes]: docs/ERROR-CODES.md
 [docs-index]: docs/README.md
