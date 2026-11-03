@@ -26,8 +26,8 @@ the test layout are pulled in via the imports at the bottom.
   lint **and** format are `ruff` (never black/isort/flake8 alongside it).
 - **Discover from the server; never hardcode.** Capabilities, the active
   script name, and the folder delimiter are read at runtime — see
-  [CONVENTIONS.md](CONVENTIONS.md) › *Discover, don't hardcode*. MXroute is
-  mid-migration on several of these.
+  [rules/providers.md](rules/providers.md) › *Discover, don't hardcode*.
+  MXroute is mid-migration on several of these.
 - **MXroute disables the Sieve `redirect` action.** Forwarding is the
   substitute, and it is **already code** in the sibling repo
   (`mxroute_forwarder` in `terraform-provider-mxroute`) — point at it rather
@@ -42,8 +42,14 @@ the test layout are pulled in via the imports at the bottom.
 
 ## Where the rest lives
 
-Repo conventions in [CONVENTIONS.md](CONVENTIONS.md); test layout in
-[TESTS.md](TESTS.md); decisions already made in [../adr/](../adr/README.md);
+Repo conventions in [CONVENTIONS.md](CONVENTIONS.md) and test layout in
+[TESTS.md](TESTS.md), both imported below as the **always-loaded core**. The
+detail of each is in [rules/](rules/), one file per subject, each loaded only
+when a file matching its `paths:` frontmatter is read or edited; each core's
+*Where the detail lives* table maps every section to its file.
+`tests/test_claude_context_budget.py` caps the bytes this file and its
+imports load on every turn, and fails on a rule with no `paths:`.
+Decisions already made are in [../adr/](../adr/README.md);
 dev basics in the README's *Contributing* section
 ([../README.md](../README.md#contributing)); the user guides in
 [../docs/](../docs/README.md). Generic agent behavior — git/gh
