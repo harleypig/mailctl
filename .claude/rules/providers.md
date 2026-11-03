@@ -206,11 +206,13 @@ read ([#346][i346], [#378][i378]).
   `--imap-*`, `--sieve-*`) are offered only where
   `ProviderCapabilities.settings` names them, with the help it gives — they
   keep their names and their `MAILCTL_*` variables, being `mxroute`'s
-  connection options. An unoffered option is **hidden, not removed**: given
-  anyway it still parses and meets the refusal below the front-end naming the
-  provider, which stays the backstop for every front-end. A first pass that
-  cannot resolve a provider falls back to the default provider's offer, and
-  the run reports the problem. `mxroute` declares everything, so its help is
+  connection options. `mailctl help connection` lists them from the same
+  offer, and each command's help names that page in one line instead of
+  repeating them ([#458][i458]). An unoffered option is **hidden, not
+  removed**: given anyway it still parses and meets the refusal below the
+  front-end naming the provider, which stays the backstop for every
+  front-end. A first pass that cannot resolve a provider falls back to the
+  default provider's offer, and the run reports the problem. `mxroute` declares everything, so its help is
   what it always was.
 - **A setting belongs to the provider that can use it.**
   `disabled_extensions` keeps its name and its ladder, but only a provider
@@ -398,6 +400,7 @@ refreshing the baseline is an explicit command that shows the diff and asks.
 [i440]: https://github.com/harleypig/mailctl/issues/440
 [i26]: https://github.com/harleypig/mailctl/issues/26
 [i39]: https://github.com/harleypig/mailctl/issues/39
+[i458]: https://github.com/harleypig/mailctl/issues/458
 [rec-mxroute]: ../../mailctl/providers/mxroute/RECORD.md
 [i230]: https://github.com/harleypig/mailctl/issues/230
 [i18]: https://github.com/harleypig/mailctl/issues/18

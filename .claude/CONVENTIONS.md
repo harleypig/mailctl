@@ -248,7 +248,8 @@ option does. The old
 flat names are a clean break, never aliases: each is refused, exit 2,
 naming the command it is now (`cli.GONE_COMMANDS`), coded `gone_command`.
 `mailctl help [group [action]]` prints the same as `--help` there
-([#153][i153]).
+([#153][i153]). A command's help folds the connection options into one
+line naming `mailctl help connection`, which lists them ([#458][i458]).
 
 The rest of the surface — each command's options, `--json`, `--like`,
 and the refusals — is [rules/command-surface.md](rules/command-surface.md).
@@ -642,6 +643,7 @@ will read it.
 [i148]: https://github.com/harleypig/mailctl/issues/148
 [i154]: https://github.com/harleypig/mailctl/issues/154
 [i153]: https://github.com/harleypig/mailctl/issues/153
+[i458]: https://github.com/harleypig/mailctl/issues/458
 [i280]: https://github.com/harleypig/mailctl/issues/280
 [i349]: https://github.com/harleypig/mailctl/issues/349
 [i364]: https://github.com/harleypig/mailctl/issues/364
