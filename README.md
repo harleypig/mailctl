@@ -136,7 +136,7 @@ what v1 promises.
 
 ## License
 
-MIT.
+MIT. The full text is in [LICENSE](LICENSE).
 
 ## Acknowledgements
 

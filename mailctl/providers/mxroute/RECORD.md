@@ -37,7 +37,7 @@ can rely on, what it must still probe, and what it is leaving unused.
     properly handle SRS"*.
   - **Date resolved:** on 2026-09-27 the post showed **Mar 22, 2024**, and
     its own metadata gives `2024-03-22T00:00:00.000Z`. This record,
-    `mailctl test`'s note, and the refusal message all say 2024-03-22
+    `mailctl server test`'s note, and the refusal message all say 2024-03-22
     ([#102][i102]).
 
 ### Connecting to IMAP
@@ -233,7 +233,7 @@ choice at all.
 
 The shared refusal message is still correct for both and needs no tailoring:
 it says the refusal is ours rather than a documented MXroute restriction, and
-points at `mailctl test` to find out what this server actually advertises.
+points at `mailctl server test` to find out what this server actually advertises.
 Distinguishing the two in the message would bake a per-server observation into
 a string, which is precisely what CONVENTIONS.md › *Discover, don't hardcode*
 exists to prevent.
@@ -603,7 +603,7 @@ serve mailctl. Each line says what it might do, not what will be built:
 - **`METADATA`**: per-mailbox annotations. Whether mailctl has a use for it
   is unclear; it is recorded as available.
 - **`QUOTA`**: the account's quota is a setting on the account, so under
-  the scoping rule `mailctl test` could report it.
+  the scoping rule `mailctl server test` could report it.
 - **`NOTIFY`** / **`IDLE`**: push notification of new mail. Probably out of
   scope: mailctl is a one-shot CLI and holds no session open to be told
   anything.
@@ -625,7 +625,7 @@ serve mailctl. Each line says what it might do, not what will be built:
   change it. It needs a domain-owner credential, which mailctl does not hold
   and should not ([#30][i30], closed). This is recorded so that nobody
   attempts it again. The mitigation is to say that the stage exists, which
-  `mailctl test` and [docs/MXROUTE.md][stage] do.
+  `mailctl server test` and [docs/MXROUTE.md][stage] do.
 
 ## Refresh log
 
