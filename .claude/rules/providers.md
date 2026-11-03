@@ -78,8 +78,7 @@ classification** (`engine.Session`):
   `on_event`, called before every transport operation, True for a write,
   and before the half is connected; what it raises stops the operation
   unsent and reaches the caller as raised. The utilities never know it is
-  there, so every loop in them stops between exchanges, never during one
-  ([#280][i280]).
+  there, so every loop in them stops between exchanges, never during one.
 - **A session owns its connections, and nothing is shared between
   sessions.** There is no module-level connection state: a long-running
   front-end keeps one session per user.
@@ -92,9 +91,9 @@ configuration from the process's own arguments, as the CLI does, and opens
 the session, connecting nothing; `shutdown` or the end of input closes it.
 A bad argument does not end the process, which a client would read as the
 end of its input: it is said on stderr and answers `initialize`, coded,
-in the CLI's words for it (*Credentials*; [#352][i352], [#364][i364]).
+in the CLI's words for it (*Credentials*).
 Requests are handled one at a time, in order. **A request can be cancelled
-between exchanges, never after its first write** ([#280][i280]). The
+between exchanges, never after its first write**. The
 client sends `$/cancelRequest`, the Language Server Protocol's
 notification, naming the request's id, and the API's checkpoint stops it
 before its next exchange, answered `-32800` with `written` false and the
@@ -103,10 +102,8 @@ to its end and answers as it would have, since that write may have landed
 and is never sent again. A cancel names only a request sent before it,
 the one in hand or one waiting its turn ahead of it; any other id is
 ignored, so a late cancel never stops a later request reusing the id.
-A cancel sent behind 64 messages not yet served is not seen until some
-are served, and a `credentials.prompt` waiting while that many are held
-is refused, coded `prompt_input_full`, since its answer could no longer be
-read ([#346][i346], [#378][i378]).
+How far the input is read ahead, and what that bound does to a cancel and
+a password prompt, is `mailctl/api/`'s (`INBOX_LIMIT`).
 
 **How a provider is chosen, declared, and held to its interface:**
 
@@ -130,7 +127,7 @@ read ([#346][i346], [#378][i378]).
   provider, the construct, and why (`providers.base.refuse`). It takes a
   code: `unsupported` for what the provider declares it cannot do, which a
   front-end can learn before asking, or one of its own where the server
-  or a setting is the cause ([#352][i352]).
+  or a setting is the cause.
 - **Every provider answers every operation.** Each half implements or
   explicitly declines (`@declined`) every operation of its interface —
   `Dialect` or `Transport`, `mail_noop` among them — and what the two
@@ -143,7 +140,7 @@ read ([#346][i346], [#378][i378]).
   and `base.py` import nothing from a component. A component keeps its
   own records, and the provider translates (`mxroute/records.py`,
   `mxroute/sieve.py`), so a provider with no Sieve never imports the Sieve
-  component ([#99][i99]).
+  component.
 - **What the user sees is the same for every provider** (operator,
   2026-09-29, [#219][i219]). The user-facing nouns are *filter* and *filter
   set*, whatever the host calls them, and never *rule* or *script*; code
@@ -163,7 +160,7 @@ read ([#346][i346], [#378][i378]).
      such as an extension it lacks or an action it forbids;
   3. `server test`, `server probe`, and the baselines, whose job is to
      describe the servers, and `config test`, which prints `server test`'s
-     own settings and mail sections ([#440][i440]).
+     own settings and mail sections.
 
   Everywhere else — every other help page, prompt, progress and event
   line, error, the diff's heading, a rule's actions, and the frame
@@ -202,18 +199,18 @@ read ([#346][i346], [#378][i378]).
   without `uidvalidity`, `--uidvalidity`; without `folder_visibility`,
   `folder subscribe`, `folder unsubscribe`, and `--no-subscribe`, and a
   folder is created and renamed with no subscription step and listed with
-  no subscription wording ([#39][i39]). The connection flags (`--host`,
+  no subscription wording. The connection flags (`--host`,
   `--imap-*`, `--sieve-*`) are offered only where
   `ProviderCapabilities.settings` names them, with the help it gives — they
   keep their names and their `MAILCTL_*` variables, being `mxroute`'s
   connection options. `mailctl help connection` lists them from the same
   offer, and each command's help names that page in one line instead of
-  repeating them ([#458][i458]). An unoffered option is **hidden, not
+  repeating them. An unoffered option is **hidden, not
   removed**: given anyway it still parses and meets the refusal below the
   front-end naming the provider, which stays the backstop for every
   front-end. A first pass that cannot resolve a provider falls back to the
-  default provider's offer, and the run reports the problem. `mxroute` declares everything, so its help is
-  what it always was.
+  default provider's offer, and the run reports the problem. `mxroute`
+  declares everything, so its help is what it always was.
 - **A setting belongs to the provider that can use it.**
   `disabled_extensions` keeps its name and its ladder, but only a provider
   declaring `extensions` takes it; any other refuses it, before
@@ -252,7 +249,7 @@ never written. Where each setting came from is recorded on the resolved
 an error message can say "default" only about a default. The password is the
 exception and is handled separately (*Credentials*).
 
-**`MAILCTL_BACKUP_ROOT` is the one other exception** ([#230][i230]). It
+**`MAILCTL_BACKUP_ROOT` is the one other exception**. It
 limits `backup_dir` rather than supplying a value, so it is read from the
 process environment only: a rung that could set it could lift it. Where it
 is set, a backup outside it is refused, coded `backup_outside_root`, before
@@ -332,8 +329,8 @@ account, recorded with the command, the date, and the server's hostname:
 - **`mailctl server probe`** prints, dated and with the hosts configured, each
   server's identity (IMAP `ID`, ManageSieve `IMPLEMENTATION`) and its whole
   capability list — saying whether it was read before or after login — the
-  Sieve extensions, the active script, the delimiter, and the namespaces
-  ([#101][i101]). `--json` is the same as a versioned document with sorted
+  Sieve extensions, the active script, the delimiter, and the namespaces.
+  `--json` is the same as a versioned document with sorted
   lists, so two probes of an unchanged server differ only in the time.
 - **`mailctl server test`** adds the folder and subscription counts and what
   `MOVE`, `UIDPLUS`, and `FILTER=SIEVE` mean for mailctl, and one line on
@@ -348,7 +345,7 @@ account, recorded with the command, the date, and the server's hostname:
 A probe never prints the password. It is held to the same bar as a debug
 shim (*Credentials*).
 
-**The automated form is built** ([#18][i18], [#19][i19]).
+**The automated form is built.**
 `server baseline save` writes the probe to
 `$XDG_CONFIG_HOME/mailctl/baselines/<host>.json`, the server's part once
 and the active script per account; `server baseline check` compares a fresh
@@ -357,7 +354,7 @@ probe with it and says what each difference means for the account, exiting 0,
 is not versioned, so the record still transcribes what a probe saw; a refresh
 is *save a baseline, then copy what changed into the record*. A save is
 refused, coded `baseline_changed`, with nothing written, when the file is
-no longer what its plan read ([#279][i279]): a plan carries every other
+no longer what its plan read: a plan carries every other
 account's part of the file as it read them, so writing over a save made
 since would lose that account's part.
 
@@ -389,21 +386,9 @@ refreshing the baseline is an explicit command that shows the diff and asks.
 
 [adr6]: ../../adr/0006-two-layer-component-and-provider-architecture.md
 [adr7]: ../../adr/0007-interfaces-utilities-session-provider-layering.md
-[i280]: https://github.com/harleypig/mailctl/issues/280
 [i137]: https://github.com/harleypig/mailctl/issues/137
-[i352]: https://github.com/harleypig/mailctl/issues/352
-[i364]: https://github.com/harleypig/mailctl/issues/364
-[i346]: https://github.com/harleypig/mailctl/issues/346
-[i378]: https://github.com/harleypig/mailctl/issues/378
-[i99]: https://github.com/harleypig/mailctl/issues/99
 [i219]: https://github.com/harleypig/mailctl/issues/219
-[i440]: https://github.com/harleypig/mailctl/issues/440
 [i26]: https://github.com/harleypig/mailctl/issues/26
-[i39]: https://github.com/harleypig/mailctl/issues/39
-[i458]: https://github.com/harleypig/mailctl/issues/458
 [rec-mxroute]: ../../mailctl/providers/mxroute/RECORD.md
-[i230]: https://github.com/harleypig/mailctl/issues/230
 [i18]: https://github.com/harleypig/mailctl/issues/18
-[i101]: https://github.com/harleypig/mailctl/issues/101
 [i19]: https://github.com/harleypig/mailctl/issues/19
-[i279]: https://github.com/harleypig/mailctl/issues/279

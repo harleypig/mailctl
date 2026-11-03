@@ -45,12 +45,9 @@ layer may call.
     envelope. A client's lines are read here and nowhere else, so this is
     where a `password` it sends is wrapped in `Secret`, as the line is
     parsed. They are read on a thread of their own, so a cancel is in
-    hand while a request runs; the handling and every line written stay
-    on the thread that serves the requests ([#280][i280]). That thread
-    reads ahead at most `INBOX_LIMIT`, 64, messages not yet served, then
-    waits, so a client writing faster than it is served is held back by
-    its own pipe; it is stopped when the API stops serving, closing the
-    session failed or not ([#346][i346]).
+    hand while a request runs, and that thread reads ahead at most
+    `INBOX_LIMIT` messages; the handling and every line written stay on
+    the thread that serves the requests.
   - `server.py` — the session, the methods, and the plan table between a
     `.plan` and its `.execute`.
   - `__main__.py` — `python -m mailctl.api`.
@@ -94,20 +91,18 @@ layer may call.
     test`, the provider's own words for its reports and its connection
     facts, and each extension's state.
   - `server_report.py` — which servers no module recognised, and the
-    redacted issue body `server probe --report` prints for them ([#39][i39]).
+    redacted issue body `server probe --report` prints for them.
   - `server_test.py` — everything `server test` reports, gathered as one
     record from the same probes (`examine_servers`), read-only, for a
     front-end that wants the whole of it at once; the API's `server.test`
     returns it, and `config.test` a cut of it. The CLI does not use it:
     `server test` and `config test` call `reports.py`'s probes as each
-    section prints, so a failure stops at its own section ([#439][i439]).
+    section prints, so a failure stops at its own section.
   - `events.py` — the steps of a change, as a front-end is told of them,
     and `ServerAlert` re-exported for a front-end to recognise one.
   - `uids.py` — a UID kept between runs, pinned to the folder's
     UIDVALIDITY and refused, before it is used, once the folder has been
-    renumbered ([#204][i204]); a UID the folder does not hold is refused,
-    coded `no_such_message`, a pinned one checked for staleness first
-    ([#341][i341]).
+    renumbered; a UID the folder does not hold is refused.
 - `mailctl/engine.py` — **the session**. `connect(config)` resolves the
   provider the configuration selects, refuses a setting it has no use for,
   lets its dialect validate the rest — all before any connection — and
@@ -125,9 +120,7 @@ layer may call.
     `mail_noop`, an IMAP `NOOP`, on mail), `Provider` (the
     record naming a host's capabilities, dialect, and transport), and
     `ProviderCapabilities`; it re-exports the model so one import reaches
-    both. `message_headers` and `message_source` return None for a UID
-    the folder does not hold, which the `mxroute` transport makes of the
-    `imap` component's `NoSuchMessage` ([#341][i341]).
+    both.
   - `model.py` — the provider-neutral model the utilities speak:
     `ActionSpec`, `Placement`, `DisplayDiff`, the folder and message
     records, the neutral steps a rule's actions take (`ActionStep`), the
@@ -154,17 +147,12 @@ layer may call.
     each operation one exchange handed to a layer-1 session.
   - `mxroute/managesieve.py` — the transport's ManageSieve side:
     `sieve_session()` maps `Config` onto a `SieveSession`, and a failed
-    connection or login gains MXroute's advice. A failed connection keeps
-    its code, `connection_failed`, `tls_failed`, or `starttls_not_offered`
-    for a server offering no STARTTLS, and the advice is also in its
-    `fields`, `advice` `try_setting` naming the other TLS mode
-    ([#352][i352], [#377][i377]).
+    connection or login gains MXroute's advice, in its message and in its
+    `fields`, while keeping its own code.
   - `mxroute/imap.py` — the same for IMAP: `imap_session()` maps `Config`
     onto an `ImapSession` (port 143 is STARTTLS, any other implicit TLS),
     with the full-address login advice and the hints that name mailctl's
-    settings; a connection that fails is `connection_failed`, with
-    `advice` `check_settings` and the settings in its `fields`
-    ([#352][i352]).
+    settings, in its message and in its `fields`.
   - `mxroute/records.py` — the translation between the neutral model and
     the `imap` component's own records.
 - `mailctl/components/` — **layer 1** ([ADR 0006][adr6]): one library per
@@ -176,14 +164,10 @@ layer may call.
     0006's gaps S1/S4/S5/S8 closed (byte-exact GETSCRIPT, the whole
     CAPABILITY response, a configurable read timeout, debug output
     impossible), an OK's text read whole, a script sent unchanged and every
-    name quoted and escaped alike under sievelib 1.5 and 1.6 ([#232][i232]),
-    and `SieveSession` on it, taking plain connection parameters. An open
-    that fails once the socket is up — a refused login or STARTTLS, a
-    greeting cut short — closes the socket without a LOGOUT and keeps its
-    own code; `close` sends LOGOUT and then closes the socket, which
-    sievelib's LOGOUT leaves open ([#362][i362]). sievelib lets a socket
-    error through as an `OSError`, so each command after login raises it
-    as its own coded error, the `OSError` its cause ([#402][i402]).
+    name quoted and escaped alike under sievelib 1.5 and 1.6, and
+    `SieveSession` on it, taking plain connection parameters. It owns the
+    socket's whole life, since sievelib's LOGOUT leaves it open, and
+    raises every failure, a socket error included, as a coded error.
   - `managesieve/capabilities.py` — the CAPABILITY response as data.
   - `managesieve/responses.py` — `ServerWarning`, and the `WARNINGS` a
     status response carries; offline.
@@ -209,15 +193,10 @@ layer may call.
     `SELECT` or `EXAMINE` reports, kept for the selected folder so reading
     it costs no round trip. Every `ALERT` the server sends once TLS is up
     goes to `progress`, read by wrapping imaplib's response reader. The
-    re-check itself is the mail utility's. An open that does not log in —
-    refused, or its password prompt stopped — shuts the connection down
-    without a LOGOUT ([#349][i349]); one whose folders or namespace then
-    cannot be read logs out, and a LOGOUT that fails still shuts the
-    socket ([#362][i362]). A socket error in those reads is raised
-    `folder_list_failed`, the `OSError` kept as its cause ([#376][i376]),
-    and in any later command as that command's own coded error, the
-    `OSError` again its cause, so the session reads it as a lost
-    connection ([#402][i402]).
+    re-check itself is the mail utility's. A failed open shuts the
+    connection down, and a socket error is raised as the command's own
+    coded error with the `OSError` its cause, so the session reads it as
+    a lost connection.
   - `imap/alerts.py` — `ServerAlert`, the component's record of an
     `ALERT`, and whether a response line carries one and what it says;
     offline.
@@ -230,7 +209,7 @@ layer may call.
     result, and header reading; offline.
   - `imap/search.py` — `SearchCriteria`, what the session needs from a
     criteria object, and `encode_search_key`, which gets a non-ASCII value
-    to the server intact (I1, [#89][i89]).
+    to the server intact (ADR 0006's I1).
   - `imap/status.py` — every folder's counts from one `LIST ... RETURN
     (STATUS ...)` (`LIST-STATUS`, RFC 5819): the command's arguments and a
     parser for the `STATUS` lines imaplib collects, which the session
@@ -316,16 +295,16 @@ a second output path beside them.
 
 **A core message names no front-end's flag or command.** It states the
 condition and carries a `MailctlError` code, which the front-end renders
-with its own controls (`cli.ERROR_TEXT`, [#51][i51]). Where it points at
+with its own controls (`cli.ERROR_TEXT`). Where it points at
 another operation, an error or a record names the operation in a field
 (`operation`), never `mailctl <command>`; the CLI renders the command line
-(`cli.command_for`, [#183][i183]). The API hands its client the error
+(`cli.command_for`). The API hands its client the error
 document in the JSON-RPC error's `data`, and the client branches on its
 `code`, never on the message. So every error in the package carries a
 code, the interfaces' own included, since a refusal the CLI makes reaches
 a script's `--json` line as surely as the core's; and
 `tests/test_core_no_presentation.py` walks every module for one built
-without ([#331][i331], [#352][i352]).
+without.
 
 ## The old name
 
@@ -343,18 +322,13 @@ compatibility:
   `execute_config_migration`) that lists what moves, honours `--dry-run` and
   `--yes`, moves by rename so every file keeps its mode, merges into a new
   directory that already exists, refuses outright if anything at the
-  destination would be overwritten (coded `migration_conflict`), points a
-  `config.toml` `password_file` / `backup_dir` that named the old
-  directory at the new one, and removes the old directory once empty. A
-  path reached through a variable keeps the variable as written; one only
-  a variable reaches is refused, coded `migration_reference_unrewritable`,
-  rather than its value written into the file. The execute derives the
-  plan again and refuses, coded `migration_changed`, before anything moves
-  if either directory no longer matches it. The API offers it as
-  `config.migrate.plan` / `.execute` ([#279][i279]); its plan carries
-  `config.toml`'s path keys, never its text, and its result says
-  `restart: true`, because a process reads its settings once and only one
-  started after the move reads what moved.
+  destination would be overwritten, points a `config.toml`
+  `password_file` / `backup_dir` that named the old directory at the new
+  one, and removes the old directory once empty. A value only a variable
+  reaches is refused rather than written into the file, and the execute
+  refuses if either directory no longer matches the plan. The API's
+  result says `restart: true`, because a process reads its settings once
+  and only one started after the move reads what moved.
 - **An old setting name is a finding, by name only.**
   `config.LEGACY_ENV_NAMES` is the table of every old name and its new one.
   An old name present — in the environment or the env file — without its new
@@ -364,12 +338,9 @@ compatibility:
   and drops its value, because one of these is the password. An old
   `MXROUTE_PASSWORD` is therefore also never held to the env-file mode
   check — it is never used.
-- **The API reports the same two findings** ([#307][i307]), as `old_name`
-  in `initialize`'s result. `settings` lists each old name with its new
-  one, where it was found (`environment` or `env file`), and the env
-  file's path; `config_dir` is null, or the old directory, the new one,
-  and the operation that moves it, `config migrate`. Names and places
-  only: no old value is read, so none can be sent.
+- **The API reports the same two findings**, as `old_name` in
+  `initialize`'s result: names and places only, since no old value is
+  read, so none can be sent.
 - **The script created under the old name is still ours.** A new account
   gets a script called `mailctl` (`utilities.scripts.DEFAULT_SCRIPT_NAME`);
   with nothing active, an existing `mxfilter` script
@@ -381,23 +352,4 @@ compatibility:
 [adr7]: ../../adr/0007-interfaces-utilities-session-provider-layering.md
 [adr6]: ../../adr/0006-two-layer-component-and-provider-architecture.md
 [adr8]: ../../adr/0008-json-rpc-api-interface-for-out-of-process-clients.md
-[i280]: https://github.com/harleypig/mailctl/issues/280
-[i346]: https://github.com/harleypig/mailctl/issues/346
-[i39]: https://github.com/harleypig/mailctl/issues/39
-[i439]: https://github.com/harleypig/mailctl/issues/439
-[i204]: https://github.com/harleypig/mailctl/issues/204
-[i341]: https://github.com/harleypig/mailctl/issues/341
-[i352]: https://github.com/harleypig/mailctl/issues/352
-[i377]: https://github.com/harleypig/mailctl/issues/377
-[i232]: https://github.com/harleypig/mailctl/issues/232
-[i362]: https://github.com/harleypig/mailctl/issues/362
-[i402]: https://github.com/harleypig/mailctl/issues/402
-[i349]: https://github.com/harleypig/mailctl/issues/349
-[i376]: https://github.com/harleypig/mailctl/issues/376
-[i89]: https://github.com/harleypig/mailctl/issues/89
 [adr9]: ../../adr/0009-python-textual-tui-as-a-separate-package.md
-[i51]: https://github.com/harleypig/mailctl/issues/51
-[i183]: https://github.com/harleypig/mailctl/issues/183
-[i331]: https://github.com/harleypig/mailctl/issues/331
-[i279]: https://github.com/harleypig/mailctl/issues/279
-[i307]: https://github.com/harleypig/mailctl/issues/307
