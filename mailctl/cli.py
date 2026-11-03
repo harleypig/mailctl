@@ -19,7 +19,7 @@ import shutil
 import sys
 import textwrap
 import traceback
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import NoReturn
 
 from . import MailctlError, __version__, engine, json_output, utilities
@@ -28,6 +28,7 @@ from .config import (
     DEFAULT,
     ENV_FILE,
     ENVIRONMENT,
+    PROMPT_ENDED,
     SIEVE_TLS_MODES,
     Config,
     load_config,
@@ -5530,9 +5531,9 @@ class Parser(argparse.ArgumentParser):
     working today would stop the day an option sharing the prefix is
     added, and the command line is a contract (RELEASING, v1).
 
-    ``collapsed`` is the options a ``--help`` page leaves out, their group
-    showing only its description; they still parse, and a refusal's usage
-    still names them. ``connection_page`` is the root's page listing
+    ``collapsed`` is the options a ``--help`` page and a refusal's usage
+    leave out, their group showing only its description; they still
+    parse. ``connection_page`` is the root's page listing
     the connection options in full.
     """
 
@@ -5545,8 +5546,23 @@ class Parser(argparse.ArgumentParser):
 
     # ------------------------------------------------------------------------
     def format_help(self) -> str:
-        if self.collapsed is None:
+        with self._collapsing():
             return super().format_help()
+
+    # ------------------------------------------------------------------------
+    def format_usage(self) -> str:
+        # A refusal's usage block leaves them out as the help page does
+        # (#466).
+        with self._collapsing():
+            return super().format_usage()
+
+    # ------------------------------------------------------------------------
+    @contextlib.contextmanager
+    def _collapsing(self) -> Iterator[None]:
+        """Leave the ``collapsed`` options out of what is drawn inside."""
+        if self.collapsed is None:
+            yield
+            return
 
         # The actions are shared with every command made from the same
         # parent parser, so each one's help is put back once the page is
@@ -5568,7 +5584,7 @@ class Parser(argparse.ArgumentParser):
         ]
 
         try:
-            return super().format_help()
+            yield
 
         finally:
             self._mutually_exclusive_groups = groups
@@ -5649,6 +5665,8 @@ def with_advice(message: str, fields) -> str:
 # and what it is given). Most append to the message. The rest rebuild it
 # around a flag or command the core could not name, keeping the wording the
 # CLI has always printed.
+NO_PASSWORD = "no password available"
+
 ERROR_TEXT = {
     "no_criteria": lambda message, _: (
         f"{message} -- use --from/--to/--cc/--subject/--list-id/--header/"
@@ -5782,8 +5800,9 @@ ERROR_TEXT = {
     "unknown_sort_key": lambda message, _: message,
     "unsupported": lambda message, _: message,
     "no_password": lambda _, fields: (
-        f"no password available -- pass --password-file, --password-cmd, "
-        f"or --password, {fields['settings']}"
+        f"{PROMPT_ENDED if fields.get('prompt_ended') else NO_PASSWORD}"
+        f" -- pass --password-file, --password-cmd, or --password, "
+        f"{fields['settings']}"
     ),
     "missing_settings": lambda _, fields: (
         f"missing required setting(s): {', '.join(fields['settings'])}. "

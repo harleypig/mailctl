@@ -17,6 +17,14 @@ FEATURES:
 
 ENHANCEMENTS:
 
+* **A password prompt that gets no input says so** ([#466]). Ctrl-D at
+  the prompt, or stdin from `/dev/null`, is refused as "the password
+  prompt got no input (end of input)" rather than as if no password
+  source were set; the code stays `no_password`, and its `fields` carry
+  `prompt_ended` true. A refused command line's usage block now leaves
+  out the connection options, as each command's `--help` already does;
+  they still parse.
+
 * **`server test` prints the mail server first and the filter server
   last** ([#439]). The settings come first, then the mail server's
   section, the baseline line, and the filter server's section. The
@@ -2066,6 +2074,7 @@ NOTES:
 [#407]: https://github.com/harleypig/mailctl/issues/407
 [#439]: https://github.com/harleypig/mailctl/issues/439
 [#440]: https://github.com/harleypig/mailctl/issues/440
+[#466]: https://github.com/harleypig/mailctl/issues/466
 [#455]: https://github.com/harleypig/mailctl/issues/455
 [#445]: https://github.com/harleypig/mailctl/issues/445
 [#456]: https://github.com/harleypig/mailctl/issues/456

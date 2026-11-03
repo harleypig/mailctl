@@ -3,14 +3,7 @@ exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mailctl server probe [-h] [--verbose] [--debug] [--provider PROVIDER]
-                            [--host HOST] [--user USER]
-                            [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
-                            [--env-file [PATH]] [--imap-host IMAP_HOST]
-                            [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
-                            [--sieve-tls {starttls,ssl,none}]
-                            [--backup-dir BACKUP_DIR]
-                            [--disable-extension NAME] [--json | --report]
+usage: mailctl server probe [-h] [--verbose] [--debug] [--json | --report]
 mailctl server probe: error: argument --json: not allowed with argument --report
 {"version": 2, "error": {"message": "argument --json: not allowed with argument --report", "code": "invalid_arguments"}}
 

@@ -1,0 +1,10 @@
+$ mailctl folder list --json
+exit: 1
+--- stdout
+
+--- stderr
+{"version": 2, "error": {"message": "the password prompt got no input (end of input) -- pass --password-file, --password-cmd, or --password, set MAILCTL_PASSWORD_FILE, MAILCTL_PASSWORD_CMD, or MAILCTL_PASSWORD, or put password_file / password_cmd in the config file", "code": "no_password", "fields": {"settings": "set MAILCTL_PASSWORD_FILE, MAILCTL_PASSWORD_CMD, or MAILCTL_PASSWORD, or put password_file / password_cmd in the config file", "prompt_ended": true}}}
+
+--- sieve calls
+--- imap calls
+('shutdown',)

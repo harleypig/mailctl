@@ -3,16 +3,10 @@ exit: SystemExit(2)
 --- stdout
 
 --- stderr
-usage: mailctl mail mark [-h] [--verbose] [--debug] [--provider PROVIDER]
-                         [--host HOST] [--user USER]
-                         [--password-file PATH | --password-cmd PASSWORD_CMD | -p PASSWORD]
-                         [--env-file [PATH]] [--imap-host IMAP_HOST]
-                         [--imap-port IMAP_PORT] [--sieve-port SIEVE_PORT]
-                         [--sieve-tls {starttls,ssl,none}]
-                         [--backup-dir BACKUP_DIR] [--disable-extension NAME]
-                         [--dry-run] [--yes] [--json] [--folder FOLDER]
-                         [--uidvalidity N] [--read | --unread]
-                         [--flag | --unflag] [--keyword K] [--no-keyword K]
+usage: mailctl mail mark [-h] [--verbose] [--debug] [--dry-run] [--yes]
+                         [--json] [--folder FOLDER] [--uidvalidity N]
+                         [--read | --unread] [--flag | --unflag] [--keyword K]
+                         [--no-keyword K]
                          UID [UID ...]
 mailctl mail mark: error: argument --unread: not allowed with argument --read
 
