@@ -1,7 +1,9 @@
 # Publishes the top-level Dockerfile's image to ghcr.io/harleypig/mailctl
 # for a release tag, for amd64 and arm64 (#472 - publish the image; ADR
-# 0010 - one image). A manual dispatch builds both platforms and pushes
-# nothing: the dry run.
+# 0010 - one image). A pull request touching the image's inputs, and a
+# manual dispatch, build both platforms and push nothing: the dry run.
+# Dispatch works only once this file is on master, so the pull request is
+# what checks a change to it.
 name: Publish image
 
 # Release tags only: a pre-release such as v1.2.3-rc1 does not match.
@@ -10,6 +12,15 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker/**
+      - pyproject.toml
+      - clients/tui/pyproject.toml
+      - clients/tui/src/**
+      - .github/workflows/publish-image.yml
 
 permissions:
   contents: read
@@ -17,7 +28,8 @@ permissions:
 
 concurrency:
   group: publish-image-${{ github.ref }}
-  cancel-in-progress: false
+  # A publish is never cut off part-way; a superseded dry run is.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   publish:
@@ -29,8 +41,8 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
-      # X.Y.Z, X.Y, and latest from a vX.Y.Z tag. A dispatch on a branch
-      # matches no pattern, so it yields no tags, which it does not need.
+      # X.Y.Z, X.Y, and latest from a vX.Y.Z tag. A dry run matches no
+      # pattern, so it yields no tags, which it does not need.
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
         with:
