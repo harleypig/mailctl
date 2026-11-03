@@ -1,0 +1,54 @@
+# The container tier (tests/container/): mailctl's write paths against a
+# throwaway local Dovecot + Pigeonhole, and mailctl's own image built and
+# refused as a user would run it (#452 - the container tier in CI).
+#
+# Not a required check. Building the test image fetches Debian packages,
+# so a mirror outage would turn this red with nothing wrong in the code,
+# and that must not block a merge. Measure its time and flakiness before
+# making it required or caching the image.
+#
+# Dispatch works only once this file is on master, so the pull request is
+# what checks a change to it.
+name: Container tests
+
+on:
+  pull_request:
+    paths:
+      - tests/container/**
+      - tests/live/**
+      - tests/live_write.py
+      - mailctl/components/**
+      - mailctl/providers/**
+      - .github/workflows/container-tests.yml
+  # Weekly, so a drift in Debian's Dovecot or the base image still shows
+  # when no pull request touches these paths.
+  schedule:
+    - cron: '43 6 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    name: Container tier
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+      # make testcontainer runs .venv/bin/pytest, so install there.
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -e '.[dev]'
+      # The tier skips without Docker; fail here instead, so a runner
+      # without a daemon cannot pass by skipping everything.
+      - run: docker info --format '{{.ServerVersion}}'
+      - name: Container tier
+        run: make testcontainer TESTARGS='-rs'
