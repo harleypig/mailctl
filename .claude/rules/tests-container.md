@@ -160,12 +160,23 @@ tests/container/test_image.py` ([#387][i387]).
   random per run, in a `0600` file mailctl reads through
   `MAILCTL_PASSWORD_FILE`, handed to the container on `docker exec` stdin,
   and never printed or put on a command line.
-- **Not in CI, for now.** Building the image fetches Debian packages, so a
-  CI run would depend on a mirror as well as on the code; that is not
-  reliable enough to gate a merge on without first watching it run.
-  Revisit once it has a history of passing locally.
+- **In CI, and not a required check** ([#452][i452]).
+  `.github/workflows/container-tests.yml` (*Container tests*) runs `make
+  testcontainer` on a pull request touching `tests/container/**`,
+  `tests/live/**`, `tests/live_write.py`, `mailctl/components/**`,
+  `mailctl/providers/**`, or the workflow itself; weekly; and on manual
+  dispatch. `test_image.py` runs with the rest: it opens its own pty, so
+  the runner needs no terminal. A step fails the job where Docker does
+  not answer, so a runner without a daemon cannot pass by skipping the
+  tier. It is not required because building the test image fetches
+  Debian packages, and a mirror outage must not block a merge. Its first
+  run, on 2026-11-03, took 1 min 38 s, 137 passed and none skipped.
+  Making it required, or caching the image so a run does not depend on
+  the mirror, waits on how long it takes and how often it fails with
+  nothing wrong in the code.
 
 [i49]: https://github.com/harleypig/mailctl/issues/49
+[i452]: https://github.com/harleypig/mailctl/issues/452
 [i387]: https://github.com/harleypig/mailctl/issues/387
 [i188]: https://github.com/harleypig/mailctl/issues/188
 [i192]: https://github.com/harleypig/mailctl/issues/192
