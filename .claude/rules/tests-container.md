@@ -163,7 +163,8 @@ tests/container/test_image.py` ([#387][i387]).
 - **In CI, and not a required check** ([#452][i452]).
   `.github/workflows/container-tests.yml` (*Container tests*) runs `make
   testcontainer` on a pull request touching `tests/container/**`,
-  `tests/live/**`, `tests/live_write.py`, `mailctl/components/**`,
+  `tests/live/**`, `tests/live_write.py`, `tests/dovecot_support.py`
+  (the server, shared with the e2e tier), `mailctl/components/**`,
   `mailctl/providers/**`, or the workflow itself; weekly; and on manual
   dispatch. `test_image.py` runs with the rest: it opens its own pty, so
   the runner needs no terminal. A step fails the job where Docker does

@@ -17,6 +17,7 @@ on:
       - tests/container/**
       - tests/live/**
       - tests/live_write.py
+      - tests/dovecot_support.py
       - mailctl/components/**
       - mailctl/providers/**
       - .github/workflows/container-tests.yml
