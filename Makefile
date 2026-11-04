@@ -84,6 +84,20 @@ testlive: pytest-venv
 testcontainer: pytest-venv
 	MAILCTL_CONTAINER=1 $(PYTEST) -v tests/container $(TESTARGS)
 
+# The use-case e2e tier (tests/e2e/): mailctl installed from the checkout by
+# one route -- pipx, uv, or docker -- into a sandbox, its installed commands
+# run against the container tier's Dovecot, then uninstalled. ROUTE names
+# the route, and empty runs all three; TESTARGS passes flags through, e.g.
+#   make teste2e ROUTE=pipx
+#   make teste2e ROUTE=docker TESTARGS='-k install'
+# A passing test's temporary directory is removed, since a route's sandbox
+# holds whole virtualenvs; a failing one's is kept to read.
+ROUTE ?=
+
+teste2e: pytest-venv
+	MAILCTL_E2E=1 MAILCTL_E2E_ROUTE=$(ROUTE) $(PYTEST) -v \
+	  -o tmp_path_retention_policy=failed tests/e2e $(TESTARGS)
+
 # Read-only checks against the configured account, as TAP: only read-only
 # subcommands and --dry-run are sent. TESTARGS names the checks to run
 # (default all; `scripts/live-readonly.sh --list` names them), e.g.
@@ -98,4 +112,4 @@ IMAGE ?= mailctl:dev
 image:
 	docker build -t $(IMAGE) .
 
-.PHONY: default venv install fmt lint typecheck pytest-venv test testtui testlive testcontainer livecheck image
+.PHONY: default venv install fmt lint typecheck pytest-venv test testtui testlive testcontainer teste2e livecheck image

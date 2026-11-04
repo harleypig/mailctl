@@ -6,7 +6,7 @@ carries the layout convention (`tests/` at the repo root, mirroring the
 package). This file records what belongs here.
 
 **The offline tier is written and green** (`make test`); the only skips are
-the live- and container-gated ones. `pytest -q` reports the current count;
+the live-, container-, and e2e-gated ones. `pytest -q` reports the current count;
 none is kept here, because a count nobody re-derives is only ever stale.
 The live tier (`tests/live/`) is skipped by default and run by hand; the
 container tier (`tests/container/`) is where every write path is proved
@@ -21,13 +21,14 @@ file is read or edited:
 
 | Section | Home | Loads for |
 |---|---|---|
-| *Three tiers* › the unit tier, file by file | [rules/tests-unit.md](rules/tests-unit.md) | `tests/**` |
-| *Three tiers* › *The API* and *The API's framing* | [rules/tests-api.md](rules/tests-api.md) | `tests/test_api*.py`, `tests/api_*.py`, `mailctl/api/**` |
+| *Four tiers* › the unit tier, file by file | [rules/tests-unit.md](rules/tests-unit.md) | `tests/**` |
+| *Four tiers* › *The API* and *The API's framing* | [rules/tests-api.md](rules/tests-api.md) | `tests/test_api*.py`, `tests/api_*.py`, `mailctl/api/**` |
 | *The container tier* | [rules/tests-container.md](rules/tests-container.md) | `tests/container/**` |
+| *The e2e tier* | [rules/tests-e2e.md](rules/tests-e2e.md) | `tests/e2e/**`, `tests/dovecot_support.py` |
 | *The read-only live check*, *Live-test credentials & safety* | [rules/tests-live.md](rules/tests-live.md) | `tests/live/**`, `tests/live_write.py`, `tests/container/test_live_*.py`, `scripts/live-readonly.sh` |
 | *The TUI* | [rules/tests-tui.md](rules/tests-tui.md) | `clients/tui/**` |
 
-## Three tiers
+## Four tiers
 
 1. **Unit tests** (`tests/test_*.py`) — **offline**, no network, no
    credentials. The default gate, and the tier that should hold almost
@@ -55,6 +56,9 @@ file is read or edited:
    Docker, never a real account. See *The container tier*.
    `test_image.py` sits under the same gate and builds mailctl's **own**
    image instead (*The container tier*).
+4. **E2E tests** (`MAILCTL_E2E=1`, `tests/e2e/`) — mailctl **installed**
+   by pipx, uv, or Docker into a sandbox, its commands run against the
+   container tier's server, one module per use case. See *The e2e tier*.
 
 The live tier and the read-only live check are together this repo's
 **end-to-end** pass (`qa.md` dimension 8) against MXroute itself. The
@@ -96,6 +100,7 @@ MAILCTL_LIVE_WRITE=1 make testlive MAILCTL_LIVE_ENV_FILE=PATH \
                        # one write path, the account set by an env file
 make testcontainer     # write paths against a local Dovecot (needs Docker)
 make testcontainer TESTARGS='-k test_image'  # one file, by -k, not a path
+make teste2e ROUTE=uv  # install by one route and run it (needs Docker)
 make testtui           # the TUI: its pyright, then its own pytest suite
 make livecheck         # read-only live check (normal mailctl config)
 scripts/live-readonly.sh --list        # the read-only check's test names

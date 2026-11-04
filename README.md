@@ -128,6 +128,7 @@ install` creates with `uv`:
 make install    # the package and its dev tools, into .venv
 make test       # the offline test suite
 make testtui    # the terminal UI's type-check and tests
+make teste2e ROUTE=pipx  # installed by pipx, uv, or docker, then run
 ```
 
 `make` alone formats, lints, type-checks, and tests. Changes land through a
