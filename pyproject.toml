@@ -69,4 +69,5 @@ addopts = "-ra -p no:asyncio"
 markers = [
   "live: hits a real MXroute account and mutates real state; also gated on MAILCTL_LIVE=1",
   "container: runs against a throwaway local Dovecot in Docker; gated on MAILCTL_CONTAINER=1",
+  "e2e: installs mailctl by one route and runs the installed commands; gated on MAILCTL_E2E=1",
 ]

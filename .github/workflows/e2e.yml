@@ -1,0 +1,86 @@
+# The use-case e2e tier (tests/e2e/): mailctl installed from the checkout by
+# each route -- pipx, uv, and Docker -- and its installed commands run
+# against a throwaway local Dovecot (#483 - the use-case e2e tier).
+#
+# Not a required check: an install downloads a base image, Debian packages,
+# and Python packages, so an outage of any of them would turn this red with
+# nothing wrong in the code. A scheduled run that fails says so in an issue
+# instead, since nobody watches a weekly run.
+#
+# Dispatch works only once this file is on master, so the pull request is
+# what checks a change to it.
+name: E2E tests
+
+on:
+  pull_request:
+    paths:
+      - tests/e2e/**
+      - tests/dovecot_support.py
+      - .github/workflows/e2e.yml
+  # Weekly, so a change in pipx, uv, the base image, or a dependency still
+  # shows when no pull request touches these paths.
+  schedule:
+    - cron: '17 7 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: E2E (${{ matrix.route }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One route failing must not cancel the others: past the install, no
+      # route is assumed to behave like another.
+      fail-fast: false
+      matrix:
+        route: [pipx, uv, docker]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+      # The runner image carries pipx and Docker, but not uv.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+      # make teste2e runs .venv/bin/pytest, so install there.
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -e '.[dev]'
+      # The tier skips without Docker; fail here instead, so a runner
+      # without a daemon cannot pass by skipping everything.
+      - run: docker info --format '{{.ServerVersion}}'
+      - run: pipx --version && uv --version
+      - name: E2E tier
+        run: make teste2e ROUTE=${{ matrix.route }} TESTARGS='-rs'
+
+  report:
+    name: Report a failed weekly run
+    needs: e2e
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TITLE: E2E weekly run failed
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      # One issue holds every failure until somebody closes it, so a tier
+      # that stays red adds a comment a week rather than an issue a week.
+      - run: |
+          open=$(gh issue list --state open --search "in:title \"$TITLE\"" \
+            --json number,title \
+            --jq "map(select(.title == env.TITLE)) | .[0].number // empty")
+          body="The scheduled e2e run failed: $RUN_URL"
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi

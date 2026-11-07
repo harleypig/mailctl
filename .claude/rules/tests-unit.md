@@ -12,7 +12,7 @@ the `paths:` above is read or edited.
 
 ## The unit tier, file by file
 
-The tier itself is described in the core's *Three tiers*; *The API* and
+The tier itself is described in the core's *Four tiers*; *The API* and
 *The API's framing* are [tests-api.md](tests-api.md).
 
 This is a map: what each file is for and the property it must hold. What

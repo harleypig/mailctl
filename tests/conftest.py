@@ -45,6 +45,8 @@ from mailctl.providers.mxroute.imap import new_imap_session
 # share the tool's prefix, so the scrubbing below has to step round them.
 TEST_CONTROLS = {
     "MAILCTL_CONTAINER",
+    "MAILCTL_E2E",
+    "MAILCTL_E2E_ROUTE",
     "MAILCTL_LIVE",
     "MAILCTL_UPDATE_SNAPSHOTS",
 }
